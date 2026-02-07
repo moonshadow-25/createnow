@@ -1,0 +1,166 @@
+"""
+视频生成服务
+
+提供统一的视频生成接口，内部使用适配器模式支持多平台
+"""
+
+import logging
+from typing import Optional, Dict, Any
+
+from app.services.ai.base import AIService
+from app.services.ai.adapters import get_video_adapter
+from app.services.ai.utils.image_processor import ImageProcessor
+
+logger = logging.getLogger(__name__)
+
+
+class VideoGenService(AIService):
+    """图生视频服务 - 支持OpenAI、阿里百炼和本地API"""
+
+    def __init__(
+        self,
+        api_url: str,
+        api_key: str,
+        model: str,
+        api_type: str = "openai",
+        use_multipart: bool = True,
+        project_id: Optional[str] = None
+    ):
+        """
+        Args:
+            api_url: API基础URL
+            api_key: API密钥
+            model: 默认模型名称
+            api_type: API类型 ("openai", "dashscope", "local")
+            use_multipart: 是否使用multipart/form-data格式（仅OpenAI/Local）
+            project_id: 项目ID（用于日志记录）
+        """
+        super().__init__(api_url, api_key, model, project_id)
+        self.api_type = api_type
+        self.use_multipart = use_multipart
+        self._adapter = None
+
+    def _get_adapter(self):
+        """获取或创建适配器实例"""
+        if self._adapter is None:
+            self._adapter = get_video_adapter(
+                api_type=self.api_type,
+                api_url=self.api_url,
+                api_key=self.api_key,
+                model=self.model,
+                client=self.client,
+                project_id=self.project_id,
+                log_callback=self._log_interaction,
+                use_multipart=self.use_multipart
+            )
+        return self._adapter
+
+    @staticmethod
+    def scale_image_to_1080p(image_url: str) -> str:
+        """将图片缩放到1080p（短边=1080）
+
+        Args:
+            image_url: 图片URL（支持 http(s):// 或 data:image/...;base64,... 格式）
+
+        Returns:
+            缩放后的base64格式图片 (data:image/jpeg;base64,...)
+        """
+        return ImageProcessor.scale_to_1080p(image_url)
+
+    async def generate(
+        self,
+        image_url: str,
+        prompt: str,
+        duration: int = 6,
+        resolution: str = "1920x1080",
+        model: Optional[str] = None,
+        use_multipart: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """生成视频
+
+        Args:
+            image_url: 输入图片URL或base64
+            prompt: 提示词
+            duration: 视频时长（秒）
+            resolution: 分辨率
+            model: 指定模型（覆盖默认）
+            use_multipart: 是否使用multipart格式（覆盖默认）
+
+        Returns:
+            {
+                "success": bool,
+                "task_id": str,  # 成功时
+                "status": str,  # pending/in_progress/completed/failed
+                "error": str,  # 失败时
+                "raw_create_response": dict,  # 原始响应
+                ...
+            }
+        """
+        adapter = self._get_adapter()
+        return await adapter.generate(
+            image_url=image_url,
+            prompt=prompt,
+            duration=duration,
+            resolution=resolution,
+            model=model,
+            use_multipart=use_multipart if use_multipart is not None else self.use_multipart
+        )
+
+    async def generate_multi_image(
+        self,
+        image_urls: list,
+        prompt: str,
+        duration: int = 6,
+        resolution: str = "1920x1080",
+        model: Optional[str] = None,
+        use_multipart: Optional[bool] = None
+    ) -> Dict[str, Any]:
+        """生成视频（多图模式，首尾帧）
+
+        Args:
+            image_urls: 输入图片URL或base64列表（2张：首帧+尾帧）
+            prompt: 提示词
+            duration: 视频时长（秒）
+            resolution: 分辨率
+            model: 指定模型（覆盖默认）
+            use_multipart: 是否使用multipart格式（覆盖默认）
+
+        Returns:
+            {
+                "success": bool,
+                "task_id": str,  # 成功时
+                "status": str,  # pending/in_progress/completed/failed
+                "error": str,  # 失败时
+                "raw_create_response": dict,  # 原始响应
+                ...
+            }
+        """
+        adapter = self._get_adapter()
+        return await adapter.generate_multi_image(
+            image_urls=image_urls,
+            prompt=prompt,
+            duration=duration,
+            resolution=resolution,
+            model=model,
+            use_multipart=use_multipart if use_multipart is not None else self.use_multipart
+        )
+
+    async def poll_video_task(self, task_id: str) -> Dict[str, Any]:
+        """轮询视频生成任务状态
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            {
+                "success": bool,
+                "status": str,  # pending/in_progress/completed/failed
+                "video_url": str,  # 完成时
+                "error": str,  # 失败时
+                "raw_poll_response": dict,  # 原始响应
+                ...
+            }
+        """
+        logger.info(f"poll_video_task called: task_id={task_id}, api_type={self.api_type}")
+        adapter = self._get_adapter()
+        return await adapter.poll(task_id)

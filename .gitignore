@@ -1,0 +1,43 @@
+# 文档目录
+docs/
+.claude/
+
+# 项目数据目录
+data/
+
+# Python 相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+backend/.env
+backend/.env.local
+
+# Node.js 相关
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# IDE 相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 其他
+jyapi/
+backend/data.old/
+*.log
+.DS_Store
+nul
+
+# 备份文件
+*.bak
+*.backup
+frontend/backup/

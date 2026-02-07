@@ -1,0 +1,926 @@
+"""
+Generation API - 图像生成相关端点
+"""
+
+import logging
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form
+
+from app.services import get_ai_service, PromptService, ImageService, AssetService
+from app.core.config import settings
+from .models import (
+    ImagePromptRequest,
+    ImageGenerateRequest,
+    ImageEditPromptRequest,
+    ImageEditRequest,
+    FusionPromptRequest,
+    FusionImageRequest,
+    VLMAnalyzeRequest,
+)
+from .utils import parse_size
+from .templates import DEFAULT_PROMPT_TEMPLATES
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.post("/image-prompt")
+async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
+    """生成图片提示词"""
+    from app.services import ProjectService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ai_config = project.get("ai_config", {})
+    llm = get_ai_service(ai_config, "llm", project_id)
+
+    # 获取项目的自定义提示词模板
+    custom_templates = ai_config.get("prompt_templates", {})
+
+    # 记录请求日志
+    template_used = "image_prompt_template"
+    if request.asset_type == "storyboard":
+        template_used = "storyboard_image_edit_prompt_template" if request.use_image_edit else "storyboard_image_prompt_template"
+
+    request_log = {
+        "asset_type": request.asset_type,
+        "description": request.description[:500] + "..." if len(request.description) > 500 else request.description,
+        "template_used": template_used,
+    }
+
+    try:
+        if request.asset_type == "storyboard":
+            # 分镜使用专门的分镜图片生成方法
+            # 根据是否使用图生图编辑模式选择模板
+            if request.use_image_edit:
+                custom_template = custom_templates.get("storyboard_image_edit_prompt_template")
+                # 如果没有自定义模板，使用默认模板
+                if not custom_template:
+                    custom_template = DEFAULT_PROMPT_TEMPLATES.get("storyboard_image_edit_prompt_template")
+            else:
+                custom_template = custom_templates.get("storyboard_image_prompt_template")
+                # 如果没有自定义模板，使用默认模板
+                if not custom_template:
+                    custom_template = DEFAULT_PROMPT_TEMPLATES.get("storyboard_image_prompt_template")
+            request_log["shot_type"] = request.shot_type
+            request_log["action"] = request.action
+            request_log["camera_angle"] = request.camera_angle
+            request_log["use_image_edit"] = request.use_image_edit
+            request_log["has_custom_template"] = bool(custom_templates.get("storyboard_image_edit_prompt_template" if request.use_image_edit else "storyboard_image_prompt_template"))
+
+            result = await PromptService.generate_storyboard_image_prompt(
+                llm,
+                request.description,
+                shot_type=request.shot_type,
+                action=request.action,
+                camera_angle=request.camera_angle,
+                custom_template=custom_template
+            )
+        else:
+            # 其他资产类型使用通用图片生成方法
+            custom_template = custom_templates.get("image_prompt_template")
+            request_log["has_custom_template"] = bool(custom_template)
+
+            result = await PromptService.generate_image_prompt(
+                llm,
+                request.asset_type,
+                request.description,
+                custom_template=custom_template
+            )
+        await llm.close()
+        return result
+
+    except Exception as e:
+        await llm.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/image")
+async def generate_image(project_id: str, request: ImageGenerateRequest):
+    """生成图片"""
+    from app.services import ProjectService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ai_config = project.get("ai_config", {})
+
+    # 获取配置的分辨率，支持 "1x1"、"16x9" 等格式
+    default_sizes = {
+        "character": "1x1",
+        "scene": "16x9",
+        "prop": "1x1",
+        "storyboard": "16x9"
+    }
+    configured_sizes = ai_config.get("image_sizes", {})
+    size_str = request.size or configured_sizes.get(request.asset_type) or default_sizes.get(request.asset_type, "1x1")
+
+    # 转换尺寸格式：支持 "1024x1024" 或 "1x1" 等格式
+    width, height = parse_size(size_str)
+
+    image_service = get_ai_service(ai_config, "image", project_id)
+
+    try:
+        result = await image_service.generate(
+            prompt=request.prompt,
+            negative_prompt=request.negative_prompt,
+            width=width,
+            height=height,
+            size_str=size_str  # 传递原始比例字符串给OpenAI API
+        )
+
+        await image_service.close()
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error"))
+
+        # 保存生成记录
+        record = {
+            "asset_id": request.asset_id,
+            "asset_type": request.asset_type,
+            "prompt": request.prompt,
+            "negative_prompt": request.negative_prompt,
+            "width": width,
+            "height": height,
+            "image_path": result.get("image_url"),
+            "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+            "created_at": datetime.now().isoformat()
+        }
+
+        saved = ImageService.save_generation_record(project_id, record)
+
+        # 更新资产的主图（如果是第一张）
+        images = ImageService.list_images(project_id, request.asset_id)
+        if len(images) == 1:
+            ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
+            AssetService.update_asset_image(
+                project_id, request.asset_type, request.asset_id, saved["image_id"]
+            )
+
+        # 【自动下载】生成成功后自动下载图片到本地
+        from app.services.image_download_service import ImageDownloadService
+        image_url = result.get("image_url")
+        if image_url and image_url.startswith(("http://", "https://")):
+            try:
+                await ImageDownloadService.download_and_save_image(
+                    project_id=project_id,
+                    image_id=saved["image_id"],
+                    url=image_url,
+                    asset_type=request.asset_type
+                )
+            except Exception as e:
+                logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+
+        return saved
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await image_service.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/image-edit-prompt")
+async def generate_image_edit_prompt(project_id: str, request: ImageEditPromptRequest):
+    """生成图像编辑提示词（用于子角色基于父角色形象生成图片）"""
+    from app.services import ProjectService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 加载父角色和子角色
+    parent_character = AssetService.load_asset(project_id, "character", request.parent_asset_id)
+    child_character = AssetService.load_asset(project_id, "character", request.child_asset_id)
+
+    if not parent_character:
+        raise HTTPException(status_code=404, detail="Parent character not found")
+    if not child_character:
+        raise HTTPException(status_code=404, detail="Child character not found")
+
+    ai_config = project.get("ai_config", {})
+    llm = get_ai_service(ai_config, "llm", project_id)
+
+    # 获取项目的自定义提示词模板
+    custom_templates = ai_config.get("prompt_templates", {})
+    custom_template = custom_templates.get("image_edit_prompt_template")
+
+    try:
+        prompt = await PromptService.generate_image_edit_prompt(
+            llm,
+            parent_character,
+            child_character,
+            custom_template=custom_template
+        )
+        await llm.close()
+        return {"prompt": prompt}
+
+    except Exception as e:
+        await llm.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/image-edit")
+async def edit_image(project_id: str, request: ImageEditRequest):
+    """图像编辑（基于参考图生成新图）"""
+    from app.services import ProjectService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 验证资产存在
+    asset = AssetService.load_asset(project_id, request.asset_type, request.asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    # 收集所有参考图片路径（智能判断：优先本地base64，降级URL）
+    reference_image_paths = []
+
+    # 处理 reference_image_ids：从已保存的图片中提取
+    for ref_image_id in request.reference_image_ids:
+        ref_image = ImageService.get_image(project_id, ref_image_id)
+        if not ref_image:
+            raise HTTPException(status_code=404, detail=f"Reference image not found: {ref_image_id}")
+
+        # 优先使用本地文件（转base64）
+        local_path = ref_image.get("local_path")
+        if local_path:
+            project_dir = settings.PROJECTS_DIR / project_id
+            local_file_path = project_dir / "images" / "files" / local_path
+
+            if local_file_path.exists():
+                try:
+                    from app.services.image_download_service import ImageDownloadService
+                    base64_url = ImageDownloadService.image_to_base64_url(local_file_path)
+                    reference_image_paths.append(base64_url)
+                    logger.info(f"[图生图] 使用本地图片 (base64): {local_path}")
+                    continue
+                except Exception as e:
+                    logger.warning(f"[图生图] 读取本地图片失败 {local_path}: {e}，尝试使用URL")
+
+        # 降级到外部URL
+        image_path = ref_image.get("image_path")
+        if image_path and image_path.startswith(("http://", "https://")):
+            reference_image_paths.append(image_path)
+            logger.info(f"[图生图] 使用外部URL: {image_path[:100]}")
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image {ref_image_id}: 本地文件不存在且无有效URL"
+            )
+
+    # 处理 reference_image_urls：手动输入的URL直接使用
+    logger.info(f"[图生图] 收到 reference_image_urls: {request.reference_image_urls}")
+    for url in request.reference_image_urls:
+        url = url.strip()
+        logger.info(f"[图生图] 处理URL: {url[:100] if url else 'empty'}, startswith http: {url.startswith(('http://', 'https://')) if url else False}, startswith data: {url.startswith('data:image') if url else False}")
+        if url and url.startswith(("http://", "https://", "data:image")):
+            reference_image_paths.append(url)
+            logger.info(f"[图生图] ✓ 接受URL: {url[:100]}")
+        else:
+            logger.warning(f"[图生图] ✗ 拒绝URL: {url[:100] if url else 'empty'}")
+
+    logger.info(f"[图生图] 最终 reference_image_paths 数量: {len(reference_image_paths)}")
+
+    if not reference_image_paths:
+        logger.error(f"[图生图] 验证失败 - reference_image_ids: {request.reference_image_ids}, reference_image_urls: {request.reference_image_urls}")
+        raise HTTPException(status_code=400, detail="At least one reference image is required")
+
+    ai_config = project.get("ai_config", {})
+
+    # 获取配置的分辨率，支持 "1x1"、"16x9" 等格式
+    default_sizes = {
+        "character": "1x1",
+        "scene": "16x9",
+        "prop": "1x1",
+        "storyboard": "16x9"
+    }
+    configured_sizes = ai_config.get("image_sizes", {})
+    size_str = request.size or configured_sizes.get(request.asset_type) or default_sizes.get(request.asset_type, "1x1")
+
+    # 转换为 API 需要的格式 (如 "1024x1024")
+    width, height = parse_size(size_str)
+    size_for_api = f"{width}x{height}"
+
+    image_service = get_ai_service(ai_config, "image", project_id)
+
+    # 基本请求日志
+    request_log = {
+        "asset_id": request.asset_id,
+        "asset_type": request.asset_type,
+        "reference_image_ids": request.reference_image_ids,
+        "prompt": request.prompt[:500] + "..." if len(request.prompt) > 500 else request.prompt,
+        "size_config": size_str,
+        "size_api": size_for_api,
+    }
+
+    try:
+        image_config = ai_config.get("image", {})
+        model = image_config.get("image_edit_model") or image_config.get("model", "wan2.6-image")
+
+        primary_image = reference_image_paths[0]
+        extra_images = reference_image_paths[1:] if len(reference_image_paths) > 1 else None
+
+        # 添加实际发送的图片URL到请求日志中（用于调试）
+        request_log["primary_image_url"] = primary_image[:200] + "..." if len(primary_image) > 200 else primary_image
+        if extra_images:
+            request_log["extra_image_urls"] = [img[:200] + "..." if len(img) > 200 else img for img in extra_images]
+
+        result = await image_service.edit(
+            image_path=primary_image,
+            prompt=request.prompt,
+            size=size_str,      # 比例格式 "16x9" - 用于 OpenAI
+            width=width,        # 像素值 2048 - 用于 DashScope
+            height=height,      # 像素值 1152 - 用于 DashScope
+            model=model,
+            reference_images=extra_images
+        )
+
+        await image_service.close()
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error"))
+
+        record = {
+            "asset_id": request.asset_id,
+            "asset_type": request.asset_type,
+            "prompt": request.prompt,
+            "negative_prompt": "",
+            "width": width,
+            "height": height,
+            "image_path": result.get("image_url"),
+            "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+            "created_at": datetime.now().isoformat()
+        }
+
+        saved = ImageService.save_generation_record(project_id, record)
+
+        images = ImageService.list_images(project_id, request.asset_id)
+        if len(images) == 1:
+            ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
+            AssetService.update_asset_image(
+                project_id, request.asset_type, request.asset_id, saved["image_id"]
+            )
+
+        # 【自动下载】生成成功后自动下载图片到本地
+        from app.services.image_download_service import ImageDownloadService
+        image_url = result.get("image_url")
+        if image_url and image_url.startswith(("http://", "https://")):
+            try:
+                await ImageDownloadService.download_and_save_image(
+                    project_id=project_id,
+                    image_id=saved["image_id"],
+                    url=image_url,
+                    asset_type=request.asset_type
+                )
+            except Exception as e:
+                logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+
+        return saved
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await image_service.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fusion-prompt")
+async def generate_fusion_prompt(project_id: str, request: FusionPromptRequest):
+    """生成融合图片提示词"""
+    from app.services import ProjectService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 验证资产数量
+    if len(request.asset_ids) != len(request.asset_types):
+        raise HTTPException(status_code=400, detail="asset_ids and asset_types length mismatch")
+
+    if len(request.asset_ids) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 assets required for fusion")
+
+    # 加载所有源资产信息
+    assets_info = []
+    for asset_id, asset_type in zip(request.asset_ids, request.asset_types):
+        asset = AssetService.load_asset(project_id, asset_type, asset_id)
+        if not asset:
+            raise HTTPException(status_code=404, detail=f"Asset not found: {asset_id}")
+        assets_info.append({
+            "type": asset_type,
+            "name": asset.get("name", ""),
+            "description": asset.get("description", ""),
+        })
+
+    # 构建提示词生成请求
+    assets_desc = "\n".join([
+        f"- {info['type']}: {info['name']} - {info['description']}"
+        for info in assets_info
+    ])
+
+    prompt_template = f"""请根据以下资产信息和用户需求，生成一个融合图片的详细提示词。
+
+源资产信息：
+{assets_desc}
+
+用户需求：{request.user_prompt}
+
+请生成一个详细的图片生成提示词，要求：
+1. 融合所有源资产的特征
+2. 符合用户的需求描述
+3. 提示词要具体、详细、适合图片生成
+4. 直接输出提示词，不要其他解释"""
+
+    ai_config = project.get("ai_config", {})
+    llm_service = get_ai_service(ai_config, "llm", project_id)
+
+    try:
+        response = await llm_service.chat([
+            {"role": "user", "content": prompt_template}
+        ])
+
+        generated_prompt = response.get("content", "").strip()
+
+        await llm_service.close()
+        return {"prompt": generated_prompt}
+
+    except Exception as e:
+        await llm_service.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fusion-image")
+async def generate_fusion_image(project_id: str, request: FusionImageRequest):
+    """生成融合图片（图生图）"""
+    from app.services import ProjectService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 验证参数
+    if len(request.asset_ids) != len(request.asset_types):
+        raise HTTPException(status_code=400, detail="asset_ids and asset_types length mismatch")
+
+    if len(request.image_ids) < 1:
+        raise HTTPException(status_code=400, detail="At least 1 image required for fusion")
+
+    # 收集所有参考图片路径
+    reference_image_paths = []
+    for image_id in request.image_ids:
+        ref_image = ImageService.get_image(project_id, image_id)
+        if not ref_image:
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
+
+        # 优先使用本地文件（转base64）
+        local_path = ref_image.get("local_path")
+        if local_path:
+            project_dir = settings.PROJECTS_DIR / project_id
+            local_file_path = project_dir / "images" / "files" / local_path
+
+            if local_file_path.exists():
+                try:
+                    from app.services.image_download_service import ImageDownloadService
+                    base64_url = ImageDownloadService.image_to_base64_url(local_file_path)
+                    reference_image_paths.append(base64_url)
+                    logger.info(f"[融合生图] 使用本地图片 (base64): {local_path}")
+                    continue
+                except Exception as e:
+                    logger.warning(f"[融合生图] 读取本地图片失败 {local_path}: {e}，尝试使用URL")
+
+        # 降级到外部URL
+        image_path = ref_image.get("image_path")
+        if image_path and image_path.startswith(("http://", "https://")):
+            reference_image_paths.append(image_path)
+            logger.info(f"[融合生图] 使用外部URL: {image_path[:100]}")
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image {image_id}: 本地文件不存在且无有效URL"
+            )
+
+    if not reference_image_paths:
+        raise HTTPException(status_code=400, detail="No valid reference images found")
+
+    ai_config = project.get("ai_config", {})
+
+    # 获取配置的分辨率
+    size_str = request.size or "1x1"
+    width, height = parse_size(size_str)
+    size_for_api = f"{width}x{height}"
+
+    image_service = get_ai_service(ai_config, "image", project_id)
+
+    request_log = {
+        "asset_ids": request.asset_ids,
+        "asset_types": request.asset_types,
+        "image_ids": request.image_ids,
+        "prompt": request.prompt[:500] + "..." if len(request.prompt) > 500 else request.prompt,
+        "size_config": size_str,
+        "size_api": size_for_api,
+    }
+
+    try:
+        image_config = ai_config.get("image", {})
+        model = image_config.get("image_edit_model") or image_config.get("model", "wan2.6-image")
+
+        primary_image = reference_image_paths[0]
+        extra_images = reference_image_paths[1:] if len(reference_image_paths) > 1 else None
+
+        logger.info(f"[融合生图] 开始生成，使用 {len(reference_image_paths)} 张参考图")
+
+        result = await image_service.edit(
+            image_path=primary_image,
+            prompt=request.prompt,
+            reference_images=extra_images,
+            model=model,
+            size=size_for_api
+        )
+
+        await image_service.close()
+
+        image_url = result.get("image_url")
+
+        # 如果提供了canvas_element_id，保存图片记录并关联
+        if request.canvas_element_id:
+            # 保存生成记录
+            record = {
+                "asset_id": request.canvas_element_id,
+                "asset_type": "canvas_element",
+                "prompt": request.prompt,
+                "negative_prompt": "",
+                "width": width,
+                "height": height,
+                "image_path": image_url,
+                "model": model,
+                "created_at": datetime.now().isoformat()
+            }
+
+            saved = ImageService.save_generation_record(project_id, record)
+
+            # 设置为主图
+            ImageService.set_primary_image(project_id, request.canvas_element_id, saved["image_id"])
+            AssetService.update_asset_image(
+                project_id, "canvas_element", request.canvas_element_id, saved["image_id"]
+            )
+
+            # 自动下载图片到本地
+            from app.services.image_download_service import ImageDownloadService
+            if image_url and image_url.startswith(("http://", "https://")):
+                try:
+                    await ImageDownloadService.download_and_save_image(
+                        project_id=project_id,
+                        image_id=saved["image_id"],
+                        url=image_url,
+                        asset_type="canvas_element"
+                    )
+                except Exception as e:
+                    logger.warning(f"自动下载融合图片失败 (image_id: {saved['image_id']}): {e}")
+
+        return {
+            "image_url": image_url,
+            "revised_prompt": result.get("revised_prompt"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await image_service.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/images/{asset_id}")
+async def list_asset_images(project_id: str, asset_id: str):
+    """列出资产的所有图片"""
+    return ImageService.list_images(project_id, asset_id)
+
+
+@router.post("/images/upload")
+async def upload_image(
+    project_id: str,
+    asset_id: str = Form(...),
+    asset_type: str = Form(...),
+    prompt: str = Form("手动上传"),
+    file: UploadFile = File(...)
+):
+    """上传图片到资产或分镜"""
+    try:
+        # 验证文件类型
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+        if file.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail=f"不支持的文件类型: {file.content_type}，仅支持 JPG、PNG、WEBP 格式")
+
+        # 生成唯一文件名
+        ext = file.filename.split('.')[-1] if file.filename and '.' in file.filename else 'png'
+        filename = f"{uuid.uuid4()}.{ext}"
+
+        # 保存文件
+        project_dir = settings.PROJECTS_DIR / project_id
+        files_dir = project_dir / "images" / "files" / asset_type
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        file_path = files_dir / filename
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # 创建图片记录
+        record = {
+            "image_id": str(uuid.uuid4()),
+            "asset_id": asset_id,
+            "asset_type": asset_type,
+            "prompt": prompt,
+            "negative_prompt": "",
+            "model": "manual_upload",
+            "width": 0,
+            "height": 0,
+            "image_path": None,  # 没有远程URL
+            "local_path": f"{asset_type}/{filename}",
+            "created_at": datetime.now().isoformat(),
+            "is_primary": False
+        }
+
+        # 保存记录
+        saved_record = ImageService.save_generation_record(project_id, record)
+
+        logger.info(f"Image uploaded successfully: {filename} for asset {asset_id}")
+        return saved_record
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading image: {e}")
+        raise HTTPException(status_code=500, detail=f"上传图片失败: {str(e)}")
+
+
+@router.post("/images/{image_id}/set-primary")
+async def set_primary_image(project_id: str, image_id: str, asset_id: str = Body(..., embed=True)):
+    """设置主图"""
+    success = ImageService.set_primary_image(project_id, asset_id, image_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return {"success": True}
+
+
+@router.post("/images/split-triple")
+async def split_triple_grid_image(project_id: str, storyboard_id: str = Body(..., embed=True)):
+    """
+    拆解三宫格图片：将分镜主图按上中下三等分，创建3个新分镜
+
+    - 获取原分镜及其主图
+    - 将图片分割成3份
+    - 创建3个新分镜（继承原分镜信息）
+    - 新分镜插入到原分镜之后，后续分镜序号+3
+    """
+    from app.services import ProjectService
+    from app.services.image_split_service import ImageSplitService
+
+    # 验证项目
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 获取原分镜
+    storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+    if not storyboard:
+        raise HTTPException(status_code=404, detail="Storyboard not found")
+
+    # 获取主图
+    primary_image = ImageService.get_primary_image(project_id, storyboard_id)
+    if not primary_image:
+        raise HTTPException(status_code=400, detail="分镜没有主图，无法拆解")
+
+    # 获取图片文件路径
+    local_path = primary_image.get("local_path")
+    if not local_path:
+        raise HTTPException(status_code=400, detail="主图没有本地文件，请先下载图片")
+
+    project_dir = settings.PROJECTS_DIR / project_id
+    image_file_path = project_dir / "images" / "files" / local_path
+
+    if not image_file_path.exists():
+        raise HTTPException(status_code=400, detail="主图文件不存在")
+
+    # 分割图片
+    output_dir = project_dir / "images" / "files" / "storyboard"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        split_paths = ImageSplitService.split_image_triple(image_file_path, output_dir)
+    except Exception as e:
+        logger.error(f"分割图片失败: {e}")
+        raise HTTPException(status_code=500, detail=f"分割图片失败: {str(e)}")
+
+    # 获取原分镜信息
+    original_sequence = storyboard.get("sequence", 1)
+    episode_id = storyboard.get("episode_id")
+
+    # 将后续分镜序号 +3
+    all_storyboards = AssetService.list_assets(project_id, "storyboard")
+    for sb in all_storyboards:
+        if sb.get("episode_id") == episode_id and sb.get("sequence", 0) > original_sequence:
+            sb["sequence"] = sb["sequence"] + 3
+            AssetService.save_asset(project_id, "storyboard", sb)
+
+    # 创建3个新分镜
+    new_storyboards = []
+    position_names = ["上", "中", "下"]
+
+    for i, split_path in enumerate(split_paths):
+        # 创建图片记录
+        relative_path = f"storyboard/{split_path.name}"
+        image_record = {
+            "image_id": str(uuid.uuid4()),
+            "asset_id": None,  # 稍后更新
+            "asset_type": "storyboard",
+            "prompt": f"从三宫格拆解（{position_names[i]}）",
+            "negative_prompt": "",
+            "model": "split",
+            "width": 0,
+            "height": 0,
+            "image_path": None,
+            "local_path": relative_path,
+            "created_at": datetime.now().isoformat(),
+            "is_primary": True
+        }
+
+        # 创建新分镜（继承原分镜信息）
+        new_storyboard = {
+            "episode_id": episode_id,
+            "sequence": original_sequence + i + 1,
+            "description": f"{storyboard.get('description', '')}（{position_names[i]}）",
+            "character_ids": storyboard.get("character_ids", []),
+            "scene_id": storyboard.get("scene_id"),
+            "prop_ids": storyboard.get("prop_ids", []),
+            "camera_angle": storyboard.get("camera_angle"),
+            "shot_type": storyboard.get("shot_type"),
+            "dialogue": storyboard.get("dialogue", ""),
+            "action": storyboard.get("action", ""),
+            "image_prompt": storyboard.get("image_prompt"),
+        }
+
+        # 保存新分镜
+        saved_storyboard = AssetService.save_asset(project_id, "storyboard", new_storyboard)
+        new_storyboard_id = saved_storyboard["asset_id"]
+
+        # 更新图片记录的 asset_id 并保存
+        image_record["asset_id"] = new_storyboard_id
+        saved_image = ImageService.save_generation_record(project_id, image_record)
+
+        # 更新分镜的 image_id
+        saved_storyboard["image_id"] = saved_image["image_id"]
+        AssetService.save_asset(project_id, "storyboard", saved_storyboard)
+
+        new_storyboards.append(saved_storyboard)
+
+    logger.info(f"成功拆解三宫格，创建了 {len(new_storyboards)} 个新分镜")
+
+    return {
+        "success": True,
+        "message": f"成功拆解为3个分镜（第{original_sequence + 1}-{original_sequence + 3}镜）",
+        "new_storyboards": new_storyboards
+    }
+
+
+@router.post("/vlm-analyze")
+async def vlm_analyze(project_id: str, request: VLMAnalyzeRequest):
+    """使用VLM分析图片（统一接口）
+
+    Args:
+        project_id: 项目ID
+        request: VLM分析请求
+            - image_ids: 图片ID列表
+            - user_goal: 用户目标（会填充到VLM模板的{user_goal}占位符中）
+
+    Returns:
+        {"prompt": "VLM分析结果"}
+    """
+    from app.services import ProjectService
+    from app.services.image_download_service import ImageDownloadService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not request.image_ids:
+        raise HTTPException(status_code=400, detail="至少需要提供一张图片")
+
+    if len(request.image_ids) > 4:
+        raise HTTPException(status_code=400, detail="最多支持4张图片")
+
+    ai_config = project.get("ai_config", {})
+
+    # 检查VLM配置，如果没有则回退到LLM
+    vlm_config = ai_config.get("vlm", {})
+    if vlm_config.get("api_url") and vlm_config.get("api_key"):
+        vlm = get_ai_service(ai_config, "vlm", project_id)
+    else:
+        # 回退到LLM配置
+        vlm = get_ai_service(ai_config, "llm", project_id)
+        logger.warning(f"[VLM分析] VLM未配置，回退使用LLM")
+
+    try:
+        # 1. 获取所有图片并转为base64
+        image_base64_list = []
+        for img_id in request.image_ids:
+            img = ImageService.get_image(project_id, img_id)
+            if not img:
+                raise HTTPException(status_code=404, detail=f"图片不存在: {img_id}")
+
+            # 优先使用本地文件
+            local_path = img.get("local_path")
+            if local_path:
+                project_dir = settings.PROJECTS_DIR / project_id
+                local_file_path = project_dir / "images" / "files" / local_path
+
+                if local_file_path.exists():
+                    try:
+                        base64_url = ImageDownloadService.image_to_base64_url(local_file_path)
+                        image_base64_list.append(base64_url)
+                        logger.info(f"[VLM分析] 使用本地图片: {local_path}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"[VLM分析] 读取本地图片失败 {local_path}: {e}")
+
+            # 降级到外部URL（需要先下载再转base64）
+            image_path = img.get("image_path")
+            if image_path and image_path.startswith(("http://", "https://")):
+                try:
+                    # 下载图片并转base64
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(image_path) as resp:
+                            if resp.status == 200:
+                                import base64
+                                img_data = await resp.read()
+                                img_base64 = base64.b64encode(img_data).decode()
+                                # 检测content-type
+                                content_type = resp.headers.get('content-type', 'image/jpeg')
+                                base64_url = f"data:{content_type};base64,{img_base64}"
+                                image_base64_list.append(base64_url)
+                                logger.info(f"[VLM分析] 使用外部URL: {image_path[:100]}")
+                                continue
+                except Exception as e:
+                    logger.error(f"[VLM分析] 下载外部图片失败 {image_path}: {e}")
+                    raise HTTPException(status_code=500, detail=f"无法获取图片: {img_id}")
+
+            raise HTTPException(status_code=404, detail=f"图片 {img_id} 无可用路径")
+
+        # 2. 获取VLM模板并填充占位符
+        custom_templates = ai_config.get("prompt_templates", {})
+        vlm_template = custom_templates.get("vlm_prompt_template")
+
+        if not vlm_template:
+            # 使用默认模板
+            from .templates import DEFAULT_PROMPT_TEMPLATES
+            vlm_template = DEFAULT_PROMPT_TEMPLATES.get("vlm_prompt_template", "")
+
+        # 格式化分镜信息
+        storyboard_info_text = ""
+        if request.descriptions or request.shot_types or request.camera_angles or request.actions or request.dialogues:
+            for i in range(len(request.image_ids)):
+                info = f"分镜 {i+1}:\n"
+                if i < len(request.descriptions) and request.descriptions[i]:
+                    info += f"  描述: {request.descriptions[i]}\n"
+                if i < len(request.shot_types) and request.shot_types[i]:
+                    info += f"  镜头类型: {request.shot_types[i]}\n"
+                if i < len(request.camera_angles) and request.camera_angles[i]:
+                    info += f"  镜头角度: {request.camera_angles[i]}\n"
+                if i < len(request.actions) and request.actions[i]:
+                    info += f"  动作: {request.actions[i]}\n"
+                if i < len(request.dialogues) and request.dialogues[i]:
+                    info += f"  对话: {request.dialogues[i]}\n"
+                storyboard_info_text += info + "\n"
+        else:
+            storyboard_info_text = "（无额外文字信息）"
+
+        # 填充占位符
+        system_prompt = vlm_template.replace("{user_goal}", request.user_goal)
+        system_prompt = system_prompt.replace("{storyboard_info}", storyboard_info_text)
+
+        # 3. 调用VLM分析
+        prompt = await PromptService.call_vlm_with_images(
+            vlm,
+            system_prompt,
+            image_base64_list
+        )
+        await vlm.close()
+
+        logger.info(f"[VLM分析] 成功 - 图片数量: {len(image_base64_list)}, 结果长度: {len(prompt)}")
+        return {"prompt": prompt}
+
+    except HTTPException:
+        await vlm.close()
+        raise
+    except Exception as e:
+        await vlm.close()
+        logger.error(f"[VLM分析] 失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
