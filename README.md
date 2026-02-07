@@ -1,5 +1,7 @@
 # AI短片生成软件
 
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
 基于AI的短片创作和管理平台。
 
 ## 功能特性
@@ -98,3 +100,19 @@ createnow/
 - 图生视频API：用于根据分镜图生成视频
 
 所有API都使用OpenAI兼容格式。
+
+## 许可证
+
+本项目采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) 协议。
+
+**这意味着您可以：**
+- ✅ 自由分享和修改本项目
+- ✅ 用于学习和研究
+
+**但必须遵守：**
+- ⚠️ 署名：必须注明原作者
+- ⚠️ 非商业性使用：不得用于商业目的
+- ⚠️ 相同方式共享：修改后的作品必须使用相同协议
+
+详见 [LICENSE](LICENSE) 文件。
+
