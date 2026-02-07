@@ -1,6 +1,7 @@
 # 文档目录
 docs/
 .claude/
+CLAUDE.md
 
 # 项目数据目录
 data/
