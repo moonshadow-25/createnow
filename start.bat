@@ -24,9 +24,6 @@ if not exist "env\python.exe" (
     exit /b 1
 )
 
-echo [OK] Using Python: %CD%\env\python.exe
-echo.
-
 REM Check if frontend dist exists
 if not exist "frontend\dist\index.html" (
     echo [WARNING] Frontend build not found at frontend\dist\
@@ -35,17 +32,21 @@ if not exist "frontend\dist\index.html" (
     echo.
 )
 
+REM Parse port parameter (optional)
+set API_PORT=%1
+if "%API_PORT%"=="" set API_PORT=8501
+
+echo [OK] Using Python: %CD%\env\python.exe
+echo [OK] Port: %API_PORT%
+echo.
 echo Starting backend server...
-echo   - API: http://localhost:8501/api
-echo   - Frontend: http://localhost:8501
+echo   - API: http://localhost:%API_PORT%/api
+echo   - Frontend: http://localhost:%API_PORT%
 echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Create a temporary batch file for backend
-echo @echo off > backend_start.bat
-echo cd /d "%CD%\backend" >> backend_start.bat
-echo set PYTHONPATH=%CD%\backend >> backend_start.bat
-echo %CD%\env\python.exe app\main.py --serve-frontend >> backend_start.bat
-
-cmd /k backend_start.bat
+REM Start server directly without temporary file
+cd /d "%CD%\backend"
+set PYTHONPATH=%CD%
+%CD%\..\env\python.exe app\main.py --serve-frontend

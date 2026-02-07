@@ -34,6 +34,7 @@ frontend/.env.local
 # 其他
 jyapi/
 backend/data.old/
+backend_start.bat
 *.log
 .DS_Store
 nul
