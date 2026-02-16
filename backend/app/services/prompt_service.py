@@ -252,15 +252,51 @@ class PromptService:
         llm: LLMService,
         asset_type: str,
         description: str,
-        custom_template: Optional[str] = None
+        custom_template: Optional[str] = None,
+        language: str = "zh",
+        style_suffix: str = ""
     ) -> Dict[str, str]:
-        """生成图片提示词"""
+        """生成图片提示词
+
+        Args:
+            llm: LLM服务实例
+            asset_type: 资产类型
+            description: 资产描述
+            custom_template: 自定义模板（可选）
+            language: 语言设置 (zh/en/auto)
+            style_suffix: 全局风格后缀
+        """
+        # 生成语言指令
+        if language == "zh":
+            language_instruction = "请用中文生成提示词。"
+        elif language == "en":
+            language_instruction = "Please generate the prompt in English."
+        else:  # auto
+            language_instruction = "请根据输入内容自动选择最合适的语言生成提示词。"
+
+        # 处理风格指令
+        if style_suffix:
+            style_instruction = f"必须应用以下全局风格要求：{style_suffix}"
+        else:
+            style_instruction = "无特殊风格要求，根据描述自由发挥。"
+
         # 使用自定义模板或默认模板
         template = custom_template or PromptService.IMAGE_PROMPT_TEMPLATE
-        prompt = template.format(
-            asset_type=asset_type,
-            description=description
-        )
+
+        try:
+            prompt = template.format(
+                language_instruction=language_instruction,
+                style_instruction=style_instruction,
+                asset_type=asset_type,
+                description=description
+            )
+        except KeyError:
+            # 如果模板不支持新变量，回退到旧格式
+            prompt = template.format(
+                asset_type=asset_type,
+                description=description
+            )
+
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -268,13 +304,17 @@ class PromptService:
             import re
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
             if json_match:
-                return json.loads(json_match.group())
+                data = json.loads(json_match.group())
+                # 向后兼容：如果没有prompt字段，用positive_prompt作为prompt
+                if "prompt" not in data and "positive_prompt" in data:
+                    data["prompt"] = data["positive_prompt"]
+                return data
         except:
             pass
 
+        # 回退
         return {
-            "positive_prompt": description,
-            "negative_prompt": "low quality, blurry, distorted"
+            "prompt": description
         }
 
     @staticmethod
@@ -289,29 +329,80 @@ class PromptService:
         scene: str = "",
         props: List[str] = None,
         duration: int = 6,
-        custom_template: Optional[str] = None
+        custom_template: Optional[str] = None,
+        language: str = "zh",
+        style_suffix: str = ""
     ) -> str:
-        """生成视频提示词"""
+        """生成视频提示词
+
+        Args:
+            llm: LLM服务实例
+            description: 画面描述
+            dialogue: 对白
+            action: 动作
+            shot_type: 镜头类型
+            camera_angle: 镜头角度
+            characters: 角色列表
+            scene: 场景
+            props: 道具列表
+            duration: 时长
+            custom_template: 自定义模板（可选）
+            language: 语言设置 (zh/en/auto)
+            style_suffix: 全局风格后缀
+        """
         characters = characters or []
         props = props or []
+
+        # 生成语言指令
+        if language == "zh":
+            language_instruction = "请用中文生成提示词。"
+        elif language == "en":
+            language_instruction = "Please generate the prompt in English."
+        else:  # auto
+            language_instruction = "请根据输入内容自动选择最合适的语言生成提示词。"
+
+        # 处理风格指令
+        if style_suffix:
+            style_instruction = f"必须应用以下全局风格要求：{style_suffix}"
+        else:
+            style_instruction = "无特殊风格要求，根据描述自由发挥。"
 
         # 使用自定义模板或默认模板
         template = custom_template or PromptService.VIDEO_PROMPT_TEMPLATE
 
         # 准备模板参数（同时支持 camera_angle 和 camera_movement 两种命名）
         camera_angle_value = camera_angle or "平视"
-        prompt = template.format(
-            description=description,
-            dialogue=dialogue or "无",
-            action=action or "无",
-            shot_type=shot_type or "中景",
-            camera_angle=camera_angle_value,
-            camera_movement=camera_angle_value,  # 兼容旧模板
-            characters=", ".join(characters) if characters else "无",
-            scene=scene or "无",
-            props=", ".join(props) if props else "无",
-            duration=duration
-        )
+
+        try:
+            prompt = template.format(
+                language_instruction=language_instruction,
+                style_instruction=style_instruction,
+                description=description,
+                dialogue=dialogue or "无",
+                action=action or "无",
+                shot_type=shot_type or "中景",
+                camera_angle=camera_angle_value,
+                camera_movement=camera_angle_value,  # 兼容旧模板
+                characters=", ".join(characters) if characters else "无",
+                scene=scene or "无",
+                props=", ".join(props) if props else "无",
+                duration=duration
+            )
+        except KeyError:
+            # 如果模板不支持新变量，回退到旧格式
+            prompt = template.format(
+                description=description,
+                dialogue=dialogue or "无",
+                action=action or "无",
+                shot_type=shot_type or "中景",
+                camera_angle=camera_angle_value,
+                camera_movement=camera_angle_value,
+                characters=", ".join(characters) if characters else "无",
+                scene=scene or "无",
+                props=", ".join(props) if props else "无",
+                duration=duration
+            )
+
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -369,15 +460,44 @@ class PromptService:
         shot_type: str = "",
         action: str = "",
         camera_angle: str = "",
-        custom_template: Optional[str] = None
+        custom_template: Optional[str] = None,
+        language: str = "zh",
+        style_suffix: str = ""
     ) -> Dict[str, str]:
-        """生成分镜图片提示词（支持分镜特有的参数）"""
+        """生成分镜图片提示词（支持分镜特有的参数）
+
+        Args:
+            llm: LLM服务实例
+            description: 分镜描述
+            shot_type: 镜头类型
+            action: 动作
+            camera_angle: 镜头角度
+            custom_template: 自定义模板（可选）
+            language: 语言设置 (zh/en/auto)
+            style_suffix: 全局风格后缀
+        """
+        # 生成语言指令
+        if language == "zh":
+            language_instruction = "请用中文生成提示词。"
+        elif language == "en":
+            language_instruction = "Please generate the prompt in English."
+        else:  # auto
+            language_instruction = "请根据输入内容自动选择最合适的语言生成提示词。"
+
+        # 处理风格指令
+        if style_suffix:
+            style_instruction = f"必须应用以下全局风格要求：{style_suffix}"
+        else:
+            style_instruction = "无特殊风格要求，根据描述自由发挥。"
+
         # 使用自定义模板或默认模板
         template = custom_template or PromptService.IMAGE_PROMPT_TEMPLATE
 
         try:
             # 尝试使用分镜模板格式化
             prompt = template.format(
+                language_instruction=language_instruction,
+                style_instruction=style_instruction,
                 description=description,
                 shot_type=shot_type,
                 action=action,
@@ -385,10 +505,19 @@ class PromptService:
             )
         except KeyError:
             # 如果模板不支持分镜参数，回退到通用格式
-            prompt = template.format(
-                asset_type="storyboard",
-                description=description
-            )
+            try:
+                prompt = template.format(
+                    language_instruction=language_instruction,
+                    style_instruction=style_instruction,
+                    asset_type="storyboard",
+                    description=description
+                )
+            except KeyError:
+                # 如果模板不支持新变量，回退到最旧格式
+                prompt = template.format(
+                    asset_type="storyboard",
+                    description=description
+                )
 
         result = await llm.chat([{"role": "user", "content": prompt}])
 
@@ -397,19 +526,29 @@ class PromptService:
             import re
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
             if json_match:
-                return json.loads(json_match.group())
+                data = json.loads(json_match.group())
+                # 向后兼容：如果没有prompt字段，用positive_prompt作为prompt
+                if "prompt" not in data and "positive_prompt" in data:
+                    data["prompt"] = data["positive_prompt"]
+                return data
         except:
             pass
 
+        # 回退
         return {
-            "positive_prompt": description,
-            "negative_prompt": "low quality, blurry, distorted"
+            "prompt": description
         }
 
     @staticmethod
-    async def generate_storyboard_descriptions(llm: LLMService, script: str) -> List[Dict]:
+    async def generate_storyboard_descriptions(
+        llm: LLMService,
+        script: str,
+        custom_template: Optional[str] = None
+    ) -> List[Dict]:
         """生成分镜描述"""
-        prompt = PromptService.STORYBOARD_DESC_TEMPLATE.format(script=script)
+        # 使用自定义模板或默认模板
+        template = custom_template or PromptService.STORYBOARD_DESC_TEMPLATE
+        prompt = template.format(script=script)
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -418,23 +557,38 @@ class PromptService:
             print(f"[DEBUG] LLM response starts with: {content[:100]}")
             print(f"[DEBUG] LLM response ends with: {content[-100:]}")
 
+            # 移除markdown代码块标记
+            import re
+            # 匹配 ```json ... ``` 或 ``` ... ```
+            code_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+            if code_block_match:
+                content = code_block_match.group(1).strip()
+                print(f"[DEBUG] Extracted from code block, length: {len(content)}")
+
             # 直接尝试解析整个内容
             try:
-                return json.loads(content)
+                parsed = json.loads(content)
+                print(f"[DEBUG] Successfully parsed JSON, type: {type(parsed)}, length: {len(parsed) if isinstance(parsed, list) else 'N/A'}")
+                return parsed
             except json.JSONDecodeError as e:
                 print(f"[ERROR] JSON decode failed: {e}")
                 print(f"[DEBUG] Attempting to extract JSON array with regex...")
 
-                # 作为回退方案，尝试查找 JSON 数组
-                import re
-                json_match = re.search(r'\[[\s\S]*?\]', content)
+                # 作为回退方案，尝试查找 JSON 数组（使用贪婪匹配）
+                json_match = re.search(r'\[([\s\S]*)\]', content)
                 if json_match:
-                    extracted = json_match.group(0)
+                    extracted = '[' + json_match.group(1) + ']'
                     print(f"[DEBUG] Extracted JSON length: {len(extracted)}")
                     print(f"[DEBUG] Extracted JSON preview: {extracted[:200]}...")
-                    return json.loads(extracted)
+                    try:
+                        parsed = json.loads(extracted)
+                        print(f"[DEBUG] Successfully parsed extracted JSON, length: {len(parsed)}")
+                        return parsed
+                    except json.JSONDecodeError as e2:
+                        print(f"[ERROR] Failed to parse extracted JSON: {e2}")
 
-            print(f"[WARNING] No JSON found in response")
+            print(f"[WARNING] No valid JSON found in response")
+            print(f"[DEBUG] Full content for inspection: {content[:500]}...")
             return []
 
         except Exception as e:
@@ -584,3 +738,134 @@ class PromptService:
         # 统一的返回值处理
         content = result.get("content", "")
         return content.strip()
+
+    # 自动匹配分镜资产提示词模板
+    AUTO_MATCH_ASSETS_PROMPT = """你是一个专业的影视分镜资产匹配专家。根据分镜描述、剧集剧本和资产库，智能匹配最适合的资产。
+
+【分镜信息】
+画面描述：{storyboard_description}
+对白：{storyboard_dialogue}
+动作：{storyboard_action}
+
+【剧集剧本】（如果有）
+{episode_script}
+
+【可用资产】
+
+角色列表：
+{characters_list}
+
+场景列表：
+{scenes_list}
+
+道具列表：
+{props_list}
+
+【匹配规则】
+1. 场景最多选择1个（scene_id）
+2. 角色和道具总共不超过3个（character_ids + prop_ids）
+3. 总计不超过4个资产
+4. 按照重要性排序
+5. 只选择真正需要的资产，不要过度匹配
+
+【输出格式】
+返回JSON格式：
+{{
+  "scene_id": "场景ID（如无则为空字符串）",
+  "character_ids": ["角色ID1", "角色ID2"],
+  "prop_ids": ["道具ID1"],
+  "explanation": "匹配理由（简短说明为什么选择这些资产）"
+}}
+
+注意：
+- 必须返回有效的JSON格式
+- ID必须从提供的资产列表中选择
+- 如果没有合适的资产，对应字段返回空数组或空字符串
+- 优先匹配剧本中明确提到的资产
+"""
+
+    @staticmethod
+    async def auto_match_storyboard_assets(
+        llm: LLMService,
+        storyboard_description: str,
+        storyboard_dialogue: str = "",
+        storyboard_action: str = "",
+        episode_script: str = "",
+        characters: List[Dict] = None,
+        scenes: List[Dict] = None,
+        props: List[Dict] = None
+    ) -> Dict:
+        """自动匹配分镜资产
+
+        Args:
+            llm: LLM服务实例
+            storyboard_description: 分镜描述
+            storyboard_dialogue: 对白
+            storyboard_action: 动作
+            episode_script: 剧集剧本
+            characters: 角色列表
+            scenes: 场景列表
+            props: 道具列表
+
+        Returns:
+            匹配结果 {"scene_id": str, "character_ids": [str], "prop_ids": [str], "explanation": str}
+        """
+        characters = characters or []
+        scenes = scenes or []
+        props = props or []
+
+        # 构建资产列表文本
+        def format_assets(assets: List[Dict], asset_type: str) -> str:
+            if not assets:
+                return "（无）"
+            lines = []
+            for asset in assets:
+                asset_id = asset.get("asset_id", "")
+                name = asset.get("name", "")
+                description = asset.get("description", "")
+                lines.append(f"- ID: {asset_id}, 名称: {name}, 描述: {description}")
+            return "\n".join(lines)
+
+        characters_list = format_assets(characters, "character")
+        scenes_list = format_assets(scenes, "scene")
+        props_list = format_assets(props, "prop")
+
+        # 构建提示词
+        prompt = PromptService.AUTO_MATCH_ASSETS_PROMPT.format(
+            storyboard_description=storyboard_description or "无",
+            storyboard_dialogue=storyboard_dialogue or "无",
+            storyboard_action=storyboard_action or "无",
+            episode_script=episode_script or "无",
+            characters_list=characters_list,
+            scenes_list=scenes_list,
+            props_list=props_list
+        )
+
+        # 调用LLM
+        result = await llm.chat([{"role": "user", "content": prompt}])
+
+        try:
+            content = result.get("content", "")
+            import re
+            # 提取JSON
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                data = json.loads(json_match.group())
+                # 验证和清理数据
+                return {
+                    "scene_id": data.get("scene_id", ""),
+                    "character_ids": data.get("character_ids", []),
+                    "prop_ids": data.get("prop_ids", []),
+                    "explanation": data.get("explanation", "")
+                }
+        except Exception as e:
+            print(f"[ERROR] Failed to parse auto-match result: {e}")
+            pass
+
+        # 如果解析失败，返回空结果
+        return {
+            "scene_id": "",
+            "character_ids": [],
+            "prop_ids": [],
+            "explanation": "匹配失败"
+        }

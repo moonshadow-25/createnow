@@ -43,19 +43,21 @@ export function StoryboardTab({
   onUpdated,
 }: StoryboardTabProps) {
   return (
-    <div className="flex-1 p-6 overflow-hidden">
-      <div className="mb-4">
+    <div className="flex-1 p-6 flex flex-col h-full">
+      <div className="mb-4 flex-shrink-0">
         <h2 className="text-xl font-semibold mb-2">剧本分镜管理</h2>
         <p className="text-sm text-gray-400">选择剧集，管理分镜，生成分镜图和视频</p>
       </div>
-      <StoryboardDetail
-        projectId={projectId}
-        episodes={episodes}
-        characters={characters}
-        scenes={scenes}
-        props={props}
-        onUpdated={onUpdated}
-      />
+      <div className="flex-1 min-h-0">
+        <StoryboardDetail
+          projectId={projectId}
+          episodes={episodes}
+          characters={characters}
+          scenes={scenes}
+          props={props}
+          onUpdated={onUpdated}
+        />
+      </div>
     </div>
   );
 }

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class VideoGenService(AIService):
-    """图生视频服务 - 支持OpenAI、阿里百炼和本地API"""
+    """图生视频服务 - 支持OpenAI、阿里百炼、字节Seed和本地API"""
 
     def __init__(
         self,
@@ -24,20 +24,26 @@ class VideoGenService(AIService):
         model: str,
         api_type: str = "openai",
         use_multipart: bool = True,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        generate_audio: bool = False,
+        watermark: bool = False
     ):
         """
         Args:
             api_url: API基础URL
             api_key: API密钥
             model: 默认模型名称
-            api_type: API类型 ("openai", "dashscope", "local")
+            api_type: API类型 ("openai", "dashscope", "local", "byteseed")
             use_multipart: 是否使用multipart/form-data格式（仅OpenAI/Local）
             project_id: 项目ID（用于日志记录）
+            generate_audio: 是否生成音频（ByteSeed）
+            watermark: 是否添加水印（ByteSeed）
         """
         super().__init__(api_url, api_key, model, project_id)
         self.api_type = api_type
         self.use_multipart = use_multipart
+        self.generate_audio = generate_audio
+        self.watermark = watermark
         self._adapter = None
 
     def _get_adapter(self):
@@ -51,7 +57,9 @@ class VideoGenService(AIService):
                 client=self.client,
                 project_id=self.project_id,
                 log_callback=self._log_interaction,
-                use_multipart=self.use_multipart
+                use_multipart=self.use_multipart,
+                generate_audio=self.generate_audio,
+                watermark=self.watermark
             )
         return self._adapter
 

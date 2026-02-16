@@ -21,7 +21,13 @@ class AIService:
         self.api_key = api_key
         self.model = model
         self.project_id = project_id
-        self.client = httpx.AsyncClient(timeout=120.0)
+        # 配置大连接池支持高并发（32核CPU可以轻松处理）
+        limits = httpx.Limits(
+            max_connections=500,        # 最大总连接数
+            max_keepalive_connections=100  # 保持活跃的连接数
+        )
+        # 增加超时时间至300秒，因为九宫格分镜等复杂任务可能需要更长时间
+        self.client = httpx.AsyncClient(timeout=300.0, limits=limits)
 
     async def close(self):
         await self.client.aclose()
@@ -87,8 +93,14 @@ class AIService:
         status_code: Optional[int] = None
     ):
         """记录AI交互日志"""
-        if not self.project_id:
-            return
+        # 优先使用实例的 project_id，如果没有就从上下文获取
+        project_id = self.project_id
+        if not project_id:
+            from app.core.context import get_current_project_id
+            project_id = get_current_project_id()
+
+        if not project_id:
+            return  # 仍然没有就不记录（非项目相关的调用）
 
         try:
             from app.services.ai_log_service import AILogService
@@ -98,7 +110,7 @@ class AIService:
             truncated_response = self._truncate_base64(response_data) if response_data else None
 
             AILogService.log_interaction(
-                project_id=self.project_id,
+                project_id=project_id,
                 interaction_type=interaction_type,
                 request_data={
                     "url": url,

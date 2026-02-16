@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # API Settings
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8501
-    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8501"]
 
     # Storage Paths
     BASE_DIR: Path = Path(__file__).parent.parent.parent.parent
@@ -33,10 +33,17 @@ class Settings(BaseSettings):
     DEFAULT_VLM_API_KEY: str = ""
     DEFAULT_VLM_MODEL: str = "gpt-4o"
 
+    # TTS (Text-to-Speech - 文本转语音)
+    DEFAULT_TTS_API_URL: str = "https://api.openai.com/v1"
+    DEFAULT_TTS_API_KEY: str = ""
+    DEFAULT_TTS_MODEL: str = "tts-1"
+    DEFAULT_TTS_VOICE: str = "alloy"
+
     # Alibaba DashScope (Bailian) API Defaults
     DASHSCOPE_IMAGE_API_URL: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
     DASHSCOPE_IMAGE_EDIT_MODEL: str = "wan2.6-image"
     DASHSCOPE_VIDEO_API_URL: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"
+    DASHSCOPE_TTS_API_URL: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2audio/speech-synthesis"
 
     class Config:
         env_file = ".env"

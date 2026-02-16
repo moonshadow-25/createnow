@@ -2,7 +2,7 @@
 Generation API - Pydantic 模型定义
 """
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 from typing import Optional, List
 
 
@@ -16,11 +16,13 @@ class PromptTemplateUpdate(BaseModel):
     image_edit_prompt_template: Optional[str] = None
     triple_grid_prompt_template: Optional[str] = None
     vlm_prompt_template: Optional[str] = None  # VLM统一分析模板
+    multi_scene_video_prompt: Optional[str] = None  # 多分镜融合视频提示词模板
 
 
 class ImagePromptRequest(BaseModel):
     asset_type: str  # "character", "scene", "prop", "storyboard"
     description: str
+    asset_id: Optional[str] = None  # 资产ID，提供后会自动保存生成的提示词
     # 分镜特有字段（仅当asset_type为storyboard时使用）
     shot_type: str = ""
     action: str = ""
@@ -83,8 +85,8 @@ class VideoGenerateRequest(BaseModel):
             return [image_id]
         if v is None and not image_id:
             raise ValueError('必须提供 image_id 或 image_ids')
-        if v and len(v) > 2:
-            raise ValueError('最多支持2张图片（首尾帧模式）')
+        if v and len(v) > 10:
+            raise ValueError('最多支持10个分镜')
         return v
 
 
@@ -102,6 +104,7 @@ class ImageEditRequest(BaseModel):
     size: Optional[str] = None       # 图片尺寸，格式如 "1024x1024" 或 "1x1"，为空时使用配置
     reference_image_ids: List[str] = []  # 参考图片ID列表（可选）
     reference_image_urls: List[str] = [] # 参考图片URL列表（可选），直接使用URL而不需要先上传
+    template: Optional[str] = None   # 模板ID（可选），如 "character_sheet" 用于生成人设图
 
 
 class FusionPromptRequest(BaseModel):
@@ -151,3 +154,37 @@ class VLMAnalyzeRequest(BaseModel):
     camera_angles: List[str] = []     # 镜头角度
     actions: List[str] = []           # 动作
     dialogues: List[str] = []         # 对话
+
+
+class StoryboardExportRequest(BaseModel):
+    """分镜导出请求"""
+    storyboard_ids: List[str]  # 要导出的分镜ID列表
+    prompt: str = ""  # 提示词内容
+
+
+class MultiSceneVideoPromptRequest(BaseModel):
+    """多分镜融合视频提示词生成请求"""
+    storyboard_ids: List[str]  # 选中的分镜ID列表
+
+
+# ==================== 全局风格配置模型 ====================
+
+class StyleConfig(BaseModel):
+    """风格配置"""
+    preset_id: str = "none"      # 预设ID（"none", "pixar_3d", "custom"等）
+    custom_suffix: str = ""      # 自定义风格后缀（当preset_id为"custom"时使用）
+    enabled: bool = True         # 是否启用
+
+
+class GlobalStyleConfig(BaseModel):
+    """全局风格配置"""
+    prompt_language: str = "zh"  # 提示词语言：zh/en/auto
+    image_style: StyleConfig = Field(default_factory=StyleConfig)
+    video_style: StyleConfig = Field(default_factory=StyleConfig)
+
+
+class GlobalStyleConfigUpdate(BaseModel):
+    """全局风格配置更新（支持部分更新）"""
+    prompt_language: Optional[str] = None
+    image_style: Optional[StyleConfig] = None
+    video_style: Optional[StyleConfig] = None

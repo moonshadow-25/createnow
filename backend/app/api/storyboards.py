@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import os
@@ -9,6 +9,7 @@ from app.services.asset_service import ImageService
 from app.services.video_service import VideoService
 from app.models.project import Storyboard
 from app.core.config import settings
+from app.api.generation.template_helpers import get_active_template
 
 router = APIRouter(prefix="/projects/{project_id}/storyboards", tags=["storyboards"])
 
@@ -28,15 +29,15 @@ class StoryboardCreate(BaseModel):
 
 
 class StoryboardUpdate(BaseModel):
-    description: str = None
-    character_ids: List[str] = None
-    scene_id: str = None
-    prop_ids: List[str] = None
-    camera_angle: str = None
-    shot_type: str = None
-    dialogue: str = None
-    action: str = None
-    image_prompt: str = None
+    description: Optional[str] = None
+    character_ids: Optional[List[str]] = None
+    scene_id: Optional[str] = None
+    prop_ids: Optional[List[str]] = None
+    camera_angle: Optional[str] = None
+    shot_type: Optional[str] = None
+    dialogue: Optional[str] = None
+    action: Optional[str] = None
+    image_prompt: Optional[str] = None
 
 
 class StoryboardGenerateRequest(BaseModel):
@@ -120,17 +121,32 @@ async def generate_storyboards(project_id: str, request: StoryboardGenerateReque
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
-    llm = get_ai_service(ai_config, "llm")
+    llm = get_ai_service(ai_config, "llm", project_id)
+
+    # 使用辅助函数获取当前激活的分镜生成模板
+    custom_template = get_active_template(ai_config, "storyboard")
 
     try:
+        # 1. 删除该剧集下的所有现有分镜
+        all_storyboards = AssetService.list_assets(project_id, "storyboard")
+        episode_storyboards = [
+            sb for sb in all_storyboards if sb.get("episode_id") == request.episode_id
+        ]
+        deleted_count = 0
+        for sb in episode_storyboards:
+            if AssetService.delete_asset(project_id, "storyboard", sb["asset_id"]):
+                deleted_count += 1
+        print(f"[DEBUG] Deleted {deleted_count} existing storyboards for episode {request.episode_id}")
+
+        # 2. 生成新分镜
         storyboards = await PromptService.generate_storyboard_descriptions(
-            llm, request.script
+            llm, request.script, custom_template
         )
         await llm.close()
 
         print(f"[DEBUG] Generated {len(storyboards)} storyboards")
 
-        # 保存所有分镜
+        # 3. 保存所有新分镜
         results = []
         for sb_data in storyboards:
             sb_data["episode_id"] = request.episode_id
@@ -358,4 +374,203 @@ async def create_end_frame(project_id: str, storyboard_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error creating end frame: {str(e)}"
+        )
+
+
+@router.post("/{storyboard_id}/auto-match-assets")
+async def auto_match_assets(project_id: str, storyboard_id: str):
+    """
+    自动匹配分镜资产
+
+    根据分镜描述、剧集剧本和资产库，使用AI智能匹配适合的资产
+    匹配规则：场景最多1个，角色+道具总共不超过3个，总计不超过4个资产
+    """
+    from app.services import ProjectService
+
+    try:
+        # 1. 加载分镜
+        storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+        if not storyboard:
+            raise HTTPException(status_code=404, detail="Storyboard not found")
+
+        # 2. 获取项目信息和AI配置
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        ai_config = project.get("ai_config", {})
+        llm = get_ai_service(ai_config, "llm", project_id)
+
+        # 3. 获取所有资产
+        characters = AssetService.list_assets(project_id, "character")
+        scenes = AssetService.list_assets(project_id, "scene")
+        props = AssetService.list_assets(project_id, "prop")
+
+        # 4. 获取剧集剧本（如果有episode_id）
+        episode_script = ""
+        episode_id = storyboard.get("episode_id")
+        if episode_id:
+            try:
+                episode = AssetService.load_asset(project_id, "episode", episode_id)
+                if episode:
+                    episode_script = episode.get("script", "")
+            except:
+                pass  # 如果获取剧集失败，继续执行
+
+        # 5. 调用AI匹配资产
+        matched_assets = await PromptService.auto_match_storyboard_assets(
+            llm=llm,
+            storyboard_description=storyboard.get("description", ""),
+            storyboard_dialogue=storyboard.get("dialogue", ""),
+            storyboard_action=storyboard.get("action", ""),
+            episode_script=episode_script,
+            characters=characters,
+            scenes=scenes,
+            props=props
+        )
+
+        await llm.close()
+
+        # 6. 自动保存匹配结果到分镜
+        storyboard["scene_id"] = matched_assets.get("scene_id", "")
+        storyboard["character_ids"] = matched_assets.get("character_ids", [])
+        storyboard["prop_ids"] = matched_assets.get("prop_ids", [])
+        storyboard["updated_at"] = datetime.now().isoformat()
+        AssetService.save_asset(project_id, "storyboard", storyboard)
+
+        return {
+            **matched_assets,
+            "saved": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to auto-match assets: {str(e)}"
+        )
+
+
+@router.post("/{storyboard_id}/export")
+async def export_storyboard(project_id: str, storyboard_id: str):
+    """导出分镜到桌面（包含主图、资产主图、视频提示词）"""
+    import shutil
+    from pathlib import Path
+
+    try:
+        # 1. 获取项目信息
+        from app.services import ProjectService
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        project_name = project.get("name", "未命名项目")
+
+        # 2. 获取分镜信息
+        storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+        if not storyboard:
+            raise HTTPException(status_code=404, detail="Storyboard not found")
+
+        sequence = storyboard.get("sequence", 1)
+        video_prompt = storyboard.get("video_prompt", "")
+
+        # 3. 获取用户桌面路径
+        desktop_path = Path.home() / "Desktop"
+        if not desktop_path.exists():
+            # Windows中文系统可能是"桌面"
+            desktop_path = Path.home() / "桌面"
+            if not desktop_path.exists():
+                raise HTTPException(status_code=500, detail="无法找到桌面路径")
+
+        # 4. 创建项目文件夹
+        export_folder = desktop_path / project_name
+        export_folder.mkdir(exist_ok=True)
+
+        # 5. 创建分镜子文件夹
+        storyboard_folder = export_folder / f"分镜{sequence}"
+        storyboard_folder.mkdir(exist_ok=True)
+
+        # 6. 导出分镜主图
+        primary_image = ImageService.get_primary_image(project_id, storyboard_id)
+        if primary_image and primary_image.get("local_path"):
+            local_path = primary_image.get("local_path")
+            project_dir = settings.PROJECTS_DIR / project_id
+            source_file = project_dir / "images" / "files" / local_path
+
+            if source_file.exists():
+                # 获取文件扩展名
+                ext = source_file.suffix
+                dest_file = storyboard_folder / f"分镜主图{ext}"
+                shutil.copy2(source_file, dest_file)
+
+        # 7. 导出关联资产的主图
+        # 导出角色主图
+        character_ids = storyboard.get("character_ids", [])
+        for idx, char_id in enumerate(character_ids, 1):
+            character = AssetService.load_asset(project_id, "character", char_id)
+            if character:
+                char_name = character.get("name", f"角色{idx}")
+                char_image = ImageService.get_primary_image(project_id, char_id)
+                if char_image and char_image.get("local_path"):
+                    local_path = char_image.get("local_path")
+                    source_file = project_dir / "images" / "files" / local_path
+                    if source_file.exists():
+                        ext = source_file.suffix
+                        dest_file = storyboard_folder / f"角色-{char_name}{ext}"
+                        shutil.copy2(source_file, dest_file)
+
+        # 导出场景主图
+        scene_id = storyboard.get("scene_id")
+        if scene_id:
+            scene = AssetService.load_asset(project_id, "scene", scene_id)
+            if scene:
+                scene_name = scene.get("name", "场景")
+                scene_image = ImageService.get_primary_image(project_id, scene_id)
+                if scene_image and scene_image.get("local_path"):
+                    local_path = scene_image.get("local_path")
+                    source_file = project_dir / "images" / "files" / local_path
+                    if source_file.exists():
+                        ext = source_file.suffix
+                        dest_file = storyboard_folder / f"场景-{scene_name}{ext}"
+                        shutil.copy2(source_file, dest_file)
+
+        # 导出道具主图
+        prop_ids = storyboard.get("prop_ids", [])
+        for idx, prop_id in enumerate(prop_ids, 1):
+            prop = AssetService.load_asset(project_id, "prop", prop_id)
+            if prop:
+                prop_name = prop.get("name", f"道具{idx}")
+                prop_image = ImageService.get_primary_image(project_id, prop_id)
+                if prop_image and prop_image.get("local_path"):
+                    local_path = prop_image.get("local_path")
+                    source_file = project_dir / "images" / "files" / local_path
+                    if source_file.exists():
+                        ext = source_file.suffix
+                        dest_file = storyboard_folder / f"道具-{prop_name}{ext}"
+                        shutil.copy2(source_file, dest_file)
+
+        # 8. 导出视频提示词
+        if video_prompt:
+            prompt_file = storyboard_folder / "视频提示词.txt"
+            with open(prompt_file, "w", encoding="utf-8") as f:
+                f.write(video_prompt)
+
+        return {
+            "success": True,
+            "export_path": str(storyboard_folder),
+            "video_prompt": video_prompt,
+            "message": f"已导出到桌面：{project_name}/分镜{sequence}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出失败: {str(e)}"
         )

@@ -15,6 +15,7 @@ interface StoryboardBatchActionsProps {
   onInsertInbetween: () => void;
   onInsertFirstLastVideo: () => void;
   onMultiImageFusion: () => void;
+  onMultiSceneVideo: () => void;
   onCreateEndFrame?: () => void;
   onClearSelection: () => void;
   toast: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -31,6 +32,7 @@ export function StoryboardBatchActions({
   onInsertInbetween,
   onInsertFirstLastVideo,
   onMultiImageFusion,
+  onMultiSceneVideo,
   onCreateEndFrame,
   onClearSelection,
   toast
@@ -70,6 +72,8 @@ export function StoryboardBatchActions({
   const hasTwoSelected = selectedCount === 2;
   // 检查是否选择了2-4个分镜（多图融合）
   const hasMultiImageFusion = selectedCount >= 2 && selectedCount <= 4;
+  // 检查是否选择了2个或以上分镜（多分镜视频）
+  const hasMultiSceneVideo = selectedCount >= 2;
   // 检查单选分镜是否有已保存的视频（用于创建尾帧）
   const hasCompletedVideo = selectedHasCompletedVideo;
 
@@ -147,6 +151,17 @@ export function StoryboardBatchActions({
                 插入首尾帧视频
               </button>
             </>
+          )}
+
+          {hasMultiSceneVideo && (
+            <button
+              onClick={onMultiSceneVideo}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded text-sm transition"
+              title="将多个分镜合成为一个连续视频"
+            >
+              <Film size={16} />
+              多分镜视频 ({selectedCount}个)
+            </button>
           )}
 
           {hasMultiImageFusion && (

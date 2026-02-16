@@ -128,40 +128,50 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {/* 主内容区 - 使用 CSS 控制显示/隐藏，保持组件挂载状态 */}
+      {/* 主内容区 - 条件渲染，仅挂载当前激活的tab */}
       <div className="h-[calc(100vh-73px)]">
-        <div className={activeTab === 'chat' ? 'flex h-full' : 'hidden'}>
-          <ChatTab projectId={projectId!} onAssetsCreated={handleRefreshAssets} />
-        </div>
+        {activeTab === 'chat' && (
+          <div className="flex h-full">
+            <ChatTab projectId={projectId!} onAssetsCreated={handleRefreshAssets} />
+          </div>
+        )}
 
-        <div className={activeTab === 'assets' ? 'flex h-full' : 'hidden'}>
-          <AssetsTab
-            projectId={projectId!}
-            characters={characters}
-            scenes={scenes}
-            props={props}
-            onRefresh={handleRefreshAssets}
-          />
-        </div>
+        {activeTab === 'assets' && (
+          <div className="flex h-full">
+            <AssetsTab
+              projectId={projectId!}
+              characters={characters}
+              scenes={scenes}
+              props={props}
+              onRefresh={handleRefreshAssets}
+            />
+          </div>
+        )}
 
-        <div className={activeTab === 'script' ? 'flex h-full' : 'hidden'}>
-          <ScriptTab projectId={projectId!} />
-        </div>
+        {activeTab === 'script' && (
+          <div className="flex h-full">
+            <ScriptTab projectId={projectId!} />
+          </div>
+        )}
 
-        <div className={activeTab === 'storyboard' ? 'flex h-full' : 'hidden'}>
-          <StoryboardTab
-            projectId={projectId!}
-            episodes={episodes}
-            characters={characters}
-            scenes={scenes}
-            props={props}
-            onUpdated={handleRefreshAssets}
-          />
-        </div>
+        {activeTab === 'storyboard' && (
+          <div className="flex h-full">
+            <StoryboardTab
+              projectId={projectId!}
+              episodes={episodes}
+              characters={characters}
+              scenes={scenes}
+              props={props}
+              onUpdated={handleRefreshAssets}
+            />
+          </div>
+        )}
 
-        <div className={activeTab === 'canvas' ? 'flex h-full' : 'hidden'}>
-          <CanvasTab projectId={projectId!} />
-        </div>
+        {activeTab === 'canvas' && (
+          <div className="flex h-full">
+            <CanvasTab projectId={projectId!} />
+          </div>
+        )}
       </div>
 
       {/* 设置弹框 */}

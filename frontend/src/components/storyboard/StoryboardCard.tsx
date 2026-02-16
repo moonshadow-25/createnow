@@ -10,6 +10,7 @@ export interface SortableStoryboardCardProps {
   onEditImage: (sb: any) => void;
   onGenerateVideo: (sb: any) => void;
   onDelete: (id: string) => void;
+  onOpenImageGallery?: (sb: any) => void;
   hasRunningTask: (storyboardId?: string) => boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -22,6 +23,7 @@ export function SortableStoryboardCard({
   onEditImage,
   onGenerateVideo,
   onDelete,
+  onOpenImageGallery,
   hasRunningTask,
   isSelected = false,
   onToggleSelect
@@ -68,10 +70,11 @@ export function SortableStoryboardCard({
       {/* 主图显示 */}
       {storyboardPrimaryImages.has(storyboard.asset_id) ? (
         <img
-          src={storyboardPrimaryImages.get(storyboard.asset_id)}
+          src={storyboardPrimaryImages.get(storyboard.asset_id)!.replace('/images/files/', '/thumbnails/')}
           alt={storyboard.description}
-          className="w-full aspect-video object-cover"
+          className="w-full aspect-video object-cover cursor-pointer hover:opacity-90 transition"
           loading="lazy"
+          onClick={() => onOpenImageGallery?.(storyboard)}
         />
       ) : (
         <div className="w-full aspect-video bg-gray-600 flex items-center justify-center">

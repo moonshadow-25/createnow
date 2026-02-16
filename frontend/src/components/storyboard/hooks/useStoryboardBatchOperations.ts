@@ -505,11 +505,130 @@ export const useStoryboardBatchOperations = (context: BatchOperationsContext) =>
     }
   }, [projectId, toast, startTask, completeTask, failTask, loadStoryboards]);
 
+  /**
+   * 执行多分镜视频生成
+   * 将多个分镜合成为一个连续视频
+   */
+  const executeMultiSceneVideo = useCallback(async (selectedStoryboards: any[], prompt: string) => {
+    if (!selectedEpisode || selectedStoryboards.length < 2) {
+      toast('请至少选择2个分镜', 'error');
+      return;
+    }
+
+    const firstStoryboard = selectedStoryboards[0];
+    const taskId = `multi_scene_video_${Date.now()}`;
+    startTask(taskId, 'multi_scene_video');
+
+    try {
+      // 检查是否需要 VLM 分析
+      let finalPrompt = prompt;
+      let vlmParams = null;
+
+      try {
+        const parsed = JSON.parse(prompt);
+        if (parsed.__needVLM) {
+          vlmParams = parsed;
+        }
+      } catch {
+        // 不是 JSON，使用原始 prompt
+      }
+
+      // 如果需要 VLM，先分析再生成视频；否则直接生成
+      if (vlmParams) {
+        toast('正在智能分析...', 'success');
+
+        // 后台异步执行 VLM 分析 + 视频生成
+        (async () => {
+          try {
+            const vlmResponse = await generationApi.analyzeWithVLM(projectId, {
+              image_ids: vlmParams.imageIds,
+              user_goal: vlmParams.userGoal,
+              descriptions: vlmParams.descriptions,
+              shot_types: vlmParams.shot_types,
+              camera_angles: vlmParams.camera_angles,
+              actions: vlmParams.actions,
+              dialogues: vlmParams.dialogues,
+            });
+
+            const analyzedPrompt = vlmResponse.data.prompt;
+            toast('智能分析完成，正在生成视频...', 'success');
+
+            // 收集所有分镜的图片ID
+            const imageIds = selectedStoryboards.map(sb => sb.image_id).filter(Boolean);
+
+            if (imageIds.length !== selectedStoryboards.length) {
+              toast('部分分镜缺少主图，无法生成视频', 'error');
+              failTask(taskId, 'multi_scene_video', '部分分镜缺少主图');
+              return;
+            }
+
+            // 计算总时长
+            const totalDuration = selectedStoryboards.reduce((sum, sb) => sum + (sb.duration || 3), 0);
+
+            // 使用分析后的提示词生成视频
+            const videoResponse = await generationApi.generateVideoMultiImage(projectId, {
+              storyboard_id: firstStoryboard.asset_id,  // 保存到第一个分镜
+              episode_id: selectedEpisode.asset_id,
+              image_ids: imageIds,
+              prompt: analyzedPrompt,
+              duration: totalDuration,
+              resolution: '1920x1080'
+            });
+
+            if (videoResponse.data) {
+              toast('多分镜视频任务已创建，请在视频库中查看生成进度', 'success');
+            }
+          } catch (error: any) {
+            console.error('VLM + multi-scene video generation failed:', error);
+            toast(`智能生成失败: ${error.response?.data?.detail || error.message}`, 'error');
+            failTask(taskId, 'multi_scene_video', error.message);
+          }
+        })();
+      } else {
+        // 直接生成视频（不需要 VLM）
+        toast('正在生成多分镜视频...', 'success');
+
+        // 收集所有分镜的图片ID
+        const imageIds = selectedStoryboards.map(sb => sb.image_id).filter(Boolean);
+
+        if (imageIds.length !== selectedStoryboards.length) {
+          toast('部分分镜缺少主图，无法生成视频', 'error');
+          failTask(taskId, 'multi_scene_video', '部分分镜缺少主图');
+          return;
+        }
+
+        // 计算总时长
+        const totalDuration = selectedStoryboards.reduce((sum, sb) => sum + (sb.duration || 3), 0);
+
+        const videoResponse = await generationApi.generateVideoMultiImage(projectId, {
+          storyboard_id: firstStoryboard.asset_id,  // 保存到第一个分镜
+          episode_id: selectedEpisode.asset_id,
+          image_ids: imageIds,
+          prompt: finalPrompt,
+          duration: totalDuration,
+          resolution: '1920x1080'
+        });
+
+        if (videoResponse.data) {
+          toast('多分镜视频任务已创建，请在视频库中查看生成进度', 'success');
+        }
+      }
+
+      completeTask(taskId, 'multi_scene_video');
+    } catch (error: any) {
+      console.error('Multi-scene video failed:', error);
+      toast(`生成多分镜视频失败: ${error.response?.data?.detail || error.message}`, 'error');
+      failTask(taskId, 'multi_scene_video', error.message);
+      throw error;
+    }
+  }, [projectId, selectedEpisode, toast, startTask, completeTask, failTask]);
+
   return {
     executeInsertStoryboard,
     executeMultiImageFusion,
     executeInsertInbetween,
     executeFirstLastVideo,
     executeCreateEndFrame,
+    executeMultiSceneVideo,
   };
 };

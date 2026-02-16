@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Settings, Key, Wand2, FolderTree, X, Save } from 'lucide-react';
+import { Settings, Key, Wand2, FolderTree, X, Save, Palette } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
 import { ApiConfigPanel } from './ApiConfigPanel';
 import { PromptPanel } from './PromptPanel';
 import { LogsPanel } from './LogsPanel';
+import { GlobalStylePanel } from './GlobalStylePanel';
 import type { ApiConfig, ImageSizes, ApiConfigPresetsMap } from '@/types';
 
-type SettingsPanel = 'api' | 'prompts' | 'logs';
+type SettingsPanel = 'api' | 'global-style' | 'prompts' | 'logs';
 
 interface SettingsModalProps {
   projectId: string;
@@ -34,7 +35,8 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     llm: [],
     vlm: [],
     image: [],
-    video: []
+    video: [],
+    tts: []
   });
 
   // 初始化当前选中的预设ID
@@ -43,15 +45,17 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     vlm: string | null;
     image: string | null;
     video: string | null;
+    tts: string | null;
   }>({
     llm: null,
     vlm: null,
     image: null,
-    video: null
+    video: null,
+    tts: null
   });
 
   // 计算当前配置（从当前选中的标签读取）
-  const getCurrentConfig = (type: 'llm' | 'vlm' | 'image' | 'video'): ApiConfig => {
+  const getCurrentConfig = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts'): ApiConfig => {
     const activeTagId = activePresetIds[type];
     if (!activeTagId) {
       // 没有选中标签，返回默认配置
@@ -60,7 +64,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
         api_url: '',
         api_key: '',
         model: '',
-        image_edit_model: type === 'image' ? '' : undefined
+        image_edit_model: type === 'image' ? '' : undefined,
+        voice: type === 'tts' ? '' : undefined,
+        id: type === 'tts' ? '' : undefined
       };
     }
 
@@ -72,7 +78,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
         api_url: '',
         api_key: '',
         model: '',
-        image_edit_model: type === 'image' ? '' : undefined
+        image_edit_model: type === 'image' ? '' : undefined,
+        voice: type === 'tts' ? '' : undefined,
+        id: type === 'tts' ? '' : undefined
       };
     }
 
@@ -108,7 +116,8 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           llm: [],
           vlm: [],
           image: [],
-          video: []
+          video: [],
+          tts: []
         };
 
         // 为LLM创建初始标签
@@ -172,23 +181,39 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           });
         }
 
+        // 为TTS创建初始标签
+        if (aiConfig.tts?.api_key && aiConfig.tts?.model) {
+          initialPresets.tts.push({
+            id: uuidv4(),
+            name: aiConfig.tts.model || 'Default TTS',
+            config: {
+              api_type: aiConfig.tts.api_type || 'openai',
+              api_url: aiConfig.tts.api_url || '',
+              api_key: aiConfig.tts.api_key || '',
+              model: aiConfig.tts.model || '',
+              voice: aiConfig.tts.voice || 'alloy'
+            },
+            created_at: new Date().toISOString()
+          });
+        }
+
         setConfigPresets(initialPresets);
       }
     }
   }, [currentProject]);
 
-  const handleConfigChange = (type: 'llm' | 'vlm' | 'image' | 'video', config: ApiConfig) => {
+  const handleConfigChange = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', config: ApiConfig) => {
     const activeTagId = activePresetIds[type];
 
     if (!activeTagId) {
-      console.error('No active tag selected');
+      // 如果没有激活标签，说明是新建配置，暂时不更新（等待保存预设后自动切换）
       return;
     }
 
     // 🔑 关键：同时更新 configPresets 中对应标签的配置
     setConfigPresets({
       ...configPresets,
-      [type]: configPresets[type].map(tag =>
+      [type]: (configPresets[type] || []).map(tag =>
         tag.id === activeTagId
           ? { ...tag, config: { ...config } }  // 更新当前标签的配置
           : tag
@@ -197,7 +222,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   };
 
   // 切换标签
-  const handleSwitchTag = (type: 'llm' | 'vlm' | 'image' | 'video', tagId: string) => {
+  const handleSwitchTag = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', tagId: string) => {
     // 直接更新选中ID，丢弃未保存的修改
     setActivePresetIds({
       ...activePresetIds,
@@ -218,7 +243,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
       };
 
       // 🔑 关键：将每个类型当前高亮标签的配置同步到 ai_config[type]
-      (['llm', 'vlm', 'image', 'video'] as const).forEach(type => {
+      (['llm', 'vlm', 'image', 'video', 'tts'] as const).forEach(type => {
         const activeTagId = activePresetIds[type];
         if (activeTagId) {
           const activeTag = configPresets[type].find(t => t.id === activeTagId);
@@ -239,13 +264,14 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
 
   const navItems = [
     { id: 'api' as const, icon: Key, label: 'API设置' },
+    { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
     { id: 'logs' as const, icon: FolderTree, label: 'AI日志' },
   ];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg w-full max-w-4xl h-[70vh] overflow-hidden flex flex-col">
+      <div className="bg-gray-800 rounded-lg w-full max-w-7xl h-[80vh] overflow-hidden flex flex-col">
         {/* 主内容区 - 左��分栏 */}
         <div className="flex flex-1 min-h-0">
           {/* 左侧导航栏 */}
@@ -280,6 +306,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
             <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700">
               <h2 className="text-lg font-semibold">
                 {settingsPanel === 'api' && 'API配置'}
+                {settingsPanel === 'global-style' && '全局风格'}
                 {settingsPanel === 'prompts' && '提示词管理'}
                 {settingsPanel === 'logs' && 'AI日志'}
               </h2>
@@ -298,6 +325,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 vlm={getCurrentConfig('vlm')}
                 image={getCurrentConfig('image')}
                 video={getCurrentConfig('video')}
+                tts={getCurrentConfig('tts')}
                 onConfigChange={handleConfigChange}
                 imageSizes={imageSizes}
                 onImageSizesChange={setImageSizes}
@@ -306,6 +334,11 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 onSwitchTag={handleSwitchTag}
                 activePresetIds={activePresetIds}
               />
+            )}
+            {settingsPanel === 'global-style' && (
+              <div className="flex-1 overflow-y-auto">
+                <GlobalStylePanel projectId={projectId} />
+              </div>
             )}
             {settingsPanel === 'prompts' && (
               <PromptPanel projectId={projectId} />

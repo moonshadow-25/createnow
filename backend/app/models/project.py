@@ -200,6 +200,24 @@ class ImageGeneration(BaseModel):
     is_primary: bool = False
 
 
+class AudioGeneration(BaseModel):
+    """音频生成记录"""
+    audio_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    project_id: str  # 所属项目
+    storyboard_id: Optional[str] = None  # 关联的分镜（可选）
+    episode_id: Optional[str] = None  # 关联的剧集（可选）
+    text: str  # 转换的文本内容
+    voice: Optional[str] = None  # 音色（OpenAI/阿里百炼）
+    speaker_id: Optional[str] = None  # Speaker ID（本地API）
+    model: str = ""  # 使用的模型
+    audio_path: Optional[str] = None  # 音频URL（如果API返回URL）
+    local_path: Optional[str] = None  # 本地文件路径（相对于audios/files/目录）
+    duration: Optional[float] = None  # 音频时长（秒）
+    format: str = "mp3"  # 音频格式
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    is_primary: bool = False  # 是否为主音频
+
+
 class VideoGeneration(BaseModel):
     """视频生成记录"""
     video_id: str = Field(default_factory=lambda: str(uuid.uuid4()))

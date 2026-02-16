@@ -107,12 +107,17 @@ export interface Storyboard {
 
 // API配置类型
 export interface ApiConfig {
-  api_type: 'openai' | 'dashscope' | 'local';
+  api_type: 'openai' | 'dashscope' | 'local' | 'byteseed';
   api_url: string;
   api_key?: string;
   model: string;
   image_edit_model?: string;  // 阿里百炼专用：图像编辑模型
   use_url_for_edit?: boolean;  // 图像编辑时使用URL还是base64
+  voice?: string;  // TTS专用：OpenAI/阿里百炼的音色
+  id?: string;  // TTS专用：本地API的speaker id
+  generate_audio?: boolean;  // ByteSeed视频专用：是否生成音频
+  watermark?: boolean;  // ByteSeed图像/视频专用：是否添加水印
+  max_images?: number;  // ByteSeed图像专用：多图生成数量（1-4）
 }
 
 // 图像尺寸配置
@@ -137,6 +142,7 @@ export interface ApiConfigPresetsMap {
   vlm: ApiConfigPreset[];
   image: ApiConfigPreset[];
   video: ApiConfigPreset[];
+  tts: ApiConfigPreset[];
 }
 
 // 项目类型
@@ -151,6 +157,7 @@ export interface Project {
     vlm?: ApiConfig;
     image: ApiConfig;
     video: ApiConfig;
+    tts?: ApiConfig;
     image_sizes?: ImageSizes;
     config_presets?: ApiConfigPresetsMap;
     prompt_templates?: {

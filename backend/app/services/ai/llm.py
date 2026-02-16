@@ -22,7 +22,7 @@ class LLMService(AIService):
         messages: List[Dict[str, str]],
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 4000
+        max_tokens: int = 32000
     ) -> AsyncIterator[Dict[str, Any]]:
         """流式对话，返回thinking和content"""
 
@@ -124,7 +124,7 @@ class LLMService(AIService):
         messages: List[Dict[str, str]],
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 4000
+        max_tokens: int = 32000
     ) -> Dict[str, Any]:
         """非流式对话"""
         import httpx

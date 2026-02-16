@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { generationApi, assetApi } from '@/services/api';
+import { generationApi } from '@/services/api';
 
 interface ImageManagementContext {
   projectId: string;
@@ -200,18 +200,15 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
         action: editingStoryboard.action || '',
         camera_angle: editingStoryboard.camera_angle || '',
         use_image_edit: useImageEdit,
+        asset_id: requestStoryboardId,  // 传入 storyboard ID，后端会自动保存
       });
 
-      // 只有当API返回了positive_prompt时才处理
-      if (response.data?.positive_prompt) {
-        // 始终保存到后端（无论弹框是否关闭）
-        await assetApi.update(projectId, 'storyboard', requestStoryboardId, {
-          image_prompt: response.data.positive_prompt
-        });
-
+      const generatedPrompt = response.data?.prompt;
+      if (generatedPrompt) {
+        // 后端已自动保存，只需更新前端状态
         // 状态隔离：只有弹框仍打开且是同一分镜时，才更新前端状态
         if (editingStoryboardIdRef.current === requestStoryboardId) {
-          setGeneratedPrompt(response.data.positive_prompt);
+          setGeneratedPrompt(generatedPrompt);
         }
       }
       completeTask(requestStoryboardId, 'prompt');

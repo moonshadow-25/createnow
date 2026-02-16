@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, ChevronDown, ChevronRight, Wand2, Film, Loader2, Images, Video, Play, Eye } from 'lucide-react';
-import { assetApi, generationApi } from '@/services/api';
+import { X, ChevronDown, ChevronRight, Wand2, Film, Loader2, Images, Video, Play, Eye, Download } from 'lucide-react';
+import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from '@/components/assets/ImageGallery';
 import { VideoGallery } from './VideoGallery';
@@ -72,14 +72,17 @@ export function VideoGenerateDialog({
 
   // 防抖保存定时器
   const promptSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 初始化加载分镜数据和主图
   useEffect(() => {
     if (storyboard) {
       // 初始化分镜内容编辑字段
       resetEditState(storyboard); // 使用 hook 的重置函数
-      // 加载已保存的视频提示词
+      // 加载已保存的视频提示词和时长
       setVideoPrompt(storyboard.video_prompt || '');
+      setDuration(storyboard.duration || 6);
 
       // 加载主图和视频
       loadPrimaryImage();
@@ -150,6 +153,38 @@ export function VideoGenerateDialog({
       console.error('Failed to save video prompt:', error);
       toast('保存提示词失败', 'error');
     }
+  };
+
+  // 保存分镜内容和参数（防抖）
+  const saveStoryboardContent = async (updates: any) => {
+    try {
+      await assetApi.update(projectId, 'storyboard', storyboard.asset_id, updates);
+      // 通知父组件刷新数据
+      onSuccess();
+    } catch (error) {
+      console.error('Failed to save storyboard content:', error);
+    }
+  };
+
+  // 防抖保存分镜内容
+  const debounceSaveContent = (updates: any) => {
+    if (contentSaveTimeoutRef.current) {
+      clearTimeout(contentSaveTimeoutRef.current);
+    }
+    contentSaveTimeoutRef.current = setTimeout(() => {
+      saveStoryboardContent(updates);
+    }, 1000);
+  };
+
+  // 防抖保存时长
+  const handleDurationChange = (newDuration: number) => {
+    setDuration(newDuration);
+    if (durationSaveTimeoutRef.current) {
+      clearTimeout(durationSaveTimeoutRef.current);
+    }
+    durationSaveTimeoutRef.current = setTimeout(() => {
+      saveStoryboardContent({ duration: newDuration });
+    }, 1000);
   };
 
   // AI生成视频提示词
@@ -266,7 +301,7 @@ export function VideoGenerateDialog({
     startTask(storyboard.asset_id, 'video');
 
     try {
-      // 1. 先保存分镜内容修改（包括视频提示词）
+      // 1. 先保存分镜内容修改（包括视频提示词和时长）
       await assetApi.update(projectId, 'storyboard', storyboard.asset_id, {
         description: editDescription,
         dialogue: editDialogue,
@@ -274,6 +309,7 @@ export function VideoGenerateDialog({
         shot_type: editShotType,
         camera_angle: editCameraAngle,
         video_prompt: videoPrompt,
+        duration: duration,
       });
 
       // 2. 调用视频生成API
@@ -312,6 +348,34 @@ export function VideoGenerateDialog({
     promptSaveTimeoutRef.current = setTimeout(() => {
       saveVideoPrompt(newPrompt);
     }, 1000);
+  };
+
+  // 导出分镜
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await storyboardApi.export(projectId, storyboard.asset_id);
+      const data = response.data;
+
+      // 复制视频提示词到剪贴板
+      if (data.video_prompt && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(data.video_prompt);
+          toast(`导出成功！视频提示词已复制到剪贴板\n导出路径：${data.export_path}`, 'success');
+        } catch (err) {
+          toast(`导出成功！\n导出路径：${data.export_path}\n（剪贴板复制失败，请手动复制）`, 'success');
+        }
+      } else {
+        toast(`导出成功！\n导出路径：${data.export_path}`, 'success');
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.detail || error.message || '导出失败';
+      toast(`导出失败: ${errorMsg}`, 'error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // 清理定时器
@@ -363,7 +427,10 @@ export function VideoGenerateDialog({
                     <label className="block text-xs text-gray-400 mb-1">画面描述 *</label>
                     <textarea
                       value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
+                      onChange={(e) => {
+                        setEditDescription(e.target.value);
+                        debounceSaveContent({ description: e.target.value });
+                      }}
                       className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       rows={3}
                       placeholder="描述画面内容..."
@@ -376,7 +443,10 @@ export function VideoGenerateDialog({
                     <input
                       type="text"
                       value={editDialogue}
-                      onChange={(e) => setEditDialogue(e.target.value)}
+                      onChange={(e) => {
+                        setEditDialogue(e.target.value);
+                        debounceSaveContent({ dialogue: e.target.value });
+                      }}
                       className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       placeholder="角色对白（如有）"
                     />
@@ -387,7 +457,10 @@ export function VideoGenerateDialog({
                     <label className="block text-xs text-gray-400 mb-1">动作</label>
                     <textarea
                       value={editAction}
-                      onChange={(e) => setEditAction(e.target.value)}
+                      onChange={(e) => {
+                        setEditAction(e.target.value);
+                        debounceSaveContent({ action: e.target.value });
+                      }}
                       className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       rows={2}
                       placeholder="描述动作..."
@@ -400,7 +473,10 @@ export function VideoGenerateDialog({
                       <label className="block text-xs text-gray-400 mb-1">景别</label>
                       <select
                         value={editShotType}
-                        onChange={(e) => setEditShotType(e.target.value)}
+                        onChange={(e) => {
+                          setEditShotType(e.target.value);
+                          debounceSaveContent({ shot_type: e.target.value });
+                        }}
                         className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       >
                         <option value="特写">特写</option>
@@ -414,7 +490,10 @@ export function VideoGenerateDialog({
                       <label className="block text-xs text-gray-400 mb-1">角度</label>
                       <select
                         value={editCameraAngle}
-                        onChange={(e) => setEditCameraAngle(e.target.value)}
+                        onChange={(e) => {
+                          setEditCameraAngle(e.target.value);
+                          debounceSaveContent({ camera_angle: e.target.value });
+                        }}
                         className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       >
                         <option value="平视">平视</option>
@@ -474,7 +553,7 @@ export function VideoGenerateDialog({
                       {visibleStoryboardImages.slice(0, 3).map((img) => (
                         <div key={img.image_id} className="relative group">
                           <img
-                            src={getImageUrl(img, projectId)}
+                            src={getImageUrl(img, projectId).replace('/images/files/', '/thumbnails/')}
                             alt="分镜图片"
                             className="w-16 h-16 object-cover rounded-lg border-2 border-transparent hover:border-blue-500 transition"
                             loading="lazy"
@@ -518,7 +597,7 @@ export function VideoGenerateDialog({
                   <input
                     type="number"
                     value={duration}
-                    onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value) || 6))}
+                    onChange={(e) => handleDurationChange(Math.max(1, parseInt(e.target.value) || 6))}
                     min={1}
                     max={60}
                     className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
@@ -606,6 +685,8 @@ export function VideoGenerateDialog({
                               src={getVideoUrl(video, projectId)}
                               className="w-full h-full object-cover"
                               muted
+                              poster={primaryImage ? getImageUrl(primaryImage, projectId).replace('/images/files/', '/thumbnails/') : undefined}
+                              preload="none"
                             />
                           ) : video.status === 'failed' ? (
                             <div className="text-red-400 text-xs">失败</div>
@@ -666,30 +747,53 @@ export function VideoGenerateDialog({
           </div>
 
           {/* 底部按钮 */}
-          <div className="flex justify-end gap-3 mt-6">
+          <div className="flex justify-between items-center gap-3 mt-6">
+            {/* 左侧：导出按钮 */}
             <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded"
+              onClick={handleExport}
+              disabled={isExporting}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 rounded flex items-center gap-2"
+              title="导出分镜主图、资产主图和视频提示词到桌面"
             >
-              取消
-            </button>
-            <button
-              onClick={handleGenerateVideo}
-              disabled={isGenerating || !primaryImage || !videoPrompt.trim()}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded flex items-center gap-2"
-            >
-              {isGenerating ? (
+              {isExporting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  生成中...
+                  导出中...
                 </>
               ) : (
                 <>
-                  <Film size={16} />
-                  生成视频
+                  <Download size={16} />
+                  导出
                 </>
               )}
             </button>
+
+            {/* 右侧：取消和生成视频按钮 */}
+            <div className="flex gap-3">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleGenerateVideo}
+                disabled={isGenerating || !primaryImage || !videoPrompt.trim()}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded flex items-center gap-2"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <Film size={16} />
+                    生成视频
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

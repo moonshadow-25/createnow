@@ -30,6 +30,15 @@ class VideoValidationRequest(BaseModel):
     api_type: Optional[Literal["openai", "dashscope"]] = "openai"
 
 
+class TTSValidationRequest(BaseModel):
+    api_url: str
+    api_key: str
+    model: str
+    api_type: Optional[Literal["openai", "dashscope", "local"]] = "openai"
+    voice: Optional[str] = None
+    id: Optional[str] = None
+
+
 @router.post("/llm")
 async def validate_llm(request: LLMValidationRequest) -> Dict[str, Any]:
     """验证LLM API配置"""
@@ -87,5 +96,19 @@ async def validate_video(request: VideoValidationRequest) -> Dict[str, Any]:
         request.api_key,
         request.model,
         request.api_type
+    )
+    return result
+
+
+@router.post("/tts")
+async def validate_tts(request: TTSValidationRequest) -> Dict[str, Any]:
+    """验证TTS API配置"""
+    result = await ValidationService.validate_tts_api(
+        request.api_url,
+        request.api_key,
+        request.model,
+        request.api_type,
+        request.voice,
+        request.id
     )
     return result

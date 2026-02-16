@@ -10,23 +10,26 @@ interface ApiConfigPanelProps {
   vlm: ApiConfig;
   image: ApiConfig;
   video: ApiConfig;
-  onConfigChange: (type: 'llm' | 'vlm' | 'image' | 'video', config: ApiConfig) => void;
+  tts: ApiConfig;
+  onConfigChange: (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', config: ApiConfig) => void;
   imageSizes?: ImageSizes;
   onImageSizesChange?: (sizes: ImageSizes) => void;
   configPresets: ApiConfigPresetsMap;
   onPresetsChange: (presets: ApiConfigPresetsMap) => void;
-  onSwitchTag: (type: 'llm' | 'vlm' | 'image' | 'video', tagId: string) => void;
+  onSwitchTag: (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', tagId: string) => void;
   activePresetIds: {
     llm: string | null;
     vlm: string | null;
     image: string | null;
     video: string | null;
+    tts: string | null;
   };
 }
 
 const API_TYPE_OPTIONS = [
   { value: 'openai', label: 'OpenAI 兼容' },
   { value: 'dashscope', label: '阿里百炼 DashScope' },
+  { value: 'byteseed', label: '字节 Seed' },
   { value: 'local', label: '本地API' }
 ];
 
@@ -35,6 +38,7 @@ export function ApiConfigPanel({
   vlm,
   image,
   video,
+  tts,
   onConfigChange,
   imageSizes,
   onImageSizesChange,
@@ -44,7 +48,7 @@ export function ApiConfigPanel({
   activePresetIds
 }: ApiConfigPanelProps) {
   const { toast } = useToast();
-  const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'sizes'>('llm');
+  const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'tts' | 'sizes'>('llm');
 
   // 本地预设副本，用于解决 props 更新延迟问题
   const [localPresets, setLocalPresets] = useState<ApiConfigPresetsMap>(configPresets);
@@ -57,7 +61,7 @@ export function ApiConfigPanel({
   // 保存预设对话框状态
   const [savePresetDialog, setSavePresetDialog] = useState<{
     show: boolean;
-    type: 'llm' | 'vlm' | 'image' | 'video' | null;
+    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts' | null;
     name: string;
   }>({
     show: false,
@@ -68,7 +72,7 @@ export function ApiConfigPanel({
   // 删除确认对话框状态
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
     show: boolean;
-    type: 'llm' | 'vlm' | 'image' | 'video' | null;
+    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts' | null;
     presetId: string | null;
     presetName: string;
   }>({
@@ -84,11 +88,13 @@ export function ApiConfigPanel({
     vlm: boolean;
     image: boolean;
     video: boolean;
+    tts: boolean;
   }>({
     llm: false,
     vlm: false,
     image: false,
-    video: false
+    video: false,
+    tts: false
   });
 
   // 默认分辨率配置
@@ -120,6 +126,7 @@ export function ApiConfigPanel({
     vlm?: { valid: boolean; message: string };
     image?: { valid: boolean; message: string };
     video?: { valid: boolean; message: string };
+    tts?: { valid: boolean; message: string };
   }>({});
 
   // 本地状态管理配置
@@ -128,11 +135,13 @@ export function ApiConfigPanel({
     vlm: ApiConfig;
     image: ApiConfig;
     video: ApiConfig;
+    tts: ApiConfig;
   }>({
     llm: { ...llm, api_type: llm.api_type || 'openai' },
     vlm: { ...vlm, api_type: vlm.api_type || 'openai' },
     image: { ...image, api_type: image.api_type || 'openai' },
-    video: { ...video, api_type: video.api_type || 'openai' }
+    video: { ...video, api_type: video.api_type || 'openai' },
+    tts: { ...tts, api_type: tts.api_type || 'openai' }
   });
 
   // 当props变化时更新本地状态
@@ -141,14 +150,15 @@ export function ApiConfigPanel({
       llm: { ...llm, api_type: llm.api_type || 'openai' },
       vlm: { ...vlm, api_type: vlm.api_type || 'openai' },
       image: { ...image, api_type: image.api_type || 'openai' },
-      video: { ...video, api_type: video.api_type || 'openai' }
+      video: { ...video, api_type: video.api_type || 'openai' },
+      tts: { ...tts, api_type: tts.api_type || 'openai' }
     });
-  }, [llm, vlm, image, video]);
+  }, [llm, vlm, image, video, tts]);
 
   const handleConfigChange = (
-    type: 'llm' | 'vlm' | 'image' | 'video',
+    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
     field: keyof ApiConfig,
-    value: string | boolean
+    value: string | boolean | number
   ) => {
     const currentConfig = localConfig[type];
 
@@ -164,7 +174,7 @@ export function ApiConfigPanel({
   };
 
   const handleApiTypeChange = (
-    type: 'llm' | 'vlm' | 'image' | 'video',
+    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
     apiType: 'openai' | 'dashscope' | 'local'
   ) => {
     const config = localConfig[type];
@@ -174,7 +184,8 @@ export function ApiConfigPanel({
       llm: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       vlm: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       image: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
-      video: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis'
+      video: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
+      tts: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2audio/speech-synthesis'
     };
 
     const newConfig: ApiConfig = {
@@ -190,7 +201,7 @@ export function ApiConfigPanel({
     onConfigChange(type, newConfig);
   };
 
-  const handleValidateAPI = async (type: 'llm' | 'image' | 'video') => {
+  const handleValidateAPI = async (type: 'llm' | 'image' | 'video' | 'tts') => {
     const config = localConfig[type];
     if (!config.api_key) {
       toast('请先输入API密钥', 'error');
@@ -206,14 +217,18 @@ export function ApiConfigPanel({
         result = await validationApi.validateLLM(config);
       } else if (type === 'image') {
         result = await validationApi.validateImage(config);
-      } else {
+      } else if (type === 'video') {
         result = await validationApi.validateVideo(config);
+      } else if (type === 'tts') {
+        result = await validationApi.validateTTS(config);
       }
 
-      setValidationResults({
-        ...validationResults,
-        [type]: { valid: result.data.valid, message: result.data.message }
-      });
+      if (result) {
+        setValidationResults({
+          ...validationResults,
+          [type]: { valid: result.data.valid, message: result.data.message }
+        });
+      }
     } catch (error: any) {
       setValidationResults({
         ...validationResults,
@@ -227,7 +242,7 @@ export function ApiConfigPanel({
   // ===== 预设管理函数 =====
 
   // 打开保存预设对话框
-  const openSavePresetDialog = (type: 'llm' | 'vlm' | 'image' | 'video') => {
+  const openSavePresetDialog = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts') => {
     const config = localConfig[type];
     setSavePresetDialog({
       show: true,
@@ -261,7 +276,7 @@ export function ApiConfigPanel({
 
     const updatedPresets = {
       ...localPresets,
-      [type]: [...localPresets[type], newPreset]
+      [type]: [...(localPresets[type] || []), newPreset]
     };
 
     // 更新本地副本
@@ -269,13 +284,16 @@ export function ApiConfigPanel({
     // 更新父组件状态
     onPresetsChange(updatedPresets);
 
+    // 自动切换到新建的预设
+    onSwitchTag(type, newPreset.id);
+
     setSavePresetDialog({ show: false, type: null, name: '' });
     toast('预设已创建（请点击"保存配置"按钮保存）', 'success');
   };
 
   // 切换标签
-  const handleSwitchTag = (type: 'llm' | 'vlm' | 'image' | 'video', tagId: string) => {
-    const tag = localPresets[type].find(p => p.id === tagId);
+  const handleSwitchTag = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', tagId: string) => {
+    const tag = (localPresets[type] || []).find(p => p.id === tagId);
     if (tag) {
       onSwitchTag(type, tagId);
       toast(`已切换到标签: ${tag.name}（请点击"保存配置"按钮保存）`, 'success');
@@ -284,7 +302,7 @@ export function ApiConfigPanel({
 
   // 打开删除确认对话框
   const openDeleteConfirmDialog = (
-    type: 'llm' | 'vlm' | 'image' | 'video',
+    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
     presetId: string,
     presetName: string
   ) => {
@@ -303,7 +321,7 @@ export function ApiConfigPanel({
 
     const updatedPresets = {
       ...localPresets,
-      [type]: localPresets[type].filter(p => p.id !== presetId)
+      [type]: (localPresets[type] || []).filter(p => p.id !== presetId)
     };
 
     // 更新本地副本
@@ -316,18 +334,24 @@ export function ApiConfigPanel({
   };
 
   const renderApiForm = (
-    type: 'llm' | 'vlm' | 'image' | 'video',
+    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
     title: string,
     config: ApiConfig
   ) => {
     const isDashscope = config.api_type === 'dashscope';
+    const isLocal = config.api_type === 'local';
+    const isByteSeed = config.api_type === 'byteseed';
     const showImageEditModel = type === 'image' && isDashscope;
+    const showVoiceField = type === 'tts' && !isLocal;  // OpenAI和阿里百炼显示voice
+    const showIdField = type === 'tts' && isLocal;  // 本地API显示id
+    const showByteSeedVideoOptions = type === 'video' && isByteSeed;  // ByteSeed视频特有选项
+    const showByteSeedImageOptions = type === 'image' && isByteSeed;  // ByteSeed图像特有选项
 
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-base font-semibold">{title}</h3>
-          {(type === 'llm' || type === 'image' || type === 'video') && (
+          {(type === 'llm' || type === 'image' || type === 'video' || type === 'tts') && (
             <button
               onClick={() => handleValidateAPI(type)}
               disabled={validating}
@@ -337,7 +361,7 @@ export function ApiConfigPanel({
             </button>
           )}
         </div>
-        {(type === 'llm' || type === 'image' || type === 'video') && validationResults[type] && (
+        {(type === 'llm' || type === 'image' || type === 'video' || type === 'tts') && validationResults[type] && (
           <div className={`text-sm p-2 rounded flex items-center gap-2 ${
             validationResults[type]!.valid ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'
           }`}>
@@ -400,16 +424,106 @@ export function ApiConfigPanel({
               type="text"
               value={config.model}
               onChange={(e) => handleConfigChange(type, 'model', e.target.value)}
-              placeholder={type === 'llm' ? 'gpt-4' : type === 'vlm' ? 'gpt-4o' : type === 'image' ? 'dall-e-3' : 'sora'}
+              placeholder={type === 'llm' ? 'gpt-4' : type === 'vlm' ? 'gpt-4o' : type === 'image' ? 'dall-e-3' : type === 'tts' ? 'tts-1' : 'sora'}
               className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
             />
           </div>
+
+          {showVoiceField && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">默认音色 (可选)</label>
+              <input
+                type="text"
+                value={config.voice || ''}
+                onChange={(e) => handleConfigChange(type, 'voice', e.target.value)}
+                placeholder="alloy"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                OpenAI: alloy, echo, fable, onyx, nova, shimmer | 阿里百炼: zhichu, zhitian等
+              </p>
+            </div>
+          )}
+
+          {showIdField && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Speaker ID (可选)</label>
+              <input
+                type="text"
+                value={config.id || ''}
+                onChange={(e) => handleConfigChange(type, 'id', e.target.value)}
+                placeholder="0"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                本地API的说话人ID，用于指定音色
+              </p>
+            </div>
+          )}
+
+          {showByteSeedVideoOptions && (
+            <>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.generate_audio || false}
+                    onChange={(e) => handleConfigChange(type, 'generate_audio', e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-300">生成音频</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.watermark || false}
+                    onChange={(e) => handleConfigChange(type, 'watermark', e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-300">添加水印</span>
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                字节Seed特有选项：生成音频需要使用 Seed 1.5 Pro 模型
+              </p>
+            </>
+          )}
+
+          {showByteSeedImageOptions && (
+            <>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">生成图片数量（1-4张）</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="4"
+                    value={config.max_images || 1}
+                    onChange={(e) => handleConfigChange(type, 'max_images', parseInt(e.target.value) || 1)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    一次生成多张连贯图片（如四季变化、不同时段）
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.watermark || false}
+                    onChange={(e) => handleConfigChange(type, 'watermark', e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-300">添加水印</span>
+                </label>
+              </div>
+            </>
+          )}
 
           {/* 配置预设标签区域 */}
           <div className="border-t border-gray-700 pt-3 mt-4">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm text-gray-400">已保存的配置</label>
-              {localPresets[type].length > 5 && (
+              {(localPresets[type]?.length || 0) > 5 && (
                 <button
                   onClick={() => setPresetsExpanded({ ...presetsExpanded, [type]: !presetsExpanded[type] })}
                   className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1"
@@ -421,7 +535,7 @@ export function ApiConfigPanel({
             </div>
             <div className="flex flex-wrap gap-2">
               {/* 显示预设标签 */}
-              {(presetsExpanded[type] ? localPresets[type] : localPresets[type].slice(0, 5)).map((preset) => {
+              {(presetsExpanded[type] ? (localPresets[type] || []) : (localPresets[type] || []).slice(0, 5)).map((preset) => {
                 // 通过预设ID判断是否高亮
                 const isActive = activePresetIds[type] === preset.id;
                 return (
@@ -483,7 +597,7 @@ export function ApiConfigPanel({
   return (
     <>
       <div className="flex border-b border-gray-700 overflow-x-auto">
-        {(['llm', 'vlm', 'image', 'video', 'sizes'] as const).map((tab) => (
+        {(['llm', 'vlm', 'image', 'video', 'tts', 'sizes'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setApiSubTab(tab)}
@@ -493,7 +607,7 @@ export function ApiConfigPanel({
                 : 'text-gray-400 hover:text-gray-300'
             }`}
           >
-            {tab === 'llm' ? '语言模型' : tab === 'vlm' ? '视觉模型' : tab === 'image' ? '图像生成' : tab === 'video' ? '视频生成' : '生图分辨率'}
+            {tab === 'llm' ? '语言模型' : tab === 'vlm' ? '视觉模型' : tab === 'image' ? '图像生成' : tab === 'video' ? '视频生成' : tab === 'tts' ? '语音合成' : '生图分辨率'}
           </button>
         ))}
       </div>
@@ -503,6 +617,7 @@ export function ApiConfigPanel({
         {apiSubTab === 'vlm' && renderApiForm('vlm', '视觉语言模型 API (图片理解/反推提示词)', localConfig.vlm)}
         {apiSubTab === 'image' && renderApiForm('image', '图像生成 API', localConfig.image)}
         {apiSubTab === 'video' && renderApiForm('video', '视频生成 API', localConfig.video)}
+        {apiSubTab === 'tts' && renderApiForm('tts', '语音合成 API (TTS)', localConfig.tts)}
         {apiSubTab === 'sizes' && (
           <div className="space-y-4">
             <h3 className="text-base font-semibold mb-4">生图分辨率设置</h3>

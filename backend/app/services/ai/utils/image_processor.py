@@ -93,7 +93,8 @@ class ImageProcessor:
             elif image_source.startswith(("http://", "https://")):
                 # HTTP URL，下载并转base64
                 if client is None:
-                    client = httpx.AsyncClient(timeout=30.0)
+                    limits = httpx.Limits(max_connections=200, max_keepalive_connections=50)
+                    client = httpx.AsyncClient(timeout=30.0, limits=limits)
                     should_close = True
                 else:
                     should_close = False
@@ -184,7 +185,8 @@ class ImageProcessor:
             elif image_source.startswith(("http://", "https://")):
                 # HTTP URL，下载
                 if client is None:
-                    client = httpx.AsyncClient(timeout=30.0)
+                    limits = httpx.Limits(max_connections=200, max_keepalive_connections=50)
+                    client = httpx.AsyncClient(timeout=30.0, limits=limits)
                     should_close = True
                 else:
                     should_close = False

@@ -21,6 +21,7 @@ from .models import (
 )
 from .utils import parse_size
 from .templates import DEFAULT_PROMPT_TEMPLATES
+from .template_helpers import get_active_template
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ router = APIRouter()
 async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
     """生成图片提示词"""
     from app.services import ProjectService
+    from .style_presets import get_image_style_suffix
 
     project = ProjectService.get_project(project_id)
     if not project:
@@ -41,6 +43,20 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
 
     # 获取项目的自定义提示词模板
     custom_templates = ai_config.get("prompt_templates", {})
+
+    # 读取全局风格配置
+    global_style_config = ai_config.get("global_style_config", {})
+    language = global_style_config.get("prompt_language", "zh")
+
+    # 获取图片风格后缀
+    image_style = global_style_config.get("image_style", {})
+    style_suffix = ""
+    if image_style.get("enabled", True):
+        preset_id = image_style.get("preset_id", "none")
+        if preset_id == "custom":
+            style_suffix = image_style.get("custom_suffix", "")
+        elif preset_id != "none":
+            style_suffix = get_image_style_suffix(preset_id, language)
 
     # 记录请求日志
     template_used = "image_prompt_template"
@@ -56,22 +72,17 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
     try:
         if request.asset_type == "storyboard":
             # 分镜使用专门的分镜图片生成方法
-            # 根据是否使用图生图编辑模式选择模板
-            if request.use_image_edit:
-                custom_template = custom_templates.get("storyboard_image_edit_prompt_template")
-                # 如果没有自定义模板，使用默认模板
-                if not custom_template:
-                    custom_template = DEFAULT_PROMPT_TEMPLATES.get("storyboard_image_edit_prompt_template")
-            else:
-                custom_template = custom_templates.get("storyboard_image_prompt_template")
-                # 如果没有自定义模板，使用默认模板
-                if not custom_template:
-                    custom_template = DEFAULT_PROMPT_TEMPLATES.get("storyboard_image_prompt_template")
+            # 根据是否使用图生图编辑模式选择模板类型
+            template_type = "storyboard_image_edit" if request.use_image_edit else "storyboard_image"
+
+            # 使用辅助函数获取当前激活的模板
+            custom_template = get_active_template(ai_config, template_type)
+
             request_log["shot_type"] = request.shot_type
             request_log["action"] = request.action
             request_log["camera_angle"] = request.camera_angle
             request_log["use_image_edit"] = request.use_image_edit
-            request_log["has_custom_template"] = bool(custom_templates.get("storyboard_image_edit_prompt_template" if request.use_image_edit else "storyboard_image_prompt_template"))
+            request_log["template_type"] = template_type
 
             result = await PromptService.generate_storyboard_image_prompt(
                 llm,
@@ -79,19 +90,39 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
                 shot_type=request.shot_type,
                 action=request.action,
                 camera_angle=request.camera_angle,
-                custom_template=custom_template
+                custom_template=custom_template,
+                language=language,
+                style_suffix=style_suffix
             )
         else:
             # 其他资产类型使用通用图片生成方法
-            custom_template = custom_templates.get("image_prompt_template")
-            request_log["has_custom_template"] = bool(custom_template)
+            custom_template = get_active_template(ai_config, "image")
+            request_log["template_type"] = "image"
 
             result = await PromptService.generate_image_prompt(
                 llm,
                 request.asset_type,
                 request.description,
-                custom_template=custom_template
+                custom_template=custom_template,
+                language=language,
+                style_suffix=style_suffix
             )
+
+        # 如果提供了 asset_id，自动保存生成的提示词
+        if request.asset_id:
+            generated_prompt = result.get("prompt") or result.get("positive_prompt", "")
+
+            if generated_prompt:
+                # 所有资产类型（包括分镜）统一使用 AssetService
+                asset = AssetService.load_asset(project_id, request.asset_type, request.asset_id)
+                if asset:
+                    asset["image_prompt"] = generated_prompt
+                    asset["updated_at"] = datetime.now().isoformat()
+                    AssetService.save_asset(project_id, request.asset_type, asset)
+                    logger.info(f"✅ 自动保存提示词到 {request.asset_type} {request.asset_id}")
+                else:
+                    logger.warning(f"⚠️ 资产不存在: {request.asset_type}/{request.asset_id}")
+
         await llm.close()
         return result
 
@@ -140,44 +171,89 @@ async def generate_image(project_id: str, request: ImageGenerateRequest):
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error"))
 
-        # 保存生成记录
-        record = {
-            "asset_id": request.asset_id,
-            "asset_type": request.asset_type,
-            "prompt": request.prompt,
-            "negative_prompt": request.negative_prompt,
-            "width": width,
-            "height": height,
-            "image_path": result.get("image_url"),
-            "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-            "created_at": datetime.now().isoformat()
-        }
+        # 【多图支持】检测是否有多图
+        images_data = result.get("images")
 
-        saved = ImageService.save_generation_record(project_id, record)
+        if images_data:
+            # 多图模式：循环保存所有图片
+            saved_images = []
+            for i, img_data in enumerate(images_data):
+                record = {
+                    "asset_id": request.asset_id,
+                    "asset_type": request.asset_type,
+                    "prompt": request.prompt,
+                    "negative_prompt": request.negative_prompt,
+                    "width": width,
+                    "height": height,
+                    "image_path": img_data["url"],
+                    "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                    "created_at": datetime.now().isoformat()
+                }
+                saved = ImageService.save_generation_record(project_id, record)
+                saved_images.append(saved)
 
-        # 更新资产的主图（如果是第一张）
-        images = ImageService.list_images(project_id, request.asset_id)
-        if len(images) == 1:
-            ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
-            AssetService.update_asset_image(
-                project_id, request.asset_type, request.asset_id, saved["image_id"]
-            )
+                # 第一张设置为主图
+                if i == 0:
+                    ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
+                    AssetService.update_asset_image(
+                        project_id, request.asset_type, request.asset_id, saved["image_id"]
+                    )
 
-        # 【自动下载】生成成功后自动下载图片到本地
-        from app.services.image_download_service import ImageDownloadService
-        image_url = result.get("image_url")
-        if image_url and image_url.startswith(("http://", "https://")):
-            try:
-                await ImageDownloadService.download_and_save_image(
-                    project_id=project_id,
-                    image_id=saved["image_id"],
-                    url=image_url,
-                    asset_type=request.asset_type
+                # 自动下载
+                if img_data["url"].startswith(("http://", "https://")):
+                    try:
+                        from app.services.image_download_service import ImageDownloadService
+                        await ImageDownloadService.download_and_save_image(
+                            project_id=project_id,
+                            image_id=saved["image_id"],
+                            url=img_data["url"],
+                            asset_type=request.asset_type
+                        )
+                    except Exception as e:
+                        logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+
+            logger.info(f"[多图生成] 成功生成并保存 {len(saved_images)} 张图片")
+            # 返回第一张图片记录（向后兼容前端）
+            return saved_images[0]
+        else:
+            # 单图模式：现有逻辑
+            record = {
+                "asset_id": request.asset_id,
+                "asset_type": request.asset_type,
+                "prompt": request.prompt,
+                "negative_prompt": request.negative_prompt,
+                "width": width,
+                "height": height,
+                "image_path": result.get("image_url"),
+                "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                "created_at": datetime.now().isoformat()
+            }
+
+            saved = ImageService.save_generation_record(project_id, record)
+
+            # 更新资产的主图（如果是第一张）
+            images = ImageService.list_images(project_id, request.asset_id)
+            if len(images) == 1:
+                ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
+                AssetService.update_asset_image(
+                    project_id, request.asset_type, request.asset_id, saved["image_id"]
                 )
-            except Exception as e:
-                logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
 
-        return saved
+            # 【自动下载】生成成功后自动下载图片到本地
+            from app.services.image_download_service import ImageDownloadService
+            image_url = result.get("image_url")
+            if image_url and image_url.startswith(("http://", "https://")):
+                try:
+                    await ImageDownloadService.download_and_save_image(
+                        project_id=project_id,
+                        image_id=saved["image_id"],
+                        url=image_url,
+                        asset_type=request.asset_type
+                    )
+                except Exception as e:
+                    logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+
+            return saved
 
     except HTTPException:
         raise
@@ -239,6 +315,16 @@ async def edit_image(project_id: str, request: ImageEditRequest):
     asset = AssetService.load_asset(project_id, request.asset_type, request.asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
+
+    # 【模板支持】如果指定了模板，使用模板内容作为提示词
+    if request.template:
+        from .templates import DEFAULT_PRESETS
+        preset = DEFAULT_PRESETS.get("image_edit", {}).get(request.template, {})
+        if preset:
+            request.prompt = preset.get("content", request.prompt)
+            logger.info(f"[图生图] 使用模板: {request.template}")
+        else:
+            logger.warning(f"[图生图] 模板不存在: {request.template}，使用原始提示词")
 
     # 收集所有参考图片路径（智能判断：优先本地base64，降级URL）
     reference_image_paths = []
@@ -348,42 +434,88 @@ async def edit_image(project_id: str, request: ImageEditRequest):
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error"))
 
-        record = {
-            "asset_id": request.asset_id,
-            "asset_type": request.asset_type,
-            "prompt": request.prompt,
-            "negative_prompt": "",
-            "width": width,
-            "height": height,
-            "image_path": result.get("image_url"),
-            "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-            "created_at": datetime.now().isoformat()
-        }
+        # 【多图支持】检测是否有多图
+        images_data = result.get("images")
 
-        saved = ImageService.save_generation_record(project_id, record)
+        if images_data:
+            # 多图模式：循环保存所有图片
+            saved_images = []
+            for i, img_data in enumerate(images_data):
+                record = {
+                    "asset_id": request.asset_id,
+                    "asset_type": request.asset_type,
+                    "prompt": request.prompt,
+                    "negative_prompt": "",
+                    "width": width,
+                    "height": height,
+                    "image_path": img_data["url"],
+                    "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                    "created_at": datetime.now().isoformat()
+                }
+                saved = ImageService.save_generation_record(project_id, record)
+                saved_images.append(saved)
 
-        images = ImageService.list_images(project_id, request.asset_id)
-        if len(images) == 1:
-            ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
-            AssetService.update_asset_image(
-                project_id, request.asset_type, request.asset_id, saved["image_id"]
-            )
+                # 第一张设置为主图
+                if i == 0:
+                    ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
+                    AssetService.update_asset_image(
+                        project_id, request.asset_type, request.asset_id, saved["image_id"]
+                    )
 
-        # 【自动下载】生成成功后自动下载图片到本地
-        from app.services.image_download_service import ImageDownloadService
-        image_url = result.get("image_url")
-        if image_url and image_url.startswith(("http://", "https://")):
-            try:
-                await ImageDownloadService.download_and_save_image(
-                    project_id=project_id,
-                    image_id=saved["image_id"],
-                    url=image_url,
-                    asset_type=request.asset_type
+                # 自动下载
+                if img_data["url"].startswith(("http://", "https://")):
+                    try:
+                        from app.services.image_download_service import ImageDownloadService
+                        await ImageDownloadService.download_and_save_image(
+                            project_id=project_id,
+                            image_id=saved["image_id"],
+                            url=img_data["url"],
+                            asset_type=request.asset_type
+                        )
+                    except Exception as e:
+                        logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+
+            logger.info(f"[多图生成] 图生图成功生成并保存 {len(saved_images)} 张图片")
+            # 返回第一张图片记录（向后兼容前端）
+            return saved_images[0]
+        else:
+            # 单图模式：现有逻辑
+            record = {
+                "asset_id": request.asset_id,
+                "asset_type": request.asset_type,
+                "prompt": request.prompt,
+                "negative_prompt": "",
+                "width": width,
+                "height": height,
+                "image_path": result.get("image_url"),
+                "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                "created_at": datetime.now().isoformat()
+            }
+
+            saved = ImageService.save_generation_record(project_id, record)
+
+            images = ImageService.list_images(project_id, request.asset_id)
+            if len(images) == 1:
+                ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
+                AssetService.update_asset_image(
+                    project_id, request.asset_type, request.asset_id, saved["image_id"]
                 )
-            except Exception as e:
-                logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
 
-        return saved
+            # 【自动下载】生成成功后自动下载图片到本地
+            from app.services.image_download_service import ImageDownloadService
+            image_url = result.get("image_url")
+            if image_url and image_url.startswith(("http://", "https://")):
+                try:
+                    await ImageDownloadService.download_and_save_image(
+                        project_id=project_id,
+                        image_id=saved["image_id"],
+                        url=image_url,
+                        asset_type=request.asset_type
+                    )
+                except Exception as e:
+                    logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+
+            return saved
 
     except HTTPException:
         raise

@@ -263,11 +263,13 @@ def get_image_adapter(
     from app.services.ai.adapters.openai import OpenAIImageAdapter
     from app.services.ai.adapters.dashscope import DashScopeImageAdapter
     from app.services.ai.adapters.local import LocalImageAdapter
+    from app.services.ai.adapters.byteseed_image import ByteSeedImageAdapter
 
     adapters = {
         "openai": OpenAIImageAdapter,
         "dashscope": DashScopeImageAdapter,
         "local": LocalImageAdapter,
+        "byteseed": ByteSeedImageAdapter,
     }
 
     adapter_cls = adapters.get(api_type)
@@ -298,7 +300,7 @@ def get_video_adapter(
     """获取视频适配器实例
 
     Args:
-        api_type: 适配器类型 ("openai", "dashscope", "local")
+        api_type: 适配器类型 ("openai", "dashscope", "local", "byteseed")
         其他参数传递给适配器构造函数
 
     Returns:
@@ -311,11 +313,13 @@ def get_video_adapter(
     from app.services.ai.adapters.openai import OpenAIVideoAdapter
     from app.services.ai.adapters.dashscope import DashScopeVideoAdapter
     from app.services.ai.adapters.local import LocalVideoAdapter
+    from app.services.ai.adapters.byteseed import ByteSeedVideoAdapter
 
     adapters = {
         "openai": OpenAIVideoAdapter,
         "dashscope": DashScopeVideoAdapter,
         "local": LocalVideoAdapter,
+        "byteseed": ByteSeedVideoAdapter,
     }
 
     adapter_cls = adapters.get(api_type)

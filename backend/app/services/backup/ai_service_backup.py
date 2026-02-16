@@ -21,7 +21,8 @@ class AIService:
         self.api_key = api_key
         self.model = model
         self.project_id = project_id
-        self.client = httpx.AsyncClient(timeout=120.0)
+        limits = httpx.Limits(max_connections=500, max_keepalive_connections=100)
+        self.client = httpx.AsyncClient(timeout=120.0, limits=limits)
 
     async def close(self):
         await self.client.aclose()

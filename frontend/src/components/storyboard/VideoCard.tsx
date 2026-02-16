@@ -28,6 +28,7 @@ interface VideoCardProps {
   video: VideoRecord;
   projectId: string;
   isPolling: boolean;
+  posterUrl?: string;
   onSetPrimary: (videoId: string, storyboardId: string) => void;
   onDelete: (videoId: string) => void;
   onPoll: (videoId: string) => void;
@@ -37,6 +38,7 @@ export const VideoCard = memo(({
   video,
   projectId,
   isPolling,
+  posterUrl,
   onSetPrimary,
   onDelete,
   onPoll
@@ -113,6 +115,8 @@ export const VideoCard = memo(({
             src={videoUrl}
             className="w-full h-full object-cover"
             controls
+            poster={posterUrl}
+            preload="none"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">

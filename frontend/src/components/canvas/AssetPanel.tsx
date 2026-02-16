@@ -215,7 +215,7 @@ export function AssetPanel({ isOpen, onToggle }: AssetPanelProps) {
                         <div className="w-8 h-8 bg-gray-900 rounded overflow-hidden flex-shrink-0">
                           {asset.imageUrl ? (
                             <img
-                              src={asset.imageUrl}
+                              src={asset.imageUrl.replace('/images/files/', '/thumbnails/')}
                               alt={asset.name}
                               className="w-full h-full object-cover"
                             />

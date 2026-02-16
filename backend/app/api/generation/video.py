@@ -12,7 +12,8 @@ from fastapi import APIRouter, HTTPException, Body
 
 from app.services import get_ai_service, PromptService, ImageService
 from app.core.config import settings
-from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest
+from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
+from .template_helpers import get_active_template
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ router = APIRouter()
 async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
     """生成视频提示词"""
     from app.services import ProjectService
+    from .style_presets import get_video_style_suffix
 
     project = ProjectService.get_project(project_id)
     if not project:
@@ -31,9 +33,22 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
     ai_config = project.get("ai_config", {})
     llm = get_ai_service(ai_config, "llm", project_id)
 
-    # 获取项目的自定义提示词模板
-    custom_templates = ai_config.get("prompt_templates", {})
-    custom_template = custom_templates.get("video_prompt_template")
+    # 使用辅助函数获取当前激活的视频模板
+    custom_template = get_active_template(ai_config, "video")
+
+    # 读取全局风格配置
+    global_style_config = ai_config.get("global_style_config", {})
+    language = global_style_config.get("prompt_language", "zh")
+
+    # 获取视频风格后缀
+    video_style = global_style_config.get("video_style", {})
+    style_suffix = ""
+    if video_style.get("enabled", True):
+        preset_id = video_style.get("preset_id", "none")
+        if preset_id == "custom":
+            style_suffix = video_style.get("custom_suffix", "")
+        elif preset_id != "none":
+            style_suffix = get_video_style_suffix(preset_id, language)
 
     # 记录请求日志
     request_log = {
@@ -60,7 +75,9 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
             scene=request.scene,
             props=request.props,
             duration=request.duration,
-            custom_template=custom_template
+            custom_template=custom_template,
+            language=language,
+            style_suffix=style_suffix
         )
         await llm.close()
         return {"prompt": result}
@@ -90,9 +107,8 @@ async def generate_video_reverse_prompt(project_id: str, request: VideoReversePr
         vlm = get_ai_service(ai_config, "llm", project_id)
         logger.warning(f"[反推提示词] VLM未配置，回退使用LLM")
 
-    # 获取项目的自定义提示词模板
-    custom_templates = ai_config.get("prompt_templates", {})
-    custom_template = custom_templates.get("video_reverse_prompt_template")
+    # 使用辅助函数获取当前激活的视频反推模板
+    custom_template = get_active_template(ai_config, "video_reverse")
 
     try:
         result = await PromptService.generate_video_reverse_prompt(
@@ -408,3 +424,146 @@ async def set_primary_video(project_id: str, video_id: str, storyboard_id: str =
         json.dump(target_video, f, ensure_ascii=False, indent=2)
 
     return {"success": True, "video": target_video}
+
+
+@router.post("/multi-scene-video-prompt")
+async def generate_multi_scene_video_prompt(
+    project_id: str,
+    request: MultiSceneVideoPromptRequest
+):
+    """生成多分镜融合视频提示词（使用LLM）"""
+    from app.services import ProjectService, AssetService
+    from .prompt import get_prompt_templates
+
+    try:
+        logger.info(f"Received multi-scene video prompt request for project {project_id}")
+        logger.info(f"Request data: {request}")
+        logger.info(f"Storyboard IDs: {request.storyboard_ids}")
+    except Exception as e:
+        logger.error(f"Error logging request: {e}")
+
+    # 1. 获取项目
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # 2. 获取所有分镜
+    storyboards = []
+    for sb_id in request.storyboard_ids:
+        sb = AssetService.load_asset(project_id, "storyboard", sb_id)
+        if sb:
+            storyboards.append(sb)
+
+    if not storyboards:
+        raise HTTPException(status_code=404, detail="No storyboards found")
+
+    # 按sequence排序
+    storyboards.sort(key=lambda x: x.get("sequence", 0))
+
+    # 3. 获取剧集剧本（假设所有分镜属于同一剧集）
+    episode_id = storyboards[0].get("episode_id")
+    if not episode_id:
+        raise HTTPException(status_code=400, detail="Storyboards must belong to an episode")
+
+    episode = AssetService.load_asset(project_id, "episode", episode_id)
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    script_content = episode.get("script", "")
+
+    # 4. 收集所有涉及的资产（去重）
+    character_ids = set()
+    scene_ids = set()
+    prop_ids = set()
+
+    for sb in storyboards:
+        if sb.get("character_ids"):
+            character_ids.update(sb["character_ids"])
+        if sb.get("scene_id"):
+            scene_ids.add(sb["scene_id"])
+        if sb.get("prop_ids"):
+            prop_ids.update(sb["prop_ids"])
+
+    # 5. 获取资产详细信息
+    characters_info = []
+    for char_id in character_ids:
+        char = AssetService.load_asset(project_id, "character", char_id)
+        if char:
+            info = char.get("description", "")
+            if char.get("age"):
+                info += f"，{char['age']}岁"
+            if char.get("gender"):
+                info += f"，{char['gender']}"
+            characters_info.append(info)
+
+    scenes_info = []
+    for scene_id in scene_ids:
+        scene = AssetService.load_asset(project_id, "scene", scene_id)
+        if scene:
+            scenes_info.append(scene.get("description", ""))
+
+    props_info = []
+    for prop_id in prop_ids:
+        prop = AssetService.load_asset(project_id, "prop", prop_id)
+        if prop:
+            props_info.append(prop.get("description", ""))
+
+    # 6. 构建分镜信息
+    storyboards_info = []
+    total_duration = 0
+    for i, sb in enumerate(storyboards):
+        duration = sb.get("duration", 3)
+        total_duration += duration
+
+        info = f"分镜{i+1}（时长{duration}秒）：\n"
+        info += f"  描述：{sb.get('description', '')}\n"
+        if sb.get("dialogue"):
+            info += f"  对白：{sb['dialogue']}\n"
+        if sb.get("shot_type"):
+            info += f"  镜头类型：{sb['shot_type']}\n"
+        if sb.get("camera_angle"):
+            info += f"  镜头角度：{sb['camera_angle']}\n"
+        if sb.get("action"):
+            info += f"  动作：{sb['action']}\n"
+
+        storyboards_info.append(info)
+
+    # 7. 获取提示词模板
+    templates = await get_prompt_templates(project_id)
+    template = templates.get("multi_scene_video_prompt", "")
+
+    if not template:
+        raise HTTPException(status_code=500, detail="Multi-scene video prompt template not found")
+
+    # 8. 填充模板
+    prompt = template.format(
+        script_content=script_content,
+        storyboards_info="\n".join(storyboards_info),
+        characters_info="；".join(characters_info) if characters_info else "无",
+        scenes_info="；".join(scenes_info) if scenes_info else "无",
+        props_info="；".join(props_info) if props_info else "无"
+    )
+
+    # 9. 调用LLM生成
+    ai_config = project.get("ai_config", {})
+    llm = get_ai_service(ai_config, "llm", project_id)
+
+    try:
+        response = await llm.chat([
+            {"role": "user", "content": prompt}
+        ])
+
+        generated_prompt = response.get("content", "")
+
+        await llm.close()
+
+        return {
+            "prompt": generated_prompt,
+            "total_duration": total_duration,
+            "storyboard_count": len(storyboards)
+        }
+    except Exception as e:
+        await llm.close()
+        logger.error(f"Error generating multi-scene video prompt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

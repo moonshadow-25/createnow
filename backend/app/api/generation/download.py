@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
-from .models import VideoExportRequest, JianyingExportRequest
+from .models import VideoExportRequest, JianyingExportRequest, StoryboardExportRequest
 
 logger = logging.getLogger(__name__)
 
@@ -318,3 +318,34 @@ async def get_jiaying_export_status(project_id: str):
         "message": status.get("message", ""),
         "errors": status.get("errors", [])
     }
+
+
+# ==================== 分镜导出相关 API ====================
+
+@router.post("/storyboards/export")
+async def export_storyboards(project_id: str, request: StoryboardExportRequest):
+    """导出选中的分镜图和提示词到 data/output 目录
+
+    功能：
+    1. 按分镜实际序号命名图片（如分镜57命名为57.jpg）
+    2. 导出到 data/output/{project_name}/{timestamp}/ 目录
+    3. 保存提示词到 prompts.txt
+    4. 返回提示词内容供前端复制到剪贴板
+    """
+    from app.services import ProjectService
+    from app.services.storyboard_export_service import StoryboardExportService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        result = await StoryboardExportService.export_storyboards(
+            project_id,
+            request.storyboard_ids,
+            request.prompt
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to export storyboards: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -185,7 +185,7 @@ export function ImageEditDialog({
                       `}
                     >
                       <img
-                        src={getImageUrl(img)}
+                        src={getImageUrl(img).replace('/images/files/', '/thumbnails/')}
                         alt={img.image_id}
                         className="w-full aspect-square object-cover"
                       />

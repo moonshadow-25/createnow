@@ -23,20 +23,26 @@ class ImageGenService(AIService):
         model: str,
         api_type: str = "openai",
         project_id: Optional[str] = None,
-        image_edit_model: Optional[str] = None
+        image_edit_model: Optional[str] = None,
+        max_images: int = 1,
+        watermark: bool = False
     ):
         """
         Args:
             api_url: API基础URL
             api_key: API密钥
             model: 默认模型名称
-            api_type: API类型 ("openai", "dashscope", "local")
+            api_type: API类型 ("openai", "dashscope", "local", "byteseed")
             project_id: 项目ID（用于日志记录）
             image_edit_model: 图像编辑专用模型（可选）
+            max_images: 多图生成数量（ByteSeed专用，1-4）
+            watermark: 是否添加水印（ByteSeed专用）
         """
         super().__init__(api_url, api_key, model, project_id)
         self.api_type = api_type
         self.image_edit_model = image_edit_model
+        self.max_images = max_images
+        self.watermark = watermark
         self._adapter = None
 
     def _get_adapter(self):
@@ -50,7 +56,9 @@ class ImageGenService(AIService):
                 client=self.client,
                 project_id=self.project_id,
                 log_callback=self._log_interaction,
-                image_edit_model=self.image_edit_model
+                image_edit_model=self.image_edit_model,
+                max_images=self.max_images,
+                watermark=self.watermark
             )
         return self._adapter
 

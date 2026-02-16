@@ -28,12 +28,29 @@ export default function HomePage() {
   };
 
   const handleDeleteProject = async (id: string) => {
-    if (confirm('确定要删除这个项目吗？')) {
-      try {
-        await deleteProject(id);
-      } catch (error) {
-        toast('删除项目失败', 'error');
+    const project = projects.find(p => p.project_id === id);
+    if (!project) return;
+
+    // 第一次确认
+    if (!confirm(`确定要删除项目「${project.name}」吗？\n\n删除后项目将被移至回收站，可以手动恢复。`)) {
+      return;
+    }
+
+    // 第二次确认：输入项目名称
+    const inputName = prompt(`请输入项目名称以确认删除：\n\n「${project.name}」`);
+    if (inputName !== project.name) {
+      if (inputName !== null) {
+        toast('项目名称不匹配，取消删除', 'error');
       }
+      return;
+    }
+
+    // 执行删除
+    try {
+      await deleteProject(id);
+      toast('项目已移至回收站', 'success');
+    } catch (error) {
+      toast('删除项目失败', 'error');
     }
   };
 

@@ -65,23 +65,31 @@ def get_ai_service(project_config: Dict, service_type: str, project_id: Optional
     elif service_type == "image":
         # 阿里百炼需要额外的图像编辑模型
         image_edit_model = config.get("image_edit_model") or settings.DASHSCOPE_IMAGE_EDIT_MODEL
+        max_images = config.get("max_images", 1)  # ByteSeed多图生成（1-4）
+        watermark = config.get("watermark", False)  # ByteSeed水印
         return ImageGenService(
             api_url=api_url,
             api_key=api_key,
             model=model,
             api_type=api_type,
             project_id=project_id,
-            image_edit_model=image_edit_model
+            image_edit_model=image_edit_model,
+            max_images=max_images,
+            watermark=watermark
         )
     elif service_type == "video":
         use_multipart = config.get("use_multipart", True)  # 从配置读取，默认True（使用文件上传）
+        generate_audio = config.get("generate_audio", False)  # 是否生成音频（ByteSeed）
+        watermark = config.get("watermark", False)  # 是否添加水印（ByteSeed）
         return VideoGenService(
             api_url=api_url,
             api_key=api_key,
             model=model,
             api_type=api_type,
             use_multipart=use_multipart,
-            project_id=project_id
+            project_id=project_id,
+            generate_audio=generate_audio,
+            watermark=watermark
         )
     else:
         raise ValueError(f"Unknown service type: {service_type}")

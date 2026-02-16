@@ -246,13 +246,25 @@ class ProjectService:
 
     @staticmethod
     def delete_project(project_id: str) -> bool:
-        """删除项目"""
+        """删除项目（移动到回收站）"""
         project_dir = settings.PROJECTS_DIR / project_id
-        if project_dir.exists():
-            import shutil
-            shutil.rmtree(project_dir)
-            return True
-        return False
+        if not project_dir.exists():
+            return False
+
+        # 创建 trash 目录
+        trash_dir = settings.PROJECTS_DIR.parent / "trash"
+        trash_dir.mkdir(exist_ok=True)
+
+        # 移动到 trash 目录
+        import shutil
+        from datetime import datetime
+
+        # 添加时间戳避免冲突
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        trash_project_dir = trash_dir / f"{project_id}_{timestamp}"
+
+        shutil.move(str(project_dir), str(trash_project_dir))
+        return True
 
 
 class ImageService:
@@ -402,6 +414,31 @@ class ImageService:
         ImageService.save_generation_record(project_id, image_record)
 
         return image_record
+
+    @staticmethod
+    def delete_image_thumbnail(project_id: str, local_path: str) -> bool:
+        """删除图片对应的缩略图
+
+        Args:
+            project_id: 项目ID
+            local_path: 图片的local_path（如 "character/xxx.jpg"）
+
+        Returns:
+            bool: 删除是否成功
+        """
+        if not local_path:
+            return False
+
+        project_dir = settings.PROJECTS_DIR / project_id
+        thumbnail_path = project_dir / "images" / "thumbnails" / local_path
+
+        if thumbnail_path.exists():
+            try:
+                thumbnail_path.unlink()
+                return True
+            except Exception:
+                return False
+        return False
 
     @staticmethod
     def get_primary_images_batch(project_id: str, asset_ids: List[str]) -> Dict[str, Optional[Dict]]:

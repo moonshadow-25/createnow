@@ -50,7 +50,7 @@ export function CanvasElementCard({
       <div className="w-full h-[140px] bg-gray-900 flex items-center justify-center overflow-hidden">
         {element.imageUrl ? (
           <img
-            src={element.imageUrl}
+            src={element.imageUrl.replace('/images/files/', '/thumbnails/')}
             alt={element.name}
             className="w-full h-full object-cover"
             draggable={false}

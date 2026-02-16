@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Plus, Wand2, ImagePlus, Edit3, Grid3X3, Scissors, RefreshCcw, CheckCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Wand2, ImagePlus, Edit3, Grid3X3, Scissors, RefreshCcw, CheckCircle, Sparkles } from 'lucide-react';
 import { assetApi } from '@/services/api';
 
 export interface StoryboardEditDialogProps {
@@ -36,6 +36,8 @@ export interface StoryboardEditDialogProps {
   scenes: any[];
   props: any[];
   onOpenAssetSelector: () => void;
+  onAutoMatchAssets: () => void;
+  isAutoMatching: boolean;
 
   // 提示词
   generatedPrompt: string;
@@ -91,6 +93,8 @@ export function StoryboardEditDialog({
   scenes,
   props,
   onOpenAssetSelector,
+  onAutoMatchAssets,
+  isAutoMatching,
   generatedPrompt,
   setGeneratedPrompt,
   onGeneratePrompt,
@@ -236,13 +240,33 @@ export function StoryboardEditDialog({
               <label className="block text-sm font-semibold text-gray-400">
                 已选资产 ({selectedCharacters.length + selectedProps.length + (selectedScene ? 1 : 0)})
               </label>
-              <button
-                onClick={onOpenAssetSelector}
-                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-              >
-                <Plus size={12} />
-                选择资产
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={onAutoMatchAssets}
+                  disabled={isAutoMatching}
+                  className="text-xs text-purple-400 hover:text-purple-300 disabled:text-gray-500 flex items-center gap-1"
+                  title="根据分镜描述自动匹配资产"
+                >
+                  {isAutoMatching ? (
+                    <>
+                      <RefreshCcw size={12} className="animate-spin" />
+                      匹配中...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={12} />
+                      自动匹配
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={onOpenAssetSelector}
+                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                >
+                  <Plus size={12} />
+                  选择资产
+                </button>
+              </div>
             </div>
 
             {/* 显示已选择的资产标签 */}
@@ -353,7 +377,7 @@ export function StoryboardEditDialog({
                     {visibleStoryboardImages.slice(0, 3).map((img) => (
                       <div key={img.image_id} className="relative group">
                         <img
-                          src={getImageUrl(img)}
+                          src={getImageUrl(img).replace('/images/files/', '/thumbnails/')}
                           alt={`分镜图片`}
                           className="w-16 h-16 object-cover rounded-lg border-2 border-transparent hover:border-blue-500 transition"
                           loading="lazy"

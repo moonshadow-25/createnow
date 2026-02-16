@@ -35,6 +35,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [editImagePrompt, setEditImagePrompt] = useState('');
   const [generatingEditPrompt, setGeneratingEditPrompt] = useState(false);
   const [editingImage, setEditingImage] = useState(false);
+  const [generatingCharacterSheet, setGeneratingCharacterSheet] = useState(false);  // 生成人设图状态
   // 图像编辑对话框状态
   const [showImageEditDialog, setShowImageEditDialog] = useState(false);
   // 隐藏图片状态
@@ -169,22 +170,16 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       const response = await generationApi.generateImagePrompt(projectId, {
         asset_type: assetType,
         description: enhancedDescription,
+        asset_id: asset.asset_id,  // 传入 asset_id，后端会自动保存
       });
-      const newPrompt = response.data.positive_prompt;
+      const newPrompt = response.data.prompt || '';
       setImagePrompt(newPrompt);
       setImagePromptSectionExpanded(true);
       setEditData((prev: any) => ({ ...prev, image_prompt: newPrompt }));
 
-      // 自动保存提示词到资产
-      try {
-        await assetApi.update(projectId, assetType, asset.asset_id, {
-          image_prompt: newPrompt
-        });
-        toast('提示词已生成并保存', 'success');
-      } catch (saveError) {
-        console.error('保存提示词失败:', saveError);
-        toast('提示词已生成，但保存失败', 'error');
-      }
+      // 后端已自动保存，直接刷新父组件
+      onDeleted();
+      toast('提示词已生成并保存', 'success');
     } catch (error: any) {
       setPromptError(error.response?.data?.detail || '生成提示词失败');
     } finally {
@@ -274,6 +269,44 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     }
   };
 
+  const handleGenerateCharacterSheet = async () => {
+    // 检查是否是角色类型
+    if (assetType !== 'character') {
+      toast('此功能仅适用于角色资产', 'error');
+      return;
+    }
+
+    // 检查是否有主图
+    if (!asset.image_id) {
+      toast('请先生成角色的主图', 'error');
+      return;
+    }
+
+    setGeneratingCharacterSheet(true);
+    try {
+      await generationApi.editImage(projectId, {
+        assetId: asset.asset_id,
+        assetType: assetType,
+        prompt: '',  // 留空，由模板填充
+        size: '16x9',
+        referenceImageIds: [asset.image_id],
+        template: 'character_sheet'  // 使用人设模板
+      });
+
+      await loadImages();
+      toast('人设图生成成功', 'success');
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.detail
+        ? (typeof error.response.data.detail === 'string'
+            ? error.response.data.detail
+            : JSON.stringify(error.response.data.detail))
+        : '生成人设图失败';
+      toast(errorMsg, 'error');
+    } finally {
+      setGeneratingCharacterSheet(false);
+    }
+  };
+
   const truncateDescription = (text: string, maxLength: number = 35) => {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
@@ -323,7 +356,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
         >
           {primaryImage ? (
             <img
-              src={primaryImage}
+              src={primaryImage.replace('/images/files/', '/thumbnails/')}
               alt={asset.name}
               className="w-full h-full object-cover"
               loading="lazy"
@@ -631,7 +664,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       <button
                         onClick={handleGeneratePrompt}
                         className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg"
-                        disabled={generatingPrompt || generating || editingImage}
+                        disabled={generatingPrompt || generating || editingImage || generatingCharacterSheet}
                       >
                         <Wand2 size={16} />
                         {generatingPrompt ? '生成中...' : imagePrompt ? '重新生成提示词' : 'AI生成提示词'}
@@ -639,11 +672,23 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       <button
                         onClick={handleGenerateImage}
                         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg"
-                        disabled={generating}
+                        disabled={generating || generatingCharacterSheet}
                       >
                         <ImagePlus size={16} />
                         {generating ? '生成中...' : '生成图片'}
                       </button>
+                      {/* 生成人设按钮 - 仅角色类型显示 */}
+                      {assetType === 'character' && (
+                        <button
+                          onClick={handleGenerateCharacterSheet}
+                          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 px-4 py-2 rounded-lg disabled:bg-gray-700 disabled:opacity-50"
+                          disabled={generatingCharacterSheet || !asset.image_id}
+                          title={!asset.image_id ? '请先生成角色主图' : '生成角色人设图（全身三视图+面部特写）'}
+                        >
+                          <Users size={16} />
+                          {generatingCharacterSheet ? '生成中...' : '生成人设'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -727,7 +772,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                         {visibleImages.slice(0, 3).map((img) => (
                           <div key={img.image_id} className="relative group">
                             <img
-                              src={getImageUrl(img)}
+                              src={getImageUrl(img).replace('/images/files/', '/thumbnails/')}
                               alt={asset.name}
                               className="w-16 h-16 object-cover rounded-lg border-2 border-transparent hover:border-blue-500 transition"
                               loading="lazy"

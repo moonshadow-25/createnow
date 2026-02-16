@@ -8,6 +8,15 @@ import { getVideoUrl } from './utils/mediaUtils';
 import { useVideoExportDownload } from './hooks/useVideoExportDownload';
 import { useIsVideoDownloading, useVideoDownloadProgress } from '@/store/videoDownloadStore';
 
+interface Image {
+  image_id: string;
+  image_path: string;
+  local_path?: string;
+  is_downloaded?: boolean;
+  prompt: string;
+  is_primary: boolean;
+}
+
 interface VideoGalleryProps {
   projectId: string;
   storyboardId?: string;
@@ -15,6 +24,7 @@ interface VideoGalleryProps {
   onClose?: () => void;
   storyboardCount?: number;
   loadStoryboards?: () => Promise<void>;
+  storyboardPrimaryImages?: Map<string, string>; // 父组件提供的分镜主图 Map
 }
 
 export function VideoGallery({
@@ -23,7 +33,8 @@ export function VideoGallery({
   episodeId,
   onClose,
   storyboardCount = 0,
-  loadStoryboards
+  loadStoryboards,
+  storyboardPrimaryImages
 }: VideoGalleryProps) {
   const { toast } = useToast();
 
@@ -51,6 +62,7 @@ export function VideoGallery({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pollingVideos, setPollingVideos] = useState<Set<string>>(new Set());
+  const [storyboardThumbnails, setStoryboardThumbnails] = useState<Map<string, string>>(new Map()); // storyboardId -> thumbnail URL
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videosRef = useRef<VideoRecord[]>([]); // 存储最新的allVideos状态，供定时器访问
   const parentRef = useRef<HTMLDivElement>(null); // 虚拟滚动容器ref
@@ -58,6 +70,22 @@ export function VideoGallery({
   useEffect(() => {
     const init = async () => {
       const videoList = await loadAllVideos();
+
+      // 优先使用父组件传入的分镜主图数据
+      if (storyboardPrimaryImages && storyboardPrimaryImages.size > 0) {
+        // 从父组件的 Map 构建缩略图 Map
+        const thumbnailMap = new Map<string, string>();
+        storyboardPrimaryImages.forEach((imageUrl, storyboardId) => {
+          // 将原图路径转换为缩略图路径
+          const thumbnailUrl = imageUrl.replace('/images/files/', '/thumbnails/');
+          thumbnailMap.set(storyboardId, thumbnailUrl);
+        });
+        setStoryboardThumbnails(thumbnailMap);
+      } else {
+        // 没有父组件数据，才发起请求加载
+        await loadStoryboardThumbnails(videoList);
+      }
+
       // 手动更新ref，确保立即轮询时能读取到最新数据
       videosRef.current = videoList;
       // 立即执行一次轮询
@@ -76,7 +104,7 @@ export function VideoGallery({
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [projectId, storyboardId, episodeId]);
+  }, [projectId, storyboardId, episodeId, storyboardPrimaryImages]);
 
   // 同步allVideos状态到ref，供定时器访问最新值
   useEffect(() => {
@@ -139,6 +167,52 @@ export function VideoGallery({
       setHasMore(currentLength + nextBatch.length < allVideos.length);
     } else {
       setHasMore(false);
+    }
+  };
+
+  // 加载分镜缩略图
+  const loadStoryboardThumbnails = async (videos: VideoRecord[]) => {
+    try {
+      // 提取所有唯一的 storyboard_id
+      const uniqueStoryboardIds = [...new Set(videos.map(v => v.storyboard_id))];
+
+      if (uniqueStoryboardIds.length === 0) return;
+
+      // 批量查询所有分镜（如果没有 episodeId，只能逐个查询）
+      const storyboardPromises = uniqueStoryboardIds.map(async (sbId) => {
+        try {
+          // 通过 generationApi 获取分镜的图片列表
+          const response = await generationApi.listImages(projectId, sbId);
+          const images: Image[] = response.data || [];
+
+          // 找到 primary image
+          const primaryImage = images.find(img => img.is_primary);
+
+          if (primaryImage && primaryImage.local_path) {
+            // 构建缩略图 URL
+            const thumbnailUrl = `/api/projects/${projectId}/thumbnails/${primaryImage.local_path}`;
+            return { storyboardId: sbId, thumbnailUrl };
+          }
+          return null;
+        } catch (err) {
+          console.error(`Failed to load storyboard ${sbId}:`, err);
+          return null;
+        }
+      });
+
+      const results = await Promise.allSettled(storyboardPromises);
+
+      // 构建 Map
+      const thumbnailMap = new Map<string, string>();
+      results.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value) {
+          thumbnailMap.set(result.value.storyboardId, result.value.thumbnailUrl);
+        }
+      });
+
+      setStoryboardThumbnails(thumbnailMap);
+    } catch (err) {
+      console.error('Failed to load storyboard thumbnails:', err);
     }
   };
 
@@ -389,8 +463,7 @@ export function VideoGallery({
                         width: '100%',
                         height: `${virtualRow.size}px`,
                         transform: `translateY(${virtualRow.start}px)`,
-                        zIndex: virtualRow.index, // ✅ 修复遮挡问题
-                        overflow: 'hidden', // ✅ 防止内容溢出遮挡下一行
+                        zIndex: 9999 - virtualRow.index, // 反转z-index，让前面的行在最上层
                       }}
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-1">
@@ -399,6 +472,7 @@ export function VideoGallery({
                             video={video1}
                             projectId={projectId}
                             isPolling={pollingVideos.has(video1.video_id)}
+                            posterUrl={storyboardThumbnails.get(video1.storyboard_id)}
                             onSetPrimary={handleSetPrimaryVideo}
                             onDelete={handleDeleteVideo}
                             onPoll={pollSingleVideo}
@@ -409,6 +483,7 @@ export function VideoGallery({
                             video={video2}
                             projectId={projectId}
                             isPolling={pollingVideos.has(video2.video_id)}
+                            posterUrl={storyboardThumbnails.get(video2.storyboard_id)}
                             onSetPrimary={handleSetPrimaryVideo}
                             onDelete={handleDeleteVideo}
                             onPoll={pollSingleVideo}
@@ -469,7 +544,7 @@ export function VideoPlayer({ video, projectId, onClose }: { video: VideoRecord;
               src={videoUrl}
               className="w-full h-full"
               controls
-              autoPlay
+              preload="none"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white">

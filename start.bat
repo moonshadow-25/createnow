@@ -46,7 +46,10 @@ echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Start server directly without temporary file
+REM Start a minimized background task to open browser after delay
+start /min cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:%API_PORT%"
+
+REM Start server in current window
 cd /d "%CD%\backend"
 set PYTHONPATH=%CD%
 %CD%\..\env\python.exe app\main.py --serve-frontend

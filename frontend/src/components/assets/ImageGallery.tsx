@@ -169,6 +169,17 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
     return image.image_path;
   };
 
+  // 获取缩略图URL（用于列表显示）
+  const getThumbnailUrl = (image: Image) => {
+    const originalUrl = getImageUrl(image);
+    // 只有本地图片才有缩略图
+    if (originalUrl.includes('/images/files/')) {
+      return originalUrl.replace('/images/files/', '/thumbnails/');
+    }
+    // 外部URL直接返回原图
+    return originalUrl;
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -252,7 +263,7 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
                 }`}
               >
                 <img
-                  src={getImageUrl(img)}
+                  src={getThumbnailUrl(img)}
                   alt={assetName}
                   className="w-full aspect-square object-cover cursor-pointer"
                   onClick={() => setExpandedImage(img.image_id)}

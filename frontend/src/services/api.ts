@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // 开发环境直接使用后端 URL，生产环境使用相对路径
 const API_BASE_URL = import.meta.env.DEV
-  ? 'http://localhost:8001/api'
+  ? 'http://localhost:8501/api'
   : '/api';
 
 const api = axios.create({
@@ -147,6 +147,7 @@ export const generationApi = {
     size?: string,
     referenceImageIds?: string[]
     referenceImageUrls?: string[]
+    template?: string  // 模板ID，如 "character_sheet" 用于生成人设图
   }) =>
     api.post(`/projects/${projectId}/generate/image-edit`, {
       asset_id: data.assetId,
@@ -155,6 +156,7 @@ export const generationApi = {
       ...(data.size && { size: data.size }),  // 只有明确提供时才发送 size
       reference_image_ids: data.referenceImageIds || [],
       reference_image_urls: data.referenceImageUrls || [],
+      ...(data.template && { template: data.template }),  // 只有明确提供时才发送 template
     }),
   // VLM图片分析（统一接口）
   analyzeWithVLM: (projectId: string, data: {
@@ -174,6 +176,11 @@ export const generationApi = {
       camera_angles: data.camera_angles || [],
       actions: data.actions || [],
       dialogues: data.dialogues || [],
+    }),
+  // 生成多分镜融合视频提示词（LLM）
+  generateMultiSceneVideoPrompt: (projectId: string, storyboardIds: string[]) =>
+    api.post(`/projects/${projectId}/generate/multi-scene-video-prompt`, {
+      storyboard_ids: storyboardIds
     }),
   // AI日志
   getAILogs: (projectId: string, params?: { type?: string; limit?: number; offset?: number }) =>
@@ -231,6 +238,21 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/images/split-triple`, {
       storyboard_id: storyboardId,
     }),
+  // 分镜导出
+  exportStoryboards: (projectId: string, storyboardIds: string[], prompt: string) =>
+    api.post(`/projects/${projectId}/generate/storyboards/export`, {
+      storyboard_ids: storyboardIds,
+      prompt: prompt,
+    }),
+  // 全局风格配置
+  getGlobalStyleConfig: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/global-style-config`),
+  updateGlobalStyleConfig: (projectId: string, config: any) =>
+    api.put(`/projects/${projectId}/generate/global-style-config`, config),
+  getStylePresets: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/style-presets`),
+  getStylePresetDetail: (projectId: string, presetType: 'image' | 'video', presetId: string) =>
+    api.get(`/projects/${projectId}/generate/style-presets/detail/${presetType}/${presetId}`),
 };
 
 // 验证相关API
@@ -241,6 +263,8 @@ export const validationApi = {
     api.post('/validate/image', config),
   validateVideo: (config: { api_url?: string; api_key?: string; model?: string; api_type?: string }) =>
     api.post('/validate/video', config),
+  validateTTS: (config: { api_url?: string; api_key?: string; model?: string; api_type?: string; voice?: string; id?: string }) =>
+    api.post('/validate/tts', config),
 };
 
 // 分镜相关API
@@ -261,6 +285,10 @@ export const storyboardApi = {
     api.post(`/projects/${projectId}/storyboards/generate`, data),
   createEndFrame: (projectId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/storyboards/${storyboardId}/create-end-frame`),
+  autoMatchAssets: (projectId: string, storyboardId: string) =>
+    api.post(`/projects/${projectId}/storyboards/${storyboardId}/auto-match-assets`),
+  export: (projectId: string, storyboardId: string) =>
+    api.post(`/projects/${projectId}/storyboards/${storyboardId}/export`),
 };
 
 // 剧本创作相关API
