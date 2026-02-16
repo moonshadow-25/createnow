@@ -22,6 +22,7 @@ import { StoryboardPromptDialog } from './StoryboardPromptDialog';
 import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useOneClickGeneration } from './hooks/useOneClickGeneration';
+import { useDialogManager } from './hooks/useDialogManager';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -44,29 +45,37 @@ export function StoryboardDetail({
   const [selectedEpisode, setSelectedEpisode] = useState<any>(null);
   const [storyboards, setStoryboards] = useState<any[]>([]);
   const [storyboardPrimaryImages, setStoryboardPrimaryImages] = useState<Map<string, string>>(new Map());
-  const [showVideoGallery, setShowVideoGallery] = useState(false);
+
+  // 统一管理所有对话框状态
+  const dialogs = useDialogManager({
+    videoGallery: false,
+    scriptEdit: false,
+    storyboardEdit: false,
+    assetSelector: false,
+    storyboardImageGallery: false,
+    imageEdit: false,
+    videoGenerate: false,
+    cardImageEdit: false,
+    tripleGrid: false
+  });
 
   // 使用 store 管理生成状态
   const { startTask, completeTask, failTask, hasRunningTask } = useStoryboardGenerationStore();
 
   // 剧本编辑相关状态
-  const [showScriptEdit, setShowScriptEdit] = useState(false);
   const [editingScript, setEditingScript] = useState('');
 
   // 分镜编辑相关状态
-  const [showStoryboardEdit, setShowStoryboardEdit] = useState(false);
   const [editingStoryboard, setEditingStoryboard] = useState<any>(null);
   const [isCreating, setIsCreating] = useState(false); // 区分创建/编辑模式
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [selectedScene, setSelectedScene] = useState('');
   const [selectedProps, setSelectedProps] = useState<string[]>([]);
   const [generatedPrompt, setGeneratedPrompt] = useState('');
-  const [showAssetSelector, setShowAssetSelector] = useState(false);
 
   // 从 store 获取任务状态方法
   const getTaskStatus = useStoryboardGenerationStore(state => state.getTaskStatus);
   const [storyboardImages, setStoryboardImages] = useState<any[]>([]);
-  const [showStoryboardImageGallery, setShowStoryboardImageGallery] = useState(false);
   const [imageGalleryStoryboard, setImageGalleryStoryboard] = useState<any>(null);
 
   // 分镜内容编辑状态（使用 hook）
@@ -87,25 +96,18 @@ export function StoryboardDetail({
     resetEditState
   } = contentEdit;
 
-  // 图像编辑对话框状态
-  const [showImageEditDialog, setShowImageEditDialog] = useState(false);
-  // 视频生成弹框状态
-  const [showVideoGenerateDialog, setShowVideoGenerateDialog] = useState(false);
+  // 视频生成弹框数据状态
   const [videoGenerateStoryboard, setVideoGenerateStoryboard] = useState<any>(null);
   // 保存成功提示状态
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // 图片编辑弹框状态（用于分镜卡片按钮）
-  const [showCardImageEditDialog, setShowCardImageEditDialog] = useState(false);
+  // 图片编辑弹框数据状态（用于分镜卡片按钮）
   const [cardImageEditStoryboard, setCardImageEditStoryboard] = useState<any>(null);
   const [cardImageEditImages, setCardImageEditImages] = useState<any[]>([]);
   // 自动匹配资产加载状态
   const [isAutoMatching, setIsAutoMatching] = useState(false);
   // 隐藏图片状态
   const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
-
-  // 三宫格对话框状态
-  const [showTripleGridDialog, setShowTripleGridDialog] = useState(false);
 
   // 状态隔离：跟踪当前编辑的分镜ID，防止异步响应污染其他分镜
   const editingStoryboardIdRef = useRef<string | null>(null);
@@ -375,7 +377,10 @@ export function StoryboardDetail({
 
   // 包装函数以适配现有调用方式
   const handleEditImage = (storyboard: any) => {
-    return handleEditImageBase(storyboard, setCardImageEditStoryboard, setCardImageEditImages, setShowCardImageEditDialog);
+    return handleEditImageBase(storyboard, setCardImageEditStoryboard, setCardImageEditImages, (show: boolean) => {
+      if (show) dialogs.open('cardImageEdit');
+      else dialogs.close('cardImageEdit');
+    });
   };
 
   const handleSetPrimaryStoryboardImage = (imageId: string) => {
@@ -434,7 +439,10 @@ export function StoryboardDetail({
       storyboardImages,
       prompt,
       setStoryboardImages,
-      setShowTripleGridDialog
+      (show: boolean) => {
+        if (show) dialogs.open('tripleGrid');
+        else dialogs.close('tripleGrid');
+      }
     );
   };
 
@@ -442,7 +450,10 @@ export function StoryboardDetail({
     return handleSplitTripleGridBase(
       editingStoryboard,
       storyboardImages,
-      setShowStoryboardEdit,
+      (show: boolean) => {
+        if (show) dialogs.open('storyboardEdit');
+        else dialogs.close('storyboardEdit');
+      },
       setEditingStoryboard,
       setEditingStoryboardId
     );
@@ -560,7 +571,7 @@ export function StoryboardDetail({
 
       setImageGalleryStoryboard(storyboard);
       setStoryboardImages(sortedImages);
-      setShowStoryboardImageGallery(true);
+      dialogs.open('storyboardImageGallery');
     } catch (error) {
       console.error('Failed to load storyboard images:', error);
       toast('加载图片失败', 'error');
@@ -598,7 +609,7 @@ export function StoryboardDetail({
 
   const handleEditScript = () => {
     setEditingScript(selectedEpisode?.script || '');
-    setShowScriptEdit(true);
+    dialogs.open('scriptEdit');
   };
 
   const handleSaveScript = async () => {
@@ -609,7 +620,7 @@ export function StoryboardDetail({
         script: editingScript,
       });
       setSelectedEpisode({ ...selectedEpisode, script: editingScript });
-      setShowScriptEdit(false);
+      dialogs.close('scriptEdit');
       onUpdated();
       toast('剧本已保存', 'success');
     } catch (error: any) {
@@ -634,7 +645,7 @@ export function StoryboardDetail({
     setGeneratedPrompt('');
     resetEditState(); // 使用 hook 的重置函数
     setStoryboardImages([]);
-    setShowStoryboardEdit(true);
+    dialogs.open('storyboardEdit');
   };
 
   const handleEditStoryboard = async (storyboard: any) => {
@@ -690,7 +701,7 @@ export function StoryboardDetail({
       setStoryboardImages([]);
     }
 
-    setShowStoryboardEdit(true);
+    dialogs.open('storyboardEdit');
   };
 
   const handleAutoMatchAssets = async () => {
@@ -788,7 +799,7 @@ export function StoryboardDetail({
 
     // 打开视频生成弹框
     setVideoGenerateStoryboard(storyboard);
-    setShowVideoGenerateDialog(true);
+    dialogs.open('videoGenerate');
   };
 
   // 拖拽结束处理
@@ -935,7 +946,7 @@ export function StoryboardDetail({
                   添加分镜
                 </button>
                 <button
-                  onClick={() => setShowVideoGallery(true)}
+                  onClick={() => dialogs.open('videoGallery')}
                   className="flex items-center gap-1 text-sm bg-green-600 hover:bg-green-700 px-3 py-2 rounded"
                 >
                   <Play size={14} />
@@ -1125,11 +1136,11 @@ export function StoryboardDetail({
       </div>
 
       {/* 视频库 */}
-      {showVideoGallery && (
+      {dialogs.isOpen('videoGallery') && (
         <VideoGallery
           projectId={projectId}
           episodeId={selectedEpisode?.asset_id}
-          onClose={() => setShowVideoGallery(false)}
+          onClose={() => dialogs.close('videoGallery')}
           storyboardCount={storyboards.length}
           loadStoryboards={loadStoryboards}
           storyboardPrimaryImages={storyboardPrimaryImages}
@@ -1137,13 +1148,13 @@ export function StoryboardDetail({
       )}
 
       {/* 视频生成弹框 */}
-      {showVideoGenerateDialog && videoGenerateStoryboard && selectedEpisode && (
+      {dialogs.isOpen('videoGenerate') && videoGenerateStoryboard && selectedEpisode && (
         <VideoGenerateDialog
           projectId={projectId}
           storyboard={videoGenerateStoryboard}
           episodeId={selectedEpisode.asset_id}
           onClose={() => {
-            setShowVideoGenerateDialog(false);
+            dialogs.close('videoGenerate');
             setVideoGenerateStoryboard(null);
           }}
           onSuccess={() => {
@@ -1154,16 +1165,16 @@ export function StoryboardDetail({
 
       {/* 剧本编辑弹框 */}
       <ScriptEditDialog
-        show={showScriptEdit}
+        show={dialogs.isOpen('scriptEdit')}
         editingScript={editingScript}
         onScriptChange={setEditingScript}
         onSave={handleSaveScript}
-        onClose={() => setShowScriptEdit(false)}
+        onClose={() => dialogs.close('scriptEdit')}
       />
 
       {/* 分镜编辑/创建弹框 */}
       <StoryboardEditDialog
-        show={showStoryboardEdit}
+        show={dialogs.isOpen('storyboardEdit')}
         isCreating={isCreating}
         storyboardsCount={storyboards.length}
         editingStoryboard={editingStoryboard}
@@ -1190,7 +1201,7 @@ export function StoryboardDetail({
         characters={characters}
         scenes={scenes}
         props={props}
-        onOpenAssetSelector={() => setShowAssetSelector(true)}
+        onOpenAssetSelector={() => dialogs.open('assetSelector')}
         onAutoMatchAssets={handleAutoMatchAssets}
         isAutoMatching={isAutoMatching}
         generatedPrompt={generatedPrompt}
@@ -1199,17 +1210,17 @@ export function StoryboardDetail({
         storyboardImages={storyboardImages}
         hiddenImageIds={hiddenImageIds}
         getImageUrl={(img) => getImageUrl(img, projectId)}
-        onOpenImageGallery={() => setShowStoryboardImageGallery(true)}
+        onOpenImageGallery={() => dialogs.open('storyboardImageGallery')}
         getTaskStatus={getTaskStatus}
         hasRunningTask={hasRunningTask}
         onSave={handleSaveStoryboard}
         onGenerateImage={handleGenerateImageFromEdit}
-        onOpenImageEdit={() => setShowImageEditDialog(true)}
-        onOpenTripleGridDialog={() => setShowTripleGridDialog(true)}
+        onOpenImageEdit={() => dialogs.open('imageEdit')}
+        onOpenTripleGridDialog={() => dialogs.open('tripleGrid')}
         isSplittingTripleGrid={isSplittingTripleGrid}
         onSplitTripleGrid={handleSplitTripleGrid}
         onClose={() => {
-          setShowStoryboardEdit(false);
+          dialogs.close('storyboardEdit');
           setEditingStoryboardId(null); // 状态隔离：清空
           editingStoryboardIdRef.current = null; // 保持兼容性
         }}
@@ -1217,7 +1228,7 @@ export function StoryboardDetail({
 
       {/* 统一资产选择弹框 */}
       <AssetSelectorDialog
-        show={showAssetSelector}
+        show={dialogs.isOpen('assetSelector')}
         characters={characters}
         scenes={scenes}
         props={props}
@@ -1227,11 +1238,11 @@ export function StoryboardDetail({
         setSelectedScene={setSelectedScene}
         selectedProps={selectedProps}
         setSelectedProps={setSelectedProps}
-        onClose={() => setShowAssetSelector(false)}
+        onClose={() => dialogs.close('assetSelector')}
       />
 
       {/* 分镜图片库 */}
-      {showStoryboardImageGallery && (imageGalleryStoryboard || editingStoryboard) && (
+      {dialogs.isOpen('storyboardImageGallery') && (imageGalleryStoryboard || editingStoryboard) && (
         <ImageGallery
           images={storyboardImages}
           assetName={`分镜 ${(imageGalleryStoryboard || editingStoryboard).sequence}`}
@@ -1249,11 +1260,11 @@ export function StoryboardDetail({
               // 从编辑对话框打开的，使用原有逻辑
               await handleSetPrimaryStoryboardImage(imageId);
             }
-            setShowStoryboardImageGallery(false);
+            dialogs.close('storyboardImageGallery');
             setImageGalleryStoryboard(null);
           }}
           onClose={() => {
-            setShowStoryboardImageGallery(false);
+            dialogs.close('storyboardImageGallery');
             setImageGalleryStoryboard(null);
           }}
           onImagesUpdated={async () => {
@@ -1278,7 +1289,7 @@ export function StoryboardDetail({
       )}
 
       {/* 图像编辑对话框 */}
-      {showImageEditDialog && editingStoryboard && (
+      {dialogs.isOpen('imageEdit') && editingStoryboard && (
         <ImageEditDialog
           projectId={projectId}
           assetId={editingStoryboard.asset_id}
@@ -1296,12 +1307,12 @@ export function StoryboardDetail({
             });
             setStoryboardImages(sortedImages);
           }}
-          onClose={() => setShowImageEditDialog(false)}
+          onClose={() => dialogs.close('imageEdit')}
         />
       )}
 
       {/* 图片编辑对话框（分镜卡片按钮触发） */}
-      {showCardImageEditDialog && cardImageEditStoryboard && (
+      {dialogs.isOpen('cardImageEdit') && cardImageEditStoryboard && (
         <ImageEditDialog
           projectId={projectId}
           assetId={cardImageEditStoryboard.asset_id}
@@ -1312,20 +1323,20 @@ export function StoryboardDetail({
             await loadStoryboards();
           }}
           onClose={() => {
-            setShowCardImageEditDialog(false);
+            dialogs.close('cardImageEdit');
             setCardImageEditStoryboard(null);
           }}
         />
       )}
 
       {/* 三宫格提示词弹框 */}
-      {showTripleGridDialog && editingStoryboard && (
+      {dialogs.isOpen('tripleGrid') && editingStoryboard && (
         <TripleGridPromptDialog
-          isOpen={showTripleGridDialog}
+          isOpen={dialogs.isOpen('tripleGrid')}
           defaultPrompt={tripleGridPromptTemplate.replace('{description}', editDescription || editingStoryboard.description || '')}
           isGenerating={getTaskStatus(editingStoryboard.asset_id, 'triple_grid') === 'generating'}
           onConfirm={handleGenerateTripleGrid}
-          onClose={() => setShowTripleGridDialog(false)}
+          onClose={() => dialogs.close('tripleGrid')}
         />
       )}
 
