@@ -6,8 +6,10 @@ from typing import Optional, List, Dict, Any
 
 from app.services import (
     ScriptService, ScriptCharacterService, ScriptEpisodeService,
-    ScriptSceneService, ScriptLineService, ScriptParser, AILogService
+    ScriptSceneService, ScriptLineService, ScriptParser, AILogService,
+    parse_script_with_ai
 )
+from app.services.asset_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class UpdateCharacterRequest(BaseModel):
 
 class ImportScriptRequest(BaseModel):
     content: str  # 剧本文本内容
+    use_ai: bool = True  # 是否使用 AI 解析（默认 True，False 则用正则）
 
 
 class AddSceneRequest(BaseModel):
@@ -319,19 +322,29 @@ async def export_script(project_id: str, script_id: str, format: str = Query("tx
 
 @router.post("/{script_id}/import")
 async def import_script(project_id: str, script_id: str, request: ImportScriptRequest):
-    """导入剧本文本"""
+    """导入剧本文本（use_ai=True 使用 AI 解析，False 使用正则解析）"""
     try:
         script = ScriptService.get_script(project_id, script_id)
         if not script:
             raise HTTPException(status_code=404, detail="Script not found")
 
-        result = ScriptParser.import_script_to_project(project_id, script_id, request.content)
+        if request.use_ai:
+            # AI 解析：读取项目 LLM 配置
+            project = ProjectService.get_project(project_id)
+            ai_config = project.get("ai_config", {}) if project else {}
+            parsed = await parse_script_with_ai(project_id, script_id, request.content, ai_config)
+            result = ScriptParser.import_parsed_to_project(project_id, script_id, parsed)
+            mode = "ai"
+        else:
+            # 正则解析（兜底）
+            result = ScriptParser.import_script_to_project(project_id, script_id, request.content)
+            mode = "regex"
 
-        # 记录AI日志
+        # 记录日志
         AILogService.log_interaction(
             project_id=project_id,
             interaction_type=AILogService.TYPE_LLM,
-            request_data={"action": "import_script", "content_length": len(request.content)},
+            request_data={"action": "import_script", "mode": mode, "content_length": len(request.content)},
             response_data={"result": result},
             metadata={"operation": "import_script", "script_id": script_id}
         )

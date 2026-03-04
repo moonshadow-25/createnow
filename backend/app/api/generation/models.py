@@ -3,7 +3,7 @@ Generation API - Pydantic 模型定义
 """
 
 from pydantic import BaseModel, validator, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class PromptTemplateUpdate(BaseModel):
@@ -174,6 +174,8 @@ class StyleConfig(BaseModel):
     preset_id: str = "none"      # 预设ID（"none", "pixar_3d", "custom"等）
     custom_suffix: str = ""      # 自定义风格后缀（当preset_id为"custom"时使用）
     enabled: bool = True         # 是否启用
+    custom_presets: List[Dict[str, str]] = Field(default_factory=list)  # 多个自定义预设 [{id, name, content}]
+    active_custom_id: str = ""   # 当前选中的自定义预设ID
 
 
 class GlobalStyleConfig(BaseModel):

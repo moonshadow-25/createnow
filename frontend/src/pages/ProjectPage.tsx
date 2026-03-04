@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MessageSquare, Users, Film, FileText, Settings, Palette } from 'lucide-react';
+import { MessageSquare, Users, Film, FileText, Settings, Palette, ChevronDown } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { ChatTab } from '@/components/chat/ChatTab';
@@ -18,8 +18,20 @@ export default function ProjectPage() {
   const { currentProject } = useProjectStore();
   const { characters, scenes, props, episodes, fetchAssets } = useAssetStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // 加载资产
   const handleRefreshAssets = async () => {
@@ -72,22 +84,13 @@ export default function ProjectPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setActiveTab('chat')}
+              onClick={() => setActiveTab('storyboard')}
               className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'chat' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                activeTab === 'storyboard' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
               }`}
             >
-              <MessageSquare size={18} className="inline mr-2" />
-              对话
-            </button>
-            <button
-              onClick={() => setActiveTab('script')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'script' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-              }`}
-            >
-              <FileText size={18} className="inline mr-2" />
-              剧本
+              <Film size={18} className="inline mr-2" />
+              分镜
             </button>
             <button
               onClick={() => setActiveTab('assets')}
@@ -98,24 +101,45 @@ export default function ProjectPage() {
               <Users size={18} className="inline mr-2" />
               资产
             </button>
-            <button
-              onClick={() => setActiveTab('storyboard')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'storyboard' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-              }`}
-            >
-              <Film size={18} className="inline mr-2" />
-              分镜
-            </button>
-            <button
-              onClick={() => setActiveTab('canvas')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'canvas' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-              }`}
-            >
-              <Palette size={18} className="inline mr-2" />
-              画布
-            </button>
+            {/* 更多下拉 */}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className={`px-4 py-2 rounded-lg transition flex items-center gap-1 ${
+                  ['chat', 'script', 'canvas'].includes(activeTab)
+                    ? 'bg-blue-600'
+                    : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+              >
+                更多
+                <ChevronDown size={16} />
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 min-w-[120px]">
+                  <button
+                    onClick={() => { setActiveTab('chat'); setShowMoreMenu(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg hover:bg-gray-600 ${activeTab === 'chat' ? 'text-blue-400' : 'text-gray-200'}`}
+                  >
+                    <MessageSquare size={16} />
+                    对话
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('script'); setShowMoreMenu(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 ${activeTab === 'script' ? 'text-blue-400' : 'text-gray-200'}`}
+                  >
+                    <FileText size={16} />
+                    剧本
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('canvas'); setShowMoreMenu(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-b-lg hover:bg-gray-600 ${activeTab === 'canvas' ? 'text-blue-400' : 'text-gray-200'}`}
+                  >
+                    <Palette size={16} />
+                    画布
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={handleOpenSettings}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-2"

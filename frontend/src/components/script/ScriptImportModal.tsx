@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, FileText, Upload, AlertTriangle } from 'lucide-react';
+import { X, FileText, Upload, AlertTriangle, Sparkles, Zap } from 'lucide-react';
 import { scriptApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 
@@ -30,6 +30,7 @@ export function ScriptImportModal({
 }: ScriptImportModalProps) {
   const { toast } = useToast();
   const [content, setContent] = useState('');
+  const [useAi, setUseAi] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
@@ -42,14 +43,11 @@ export function ScriptImportModal({
     setImporting(true);
     setImportResult(null);
     try {
-      const response = await scriptApi.import(projectId, scriptId, content);
+      const response = await scriptApi.import(projectId, scriptId, content, useAi);
       const result = response.data as ImportResult;
-
       setImportResult(result);
 
-      // 构建成功消息
-      const successMsg = `导入成功！标题: ${result.title || scriptTitle}, 人物: ${result.characters_count}, 集数: ${result.episodes_count}, 场景: ${result.scenes_count}, 镜头: ${result.lines_count}`;
-
+      const successMsg = `导入成功！人物: ${result.characters_count}, 集数: ${result.episodes_count}, 场景: ${result.scenes_count}, 镜头: ${result.lines_count}`;
       toast(successMsg, 'success');
       onImport();
     } catch (error: any) {
@@ -62,11 +60,8 @@ export function ScriptImportModal({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (event) => {
-      setContent(event.target?.result as string);
-    };
+    reader.onload = (event) => setContent(event.target?.result as string);
     reader.readAsText(file, 'utf-8');
   };
 
@@ -86,11 +81,40 @@ export function ScriptImportModal({
         </div>
 
         {/* 内容区 */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="mb-4">
-            <label className="block text-sm text-gray-400 mb-2">粘贴剧本内容或上传文件</label>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* 解析模式切换 */}
+          <div className="flex items-center gap-2 p-3 bg-gray-750 rounded-lg border border-gray-600">
+            <span className="text-sm text-gray-400 mr-1">解析方式：</span>
+            <button
+              onClick={() => setUseAi(true)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition ${
+                useAi
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              <Sparkles size={14} />
+              AI 智能解析
+            </button>
+            <button
+              onClick={() => setUseAi(false)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition ${
+                !useAi
+                  ? 'bg-gray-500 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              <Zap size={14} />
+              快速解析（正则）
+            </button>
+            <span className="ml-2 text-xs text-gray-500">
+              {useAi ? '支持任意格式，自动提取角色和场景' : '仅支持标准格式，速度更快'}
+            </span>
+          </div>
 
-            {/* 文件上传按钮 */}
+          {/* 文件上传 + 文本输入 */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">粘贴剧本内容或上传文件</label>
             <div className="mb-3">
               <label className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded cursor-pointer w-fit">
                 <FileText size={16} />
@@ -103,30 +127,29 @@ export function ScriptImportModal({
                 />
               </label>
             </div>
-
-            {/* 文本输入区 */}
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full h-64 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono resize-none"
-              placeholder="请粘贴剧本内容，格式如下：
-
-《剧本名称》
-人物表：
-角色名：描述
-角色名：年龄，性别，描述
-
-第1集
-一、场景名  日  外
-△ 视觉镜头描述
-角色名（语气）：台词内容
-..."
+              placeholder={useAi
+                ? '粘贴任意格式的剧本内容，AI 将自动识别角色、场景、对白...'
+                : `标准格式示例：\n《剧本名称》\n人物表：\n角色名：描述\n\n第1集\n一、场景名  日  外\n△ 视觉描述\n角色名（语气）：台词`}
             />
           </div>
 
+          {/* 解析中提示 */}
+          {importing && (
+            <div className="flex items-center gap-3 p-3 bg-purple-900 bg-opacity-30 border border-purple-700 rounded">
+              <div className="animate-spin w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full flex-shrink-0" />
+              <span className="text-sm text-purple-300">
+                {useAi ? 'AI 正在理解剧本结构，请稍候...' : '正在解析剧本...'}
+              </span>
+            </div>
+          )}
+
           {/* 警告信息 */}
           {importResult && importResult.warnings && importResult.warnings.length > 0 && (
-            <div className="mb-4 bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded p-3">
+            <div className="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded p-3">
               <div className="flex items-start gap-2">
                 <AlertTriangle size={16} className="text-yellow-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
@@ -141,11 +164,11 @@ export function ScriptImportModal({
             </div>
           )}
 
-          {/* 未解析内容样例 */}
+          {/* 未解析内容样例（正则模式） */}
           {importResult && importResult.unparsed_sample && importResult.unparsed_sample.length > 0 && (
-            <div className="mb-4 bg-orange-900 bg-opacity-20 border border-orange-700 rounded p-3">
+            <div className="bg-orange-900 bg-opacity-20 border border-orange-700 rounded p-3">
               <p className="text-sm font-semibold text-orange-400 mb-2">未能解析的内容样例：</p>
-              <div className="text-xs text-orange-200 font-mono">
+              <div className="text-xs text-orange-200 font-mono space-y-0.5">
                 {importResult.unparsed_sample.map((line, index) => (
                   <div key={index} className="truncate">
                     <span className="text-gray-500">第{line.line_number}行:</span> {line.content}
@@ -154,17 +177,6 @@ export function ScriptImportModal({
               </div>
             </div>
           )}
-
-          {/* 格式说明 */}
-          <div className="bg-gray-750 rounded p-3 text-xs text-gray-400">
-            <p className="font-semibold text-gray-300 mb-2">剧本格式规范：</p>
-            <ul className="space-y-1 list-disc list-inside">
-              <li>场景头格式：一、场景名  日/夜  内/外（使用中文数字序号）</li>
-              <li>视觉镜头：△ 开头，如：△ 【视觉开场】：镜头由远及近...</li>
-              <li>对话格式：角色名（语气）：台词内容</li>
-              <li>画外音：角色名（OS）：台词内容</li>
-            </ul>
-          </div>
         </div>
 
         {/* 底部按钮 */}
@@ -179,17 +191,21 @@ export function ScriptImportModal({
           <button
             onClick={handleImport}
             disabled={importing || !content.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className={`px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
+              useAi
+                ? 'bg-purple-600 hover:bg-purple-700'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
             {importing ? (
               <>
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
-                导入中...
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                {useAi ? 'AI 解析中...' : '导入中...'}
               </>
             ) : (
               <>
-                <Upload size={16} />
-                导入剧本
+                {useAi ? <Sparkles size={16} /> : <Upload size={16} />}
+                {useAi ? 'AI 智能导入' : '快速导入'}
               </>
             )}
           </button>

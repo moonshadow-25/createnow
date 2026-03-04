@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Edit, Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Users, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Users, Plus, Info } from 'lucide-react';
 import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
@@ -42,6 +42,8 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
 
   const isChildCharacter = assetType === 'character' && asset.parent_id;
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // 当 asset 更新时同步主图和数量（父组件刷新时）
   useEffect(() => {
@@ -63,6 +65,17 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       }
     }
   }, [asset.asset_id, images]);
+
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // 仅在需要时加载完整图片列表（打开图库或编辑弹框时）
   const loadImages = async () => {
@@ -199,8 +212,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
         asset_type: assetType,
         prompt: imagePrompt,
         negative_prompt: '',
-        width: 1024,
-        height: 1024,
       });
       await loadImages();
       toast('图片生成成功', 'success');
@@ -252,7 +263,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
         assetId: asset.asset_id,
         assetType: assetType,
         prompt: editImagePrompt,
-        size: '1024x1024',
         referenceImageIds: refImageIds
       });
       await loadImages();
@@ -288,7 +298,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
         assetId: asset.asset_id,
         assetType: assetType,
         prompt: '',  // 留空，由模板填充
-        size: '16x9',
         referenceImageIds: [asset.image_id],
         template: 'character_sheet'  // 使用人设模板
       });
@@ -345,6 +354,12 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     setShowGallery(true);
   };
 
+  // 直接从卡片打开图像编辑对话框
+  const handleOpenImageEdit = async () => {
+    await loadImages();
+    setShowImageEditDialog(true);
+  };
+
   return (
     <>
       <div className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-750 transition group flex flex-col h-full">
@@ -373,8 +388,12 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
               {imageCount}
             </div>
           )}
-          {/* 类型标识 */}
-          <div className="absolute top-2 right-2 bg-blue-600 bg-opacity-80 text-white text-xs px-2 py-1 rounded">
+          {/* 类型标识 - 不同类型用不同颜色 */}
+          <div className={`absolute top-2 right-2 bg-opacity-80 text-white text-xs px-2 py-1 rounded ${
+            assetType === 'character' ? 'bg-blue-600' :
+            assetType === 'scene' ? 'bg-green-600' :
+            'bg-orange-500'
+          }`}>
             {getTypeLabel()}
           </div>
         </div>
@@ -393,19 +412,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
 
           {/* 操作按钮 */}
           <div className="flex gap-2">
-            {/* 主角色显示子角色按钮 */}
-            {!isChildCharacter && assetType === 'character' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowChildDialog(true);
-                }}
-                className="flex-1 flex items-center justify-center gap-1 text-xs bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white px-2 py-1 rounded transition"
-              >
-                <Users size={12} />
-                子角色
-              </button>
-            )}
+            {/* 详情按钮（进入编辑弹框） */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -413,18 +420,60 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
               }}
               className="flex-1 flex items-center justify-center gap-1 text-xs bg-gray-700 hover:bg-green-600 text-gray-300 hover:text-white px-2 py-1 rounded transition"
             >
-              <Edit size={12} />
-              编辑
+              <Info size={12} />
+              详情
             </button>
+            {/* 编辑按钮（进入图像编辑对话框） */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleDelete();
+                handleOpenImageEdit();
               }}
-              className="flex items-center justify-center gap-1 text-xs bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white px-2 py-1 rounded transition"
+              className="flex-1 flex items-center justify-center gap-1 text-xs bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white px-2 py-1 rounded transition"
             >
-              <Trash2 size={12} />
+              <Edit3 size={12} />
+              编辑
             </button>
+            {/* 下拉按钮（含子角色/删除） */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDropdown(!showDropdown);
+                }}
+                className="flex items-center justify-center text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white px-2 py-1 rounded transition"
+              >
+                <ChevronDown size={12} />
+              </button>
+              {showDropdown && (
+                <div className="absolute right-0 bottom-full mb-1 bg-gray-700 border border-gray-600 rounded shadow-lg z-10 min-w-[80px]">
+                  {!isChildCharacter && assetType === 'character' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDropdown(false);
+                        setShowChildDialog(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-600 hover:text-white whitespace-nowrap"
+                    >
+                      <Users size={12} />
+                      子角色
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDropdown(false);
+                      handleDelete();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-gray-600 hover:text-red-300 whitespace-nowrap"
+                  >
+                    <Trash2 size={12} />
+                    删除
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

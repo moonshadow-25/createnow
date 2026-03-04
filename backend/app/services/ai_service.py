@@ -52,6 +52,14 @@ def get_ai_service(project_config: Dict, service_type: str, project_id: Optional
     model = config.get("model") or getattr(settings, f"DEFAULT_{service_type.upper()}_MODEL")
     api_type = config.get("api_type", "openai")  # 默认使用OpenAI格式
 
+    # CreateNow 官方接口：强制使用官方 URL，从 global.json 读取 API Key
+    if api_type == "createnow":
+        from app.services.auth_service import get_auth_state
+        api_url = settings.CREATENOW_BASE_URL
+        auth_state = get_auth_state()
+        api_key = auth_state.get("api_key") or api_key
+        api_type = "openai"  # 复用 OpenAI 适配器
+
     logger.info(f"[AI Service] Initializing {service_type} service:")
     logger.info(f"  - api_type: {api_type}")
     logger.info(f"  - api_url: {api_url}")

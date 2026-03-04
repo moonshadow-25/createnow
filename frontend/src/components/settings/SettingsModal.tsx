@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Key, Wand2, FolderTree, X, Save, Palette } from 'lucide-react';
+import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
@@ -7,9 +7,11 @@ import { ApiConfigPanel } from './ApiConfigPanel';
 import { PromptPanel } from './PromptPanel';
 import { LogsPanel } from './LogsPanel';
 import { GlobalStylePanel } from './GlobalStylePanel';
+import { GlobalPromptPanel } from './GlobalPromptPanel';
+import { UpdatePanel } from './UpdatePanel';
 import type { ApiConfig, ImageSizes, ApiConfigPresetsMap } from '@/types';
 
-type SettingsPanel = 'api' | 'global-style' | 'prompts' | 'logs';
+type SettingsPanel = 'api' | 'global-style' | 'prompts' | 'global-prompts' | 'logs' | 'update';
 
 interface SettingsModalProps {
   projectId: string;
@@ -93,13 +95,12 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
       const aiConfig = currentProject.ai_config as any;
 
       // 加载分辨率配置
-      const newImageSizes = {
+      setImageSizes({
         character: aiConfig.image_sizes?.character || '1x1',
         scene: aiConfig.image_sizes?.scene || '16x9',
         prop: aiConfig.image_sizes?.prop || '1x1',
         storyboard: aiConfig.image_sizes?.storyboard || '16x9'
-      };
-      setImageSizes(newImageSizes);
+      });
 
       // 加载当前选中的标签ID
       if (aiConfig.active_preset_ids) {
@@ -108,7 +109,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
 
       // 加载配置标签或自动创建初始标签
       if (aiConfig.config_presets && Object.keys(aiConfig.config_presets).length > 0) {
-        // 已有标签，直接加载
         setConfigPresets(aiConfig.config_presets);
       } else {
         // 无标签，为每种已配置的API类型自动创建初始标签
@@ -120,7 +120,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           tts: []
         };
 
-        // 为LLM创建初始标签
         if (aiConfig.llm?.api_key && aiConfig.llm?.model) {
           initialPresets.llm.push({
             id: uuidv4(),
@@ -135,7 +134,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           });
         }
 
-        // 为VLM创建初始标签
         if (aiConfig.vlm?.api_key && aiConfig.vlm?.model) {
           initialPresets.vlm.push({
             id: uuidv4(),
@@ -150,7 +148,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           });
         }
 
-        // 为Image创建初始标签
         if (aiConfig.image?.api_key && aiConfig.image?.model) {
           initialPresets.image.push({
             id: uuidv4(),
@@ -166,7 +163,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           });
         }
 
-        // 为Video创建初始标签
         if (aiConfig.video?.api_key && aiConfig.video?.model) {
           initialPresets.video.push({
             id: uuidv4(),
@@ -181,7 +177,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
           });
         }
 
-        // 为TTS创建初始标签
         if (aiConfig.tts?.api_key && aiConfig.tts?.model) {
           initialPresets.tts.push({
             id: uuidv4(),
@@ -233,6 +228,15 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   // 统一保存所有配置到后端
   const handleSaveSettings = async () => {
     if (!projectId) return;
+
+    // ✅ 检查是否至少有一个类型有选中的预设
+    const hasAnyActivePreset = Object.values(activePresetIds).some(id => id !== null);
+
+    if (!hasAnyActivePreset) {
+      toast('请至少为一个API类型创建配置预设', 'error');
+      return;
+    }
+
     setSaving(true);
     try {
       // 构建保存数据
@@ -266,12 +270,14 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     { id: 'api' as const, icon: Key, label: 'API设置' },
     { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
+    { id: 'global-prompts' as const, icon: Globe, label: '全局提示词' },
     { id: 'logs' as const, icon: FolderTree, label: 'AI日志' },
+    { id: 'update' as const, icon: RefreshCw, label: '检查更新' },
   ];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg w-full max-w-7xl h-[80vh] overflow-hidden flex flex-col">
+      <div className="bg-gray-800 rounded-lg w-full max-w-7xl h-[95vh] overflow-hidden flex flex-col">
         {/* 主内容区 - 左��分栏 */}
         <div className="flex flex-1 min-h-0">
           {/* 左侧导航栏 */}
@@ -308,7 +314,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 {settingsPanel === 'api' && 'API配置'}
                 {settingsPanel === 'global-style' && '全局风格'}
                 {settingsPanel === 'prompts' && '提示词管理'}
+                {settingsPanel === 'global-prompts' && '全局提示词'}
                 {settingsPanel === 'logs' && 'AI日志'}
+                {settingsPanel === 'update' && '检查更新'}
               </h2>
               <button
                 onClick={onClose}
@@ -343,8 +351,18 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
             {settingsPanel === 'prompts' && (
               <PromptPanel projectId={projectId} />
             )}
+            {settingsPanel === 'global-prompts' && (
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+                <GlobalPromptPanel />
+              </div>
+            )}
             {settingsPanel === 'logs' && (
               <LogsPanel projectId={projectId} />
+            )}
+            {settingsPanel === 'update' && (
+              <div className="flex-1 overflow-y-auto">
+                <UpdatePanel />
+              </div>
             )}
 
             {/* 底部操作栏 - 仅 API 面板显示保存按钮 */}

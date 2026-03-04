@@ -6,7 +6,7 @@ from app.services.ai_service import LLMService
 class PromptService:
     """提示词生成服务"""
 
-    # 角色分析提示词模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     CHARACTER_ANALYSIS_PROMPT = """你是一个专业的影视角色分析专家。请从以下文本中提取角色信息。
 
 返回格式必须是JSON数组，每个角色包含：
@@ -23,7 +23,7 @@ class PromptService:
 文本内容：
 {text}"""
 
-    # 场景分析提示词模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     SCENE_ANALYSIS_PROMPT = """你是一个专业的影视场景分析专家。请从以下文本中提取场景信息。
 
 返回格式必须是JSON数组，每个场景包含：
@@ -39,7 +39,7 @@ class PromptService:
 文本内容：
 {text}"""
 
-    # 道具分析提示词模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     PROP_ANALYSIS_PROMPT = """你是一个专业的影视道具分析专家。请从以下文本中提取道具信息。
 
 返回格式必须是JSON数组，每个道具包含：
@@ -53,7 +53,7 @@ class PromptService:
 文本内容：
 {text}"""
 
-    # 剧本分析提示词模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     SCRIPT_ANALYSIS_PROMPT = """你是一个专业的剧本分析专家。请分析以下剧本，提取结构化信息。
 
 返回格式必须是JSON对象，包含：
@@ -73,7 +73,7 @@ class PromptService:
 剧本内容：
 {text}"""
 
-    # 文生图提示词生成模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     IMAGE_PROMPT_TEMPLATE = """你是一个专业的AI绘提示词专家。根据以下资产描述，生成优化的文生图提示词。
 
 {asset_type}描述：
@@ -88,7 +88,7 @@ class PromptService:
 
 返回JSON格式。"""
 
-    # 图像编辑提示词生成模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     IMAGE_EDIT_PROMPT_TEMPLATE = """你是一个专业的AI图像编辑提示词专家。根据主角色和子角色的信息，生成用于图像编辑的提示词。
 
 【主角色信息】
@@ -120,7 +120,7 @@ class PromptService:
 }}
 """
 
-    # 图生视频提示词生成模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     VIDEO_PROMPT_TEMPLATE = """你是一个专业的AI视频生成提示词专家。根据以下分镜描述，生成优化的图生视频提示词。
 
 分镜信息：
@@ -146,7 +146,7 @@ class PromptService:
   "prompt": "视频生成提示词"
 }}"""
 
-    # 分镜描述生成模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     STORYBOARD_DESC_TEMPLATE = """你是一个专业的分镜设计师。根据以下剧本片段，生成详细的分镜描述。
 
 剧本内容：
@@ -176,7 +176,9 @@ class PromptService:
     @staticmethod
     async def extract_characters(llm: LLMService, text: str) -> List[Dict]:
         """从文本中提取角色信息"""
-        prompt = PromptService.CHARACTER_ANALYSIS_PROMPT.format(text=text)
+        from app.services.global_prompt_service import get_group_b_template
+        template = get_group_b_template("character_analysis") or PromptService.CHARACTER_ANALYSIS_PROMPT
+        prompt = template.format(text=text)
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -194,7 +196,9 @@ class PromptService:
     @staticmethod
     async def extract_scenes(llm: LLMService, text: str) -> List[Dict]:
         """从文本中提取场景信息"""
-        prompt = PromptService.SCENE_ANALYSIS_PROMPT.format(text=text)
+        from app.services.global_prompt_service import get_group_b_template
+        template = get_group_b_template("scene_analysis") or PromptService.SCENE_ANALYSIS_PROMPT
+        prompt = template.format(text=text)
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -211,7 +215,9 @@ class PromptService:
     @staticmethod
     async def extract_props(llm: LLMService, text: str) -> List[Dict]:
         """从文本中提取道具信息"""
-        prompt = PromptService.PROP_ANALYSIS_PROMPT.format(text=text)
+        from app.services.global_prompt_service import get_group_b_template
+        template = get_group_b_template("prop_analysis") or PromptService.PROP_ANALYSIS_PROMPT
+        prompt = template.format(text=text)
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -228,7 +234,9 @@ class PromptService:
     @staticmethod
     async def analyze_script(llm: LLMService, script: str) -> Dict:
         """分析剧本，提取所有资产"""
-        prompt = PromptService.SCRIPT_ANALYSIS_PROMPT.format(text=script)
+        from app.services.global_prompt_service import get_group_b_template
+        template = get_group_b_template("script_analysis") or PromptService.SCRIPT_ANALYSIS_PROMPT
+        prompt = template.format(text=script)
         result = await llm.chat([{"role": "user", "content": prompt}])
 
         try:
@@ -331,7 +339,8 @@ class PromptService:
         duration: int = 6,
         custom_template: Optional[str] = None,
         language: str = "zh",
-        style_suffix: str = ""
+        style_suffix: str = "",
+        assets_desc: str = ""
     ) -> str:
         """生成视频提示词
 
@@ -349,6 +358,7 @@ class PromptService:
             custom_template: 自定义模板（可选）
             language: 语言设置 (zh/en/auto)
             style_suffix: 全局风格后缀
+            assets_desc: 资产描述（按图编号，供模板中 {assets_desc} 使用）
         """
         characters = characters or []
         props = props or []
@@ -386,11 +396,14 @@ class PromptService:
                 characters=", ".join(characters) if characters else "无",
                 scene=scene or "无",
                 props=", ".join(props) if props else "无",
-                duration=duration
+                duration=duration,
+                assets_desc=assets_desc or "（无参考资产）"
             )
         except KeyError:
-            # 如果模板不支持新变量，回退到旧格式
+            # 如果模板不支持某些新变量，回退到精简格式（保留核心变量）
             prompt = template.format(
+                language_instruction=language_instruction,
+                style_instruction=style_instruction,
                 description=description,
                 dialogue=dialogue or "无",
                 action=action or "无",
@@ -400,7 +413,8 @@ class PromptService:
                 characters=", ".join(characters) if characters else "无",
                 scene=scene or "无",
                 props=", ".join(props) if props else "无",
-                duration=duration
+                duration=duration,
+                assets_desc=assets_desc or "（无参考资产）"
             )
 
         result = await llm.chat([{"role": "user", "content": prompt}])
@@ -411,7 +425,11 @@ class PromptService:
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
-                return data.get("prompt", description)
+                prompt_result = data.get("prompt", description)
+                # 如果模板返回数组（多段视频），序列化为 JSON 字符串
+                if isinstance(prompt_result, list):
+                    return json.dumps(prompt_result, ensure_ascii=False)
+                return prompt_result
         except:
             pass
 
@@ -426,7 +444,8 @@ class PromptService:
     ) -> str:
         """生成图像编辑提示词（用于子角色基于父角色形象生成图片）"""
         # 使用自定义模板或默认模板
-        template = custom_template or PromptService.IMAGE_EDIT_PROMPT_TEMPLATE
+        from app.services.global_prompt_service import get_group_b_template
+        template = custom_template or get_group_b_template("image_edit_prompt") or PromptService.IMAGE_EDIT_PROMPT_TEMPLATE
 
         prompt = template.format(
             parent_name=parent_character.get("name", ""),
@@ -547,7 +566,8 @@ class PromptService:
     ) -> List[Dict]:
         """生成分镜描述"""
         # 使用自定义模板或默认模板
-        template = custom_template or PromptService.STORYBOARD_DESC_TEMPLATE
+        from app.services.global_prompt_service import get_group_b_template
+        template = custom_template or get_group_b_template("storyboard_desc") or PromptService.STORYBOARD_DESC_TEMPLATE
         prompt = template.format(script=script)
         result = await llm.chat([{"role": "user", "content": prompt}])
 
@@ -597,7 +617,60 @@ class PromptService:
             traceback.print_exc()
             return []
 
-    # 视频反推提示词默认模板
+    @staticmethod
+    async def generate_nine_grid_combined_prompts(
+        llm,
+        description: str,
+        episode_script: str,
+        assets_desc: str,
+        language: str = "zh",
+        style_suffix: str = "",
+        ai_config: Optional[dict] = None
+    ) -> Dict:
+        """一次LLM调用生成九宫格分镜的图片提示词和视频提示词"""
+        from app.services.global_prompt_service import get_prompt_content
+        template = get_prompt_content("nine_grid_combined_prompts", ai_config)
+
+        if language == "zh":
+            language_instruction = "请使用中文生成所有提示词内容"
+        elif language == "en":
+            language_instruction = "Please generate all prompt content in English"
+        else:
+            language_instruction = "请根据输入内容自动选择最合适的语言生成提示词"
+
+        if style_suffix:
+            style_instruction = f"必须应用以下全局风格要求：{style_suffix}"
+        else:
+            style_instruction = "无特殊风格要求，根据描述自由发挥"
+
+        prompt = template.format(
+            description=description,
+            episode_script=episode_script,
+            assets_desc=assets_desc,
+            language_instruction=language_instruction,
+            style_instruction=style_instruction
+        )
+        result = await llm.chat([{"role": "user", "content": prompt}])
+
+        try:
+            content = result.get("content", "")
+            import re
+            code_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+            if code_block_match:
+                content = code_block_match.group(1).strip()
+            data = json.loads(content)
+            video_prompt = data.get("video_prompt", [])
+            if isinstance(video_prompt, str):
+                video_prompt = [video_prompt] if video_prompt else []
+            return {
+                "image_prompt": data.get("image_prompt", ""),
+                "video_prompt": video_prompt
+            }
+        except Exception as e:
+            print(f"[ERROR] generate_nine_grid_combined_prompts parse failed: {e}")
+            return {"image_prompt": "", "video_prompt": []}
+
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     VIDEO_REVERSE_PROMPT_TEMPLATE = """你是一位专业的AI视频生成提示词专家，擅长根据图片反推视频生成提示词。
 
 【任务】
@@ -739,7 +812,7 @@ class PromptService:
         content = result.get("content", "")
         return content.strip()
 
-    # 自动匹配分镜资产提示词模板
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
     AUTO_MATCH_ASSETS_PROMPT = """你是一个专业的影视分镜资产匹配专家。根据分镜描述、剧集剧本和资产库，智能匹配最适合的资产。
 
 【分镜信息】
@@ -831,7 +904,9 @@ class PromptService:
         props_list = format_assets(props, "prop")
 
         # 构建提示词
-        prompt = PromptService.AUTO_MATCH_ASSETS_PROMPT.format(
+        from app.services.global_prompt_service import get_group_b_template
+        _template = get_group_b_template("auto_match_assets") or PromptService.AUTO_MATCH_ASSETS_PROMPT
+        prompt = _template.format(
             storyboard_description=storyboard_description or "无",
             storyboard_dialogue=storyboard_dialogue or "无",
             storyboard_action=storyboard_action or "无",

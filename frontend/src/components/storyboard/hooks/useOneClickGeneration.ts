@@ -181,6 +181,9 @@ export function useOneClickGeneration({
           if (sb.primary_image_url) return false; // 已有图片，跳过
           if (sb.image_prompt) return false; // 已有提示词，跳过
 
+          // 九宫格分镜：只要没有提示词就处理（资产匹配后直接生成）
+          if (sb.storyboard_mode === 'nine_grid') return true;
+
           const hasAssets = sb.scene_id || (sb.character_ids && sb.character_ids.length > 0);
           const assetMatchFailed = failedAssetMatches.has(sb.asset_id);
 
@@ -246,6 +249,12 @@ export function useOneClickGeneration({
               }
 
               // 生成提示词
+              if (sb.storyboard_mode === 'nine_grid') {
+                // 九宫格：一次调用同时生成 image_prompt + video_prompt
+                await storyboardApi.generateNineGridPrompts(projectId, sb.asset_id);
+                return { hasAssets: true };
+              }
+
               await generationApi.generateImagePrompt(projectId, {
                 asset_type: 'storyboard',
                 description: enhancedDescription,

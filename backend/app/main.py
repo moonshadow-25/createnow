@@ -35,6 +35,9 @@ from app.api.videos import router as videos_router
 from app.api.validation import router as validation_router
 from app.api.scripts import router as scripts_router
 from app.api.canvas import router as canvas_router
+from app.api.global_prompts import router as global_prompts_router
+from app.api.version import router as version_router
+from app.api.auth import router as auth_router
 
 # 检查启动参数：--serve-frontend 表示同时服务前端静态文件
 SERVE_FRONTEND = "--serve-frontend" in sys.argv
@@ -49,6 +52,16 @@ async def lifespan(app: FastAPI):
     # 启动时
     print(f"Data directory: {settings.DATA_DIR}")
     print(f"Projects directory: {settings.PROJECTS_DIR}")
+    # 初始化全局提示词 JSON（首次启动时从代码常量生成）
+    from app.services.global_prompt_service import load_global_prompts, save_global_prompts, _get_json_path
+    json_path = _get_json_path()
+    if not json_path.exists():
+        print("[INFO] 生成 default_prompt_templates.json ...")
+        data = load_global_prompts()
+        save_global_prompts(data)
+        print(f"[INFO] 已创建: {json_path}")
+    else:
+        load_global_prompts()  # 预热缓存
     yield
     # 关闭时
     print("Application shutting down...")
@@ -296,6 +309,9 @@ app.include_router(videos_router, prefix="/api")
 app.include_router(validation_router, prefix="/api")
 app.include_router(scripts_router, prefix="/api")
 app.include_router(canvas_router, prefix="/api")
+app.include_router(global_prompts_router, prefix="/api")
+app.include_router(version_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 
 # ==================== 前端静态文件服务 ====================

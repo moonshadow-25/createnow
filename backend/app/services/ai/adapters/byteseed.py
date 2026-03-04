@@ -174,8 +174,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
             response = await self.client.post(
                 url,
                 headers=self._get_headers(),
-                json=payload,
-                timeout=120.0
+                json=payload
             )
 
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000

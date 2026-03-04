@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, RefreshCw, Wand2, Loader2, HardDrive, Zap } from 'lucide-react';
+import { Plus, RefreshCw, Wand2, Loader2, HardDrive, Zap, ChevronDown } from 'lucide-react';
 import { AssetCard } from './AssetCard';
 import { CreateAssetDialog } from './CreateAssetDialog';
 import { generationApi } from '@/services/api';
@@ -51,6 +51,20 @@ export function AssetsTab({
   const [isOneClickGenerating, setIsOneClickGenerating] = useState(false);
   const [oneClickPhase, setOneClickPhase] = useState<'prompt' | 'image' | null>(null);
   const [oneClickProgress, setOneClickProgress] = useState({ current: 0, total: 0 });
+
+  // 更多菜单
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMoreMenu]);
 
   // 组件挂载状态，用于防止组件卸载后更新状态
   const isMountedRef = useRef(true);
@@ -387,8 +401,6 @@ export function AssetsTab({
                 asset_type: assetType,
                 prompt: promptToUse,
                 negative_prompt: '',
-                width: 1024,
-                height: 1024,
               });
 
               return { assetType };
@@ -490,32 +502,10 @@ export function AssetsTab({
             道具 ({props.length})
           </button>
         </div>
-        <div className="flex gap-2">
-          {/* 根据当前tab显示对应的创建按钮 */}
+        <div className="flex gap-2 items-center">
+          {/* 全部 tab：一键生成保留外层，其余进"更多" */}
           {assetFilter === 'all' && (
             <>
-              <button
-                onClick={() => handleOpenCreate('character')}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-sm"
-              >
-                <Plus size={14} />
-                创建角色
-              </button>
-              <button
-                onClick={() => handleOpenCreate('scene')}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-sm"
-              >
-                <Plus size={14} />
-                创建场景
-              </button>
-              <button
-                onClick={() => handleOpenCreate('prop')}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-sm"
-              >
-                <Plus size={14} />
-                创建道具
-              </button>
-              {/* 一键生成按钮 */}
               <button
                 onClick={handleOneClickGenerate}
                 disabled={isOneClickGenerating}
@@ -535,8 +525,70 @@ export function AssetsTab({
                   </>
                 )}
               </button>
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  onClick={() => setShowMoreMenu(v => !v)}
+                  className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg"
+                >
+                  更多
+                  <ChevronDown size={14} className={`transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                </button>
+                {showMoreMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 py-1">
+                    <button
+                      onClick={() => { handleOpenCreate('character'); setShowMoreMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                    >
+                      <Plus size={14} />
+                      创建角色
+                    </button>
+                    <button
+                      onClick={() => { handleOpenCreate('scene'); setShowMoreMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                    >
+                      <Plus size={14} />
+                      创建场景
+                    </button>
+                    <button
+                      onClick={() => { handleOpenCreate('prop'); setShowMoreMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                    >
+                      <Plus size={14} />
+                      创建道具
+                    </button>
+                    <div className="border-t border-gray-600 my-1" />
+                    <button
+                      onClick={() => { onRefresh(); setShowMoreMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                    >
+                      <RefreshCw size={14} />
+                      刷新
+                    </button>
+                    <button
+                      onClick={() => { handleDownloadAll(); setShowMoreMenu(false); }}
+                      disabled={isDownloading}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="下载所有外部图片到本地"
+                    >
+                      {isDownloading ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          下载中 {Math.round(downloadProgress)}%
+                        </>
+                      ) : (
+                        <>
+                          <HardDrive size={14} />
+                          一键下载图片
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
+
+          {/* 角色 tab */}
           {assetFilter === 'character' && (
             <>
               <button
@@ -565,6 +617,8 @@ export function AssetsTab({
               </button>
             </>
           )}
+
+          {/* 场景 tab */}
           {assetFilter === 'scene' && (
             <>
               <button
@@ -593,6 +647,8 @@ export function AssetsTab({
               </button>
             </>
           )}
+
+          {/* 道具 tab */}
           {assetFilter === 'prop' && (
             <>
               <button
@@ -621,32 +677,6 @@ export function AssetsTab({
               </button>
             </>
           )}
-          <button
-            onClick={onRefresh}
-            className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-sm"
-          >
-            <RefreshCw size={14} />
-            刷新
-          </button>
-          {/* 一键下载按钮 */}
-          <button
-            onClick={handleDownloadAll}
-            disabled={isDownloading}
-            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg text-sm"
-            title="下载所有外部图片到本地"
-          >
-            {isDownloading ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                下载中 {Math.round(downloadProgress)}%
-              </>
-            ) : (
-              <>
-                <HardDrive size={14} />
-                一键下载图片
-              </>
-            )}
-          </button>
         </div>
       </div>
 

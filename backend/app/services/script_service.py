@@ -376,6 +376,9 @@ class ScriptSceneService:
             "time_of_day": scene_data.get("time_of_day", "日"),
             "interior_exterior": scene_data.get("interior_exterior", "外"),
             "content": scene_data.get("content", ""),
+            "time_start": scene_data.get("time_start"),
+            "time_end": scene_data.get("time_end"),
+            "act_title": scene_data.get("act_title"),
             "created_at": datetime.now().isoformat()
         }
 
@@ -436,6 +439,12 @@ class ScriptSceneService:
             scene["content"] = kwargs["content"]
         if "sequence" in kwargs:
             scene["sequence"] = kwargs["sequence"]
+        if "time_start" in kwargs:
+            scene["time_start"] = kwargs["time_start"]
+        if "time_end" in kwargs:
+            scene["time_end"] = kwargs["time_end"]
+        if "act_title" in kwargs:
+            scene["act_title"] = kwargs["act_title"]
 
         script_dir = ScriptService._get_script_dir(project_id, script_id)
         scene_file = script_dir / "scenes" / f"{scene_id}.json"
@@ -596,8 +605,13 @@ class ScriptParser:
     # 角色提取正则
     CHARACTER_PATTERN = re.compile(r'^([^\s:：（:]+)[：:]?\s*(.+)?$')
 
-    # 集数正则：第1集、第一集、Episode 1
-    EPISODE_PATTERN = re.compile(r'^第?(\d+)[集话]|[集话]?\s*[：:]?\s*第\s*(\d+)[集话]|Episode\s*(\d+)', re.IGNORECASE)
+    # 集数正则：第1集、第一集、第二集、Episode 1
+    EPISODE_PATTERN = re.compile(
+        r'^第\s*(\d+|[零一二三四五六七八九十百千]+)\s*[集话]'
+        r'|[集话]?\s*[：:]?\s*第\s*(\d+)[集话]'
+        r'|Episode\s*(\d+)',
+        re.IGNORECASE
+    )
 
     @staticmethod
     def parse_script_text(text: str) -> Dict[str, Any]:
@@ -696,14 +710,18 @@ class ScriptParser:
             # 解析集数 - 支持多种格式
             episode_match = ScriptParser.EPISODE_PATTERN.match(line)
             if episode_match:
-                # 提取集数
+                # 提取集数（可能是中文数字）
                 episode_number = None
                 for group in episode_match.groups():
                     if group:
-                        episode_number = int(group)
+                        try:
+                            episode_number = int(group)
+                        except ValueError:
+                            # 中文数字转换
+                            episode_number = chinese_to_number(group) or 1
                         break
                 if not episode_number:
-                    episode_number = int(episode_match.group(1))
+                    episode_number = 1
 
                 current_episode = {
                     "episode_number": episode_number,
@@ -907,9 +925,13 @@ class ScriptParser:
 
     @staticmethod
     def import_script_to_project(project_id: str, script_id: str, text: str) -> Dict:
-        """将解析后的��本导入到项目，返回详细结果和警告信息"""
+        """将解析后的剧本导入到项目，返回详细结果和警告信息"""
         parsed = ScriptParser.parse_script_text(text)
+        return ScriptParser.import_parsed_to_project(project_id, script_id, parsed)
 
+    @staticmethod
+    def import_parsed_to_project(project_id: str, script_id: str, parsed: Dict) -> Dict:
+        """将已解析的结构化数据导入到项目（供 AI 解析和正则解析共用）"""
         # 统计信息
         total_scenes = sum(len(ep.get("scenes", [])) for ep in parsed.get("episodes", []))
         total_lines = sum(len(scene.get("lines", [])) for ep in parsed.get("episodes", []) for scene in ep.get("scenes", []))
@@ -918,9 +940,12 @@ class ScriptParser:
         if parsed.get("title"):
             ScriptService.update_script(project_id, script_id, title=parsed["title"])
 
-        # 导入人物
+        # 导入人物（去重：跳过已有同名角色）
+        existing_chars = {c['name'] for c in ScriptCharacterService.list_characters(project_id, script_id)}
         for char_data in parsed.get("characters", []):
-            ScriptCharacterService.add_character(project_id, script_id, char_data)
+            if char_data.get("name") and char_data["name"] not in existing_chars:
+                ScriptCharacterService.add_character(project_id, script_id, char_data)
+                existing_chars.add(char_data["name"])
 
         # 导入集数和场景
         for ep_data in parsed.get("episodes", []):
@@ -938,7 +963,10 @@ class ScriptParser:
                         "location": scene_data["location"],
                         "time_of_day": scene_data["time_of_day"],
                         "interior_exterior": scene_data["interior_exterior"],
-                        "content": ""
+                        "content": "",
+                        "time_start": scene_data.get("time_start"),
+                        "time_end": scene_data.get("time_end"),
+                        "act_title": scene_data.get("act_title"),
                     }
                 )
 
@@ -964,5 +992,5 @@ class ScriptParser:
             "scenes_count": total_scenes,
             "lines_count": total_lines,
             "warnings": parsed.get("warnings", []),
-            "unparsed_sample": parsed.get("unparsed_lines", [])[:5]  # 只返回前5个未解析样例
+            "unparsed_sample": parsed.get("unparsed_lines", [])[:5]
         }

@@ -60,8 +60,7 @@ class OpenAIImageAdapter(ImageAdapter):
             response = await self.client.post(
                 url,
                 headers=self._get_headers(),
-                json=payload,
-                timeout=120.0
+                json=payload
             )
 
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -195,8 +194,7 @@ class OpenAIImageAdapter(ImageAdapter):
             response = await self.client.post(
                 url,
                 headers=self._get_headers(),
-                json=payload,
-                timeout=120.0
+                json=payload
             )
 
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -334,8 +332,7 @@ class OpenAIVideoAdapter(VideoAdapter):
             response = await self.client.post(
                 url,
                 headers=self._get_headers(),
-                json=payload,
-                timeout=120.0
+                json=payload
             )
             response.raise_for_status()
             data = response.json()
@@ -475,8 +472,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 url,
                 headers=headers,
                 data=data,
-                files=files,
-                timeout=120.0
+                files=files
             )
             response.raise_for_status()
             result = response.json()
@@ -606,8 +602,7 @@ class OpenAIVideoAdapter(VideoAdapter):
             response = await self.client.post(
                 url,
                 headers=self._get_headers(),
-                json=payload,
-                timeout=120.0
+                json=payload
             )
             response.raise_for_status()
             data = response.json()
@@ -719,6 +714,7 @@ class OpenAIVideoAdapter(VideoAdapter):
         try:
             # 处理所有图片
             files = []
+            image_log_entries = []
             for i, image_url in enumerate(image_urls):
                 image_data, content_type, error = await ImageProcessor.to_bytes(image_url, self.client)
                 if error:
@@ -727,6 +723,14 @@ class OpenAIVideoAdapter(VideoAdapter):
                 image_filename = f"image_{i}_{ImageProcessor.get_filename_for_content_type(content_type)}"
                 files.append(("input_reference", (image_filename, image_data, content_type)))
                 logger.info(f"[视频生成] 图片 {i+1}/{len(image_urls)}, 大小: {len(image_data)/1024:.1f}KB")
+                image_log_entries.append({
+                    "index": i,
+                    "source": "base64" if image_url.startswith("data:image") else "url",
+                    "preview": image_url[:50] + "..." if len(image_url) > 50 else image_url,
+                    "size_kb": round(len(image_data) / 1024, 1)
+                })
+
+            request_params["input_references"] = image_log_entries
 
             # 构建multipart请求
             data = {
@@ -745,8 +749,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 url,
                 headers=headers,
                 data=data,
-                files=files,
-                timeout=120.0
+                files=files
             )
             response.raise_for_status()
             result = response.json()
@@ -760,7 +763,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                     operation="video_generate_multipart_multi",
                     url=url,
                     method="POST",
-                    request_payload={**request_params, "images_count": len(image_urls)},
+                    request_payload=request_params,
                     response_data=result,
                     error=error_msg,
                     status_code=response.status_code,
@@ -782,7 +785,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                     operation="video_generate_multipart_multi",
                     url=url,
                     method="POST",
-                    request_payload={**request_params, "images_count": len(image_urls)},
+                    request_payload=request_params,
                     response_data=result,
                     error="API did not return a task ID",
                     status_code=response.status_code,
@@ -804,7 +807,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 operation="video_generate_multipart_multi",
                 url=url,
                 method="POST",
-                request_payload={**request_params, "images_count": len(image_urls)},
+                request_payload=request_params,
                 response_data=result,
                 status_code=response.status_code,
                 duration_ms=duration_ms

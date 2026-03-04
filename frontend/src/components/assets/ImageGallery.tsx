@@ -254,6 +254,16 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
 
         {/* 图片网格 */}
         <div className="flex-1 overflow-y-auto p-4">
+          {visibleImages.length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center h-full min-h-64 border-2 border-dashed border-gray-600 rounded-lg cursor-pointer hover:border-gray-400 hover:bg-gray-700 transition"
+              onClick={handleUploadClick}
+            >
+              <Upload size={48} className="text-gray-500 mb-4" />
+              <p className="text-gray-400 text-lg mb-1">暂无图片</p>
+              <p className="text-gray-500 text-sm">点击此处上传本地图片</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {visibleImages.map((img) => (
               <div
@@ -333,6 +343,7 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
               </div>
             ))}
           </div>
+          )}
         </div>
 
         {/* 底部操作栏 */}

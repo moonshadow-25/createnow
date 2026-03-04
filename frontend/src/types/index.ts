@@ -107,7 +107,7 @@ export interface Storyboard {
 
 // API配置类型
 export interface ApiConfig {
-  api_type: 'openai' | 'dashscope' | 'local' | 'byteseed';
+  api_type: 'openai' | 'dashscope' | 'local' | 'byteseed' | 'createnow';
   api_url: string;
   api_key?: string;
   model: string;

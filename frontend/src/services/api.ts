@@ -287,8 +287,25 @@ export const storyboardApi = {
     api.post(`/projects/${projectId}/storyboards/${storyboardId}/create-end-frame`),
   autoMatchAssets: (projectId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/storyboards/${storyboardId}/auto-match-assets`),
+  generateNineGridPrompts: (projectId: string, storyboardId: string) =>
+    api.post(`/projects/${projectId}/storyboards/${storyboardId}/generate-nine-grid-prompts`),
   export: (projectId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/storyboards/${storyboardId}/export`),
+  download: (projectId: string, storyboardId: string) =>
+    api.get(`/projects/${projectId}/storyboards/${storyboardId}/download`, {
+      responseType: 'blob',
+    }),
+  extractAssets: (projectId: string, episodeId: string) =>
+    api.post(`/projects/${projectId}/storyboards/extract-assets`, { episode_id: episodeId }),
+  matchAssets: (projectId: string, episodeId: string, overwriteExisting: boolean = false) =>
+    api.post(`/projects/${projectId}/storyboards/match-assets`, { episode_id: episodeId, overwrite_existing: overwriteExisting }),
+};
+
+// 全局提示词模板API
+export const globalPromptApi = {
+  get: () => api.get('/global/prompt-templates'),
+  update: (data: any) => api.put('/global/prompt-templates', data),
+  reset: () => api.post('/global/prompt-templates/reset'),
 };
 
 // 剧本创作相关API
@@ -311,8 +328,8 @@ export const scriptApi = {
       headers: { 'Content-Type': 'application/json' }
     });
   },
-  import: (projectId: string, scriptId: string, content: string) =>
-    api.post(`/projects/${projectId}/scripts/${scriptId}/import`, { content }),
+  import: (projectId: string, scriptId: string, content: string, useAi: boolean = true) =>
+    api.post(`/projects/${projectId}/scripts/${scriptId}/import`, { content, use_ai: useAi }),
   // 人物管理
   listCharacters: (projectId: string, scriptId: string) =>
     api.get(`/projects/${projectId}/scripts/${scriptId}/characters`),
@@ -338,9 +355,7 @@ export const scriptApi = {
   listEpisodes: (projectId: string, scriptId: string) =>
     api.get(`/projects/${projectId}/scripts/${scriptId}/episodes`),
   addEpisode: (projectId: string, scriptId: string, episodeNumber: number, title?: string) =>
-    api.post(`/projects/${projectId}/scripts/${scriptId}/episodes`, null, {
-      params: { episode_number: episodeNumber, title: title || '' }
-    }),
+    api.post(`/projects/${projectId}/scripts/${scriptId}/episodes`, { episode_number: episodeNumber, title: title || '' }),
   deleteEpisode: (projectId: string, scriptId: string, episodeId: string) =>
     api.delete(`/projects/${projectId}/scripts/${scriptId}/episodes/${episodeId}`),
   // 场景管理
@@ -424,3 +439,19 @@ export const canvasApi = {
 
 
 export default api;
+
+// 版本检查与更新
+export const versionApi = {
+  getLocalVersion: () => api.get('/version'),
+  checkUpdate: () => api.get('/version/check'),
+  triggerUpdate: () => api.post('/version/update'),
+};
+
+// 认证相关API
+export const authApi = {
+  info:   () => api.get('/auth/info'),
+  start:  () => api.get('/auth/start'),
+  poll:   () => api.get('/auth/poll'),
+  getKey: () => api.get('/auth/key'),
+  logout: () => api.post('/auth/logout'),
+};

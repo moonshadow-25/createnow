@@ -59,8 +59,7 @@ class LocalImageAdapter(ImageAdapter):
             response = await self.client.post(
                 url,
                 headers=self._get_headers(),
-                json=payload,
-                timeout=120.0
+                json=payload
             )
 
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -205,8 +204,7 @@ class LocalImageAdapter(ImageAdapter):
             response = await self.client.post(
                 url,
                 json=payload,
-                headers=self._get_headers(),
-                timeout=120.0
+                headers=self._get_headers()
             )
             response.raise_for_status()
             data = response.json()
@@ -311,8 +309,7 @@ class LocalVideoAdapter(VideoAdapter):
                 response = await self.client.post(
                     url,
                     json=payload,
-                    headers=self._get_headers(),
-                    timeout=120.0
+                    headers=self._get_headers()
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -383,8 +380,7 @@ class LocalVideoAdapter(VideoAdapter):
                     url,
                     data=data,
                     files=files,
-                    headers=self._get_headers(exclude_content_type=True),
-                    timeout=120.0
+                    headers=self._get_headers(exclude_content_type=True)
                 )
                 response.raise_for_status()
                 result = response.json()

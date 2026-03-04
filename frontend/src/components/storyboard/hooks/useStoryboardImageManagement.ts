@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { generationApi } from '@/services/api';
+import { generationApi, storyboardApi } from '@/services/api';
 
 interface ImageManagementContext {
   projectId: string;
@@ -135,23 +135,48 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
         const referenceImages: string[] = [];
         let imageIndex = 1;
 
-        // 角色引用：image1: the 25-year-old man
+        // 角色引用：名字 + 年龄性别 + 描述
         selectedCharObjs.forEach(c => {
-          const genderEn = c.gender === '男' ? 'man' : 'woman';
-          const agePart = c.age ? `${c.age}-year-old ` : '';
-          referenceImages.push(`image${imageIndex}: the ${agePart}${genderEn}`);
+          const parts = [c.name];
+
+          if (c.age || c.gender) {
+            const ageGender = [c.age ? `${c.age}岁` : '', c.gender].filter(Boolean).join('');
+            parts.push(ageGender);
+          }
+
+          if (c.appearance) {
+            parts.push(c.appearance);
+          } else if (c.description) {
+            parts.push(c.description);
+          }
+
+          referenceImages.push(`image${imageIndex}: ${parts.join('，')}`);
           imageIndex++;
         });
 
-        // 场景引用：image3: the office scene
+        // 场景引用：名字 + 描述
         if (sceneObj) {
-          referenceImages.push(`image${imageIndex}: the ${sceneObj.name} scene`);
+          const parts = [sceneObj.name];
+
+          if (sceneObj.description) {
+            parts.push(sceneObj.description);
+          } else if (sceneObj.location) {
+            parts.push(sceneObj.location);
+          }
+
+          referenceImages.push(`image${imageIndex}: ${parts.join('，')}`);
           imageIndex++;
         }
 
-        // 道具引用：image4: the table
+        // 道具引用：名字 + 描述
         selectedPropObjs.forEach(p => {
-          referenceImages.push(`image${imageIndex}: the ${p.name}`);
+          const parts = [p.name];
+
+          if (p.description) {
+            parts.push(p.description);
+          }
+
+          referenceImages.push(`image${imageIndex}: ${parts.join('，')}`);
           imageIndex++;
         });
 
@@ -162,7 +187,6 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           editingStoryboard.action ? `动作: ${editingStoryboard.action}` : '',
           editingStoryboard.dialogue ? `对白: "${editingStoryboard.dialogue}"` : '',
           editingStoryboard.camera_angle ? `镜头角度: ${editingStoryboard.camera_angle}` : '',
-          editingStoryboard.shot_type ? `景别: ${editingStoryboard.shot_type}` : '',
         ].filter(Boolean).join('\n');
 
         enhancedDescription = `[Reference Images]\n${referenceBlock}\n\n[Storyboard Description]\n${storyboardParts}`;
@@ -189,7 +213,6 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           sceneDetail ? `场景: ${sceneDetail}` : '',
           propObjs.length > 0 ? `道具: ${propObjs.join(', ')}` : '',
           editingStoryboard.camera_angle ? `镜头角度: ${editingStoryboard.camera_angle}` : '',
-          editingStoryboard.shot_type ? `景别: ${editingStoryboard.shot_type}` : '',
         ].filter(Boolean).join('\n');
       }
 
@@ -327,11 +350,77 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
     }
   }, [projectId, toast, startTask, completeTask, failTask, loadStoryboards]);
 
+  /**
+   * 自动匹配资产
+   */
+  const handleAutoMatchAssets = useCallback(async (
+    editingStoryboard: any,
+    setSelectedScene: (v: string) => void,
+    setSelectedCharacters: (v: string[]) => void,
+    setSelectedProps: (v: string[]) => void
+  ) => {
+    if (!editingStoryboard) return;
+
+    const requestStoryboardId = editingStoryboard.asset_id;
+    startTask(requestStoryboardId, 'auto_match');
+    try {
+      const response = await storyboardApi.autoMatchAssets(projectId, requestStoryboardId);
+      const matched = response.data;
+
+      if (editingStoryboardIdRef.current === requestStoryboardId) {
+        setSelectedScene(matched.scene_id || '');
+        setSelectedCharacters(matched.character_ids || []);
+        setSelectedProps(matched.prop_ids || []);
+        if (matched.explanation) {
+          toast(`已自动匹配资产：${matched.explanation}`, 'success');
+        } else {
+          toast('已自动匹配资产', 'success');
+        }
+      }
+      completeTask(requestStoryboardId, 'auto_match');
+    } catch (error: any) {
+      if (editingStoryboardIdRef.current === requestStoryboardId) {
+        toast(error.response?.data?.detail || '自动匹配失败', 'error');
+      }
+      failTask(requestStoryboardId, 'auto_match', error.message || '未知错误');
+    }
+  }, [projectId, toast, startTask, completeTask, failTask]);
+
+  /**
+   * 生成九宫格提示词
+   */
+  const handleGenerateNineGridPrompts = useCallback(async (
+    editingStoryboard: any,
+    setGeneratedPrompt: (prompt: string) => void,
+    setVideoPrompt?: (prompt: string) => void
+  ) => {
+    if (!editingStoryboard) return;
+
+    const requestStoryboardId = editingStoryboard.asset_id;
+    startTask(requestStoryboardId, 'nine_grid');
+    try {
+      const response = await storyboardApi.generateNineGridPrompts(projectId, requestStoryboardId);
+      if (editingStoryboardIdRef.current === requestStoryboardId) {
+        setGeneratedPrompt(response.data.image_prompt || '');
+        setVideoPrompt?.(response.data.video_prompt || '');
+        toast('九宫格提示词生成成功', 'success');
+      }
+      completeTask(requestStoryboardId, 'nine_grid');
+    } catch (error: any) {
+      if (editingStoryboardIdRef.current === requestStoryboardId) {
+        toast('生成失败: ' + (error.response?.data?.detail || error.message), 'error');
+      }
+      failTask(requestStoryboardId, 'nine_grid', error.message || '未知错误');
+    }
+  }, [projectId, toast, startTask, completeTask, failTask]);
+
   return {
     setEditingStoryboardId,
     handleEditImage,
     handleSetPrimaryStoryboardImage,
     handleGeneratePrompt,
     handleGenerateImageFromEdit,
+    handleAutoMatchAssets,
+    handleGenerateNineGridPrompts,
   };
 };

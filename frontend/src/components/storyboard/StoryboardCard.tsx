@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Film, Edit, Edit3, Trash2 } from 'lucide-react';
+import { GripVertical, Film, Edit, Edit3, Trash2, ZoomIn, Images } from 'lucide-react';
 
 // 可排序的分镜卡片组件
 export interface SortableStoryboardCardProps {
@@ -54,16 +54,18 @@ export function SortableStoryboardCard({
         <GripVertical size={16} className="text-gray-400" />
       </div>
 
-      {/* 选择框 - 右上角 */}
-      {onToggleSelect && (
+      {/* 图片库按钮 - 右上角，有无图片均显示 */}
+      {onOpenImageGallery && (
         <div className="absolute top-2 right-2 z-10">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => onToggleSelect(storyboard.asset_id)}
-            className="w-5 h-5 cursor-pointer accent-blue-500"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenImageGallery(storyboard); }}
+            className="bg-gray-900 bg-opacity-70 rounded p-1 text-gray-300 hover:text-white"
+            title={storyboardPrimaryImages.has(storyboard.asset_id) ? "查看图片库" : "打开图片库"}
+          >
+            {storyboardPrimaryImages.has(storyboard.asset_id)
+              ? <ZoomIn size={16} />
+              : <Images size={16} />}
+          </button>
         </div>
       )}
 
@@ -72,12 +74,15 @@ export function SortableStoryboardCard({
         <img
           src={storyboardPrimaryImages.get(storyboard.asset_id)!.replace('/images/files/', '/thumbnails/')}
           alt={storyboard.description}
-          className="w-full aspect-video object-cover cursor-pointer hover:opacity-90 transition"
+          className={`w-full aspect-video object-cover cursor-pointer hover:opacity-90 transition ${isSelected ? 'opacity-75' : ''}`}
           loading="lazy"
-          onClick={() => onOpenImageGallery?.(storyboard)}
+          onClick={() => onToggleSelect?.(storyboard.asset_id)}
         />
       ) : (
-        <div className="w-full aspect-video bg-gray-600 flex items-center justify-center">
+        <div
+          className="w-full aspect-video bg-gray-600 flex items-center justify-center cursor-pointer hover:bg-gray-500 transition"
+          onClick={() => onToggleSelect?.(storyboard.asset_id)}
+        >
           <Film size={32} className="text-gray-500" />
         </div>
       )}
@@ -90,9 +95,6 @@ export function SortableStoryboardCard({
             <div className="font-medium text-sm truncate">{storyboard.description}</div>
             {storyboard.dialogue && (
               <div className="text-xs text-gray-300 mt-1 italic truncate">"{storyboard.dialogue}"</div>
-            )}
-            {storyboard.action && (
-              <div className="text-xs text-gray-400 mt-1 truncate">动作: {storyboard.action}</div>
             )}
           </div>
           <div className="flex gap-1">
@@ -127,15 +129,6 @@ export function SortableStoryboardCard({
               <Trash2 size={14} />
             </button>
           </div>
-        </div>
-        <div className="text-xs text-gray-400 flex flex-wrap gap-2">
-          {storyboard.character_ids?.length > 0 && (
-            <span>角色: {storyboard.character_ids.length}</span>
-          )}
-          {storyboard.scene_id && <span>有场景</span>}
-          {storyboard.prop_ids?.length > 0 && (
-            <span>道具: {storyboard.prop_ids.length}</span>
-          )}
         </div>
       </div>
     </div>

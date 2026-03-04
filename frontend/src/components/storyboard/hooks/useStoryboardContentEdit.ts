@@ -13,6 +13,10 @@ export interface StoryboardContentEditState {
   setEditShotType: (v: string) => void;
   editCameraAngle: string;
   setEditCameraAngle: (v: string) => void;
+  editDuration: number;
+  setEditDuration: (v: number) => void;
+  editResolution: string;
+  setEditResolution: (v: string) => void;
   resetEditState: (storyboard?: any) => void;
 }
 
@@ -29,11 +33,9 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
   const [editAction, setEditAction] = useState('');
   const [editShotType, setEditShotType] = useState('中景');
   const [editCameraAngle, setEditCameraAngle] = useState('平视');
+  const [editDuration, setEditDuration] = useState(6);
+  const [editResolution, setEditResolution] = useState('1920x1080');
 
-  /**
-   * 重置编辑状态
-   * @param storyboard 可选的分镜数据，如果提供则用其值初始化编辑状态
-   */
   const resetEditState = (storyboard?: any) => {
     if (storyboard) {
       setEditDescription(storyboard.description || '');
@@ -41,12 +43,16 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditAction(storyboard.action || '');
       setEditShotType(storyboard.shot_type || '中景');
       setEditCameraAngle(storyboard.camera_angle || '平视');
+      setEditDuration(storyboard.duration || 6);
+      setEditResolution(storyboard.resolution || '1920x1080');
     } else {
       setEditDescription('');
       setEditDialogue('');
       setEditAction('');
       setEditShotType('中景');
       setEditCameraAngle('平视');
+      setEditDuration(6);
+      setEditResolution('1920x1080');
     }
   };
 
@@ -63,6 +69,10 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
     setEditShotType,
     editCameraAngle,
     setEditCameraAngle,
+    editDuration,
+    setEditDuration,
+    editResolution,
+    setEditResolution,
     resetEditState,
   };
 };

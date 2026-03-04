@@ -316,12 +316,14 @@ async def edit_image(project_id: str, request: ImageEditRequest):
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # 【模板支持】如果指定了模板，使用模板内容作为提示词
+    ai_config = project.get("ai_config", {})
+
+    # 【模板支持】如果指定了模板，使用用户当前激活的模板内容作为提示词
     if request.template:
-        from .templates import DEFAULT_PRESETS
-        preset = DEFAULT_PRESETS.get("image_edit", {}).get(request.template, {})
-        if preset:
-            request.prompt = preset.get("content", request.prompt)
+        from .template_helpers import get_active_template
+        template_content = get_active_template(ai_config, request.template)
+        if template_content:
+            request.prompt = template_content
             logger.info(f"[图生图] 使用模板: {request.template}")
         else:
             logger.warning(f"[图生图] 模板不存在: {request.template}，使用原始提示词")
@@ -378,8 +380,6 @@ async def edit_image(project_id: str, request: ImageEditRequest):
     if not reference_image_paths:
         logger.error(f"[图生图] 验证失败 - reference_image_ids: {request.reference_image_ids}, reference_image_urls: {request.reference_image_urls}")
         raise HTTPException(status_code=400, detail="At least one reference image is required")
-
-    ai_config = project.get("ai_config", {})
 
     # 获取配置的分辨率，支持 "1x1"、"16x9" 等格式
     default_sizes = {
@@ -558,7 +558,13 @@ async def generate_fusion_prompt(project_id: str, request: FusionPromptRequest):
         for info in assets_info
     ])
 
-    prompt_template = f"""请根据以下资产信息和用户需求，生成一个融合图片的详细提示词。
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    from app.services.global_prompt_service import get_group_c_template
+    _fusion_tpl = get_group_c_template("fusion_image_prompt")
+    if _fusion_tpl:
+        prompt_template = _fusion_tpl.format(assets_desc=assets_desc, user_prompt=request.user_prompt)
+    else:
+        prompt_template = f"""请根据以下资产信息和用户需求，生成一个融合图片的详细提示词。
 
 源资产信息：
 {assets_desc}

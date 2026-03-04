@@ -6,18 +6,19 @@ interface PromptPanelProps {
   projectId: string;
 }
 
-// 模板类型定义
-type TemplateType = 'image' | 'video' | 'video_reverse' | 'storyboard' | 'storyboard_image' | 'storyboard_image_edit' | 'image_edit' | 'triple_grid' | 'vlm' | 'multi_scene_video';
+// ── 类型 ──────────────────────────────────────────────────────────────────────
 
 interface TemplateData {
   name: string;
-  description: string;
+  description?: string;
   content: string;
   is_preset?: boolean;
   variables?: string[];
 }
 
-interface TemplateTypeData {
+interface PromptTypeData {
+  label: string;
+  category: string;
   presets: Record<string, TemplateData>;
   custom: Record<string, TemplateData>;
   active: string;
@@ -25,17 +26,32 @@ interface TemplateTypeData {
 }
 
 interface TemplatesResponse {
-  [key: string]: TemplateTypeData | boolean | undefined;
+  [key: string]: PromptTypeData | boolean | undefined;
   is_custom: boolean;
   is_legacy?: boolean;
 }
 
+// 分类固定显示顺序
+const CATEGORY_ORDER = ['生成模板', '服务提示词', '系统提示词'];
+
+// 生成模板内的 key 显示顺序
+const GENERATION_KEY_ORDER = [
+  'image', 'video', 'storyboard', 'storyboard_image_edit',
+  'nine_grid_combined_prompts', 'character_sheet', 'multi_scene_video',
+  'triple_grid', 'storyboard_image', 'image_edit', 'video_reverse', 'vlm',
+];
+
+// ── 主组件 ────────────────────────────────────────────────────────────────────
+
 export function PromptPanel({ projectId }: PromptPanelProps) {
   const { toast } = useToast();
-  const [promptTab, setPromptTab] = useState<TemplateType>('image');
   const [templatesData, setTemplatesData] = useState<TemplatesResponse | null>(null);
   const [promptSaving, setPromptSaving] = useState(false);
   const [editingContent, setEditingContent] = useState<string>('');
+
+  // 当前选中的分类、提示词 key
+  const [activeCategory, setActiveCategory] = useState<string>('');
+  const [activeKey, setActiveKey] = useState<string>('');
 
   useEffect(() => {
     loadPromptTemplates();
@@ -45,19 +61,21 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
     if (!projectId) return;
     try {
       const response = await generationApi.getPromptTemplates(projectId);
-      setTemplatesData(response.data);
+      const data: TemplatesResponse = response.data;
+      setTemplatesData(data);
 
-      // 初始化编辑内容
-      const currentType = response.data[promptTab] as TemplateTypeData;
-      if (currentType) {
-        const activeTemplate = currentType.templates[currentType.active];
-        if (activeTemplate) {
-          setEditingContent(activeTemplate.content || '');
-        }
+      // 初始化选中
+      const cats = getCategories(data);
+      if (cats.length > 0) {
+        const firstCat = activeCategory && cats.includes(activeCategory) ? activeCategory : cats[0];
+        const keysForCat = getKeysForCategory(data, firstCat);
+        const firstKey = activeKey && keysForCat.includes(activeKey) ? activeKey : keysForCat[0] ?? '';
+        setActiveCategory(firstCat);
+        setActiveKey(firstKey);
+        initEditingContent(data, firstKey);
       }
 
-      // 显示旧格式提示
-      if (response.data.is_legacy) {
+      if (data.is_legacy) {
         toast('检测到旧格式模板，切换或编辑后将自动升级', 'info');
       }
     } catch (error) {
@@ -66,31 +84,46 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
     }
   };
 
-  // 切换tab时更新编辑内容
-  useEffect(() => {
-    if (templatesData && templatesData[promptTab]) {
-      const currentType = templatesData[promptTab] as TemplateTypeData;
-      const activeTemplate = currentType.templates[currentType.active];
-      if (activeTemplate) {
-        setEditingContent(activeTemplate.content || '');
-      }
+  const initEditingContent = (data: TemplatesResponse, key: string) => {
+    const typeData = data[key] as PromptTypeData | undefined;
+    if (typeData) {
+      const activeTemplate = typeData.templates?.[typeData.active];
+      setEditingContent(activeTemplate?.content ?? '');
     }
-  }, [promptTab, templatesData]);
+  };
+
+  // 切换分类
+  const handleCategoryChange = (cat: string) => {
+    if (!templatesData) return;
+    setActiveCategory(cat);
+    const keys = getKeysForCategory(templatesData, cat);
+    const first = keys[0] ?? '';
+    setActiveKey(first);
+    initEditingContent(templatesData, first);
+  };
+
+  // 切换提示词 key
+  const handleKeyChange = (key: string) => {
+    if (!templatesData) return;
+    setActiveKey(key);
+    initEditingContent(templatesData, key);
+  };
+
+  // 切换 tab 更新编辑内容
+  useEffect(() => {
+    if (templatesData && activeKey) {
+      initEditingContent(templatesData, activeKey);
+    }
+  }, [activeKey, templatesData]);
 
   const handleSwitchTemplate = async (newActiveId: string) => {
-    if (!projectId || !templatesData) return;
-
-    const currentType = templatesData[promptTab] as TemplateTypeData;
-
+    if (!projectId || !templatesData || !activeKey) return;
+    const currentType = templatesData[activeKey] as PromptTypeData;
     setPromptSaving(true);
     try {
       await generationApi.updatePromptTemplates(projectId, {
-        [promptTab]: {
-          ...currentType,
-          active: newActiveId
-        }
+        [activeKey]: { ...currentType, active: newActiveId },
       });
-
       await loadPromptTemplates();
       toast('已切换模板', 'success');
     } catch (error: any) {
@@ -101,33 +134,26 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
   };
 
   const handleCreateCustom = async () => {
-    if (!projectId || !templatesData) return;
-
-    const currentType = templatesData[promptTab] as TemplateTypeData;
+    if (!projectId || !templatesData || !activeKey) return;
+    const currentType = templatesData[activeKey] as PromptTypeData;
     const customCount = Object.keys(currentType.custom || {}).length;
     const newId = `custom_${Date.now()}`;
-    const currentActive = currentType.templates[currentType.active];
-
+    const currentActive = currentType.templates?.[currentType.active];
     const newTemplate: TemplateData = {
       name: `自定义${customCount + 1}`,
       description: `基于 "${currentActive?.name || '默认'}" 创建`,
       content: editingContent || currentActive?.content || '',
-      is_preset: false
+      is_preset: false,
     };
-
     setPromptSaving(true);
     try {
       await generationApi.updatePromptTemplates(projectId, {
-        [promptTab]: {
+        [activeKey]: {
           ...currentType,
-          custom: {
-            ...currentType.custom,
-            [newId]: newTemplate
-          },
-          active: newId  // 切换到新创建的模板
-        }
+          custom: { ...currentType.custom, [newId]: newTemplate },
+          active: newId,
+        },
       });
-
       await loadPromptTemplates();
       toast('已创建自定义模板', 'success');
     } catch (error: any) {
@@ -138,34 +164,25 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
   };
 
   const handleSaveCustom = async () => {
-    if (!projectId || !templatesData) return;
-
-    const currentType = templatesData[promptTab] as TemplateTypeData;
+    if (!projectId || !templatesData || !activeKey) return;
+    const currentType = templatesData[activeKey] as PromptTypeData;
     const activeId = currentType.active;
-
-    // 只能保存自定义模板
     if (!activeId.startsWith('custom_') && activeId !== 'legacy') {
       toast('预设模板不可修改，请先创建自定义模板', 'info');
       return;
     }
-
     const updatedTemplate: TemplateData = {
-      ...(activeId === 'legacy' ? currentType.custom['legacy'] : currentType.custom[activeId]),
-      content: editingContent
+      ...(currentType.custom[activeId] ?? currentType.custom['legacy']),
+      content: editingContent,
     };
-
     setPromptSaving(true);
     try {
       await generationApi.updatePromptTemplates(projectId, {
-        [promptTab]: {
+        [activeKey]: {
           ...currentType,
-          custom: {
-            ...currentType.custom,
-            [activeId]: updatedTemplate
-          }
-        }
+          custom: { ...currentType.custom, [activeId]: updatedTemplate },
+        },
       });
-
       await loadPromptTemplates();
       toast('已保存模板内容', 'success');
     } catch (error: any) {
@@ -177,29 +194,19 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
 
   const handleDeleteCustom = async (templateId: string) => {
     if (!confirm('确定要删除此自定义模板吗？')) return;
-    if (!projectId || !templatesData) return;
-
-    const currentType = templatesData[promptTab] as TemplateTypeData;
-
-    // 只能删除自定义模板
+    if (!projectId || !templatesData || !activeKey) return;
+    const currentType = templatesData[activeKey] as PromptTypeData;
     if (!templateId.startsWith('custom_') && templateId !== 'legacy') {
       toast('预设模板不可删除', 'error');
       return;
     }
-
     const newCustom = { ...currentType.custom };
     delete newCustom[templateId];
-
     setPromptSaving(true);
     try {
       await generationApi.updatePromptTemplates(projectId, {
-        [promptTab]: {
-          ...currentType,
-          custom: newCustom,
-          active: 'default'  // 删除后切换回default
-        }
+        [activeKey]: { ...currentType, custom: newCustom, active: 'default' },
       });
-
       await loadPromptTemplates();
       toast('已删除自定义模板', 'success');
     } catch (error: any) {
@@ -212,7 +219,6 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
   const handleResetPromptTemplates = async () => {
     if (!confirm('确定要恢复默认提示词模板吗？这将删除所有自定义模板。')) return;
     if (!projectId) return;
-
     setPromptSaving(true);
     try {
       await generationApi.resetPromptTemplates(projectId);
@@ -229,24 +235,18 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
     return <div className="flex items-center justify-center h-full"><div className="text-gray-400">加载中...</div></div>;
   }
 
-  const currentType = templatesData[promptTab] as TemplateTypeData;
-  const activeId = currentType?.active || 'default';
+  const categories = getCategories(templatesData);
+  const keysForCategory = getKeysForCategory(templatesData, activeCategory);
+  const currentType = activeKey ? (templatesData[activeKey] as PromptTypeData) : null;
+  const activeId = currentType?.active ?? 'default';
   const activeTemplate = currentType?.templates?.[activeId];
   const isPreset = activeTemplate?.is_preset !== false;
 
-  // Tab名称映射
-  const tabNames: Record<TemplateType, string> = {
-    image: '资产',
-    video: '视频',
-    video_reverse: '反推',
-    storyboard: '分镜格',
-    storyboard_image: '分镜图',
-    storyboard_image_edit: '分镜编辑',
-    image_edit: '图片编辑',
-    triple_grid: '三宫格',
-    vlm: 'VLM',
-    multi_scene_video: '多分镜融合',
-  };
+  // 二级 tab 样式
+  const subTabClass = (active: boolean) =>
+    `px-3 py-2 font-medium text-xs transition whitespace-nowrap ${
+      active ? 'border-b-2 border-purple-500 text-purple-400' : 'text-gray-400 hover:text-white'
+    }`;
 
   return (
     <>
@@ -259,116 +259,124 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
         </div>
       )}
 
-      {/* 子功能tab栏 */}
-      <div className="flex border-b border-gray-700 overflow-x-auto">
-        {(['image', 'video', 'video_reverse', 'storyboard', 'storyboard_image', 'storyboard_image_edit', 'image_edit', 'triple_grid', 'vlm', 'multi_scene_video'] as const).map((tab) => (
+      {/* 一级 Tab：分类 */}
+      <div className="flex border-b border-gray-700 shrink-0 px-4 pt-2 gap-1">
+        {categories.map(cat => (
           <button
-            key={tab}
-            onClick={() => setPromptTab(tab)}
-            className={`px-4 py-3 font-medium text-sm transition whitespace-nowrap ${
-              promptTab === tab
-                ? 'border-b-2 border-purple-500 text-purple-400'
-                : 'text-gray-400 hover:text-white'
+            key={cat}
+            onClick={() => handleCategoryChange(cat)}
+            className={`px-3 py-1.5 text-sm rounded-t ${
+              activeCategory === cat ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
             }`}
           >
-            {tabNames[tab]}
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* 二级 Tab：该分类下的提示词 */}
+      <div className="flex border-b border-gray-700 overflow-x-auto shrink-0">
+        {keysForCategory.map(key => (
+          <button
+            key={key}
+            onClick={() => handleKeyChange(key)}
+            className={subTabClass(activeKey === key)}
+          >
+            {(templatesData[key] as PromptTypeData)?.label ?? key}
           </button>
         ))}
       </div>
 
       {/* 内容区 */}
       <div className="flex-1 overflow-y-auto p-6 min-h-0 flex flex-col">
-        {/* 紧凑式标签选择区 */}
-        <div className="mb-4">
-          <label className="text-sm text-gray-400 mb-2 block">模板:</label>
-          <div className="flex gap-2 flex-wrap items-center">
-            {/* 预设模板 - 蓝色边框 */}
-            {Object.entries(currentType?.presets || {}).map(([id, tpl]) => (
-              <button
-                key={id}
-                onClick={() => handleSwitchTemplate(id)}
-                disabled={promptSaving}
-                className={`px-3 py-1.5 rounded text-sm transition ${
-                  activeId === id
-                    ? 'bg-blue-600 text-white border-2 border-blue-500'
-                    : 'bg-gray-800 text-gray-300 border-2 border-blue-500 border-opacity-50 hover:border-opacity-100'
-                }`}
-              >
-                {tpl.name}
-              </button>
-            ))}
-
-            {/* 自定义模板 - 紫色边框 */}
-            {Object.entries(currentType?.custom || {}).map(([id, tpl]) => (
-              <div key={id} className="relative group">
+        {/* 模板选择 */}
+        {currentType && (
+          <div className="mb-4">
+            <label className="text-sm text-gray-400 mb-2 block">模板:</label>
+            <div className="flex gap-2 flex-wrap items-center">
+              {/* 预设模板 - 蓝色边框 */}
+              {Object.entries(currentType.presets || {}).map(([id, tpl]) => (
                 <button
+                  key={id}
                   onClick={() => handleSwitchTemplate(id)}
                   disabled={promptSaving}
                   className={`px-3 py-1.5 rounded text-sm transition ${
                     activeId === id
-                      ? 'bg-purple-600 text-white border-2 border-purple-500'
-                      : 'bg-gray-800 text-gray-300 border-2 border-purple-500 border-opacity-50 hover:border-opacity-100'
+                      ? 'bg-blue-600 text-white border-2 border-blue-500'
+                      : 'bg-gray-800 text-gray-300 border-2 border-blue-500/50 hover:border-blue-500'
                   }`}
                 >
                   {tpl.name}
                 </button>
-                {/* 删除按钮（悬停显示） */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteCustom(id);
-                  }}
-                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-white text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
-                  title="删除"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+              ))}
 
-            {/* 新建按钮 */}
-            <button
-              onClick={handleCreateCustom}
-              disabled={promptSaving}
-              className="px-3 py-1.5 rounded text-sm bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50"
-            >
-              + 新建
-            </button>
+              {/* 自定义模板 - 紫色边框 */}
+              {Object.entries(currentType.custom || {}).map(([id, tpl]) => (
+                <div key={id} className="relative group">
+                  <button
+                    onClick={() => handleSwitchTemplate(id)}
+                    disabled={promptSaving}
+                    className={`px-3 py-1.5 rounded text-sm transition ${
+                      activeId === id
+                        ? 'bg-purple-600 text-white border-2 border-purple-500'
+                        : 'bg-gray-800 text-gray-300 border-2 border-purple-500/50 hover:border-purple-500'
+                    }`}
+                  >
+                    {tpl.name}
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleDeleteCustom(id); }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-white text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
+                    title="删除"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              {/* 新建按钮 */}
+              <button
+                onClick={handleCreateCustom}
+                disabled={promptSaving}
+                className="px-3 py-1.5 rounded text-sm bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50"
+              >
+                + 新建
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 模板信息 */}
-        <div className="mb-3 p-3 bg-gray-800 bg-opacity-50 rounded border border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-gray-300">
-              {activeTemplate?.name || '未知模板'}
-              {isPreset ? (
-                <span className="ml-2 text-xs px-2 py-0.5 bg-blue-600 bg-opacity-30 border border-blue-500 rounded">预设</span>
-              ) : (
-                <span className="ml-2 text-xs px-2 py-0.5 bg-purple-600 bg-opacity-30 border border-purple-500 rounded">自定义</span>
+        {currentType && (
+          <div className="mb-3 p-3 bg-gray-800/50 rounded border border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-300">
+                {activeTemplate?.name || '未知模板'}
+                {isPreset ? (
+                  <span className="ml-2 text-xs px-2 py-0.5 bg-blue-600/30 border border-blue-500 rounded">预设</span>
+                ) : (
+                  <span className="ml-2 text-xs px-2 py-0.5 bg-purple-600/30 border border-purple-500 rounded">自定义</span>
+                )}
+              </h3>
+              {isPreset && (
+                <span className="text-xs text-yellow-400">只读 - 点击"新建"以创建可编辑版本</span>
               )}
-            </h3>
-            {isPreset && (
-              <span className="text-xs text-yellow-400">只读 - 点击"新建"以创建可编辑版本</span>
-            )}
+            </div>
+            <p className="text-xs text-gray-500">{activeTemplate?.description || '暂无描述'}</p>
           </div>
-          <p className="text-xs text-gray-500">
-            {activeTemplate?.description || '暂无描述'}
-          </p>
-        </div>
+        )}
 
         {/* 模板内容编辑区 */}
         <div className="flex-1 flex flex-col min-h-0">
           <textarea
             value={editingContent}
-            onChange={(e) => setEditingContent(e.target.value)}
+            onChange={e => setEditingContent(e.target.value)}
             className={`flex-1 w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm text-gray-100 font-mono resize-none ${
               isPreset ? 'opacity-60 cursor-not-allowed' : ''
             }`}
             placeholder="模板内容..."
             disabled={isPreset}
           />
-
           {isPreset && (
             <p className="text-xs text-yellow-400 mt-2">
               ℹ️ 预设模板不可直接修改，请点击"+ 新建"来创建可编辑的自定义版本
@@ -395,15 +403,48 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
           >
             {promptSaving ? (
               <>
-                <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded"></div>
+                <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded" />
                 保存中...
               </>
             ) : (
-              '💾 保存当前模板'
+              '保存当前模板'
             )}
           </button>
         )}
       </div>
     </>
   );
+}
+
+// ── 工具函数（模块级，供组件调用）────────────────────────────────────────────
+
+function getCategories(data: TemplatesResponse): string[] {
+  const found = new Set<string>();
+  for (const [key, val] of Object.entries(data)) {
+    if (key === 'is_custom' || key === 'is_legacy') continue;
+    if (val && typeof val === 'object' && 'category' in val) {
+      found.add((val as PromptTypeData).category);
+    }
+  }
+  return CATEGORY_ORDER.filter(c => found.has(c));
+}
+
+function getKeysForCategory(data: TemplatesResponse, category: string): string[] {
+  const keys = Object.entries(data)
+    .filter(([key, val]) => {
+      if (key === 'is_custom' || key === 'is_legacy') return false;
+      return val && typeof val === 'object' && (val as PromptTypeData).category === category;
+    })
+    .map(([key]) => key);
+
+  if (category === '生成模板') {
+    return keys.sort((a, b) => {
+      const ai = GENERATION_KEY_ORDER.indexOf(a);
+      const bi = GENERATION_KEY_ORDER.indexOf(b);
+      const aIdx = ai === -1 ? Infinity : ai;
+      const bIdx = bi === -1 ? Infinity : bi;
+      return aIdx - bIdx;
+    });
+  }
+  return keys;
 }

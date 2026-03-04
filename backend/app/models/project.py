@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from datetime import datetime
 from pathlib import Path
 import json
@@ -183,6 +183,9 @@ class Storyboard(Asset):
     shot_type: Optional[str] = None
     dialogue: str = ""
     action: str = ""
+    storyboard_mode: str = "regular"  # "regular" | "nine_grid"
+    video_prompt: Optional[Union[str, List[str]]] = None
+    duration: Optional[int] = None
 
 
 class ImageGeneration(BaseModel):
@@ -272,6 +275,10 @@ class ScriptScene(BaseModel):
     time_of_day: str  # 日/夜
     interior_exterior: str  # 内/外
     content: str  # 完整场景原始文本
+    # 幕/场可选信息（来自时间码格式剧本）
+    time_start: Optional[str] = None   # 开始时间，如 "00:00"
+    time_end: Optional[str] = None     # 结束时间，如 "01:00"
+    act_title: Optional[str] = None    # 幕标题，如 "第一幕：本钱"
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 

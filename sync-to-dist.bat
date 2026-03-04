@@ -33,13 +33,14 @@ echo [1/9] Creating distribution directory structure...
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 if not exist "%DIST_DIR%\backend" mkdir "%DIST_DIR%\backend"
 if not exist "%DIST_DIR%\backend\app" mkdir "%DIST_DIR%\backend\app"
+if not exist "%DIST_DIR%\backend\config" mkdir "%DIST_DIR%\backend\config"
 if not exist "%DIST_DIR%\frontend" mkdir "%DIST_DIR%\frontend"
 if not exist "%DIST_DIR%\data" mkdir "%DIST_DIR%\data"
 if not exist "%DIST_DIR%\data\projects" mkdir "%DIST_DIR%\data\projects"
-if not exist "%DIST_DIR%\data\config" mkdir "%DIST_DIR%\data\config"
 
 echo [2/9] Syncing backend code...
 xcopy /E /I /Y /Q "backend\app" "%DIST_DIR%\backend\app" >nul
+xcopy /E /I /Y /Q "backend\config" "%DIST_DIR%\backend\config" >nul
 copy /Y "backend\requirements.txt" "%DIST_DIR%\backend\" >nul
 
 REM 同步 .env 配置文件（如果存在）
@@ -213,7 +214,8 @@ echo Distribution location: %DIST_DIR%
 echo.
 echo Files synced:
 echo   - Backend code: backend/app/
-echo   - Backend config: backend/.env ^(if exists^)
+echo   - Backend config: backend/config/ ^(prompt templates^)
+echo   - Backend env: backend/.env ^(if exists^)
 echo   - Frontend build: frontend/dist/
 echo   - Python environment: env/ ^(ready to use^)
 echo   - Requirements: backend/requirements.txt

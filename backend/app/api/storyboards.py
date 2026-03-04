@@ -5,6 +5,11 @@ from datetime import datetime
 import os
 
 from app.services import AssetService, PromptService, get_ai_service
+from app.services.asset_service import ProjectService
+from app.services.storyboard_asset_service import (
+    extract_assets_from_storyboards,
+    match_assets_to_storyboards,
+)
 from app.services.asset_service import ImageService
 from app.services.video_service import VideoService
 from app.models.project import Storyboard
@@ -150,6 +155,9 @@ async def generate_storyboards(project_id: str, request: StoryboardGenerateReque
         results = []
         for sb_data in storyboards:
             sb_data["episode_id"] = request.episode_id
+            # 如果模板生成的是九宫格分镜，标记 storyboard_mode
+            if sb_data.get("shot_type") == "九宫格分镜":
+                sb_data["storyboard_mode"] = "nine_grid"
             result = AssetService.save_asset(project_id, "storyboard", sb_data)
             results.append(result)
 
@@ -454,6 +462,116 @@ async def auto_match_assets(project_id: str, storyboard_id: str):
         )
 
 
+@router.post("/{storyboard_id}/generate-nine-grid-prompts")
+async def generate_nine_grid_prompts(project_id: str, storyboard_id: str):
+    """
+    为九宫格分镜一次性生成图片提示词和视频提示词
+
+    使用分镜的 description（剧本原文片段）+ 完整剧集剧本 + 已匹配资产，
+    一次LLM调用同时生成 image_prompt 和 video_prompt。
+    """
+    from app.services import ProjectService
+
+    try:
+        # 1. 加载分镜
+        storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+        if not storyboard:
+            raise HTTPException(status_code=404, detail="Storyboard not found")
+
+        # 2. 获取项目和AI配置
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        ai_config = project.get("ai_config", {})
+        llm = get_ai_service(ai_config, "llm", project_id)
+
+        # 3. 获取完整剧集剧本
+        episode_script = ""
+        episode_id = storyboard.get("episode_id")
+        if episode_id:
+            try:
+                episode = AssetService.load_asset(project_id, "episode", episode_id)
+                if episode:
+                    episode_script = episode.get("script", "")
+            except:
+                pass
+
+        # 4. 构建资产描述
+        assets_lines = []
+        char_ids = storyboard.get("character_ids", [])
+        scene_id = storyboard.get("scene_id")
+        prop_ids = storyboard.get("prop_ids", [])
+
+        img_idx = 1
+        for cid in char_ids:
+            char = AssetService.load_asset(project_id, "character", cid)
+            if char:
+                assets_lines.append(f"图{img_idx}（角色）：{char.get('name', '')} - {char.get('description', '')}")
+                img_idx += 1
+
+        if scene_id:
+            scene = AssetService.load_asset(project_id, "scene", scene_id)
+            if scene:
+                assets_lines.append(f"图{img_idx}（场景）：{scene.get('name', '')} - {scene.get('description', '')}")
+                img_idx += 1
+
+        for pid in prop_ids:
+            prop = AssetService.load_asset(project_id, "prop", pid)
+            if prop:
+                assets_lines.append(f"图{img_idx}（道具）：{prop.get('name', '')} - {prop.get('description', '')}")
+                img_idx += 1
+
+        assets_desc = "\n".join(assets_lines) if assets_lines else "（无参考资产）"
+
+        # 5. 获取语言和风格配置
+        from app.api.generation.style_presets import get_image_style_suffix
+        global_style_config = ai_config.get("global_style_config", {})
+        language = global_style_config.get("prompt_language", "zh")
+        image_style = global_style_config.get("image_style", {})
+        style_suffix = ""
+        if image_style.get("enabled", True):
+            preset_id = image_style.get("preset_id", "none")
+            if preset_id == "custom":
+                style_suffix = image_style.get("custom_suffix", "")
+            elif preset_id != "none":
+                style_suffix = get_image_style_suffix(preset_id, language)
+
+        # 6. 调用服务生成提示词
+        result = await PromptService.generate_nine_grid_combined_prompts(
+            llm=llm,
+            description=storyboard.get("description", ""),
+            episode_script=episode_script,
+            assets_desc=assets_desc,
+            language=language,
+            style_suffix=style_suffix,
+            ai_config=ai_config
+        )
+        await llm.close()
+
+        # 6. 保存到分镜
+        storyboard["image_prompt"] = result.get("image_prompt", "")
+        storyboard["video_prompt"] = result.get("video_prompt", "")
+        storyboard["updated_at"] = datetime.now().isoformat()
+        AssetService.save_asset(project_id, "storyboard", storyboard)
+
+        return {
+            "image_prompt": result.get("image_prompt", ""),
+            "video_prompt": result.get("video_prompt", ""),
+            "saved": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate nine-grid prompts: {str(e)}"
+        )
+
+
 @router.post("/{storyboard_id}/export")
 async def export_storyboard(project_id: str, storyboard_id: str):
     """导出分镜到桌面（包含主图、资产主图、视频提示词）"""
@@ -476,6 +594,17 @@ async def export_storyboard(project_id: str, storyboard_id: str):
 
         sequence = storyboard.get("sequence", 1)
         video_prompt = storyboard.get("video_prompt", "")
+        episode_id = storyboard.get("episode_id")
+
+        # 2b. 查找集数编号
+        episode_number = None
+        if episode_id:
+            import json as _json
+            ep_file = settings.PROJECTS_DIR / project_id / "episodes" / f"{episode_id}.json"
+            if ep_file.exists():
+                with open(ep_file, "r", encoding="utf-8") as _f:
+                    ep_data = _json.load(_f)
+                episode_number = ep_data.get("episode_number")
 
         # 3. 获取用户桌面路径
         desktop_path = Path.home() / "Desktop"
@@ -488,6 +617,12 @@ async def export_storyboard(project_id: str, storyboard_id: str):
         # 4. 创建项目文件夹
         export_folder = desktop_path / project_name
         export_folder.mkdir(exist_ok=True)
+
+        # 4b. 创建集数子文件夹
+        if episode_number is not None:
+            episode_folder_name = f"第{episode_number}集"
+            export_folder = export_folder / episode_folder_name
+            export_folder.mkdir(exist_ok=True)
 
         # 5. 创建分镜子文件夹
         storyboard_folder = export_folder / f"分镜{sequence}"
@@ -556,13 +691,16 @@ async def export_storyboard(project_id: str, storyboard_id: str):
         if video_prompt:
             prompt_file = storyboard_folder / "视频提示词.txt"
             with open(prompt_file, "w", encoding="utf-8") as f:
-                f.write(video_prompt)
+                if isinstance(video_prompt, list):
+                    f.write("\n\n---\n\n".join(video_prompt))
+                else:
+                    f.write(video_prompt)
 
         return {
             "success": True,
             "export_path": str(storyboard_folder),
             "video_prompt": video_prompt,
-            "message": f"已导出到桌面：{project_name}/分镜{sequence}"
+            "message": f"已导出到桌面：{project_name}/{'第' + str(episode_number) + '集/' if episode_number is not None else ''}分镜{sequence}"
         }
 
     except HTTPException:
@@ -574,3 +712,204 @@ async def export_storyboard(project_id: str, storyboard_id: str):
             status_code=500,
             detail=f"导出失败: {str(e)}"
         )
+
+
+@router.get("/{storyboard_id}/download")
+async def download_storyboard_resources(project_id: str, storyboard_id: str):
+    """下载分镜资源包（zip格式，包含主图、资产主图、视频提示词）"""
+    import shutil
+    import zipfile
+    import tempfile
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+
+    try:
+        # 1. 获取项目信息
+        from app.services import ProjectService
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        project_name = project.get("name", "未命名项目")
+
+        # 2. 获取分镜信息
+        storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+        if not storyboard:
+            raise HTTPException(status_code=404, detail="Storyboard not found")
+
+        sequence = storyboard.get("sequence", 1)
+        video_prompt = storyboard.get("video_prompt", "")
+        episode_id = storyboard.get("episode_id")
+
+        # 2b. 查找集数编号
+        episode_number = None
+        if episode_id:
+            import json as _json
+            ep_file = settings.PROJECTS_DIR / project_id / "episodes" / f"{episode_id}.json"
+            if ep_file.exists():
+                with open(ep_file, "r", encoding="utf-8") as _f:
+                    ep_data = _json.load(_f)
+                episode_number = ep_data.get("episode_number")
+
+        # 3. 创建临时目录
+        temp_dir = Path(tempfile.mkdtemp())
+        storyboard_folder = temp_dir / f"分镜{sequence}"
+        storyboard_folder.mkdir(exist_ok=True)
+
+        project_dir = settings.PROJECTS_DIR / project_id
+
+        # 4. 复制分镜主图
+        primary_image = ImageService.get_primary_image(project_id, storyboard_id)
+        if primary_image and primary_image.get("local_path"):
+            local_path = primary_image.get("local_path")
+            source_file = project_dir / "images" / "files" / local_path
+
+            if source_file.exists():
+                ext = source_file.suffix
+                dest_file = storyboard_folder / f"分镜主图{ext}"
+                shutil.copy2(source_file, dest_file)
+
+        # 5. 复制关联资产的主图
+        # 复制角色主图
+        character_ids = storyboard.get("character_ids", [])
+        for idx, char_id in enumerate(character_ids, 1):
+            character = AssetService.load_asset(project_id, "character", char_id)
+            if character:
+                char_name = character.get("name", f"角色{idx}")
+                char_image = ImageService.get_primary_image(project_id, char_id)
+                if char_image and char_image.get("local_path"):
+                    local_path = char_image.get("local_path")
+                    source_file = project_dir / "images" / "files" / local_path
+                    if source_file.exists():
+                        ext = source_file.suffix
+                        dest_file = storyboard_folder / f"角色-{char_name}{ext}"
+                        shutil.copy2(source_file, dest_file)
+
+        # 复制场景主图
+        scene_id = storyboard.get("scene_id")
+        if scene_id:
+            scene = AssetService.load_asset(project_id, "scene", scene_id)
+            if scene:
+                scene_name = scene.get("name", "场景")
+                scene_image = ImageService.get_primary_image(project_id, scene_id)
+                if scene_image and scene_image.get("local_path"):
+                    local_path = scene_image.get("local_path")
+                    source_file = project_dir / "images" / "files" / local_path
+                    if source_file.exists():
+                        ext = source_file.suffix
+                        dest_file = storyboard_folder / f"场景-{scene_name}{ext}"
+                        shutil.copy2(source_file, dest_file)
+
+        # 复制道具主图
+        prop_ids = storyboard.get("prop_ids", [])
+        for idx, prop_id in enumerate(prop_ids, 1):
+            prop = AssetService.load_asset(project_id, "prop", prop_id)
+            if prop:
+                prop_name = prop.get("name", f"道具{idx}")
+                prop_image = ImageService.get_primary_image(project_id, prop_id)
+                if prop_image and prop_image.get("local_path"):
+                    local_path = prop_image.get("local_path")
+                    source_file = project_dir / "images" / "files" / local_path
+                    if source_file.exists():
+                        ext = source_file.suffix
+                        dest_file = storyboard_folder / f"道具-{prop_name}{ext}"
+                        shutil.copy2(source_file, dest_file)
+
+        # 6. 保存视频提示词
+        if video_prompt:
+            prompt_file = storyboard_folder / "视频提示词.txt"
+            with open(prompt_file, "w", encoding="utf-8") as f:
+                if isinstance(video_prompt, list):
+                    f.write("\n\n---\n\n".join(video_prompt))
+                else:
+                    f.write(video_prompt)
+
+        # 7. 创建zip文件
+        zip_filename = f"{project_name}_第{episode_number}集_分镜{sequence}.zip" if episode_number else f"{project_name}_分镜{sequence}.zip"
+        zip_path = temp_dir / zip_filename
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in storyboard_folder.rglob('*'):
+                if file.is_file():
+                    arcname = file.relative_to(temp_dir)
+                    zipf.write(file, arcname)
+
+        # 8. 返回文件响应
+        return FileResponse(
+            path=str(zip_path),
+            filename=zip_filename,
+            media_type='application/zip',
+            background=None  # 不自动删除，让系统清理临时文件
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"下载失败: {str(e)}"
+        )
+
+
+# ── 资产提取与匹配 ────────────────────────────────────────────────────────────
+
+class ExtractAssetsRequest(BaseModel):
+    episode_id: str
+
+
+class MatchAssetsRequest(BaseModel):
+    episode_id: str
+    overwrite_existing: bool = False
+
+
+@router.post("/extract-assets")
+async def extract_assets(project_id: str, request: ExtractAssetsRequest):
+    """从指定剧集的分镜内容中提取重要资产并创建到资产库"""
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        ai_config = project.get("ai_config", {})
+        result = await extract_assets_from_storyboards(project_id, request.episode_id, ai_config)
+        created = result["created"]
+        total_created = (
+            len(created["characters"]) + len(created["scenes"]) + len(created["props"])
+        )
+        return {
+            "success": True,
+            "created": created,
+            "total_created": total_created,
+            "skipped_count": result["skipped_count"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"资产提取失败: {str(e)}")
+
+
+@router.post("/match-assets")
+async def match_assets(project_id: str, request: MatchAssetsRequest):
+    """将资产库中的资产批量匹配到指定剧集的所有分镜"""
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        ai_config = project.get("ai_config", {})
+        result = await match_assets_to_storyboards(
+            project_id, request.episode_id, ai_config, request.overwrite_existing
+        )
+        return {
+            "success": True,
+            "updated_count": result["updated_count"],
+            "updated_storyboard_ids": result["updated_storyboard_ids"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"资产匹配失败: {str(e)}")

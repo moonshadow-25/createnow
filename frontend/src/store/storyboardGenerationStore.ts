@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 interface GenerationTask {
   storyboardId: string;
-  operation: 'prompt' | 'image' | 'video' | 'auto_generate' | 'image_edit' | 'triple_grid' | 'insert_storyboard' | 'inbetween' | 'multi_fusion' | 'first_last_video' | 'create_end_frame';
+  operation: 'prompt' | 'image' | 'video' | 'auto_generate' | 'image_edit' | 'triple_grid' | 'insert_storyboard' | 'inbetween' | 'multi_fusion' | 'first_last_video' | 'create_end_frame' | 'auto_match' | 'nine_grid' | 'video_prompt' | 'video_reverse';
   status: 'pending' | 'generating' | 'success' | 'error';
   error?: string;
 }

@@ -26,8 +26,8 @@ class AIService:
             max_connections=500,        # 最大总连接数
             max_keepalive_connections=100  # 保持活跃的连接数
         )
-        # 增加超时时间至300秒，因为九宫格分镜等复杂任务可能需要更长时间
-        self.client = httpx.AsyncClient(timeout=300.0, limits=limits)
+        # 增加超时时间至600秒（10分钟），因为九宫格分镜等复杂任务可能需要更长时间
+        self.client = httpx.AsyncClient(timeout=600.0, limits=limits)
 
     async def close(self):
         await self.client.aclose()

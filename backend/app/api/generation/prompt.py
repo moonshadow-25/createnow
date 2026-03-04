@@ -1,13 +1,15 @@
 """
-Generation API - 提示词模板管理端点（方案B：类别多模板）
-"""
+Generation API - 项目级提示词模板管理端点
 
+支持对所有全局提示词（生成模板/服务提示词/系统提示词）的项目级覆盖。
+项目覆盖存储在 ai_config.prompt_overrides 中（新字段名）。
+旧字段 ai_config.prompt_templates 保持只读向后兼容。
+"""
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
-from app.services import PromptService
-from .models import PromptTemplateUpdate
-from .templates import DEFAULT_PROMPT_TEMPLATES, DEFAULT_PRESETS, TEMPLATE_TYPES, OLD_TO_NEW_TEMPLATE_MAPPING
+from app.services.global_prompt_service import load_prompts
+from .templates import OLD_TO_NEW_TEMPLATE_MAPPING
 
 router = APIRouter()
 
@@ -15,15 +17,17 @@ router = APIRouter()
 @router.get("/prompt-templates")
 async def get_prompt_templates(project_id: str):
     """
-    获取项目的提示词模板（方案B：结构化返回）
+    获取项目的提示词模板。
 
     返回格式：
     {
-        "image": {
+        "<key>": {
+            "label": "资产图片",
+            "category": "生成模板",
             "presets": {"default": {...}, "nine_grid": {...}},
             "custom": {"custom_1": {...}},
             "active": "default",
-            "templates": {...}  // 合并后的所有模板
+            "templates": {...}   // presets + custom 合并
         },
         ...
     }
@@ -35,82 +39,72 @@ async def get_prompt_templates(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
-    custom_templates_config = ai_config.get("prompt_templates", {})
 
-    # 检测是否为旧格式（扁平化的字符串）
+    # 读取项目覆盖（新字段优先，回退旧字段）
+    overrides = ai_config.get("prompt_overrides", {})
+    legacy_templates = ai_config.get("prompt_templates", {})
+
+    # 检测旧格式（扁平字符串）
     is_old_format = False
-    if custom_templates_config:
-        # 如果第一个值是字符串，说明是旧格式
-        first_value = next(iter(custom_templates_config.values()), None)
+    if legacy_templates:
+        first_value = next(iter(legacy_templates.values()), None)
         if isinstance(first_value, str):
             is_old_format = True
 
-    # 构建返回结果
+    # 加载全局提示词
+    all_prompts = load_prompts()
     result = {}
 
-    for template_type in TEMPLATE_TYPES:
-        # 获取预设模板
-        presets = DEFAULT_PRESETS.get(template_type, {})
+    for key, prompt_data in all_prompts.items():
+        presets = prompt_data.get("presets", {})
 
-        if is_old_format:
-            # 旧格式：简单包装
-            old_key = OLD_TO_NEW_TEMPLATE_MAPPING.get(f"{template_type}_prompt_template") or f"{template_type}_prompt_template"
-            # 反向查找旧key
-            old_key_found = None
-            for old_k, new_t in OLD_TO_NEW_TEMPLATE_MAPPING.items():
-                if new_t == template_type:
-                    old_key_found = old_k
+        # 确定 custom 和 active
+        custom = {}
+        active = "default"
+
+        if key in overrides and isinstance(overrides[key], dict):
+            # 新格式覆盖
+            custom = overrides[key].get("custom", {})
+            active = overrides[key].get("active", "default")
+        elif not is_old_format and key in legacy_templates and isinstance(legacy_templates.get(key), dict):
+            # 旧字段但新结构（过渡期兼容）
+            type_data = legacy_templates[key]
+            custom = type_data.get("custom", {})
+            active = type_data.get("active", "default")
+        elif is_old_format:
+            # 旧格式：查找对应旧 key
+            old_key = None
+            for ok, nk in OLD_TO_NEW_TEMPLATE_MAPPING.items():
+                if nk == key:
+                    old_key = ok
                     break
-
-            old_content = custom_templates_config.get(old_key_found) if old_key_found else None
-
-            if old_content:
-                # 有自定义内容 → 包装为 custom["legacy"]
-                custom = {
-                    "legacy": {
-                        "name": "当前自定义",
-                        "description": "旧版本的自定义模板",
-                        "content": old_content,
-                        "is_preset": False
-                    }
-                }
+            old_content = legacy_templates.get(old_key) if old_key else None
+            if old_content and isinstance(old_content, str):
+                custom = {"legacy": {
+                    "name": "当前自定义",
+                    "description": "旧版本的自定义模板",
+                    "content": old_content,
+                    "is_preset": False,
+                }}
                 active = "legacy"
-            else:
-                # 无自定义 → 使用default预设
-                custom = {}
-                active = "default"
-        else:
-            # 新格式：直接读取
-            type_data = custom_templates_config.get(template_type, {})
-            custom = type_data.get("custom", {}) if isinstance(type_data, dict) else {}
-            active = type_data.get("active", "default") if isinstance(type_data, dict) else "default"
 
-        # 合并所有模板
+        # 合并所有模板（预设 + 自定义）
         all_templates = {}
+        for pid, pdata in presets.items():
+            all_templates[pid] = {**pdata, "is_preset": True}
+        for cid, cdata in custom.items():
+            all_templates[cid] = {**cdata, "is_preset": False}
 
-        # 添加预设模板
-        for preset_id, preset_data in presets.items():
-            all_templates[preset_id] = {
-                **preset_data,
-                "is_preset": True
-            }
-
-        # 添加自定义模板
-        for custom_id, custom_data in custom.items():
-            all_templates[custom_id] = {
-                **custom_data,
-                "is_preset": False
-            }
-
-        result[template_type] = {
+        result[key] = {
+            "label": prompt_data.get("label", key),
+            "category": prompt_data.get("category", ""),
             "presets": presets,
             "custom": custom,
             "active": active,
-            "templates": all_templates
+            "templates": all_templates,
         }
 
-    # 添加兼容字段（用于前端判断是否为自定义）
-    result["is_custom"] = bool(custom_templates_config)
+    result["is_custom"] = bool(overrides or (not is_old_format and legacy_templates))
     result["is_legacy"] = is_old_format
 
     return result
@@ -119,19 +113,15 @@ async def get_prompt_templates(project_id: str):
 @router.put("/prompt-templates")
 async def update_prompt_templates(project_id: str, templates: Dict[str, Any]):
     """
-    更新项目的提示词模板（方案B：结构化更新）
+    更新项目的提示词模板（保存到 prompt_overrides）。
 
     接收格式：
     {
-        "image": {
-            "custom": {"custom_1": {...}},
-            "active": "custom_1"
-        },
-        "video": {
-            "active": "nine_grid"
-        },
+        "image": { "active": "custom_1", "custom": {"custom_1": {...}} },
+        "character_analysis": { "active": "default" },
         ...
     }
+    接受任意合法的提示词 key。
     """
     from app.services import ProjectService
 
@@ -139,44 +129,41 @@ async def update_prompt_templates(project_id: str, templates: Dict[str, Any]):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # 获取现有配置
     ai_config = project.get("ai_config", {})
-    prompt_templates = ai_config.get("prompt_templates", {})
+    prompt_overrides = ai_config.get("prompt_overrides", {})
 
-    # 检测旧格式并清理（迁移时删除旧key）
-    is_old_format = False
-    if prompt_templates:
-        first_value = next(iter(prompt_templates.values()), None)
-        if isinstance(first_value, str):
-            is_old_format = True
+    # 迁移旧格式 prompt_templates → prompt_overrides（一次性）
+    legacy = ai_config.get("prompt_templates", {})
+    if legacy:
+        first_val = next(iter(legacy.values()), None)
+        if isinstance(first_val, str):
+            # 旧扁平格式：丢弃（用户切换后自然覆盖）
+            pass
+        else:
+            # 旧结构格式：迁移
+            for k, v in legacy.items():
+                if isinstance(v, dict) and k not in prompt_overrides:
+                    prompt_overrides[k] = v
+        ai_config["prompt_templates"] = {}  # 清空旧字段
 
-    if is_old_format:
-        # 清空旧格式数据，准备保存新格式
-        prompt_templates = {}
+    # 加载合法 key 集合
+    valid_keys = set(load_prompts().keys())
 
-    # 更新提供的模板类型
-    for template_type, type_data in templates.items():
-        # 跳过非模板类型的字段
-        if template_type not in TEMPLATE_TYPES:
+    for key, type_data in templates.items():
+        if key not in valid_keys:
+            continue
+        if not isinstance(type_data, dict):
             continue
 
-        # 初始化结构（如果不存在）
-        if template_type not in prompt_templates:
-            prompt_templates[template_type] = {
-                "custom": {},
-                "active": "default"
-            }
+        if key not in prompt_overrides:
+            prompt_overrides[key] = {"custom": {}, "active": "default"}
 
-        # 更新字段（注意：不保存 presets 和 templates，它们由代码提供）
         if "custom" in type_data:
-            prompt_templates[template_type]["custom"] = type_data["custom"]
-
+            prompt_overrides[key]["custom"] = type_data["custom"]
         if "active" in type_data:
-            prompt_templates[template_type]["active"] = type_data["active"]
+            prompt_overrides[key]["active"] = type_data["active"]
 
-    ai_config["prompt_templates"] = prompt_templates
-
-    # 保存项目
+    ai_config["prompt_overrides"] = prompt_overrides
     ProjectService.update_project(project_id, ai_config=ai_config)
 
     return {"success": True, "message": "提示词模板已更新"}
@@ -184,53 +171,16 @@ async def update_prompt_templates(project_id: str, templates: Dict[str, Any]):
 
 @router.post("/prompt-templates/reset")
 async def reset_prompt_templates(project_id: str):
-    """重置为默认提示词模板"""
+    """清除所有项目级覆盖，恢复使用全局默认"""
     from app.services import ProjectService
 
     project = ProjectService.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # 清除自定义模板，恢复默认值
     ai_config = project.get("ai_config", {})
-    ai_config["prompt_templates"] = {}
+    ai_config["prompt_overrides"] = {}
+    ai_config["prompt_templates"] = {}  # 同时清除旧字段
 
     ProjectService.update_project(project_id, ai_config=ai_config)
-
     return {"success": True, "message": "已恢复默认提示词模板"}
-
-
-# ==================== 向后兼容：旧接口（Deprecated） ====================
-# 保留旧的扁平化接口，供旧代码调用，标记为废弃
-
-@router.get("/prompt-templates-legacy")
-async def get_prompt_templates_legacy(project_id: str):
-    """
-    获取项目的提示词模板（旧接口，已废弃）
-    保留用于向后兼容
-    """
-    from app.services import ProjectService
-
-    project = ProjectService.get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    custom_templates = project.get("ai_config", {}).get("prompt_templates", {})
-
-    # 如果没有自定义模板，使用 PromptService 中的默认模板
-    if not custom_templates.get("storyboard_generation_prompt_template"):
-        custom_templates["storyboard_generation_prompt_template"] = PromptService.STORYBOARD_DESC_TEMPLATE
-
-    return {
-        "image_prompt_template": custom_templates.get("image_prompt_template", DEFAULT_PROMPT_TEMPLATES["image_prompt_template"]),
-        "video_prompt_template": custom_templates.get("video_prompt_template", DEFAULT_PROMPT_TEMPLATES["video_prompt_template"]),
-        "video_reverse_prompt_template": custom_templates.get("video_reverse_prompt_template", DEFAULT_PROMPT_TEMPLATES.get("video_reverse_prompt_template", "")),
-        "storyboard_generation_prompt_template": custom_templates.get("storyboard_generation_prompt_template", PromptService.STORYBOARD_DESC_TEMPLATE),
-        "storyboard_image_prompt_template": custom_templates.get("storyboard_image_prompt_template", DEFAULT_PROMPT_TEMPLATES.get("storyboard_image_prompt_template", "")),
-        "storyboard_image_edit_prompt_template": custom_templates.get("storyboard_image_edit_prompt_template", DEFAULT_PROMPT_TEMPLATES.get("storyboard_image_edit_prompt_template", "")),
-        "image_edit_prompt_template": custom_templates.get("image_edit_prompt_template", DEFAULT_PROMPT_TEMPLATES.get("image_edit_prompt_template", "")),
-        "triple_grid_prompt_template": custom_templates.get("triple_grid_prompt_template", DEFAULT_PROMPT_TEMPLATES.get("triple_grid_prompt_template", "")),
-        "vlm_prompt_template": custom_templates.get("vlm_prompt_template", DEFAULT_PROMPT_TEMPLATES.get("vlm_prompt_template", "")),
-        "multi_scene_video_prompt": custom_templates.get("multi_scene_video_prompt", DEFAULT_PROMPT_TEMPLATES.get("multi_scene_video_prompt", "")),
-        "is_custom": bool(custom_templates)
-    }

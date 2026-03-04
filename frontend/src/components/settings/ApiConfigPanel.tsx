@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, AlertCircle, X, Plus, ChevronDown } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, Plus, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { validationApi } from '@/services/api';
+import { validationApi, authApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import type { ApiConfig, ImageSizes, ApiConfigPresetsMap, ApiConfigPreset } from '@/types';
 
@@ -27,6 +27,7 @@ interface ApiConfigPanelProps {
 }
 
 const API_TYPE_OPTIONS = [
+  { value: 'createnow', label: 'CreateNow 官方接口' },
   { value: 'openai', label: 'OpenAI 兼容' },
   { value: 'dashscope', label: '阿里百炼 DashScope' },
   { value: 'byteseed', label: '字节 Seed' },
@@ -49,6 +50,11 @@ export function ApiConfigPanel({
 }: ApiConfigPanelProps) {
   const { toast } = useToast();
   const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'tts' | 'sizes'>('llm');
+
+  // API Key 明文显示状态（每个服务类型独立）
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const toggleShowKey = (type: string) =>
+    setShowKeys(prev => ({ ...prev, [type]: !prev[type] }));
 
   // 本地预设副本，用于解决 props 更新延迟问题
   const [localPresets, setLocalPresets] = useState<ApiConfigPresetsMap>(configPresets);
@@ -175,7 +181,7 @@ export function ApiConfigPanel({
 
   const handleApiTypeChange = (
     type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
-    apiType: 'openai' | 'dashscope' | 'local'
+    apiType: 'openai' | 'dashscope' | 'local' | 'byteseed' | 'createnow'
   ) => {
     const config = localConfig[type];
 
@@ -188,11 +194,17 @@ export function ApiConfigPanel({
       tts: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2audio/speech-synthesis'
     };
 
+    const createnowUrl = 'http://47.117.182.216:8003/v1';
+
     const newConfig: ApiConfig = {
       ...config,
       api_type: apiType,
-      // 自动设置阿里百炼的正确 URL
-      api_url: apiType === 'dashscope' ? dashscopeUrls[type] : config.api_url,
+      // 自动设置对应接口的正确 URL
+      api_url: apiType === 'dashscope' ? dashscopeUrls[type]
+             : apiType === 'createnow' ? createnowUrl
+             : config.api_url,
+      // createnow 默认模型
+      model: apiType === 'createnow' ? 'nova-pro' : config.model,
       // 特殊处理：OpenAI 不需要 image_edit_model
       image_edit_model: apiType === 'openai' ? undefined : config.image_edit_model
     };
@@ -202,6 +214,12 @@ export function ApiConfigPanel({
   };
 
   const handleValidateAPI = async (type: 'llm' | 'image' | 'video' | 'tts') => {
+    // ✅ 检查是否选中预设
+    if (activePresetIds[type] === null) {
+      toast('请先创建或选择一个配置预设', 'error');
+      return;
+    }
+
     const config = localConfig[type];
     if (!config.api_key) {
       toast('请先输入API密钥', 'error');
@@ -261,11 +279,8 @@ export function ApiConfigPanel({
 
     const config = localConfig[type];
 
-    // 检查是否所有必填字段都已填写
-    if (!config.api_key || !config.model) {
-      toast('请先完整填写API配置', 'error');
-      return;
-    }
+    // ✅ 移除验证 - 允许保存空白配置
+    // 用户可以先创建预设，再填写配置
 
     const newPreset: ApiConfigPreset = {
       id: uuidv4(),
@@ -288,7 +303,7 @@ export function ApiConfigPanel({
     onSwitchTag(type, newPreset.id);
 
     setSavePresetDialog({ show: false, type: null, name: '' });
-    toast('预设已创建（请点击"保存配置"按钮保存）', 'success');
+    toast('配置预设已创建，请填写完整后保存', 'success');
   };
 
   // 切换标签
@@ -341,14 +356,27 @@ export function ApiConfigPanel({
     const isDashscope = config.api_type === 'dashscope';
     const isLocal = config.api_type === 'local';
     const isByteSeed = config.api_type === 'byteseed';
+    const isCreatenow = config.api_type === 'createnow';
     const showImageEditModel = type === 'image' && isDashscope;
     const showVoiceField = type === 'tts' && !isLocal;  // OpenAI和阿里百炼显示voice
     const showIdField = type === 'tts' && isLocal;  // 本地API显示id
     const showByteSeedVideoOptions = type === 'video' && isByteSeed;  // ByteSeed视频特有选项
     const showByteSeedImageOptions = type === 'image' && isByteSeed;  // ByteSeed图像特有选项
 
+    // ✅ 增强判断：不仅检查 null，还检查预设是否真实存在
+    const hasNoActiveTag =
+      activePresetIds[type] === null ||
+      !localPresets[type]?.some(p => p.id === activePresetIds[type]);
+
     return (
       <div className="space-y-4">
+        {/* ✅ 新增：未选中标签时的提示 */}
+        {hasNoActiveTag && (
+          <div className="bg-yellow-900/30 border border-yellow-600 rounded p-3 text-sm text-yellow-200 mb-4">
+            ⚠️ 请先创建或选择一个配置预设，然后再填写API配置
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-base font-semibold">{title}</h3>
           {(type === 'llm' || type === 'image' || type === 'video' || type === 'tts') && (
@@ -375,7 +403,8 @@ export function ApiConfigPanel({
             <select
               value={config.api_type}
               onChange={(e) => handleApiTypeChange(type, e.target.value as 'openai' | 'dashscope')}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+              disabled={hasNoActiveTag}
             >
               {API_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -388,34 +417,88 @@ export function ApiConfigPanel({
                 ℹ️ 使用阿里百炼平台，API地址和模型已自动配置
               </p>
             )}
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">API URL</label>
-            <input
-              type="text"
-              value={config.api_url}
-              onChange={(e) => handleConfigChange(type, 'api_url', e.target.value)}
-              placeholder="https://api.openai.com/v1"
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-              disabled={isDashscope}
-            />
-            {isDashscope && (
+            {isCreatenow && (
               <p className="text-xs text-gray-500 mt-1">
-                阿里百炼API地址为默认值，不可修改
+                ℹ️ 使用 CreateNow 官方接口，需在主页登录账号
+              </p>
+            )}
+            {hasNoActiveTag && (
+              <p className="text-xs text-yellow-500 mt-1">
+                请先创建配置预设
               </p>
             )}
           </div>
 
+          {/* API URL：createnow 时完全隐藏 */}
+          {!isCreatenow && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">API URL</label>
+              <input
+                type="text"
+                value={config.api_url}
+                onChange={(e) => handleConfigChange(type, 'api_url', e.target.value)}
+                placeholder="https://api.openai.com/v1"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                disabled={isDashscope || hasNoActiveTag}
+              />
+              {isDashscope && (
+                <p className="text-xs text-gray-500 mt-1">
+                  阿里百炼API地址为默认值，不可修改
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm text-gray-400 mb-1">API Key</label>
-            <input
-              type="password"
-              value={config.api_key}
-              onChange={(e) => handleConfigChange(type, 'api_key', e.target.value)}
-              placeholder="sk-..."
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-            />
+            <div className="flex gap-2">
+              <input
+                type={showKeys[type] ? 'text' : 'password'}
+                value={config.api_key}
+                onChange={(e) => handleConfigChange(type, 'api_key', e.target.value)}
+                placeholder="sk-..."
+                autoComplete="new-password"
+                className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                disabled={hasNoActiveTag}
+              />
+              {/* 显示/隐藏 API Key */}
+              <button
+                type="button"
+                onClick={() => toggleShowKey(type)}
+                disabled={hasNoActiveTag}
+                className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                title={showKeys[type] ? '隐藏密钥' : '显示密钥'}
+              >
+                {showKeys[type] ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+              {isCreatenow && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await authApi.getKey();
+                      const { logged_in, api_key } = res.data;
+                      if (!logged_in || !api_key) {
+                        toast('请先在主页登录 CreateNow 账号', 'error');
+                        return;
+                      }
+                      handleConfigChange(type, 'api_key', api_key);
+                      toast('已填入登录密钥', 'success');
+                    } catch {
+                      toast('获取密钥失败', 'error');
+                    }
+                  }}
+                  disabled={hasNoActiveTag}
+                  className="px-3 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm whitespace-nowrap disabled:bg-gray-700 disabled:cursor-not-allowed transition"
+                >
+                  使用登录密钥
+                </button>
+              )}
+            </div>
+            {isCreatenow && (
+              <p className="text-xs text-gray-500 mt-1">
+                点击"使用登录密钥"自动填入，或手动输入
+              </p>
+            )}
           </div>
 
           <div>
@@ -425,7 +508,8 @@ export function ApiConfigPanel({
               value={config.model}
               onChange={(e) => handleConfigChange(type, 'model', e.target.value)}
               placeholder={type === 'llm' ? 'gpt-4' : type === 'vlm' ? 'gpt-4o' : type === 'image' ? 'dall-e-3' : type === 'tts' ? 'tts-1' : 'sora'}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+              disabled={hasNoActiveTag}
             />
           </div>
 
@@ -437,7 +521,8 @@ export function ApiConfigPanel({
                 value={config.voice || ''}
                 onChange={(e) => handleConfigChange(type, 'voice', e.target.value)}
                 placeholder="alloy"
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                disabled={hasNoActiveTag}
               />
               <p className="text-xs text-gray-500 mt-1">
                 OpenAI: alloy, echo, fable, onyx, nova, shimmer | 阿里百炼: zhichu, zhitian等
@@ -453,7 +538,8 @@ export function ApiConfigPanel({
                 value={config.id || ''}
                 onChange={(e) => handleConfigChange(type, 'id', e.target.value)}
                 placeholder="0"
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                disabled={hasNoActiveTag}
               />
               <p className="text-xs text-gray-500 mt-1">
                 本地API的说话人ID，用于指定音色
@@ -469,7 +555,8 @@ export function ApiConfigPanel({
                     type="checkbox"
                     checked={config.generate_audio || false}
                     onChange={(e) => handleConfigChange(type, 'generate_audio', e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                    disabled={hasNoActiveTag}
                   />
                   <span className="text-sm text-gray-300">生成音频</span>
                 </label>
@@ -478,7 +565,8 @@ export function ApiConfigPanel({
                     type="checkbox"
                     checked={config.watermark || false}
                     onChange={(e) => handleConfigChange(type, 'watermark', e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                    disabled={hasNoActiveTag}
                   />
                   <span className="text-sm text-gray-300">添加水印</span>
                 </label>
@@ -500,7 +588,8 @@ export function ApiConfigPanel({
                     max="4"
                     value={config.max_images || 1}
                     onChange={(e) => handleConfigChange(type, 'max_images', parseInt(e.target.value) || 1)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                    disabled={hasNoActiveTag}
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     一次生成多张连贯图片（如四季变化、不同时段）
@@ -511,7 +600,8 @@ export function ApiConfigPanel({
                     type="checkbox"
                     checked={config.watermark || false}
                     onChange={(e) => handleConfigChange(type, 'watermark', e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                    disabled={hasNoActiveTag}
                   />
                   <span className="text-sm text-gray-300">添加水印</span>
                 </label>
@@ -582,7 +672,8 @@ export function ApiConfigPanel({
                 value={config.image_edit_model || ''}
                 onChange={(e) => handleConfigChange(type, 'image_edit_model', e.target.value)}
                 placeholder="wan2.6-image"
-                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                disabled={hasNoActiveTag}
               />
               <p className="text-xs text-gray-500 mt-1">
                 用于图像编辑/多图参考功能

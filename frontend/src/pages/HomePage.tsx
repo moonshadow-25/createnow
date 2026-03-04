@@ -1,18 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjectStore } from '@/store/projectStore';
+import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/components/common/Toast';
-import { Plus, FolderOpen, Trash2 } from 'lucide-react';
+import { LoginModal } from '@/components/auth/LoginModal';
+import { Plus, FolderOpen, Trash2, LogIn, CheckCircle2 } from 'lucide-react';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { projects, loading, fetchProjects, createProject, deleteProject, setCurrentProject } =
     useProjectStore();
+  const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
+
+  const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
     fetchProjects();
-  }, [fetchProjects]);
+    fetchAuthInfo();
+  }, [fetchProjects, fetchAuthInfo]);
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -59,18 +65,45 @@ export default function HomePage() {
     navigate(`/project/${project.project_id}`);
   };
 
+  const handleLogout = async () => {
+    if (!confirm('确定要退出登录吗？退出后新建项目将不再自动使用官方接口。')) return;
+    await logout();
+    toast('已退出登录', 'success');
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">AI短片生成软件</h1>
-          <button
-            onClick={handleCreateProject}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
-          >
-            <Plus size={20} />
-            新建项目
-          </button>
+          <div className="flex items-center gap-3">
+            {/* 登录状态 */}
+            {loggedIn ? (
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 bg-green-700 hover:bg-green-800 px-4 py-2 rounded-lg transition text-sm"
+                title={`已登录 | Key: ${apiKeyMasked}`}
+              >
+                <CheckCircle2 size={16} />
+                已登录
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowLogin(true)}
+                className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+              >
+                <LogIn size={16} />
+                登录
+              </button>
+            )}
+            <button
+              onClick={handleCreateProject}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
+            >
+              <Plus size={20} />
+              新建项目
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -124,6 +157,8 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      <LoginModal open={showLogin} onClose={() => setShowLogin(false)} />
     </div>
   );
 }

@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
-import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2 } from 'lucide-react';
+import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown } from 'lucide-react';
 import { VideoGallery } from './VideoGallery';
-import { VideoGenerateDialog } from './VideoGenerateDialog';
 import { ImageGallery } from '@/components/assets/ImageGallery';
 import { useToast } from '@/components/common/Toast';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
@@ -23,6 +22,7 @@ import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useOneClickGeneration } from './hooks/useOneClickGeneration';
 import { useDialogManager } from './hooks/useDialogManager';
+import { useAssetExtraction } from './hooks/useAssetExtraction';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -54,10 +54,23 @@ export function StoryboardDetail({
     assetSelector: false,
     storyboardImageGallery: false,
     imageEdit: false,
-    videoGenerate: false,
     cardImageEdit: false,
     tripleGrid: false
   });
+
+  // 更多菜单
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMoreMenu]);
 
   // 使用 store 管理生成状态
   const { startTask, completeTask, failTask, hasRunningTask } = useStoryboardGenerationStore();
@@ -96,16 +109,14 @@ export function StoryboardDetail({
     resetEditState
   } = contentEdit;
 
-  // 视频生成弹框数据状态
-  const [videoGenerateStoryboard, setVideoGenerateStoryboard] = useState<any>(null);
+  // 视频生成弹框数据状态 - 已合并到 StoryboardEditDialog
   // 保存成功提示状态
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [storyboardEditInitialTab, setStoryboardEditInitialTab] = useState<'edit' | 'video'>('edit');
 
   // 图片编辑弹框数据状态（用于分镜卡片按钮）
   const [cardImageEditStoryboard, setCardImageEditStoryboard] = useState<any>(null);
   const [cardImageEditImages, setCardImageEditImages] = useState<any[]>([]);
-  // 自动匹配资产加载状态
-  const [isAutoMatching, setIsAutoMatching] = useState(false);
   // 隐藏图片状态
   const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
 
@@ -372,7 +383,9 @@ export function StoryboardDetail({
     handleEditImage: handleEditImageBase,
     handleSetPrimaryStoryboardImage: handleSetPrimaryStoryboardImageBase,
     handleGeneratePrompt: handleGeneratePromptBase,
-    handleGenerateImageFromEdit: handleGenerateImageFromEditBase
+    handleGenerateImageFromEdit: handleGenerateImageFromEditBase,
+    handleAutoMatchAssets: handleAutoMatchAssetsBase,
+    handleGenerateNineGridPrompts: handleGenerateNineGridPromptsBase,
   } = imageManagement;
 
   // 包装函数以适配现有调用方式
@@ -398,6 +411,12 @@ export function StoryboardDetail({
       props,
       setGeneratedPrompt
     );
+  };
+
+  const handleGenerateNineGridPrompts = () => {
+    return handleGenerateNineGridPromptsBase(editingStoryboard, setGeneratedPrompt, (videoPrompt: string) => {
+      setEditingStoryboard((prev: any) => prev ? { ...prev, video_prompt: videoPrompt } : prev);
+    });
   };
 
   const handleGenerateImageFromEdit = () => {
@@ -477,6 +496,43 @@ export function StoryboardDetail({
     oneClickFailures,
     handleOneClickGenerate
   } = oneClickGeneration;
+
+  // 资产提取与匹配 hook
+  const { isExtracting, isMatching, extractAssets, matchAssets } = useAssetExtraction(projectId);
+
+  const handleExtractAssets = async () => {
+    if (!selectedEpisode) return;
+    const result = await extractAssets(selectedEpisode.asset_id);
+    if (result) {
+      const { total_created, skipped_count } = result;
+      toast(
+        total_created > 0
+          ? `已提取 ${total_created} 个新资产${skipped_count > 0 ? `（跳过 ${skipped_count} 个重复）` : ''}`
+          : `未发现需要新增的资产${skipped_count > 0 ? `（跳过 ${skipped_count} 个已有资产）` : ''}`,
+        'success'
+      );
+      onUpdated();
+    } else {
+      toast('资产提取失败，请重试', 'error');
+    }
+  };
+
+  const handleMatchAssets = async () => {
+    if (!selectedEpisode) return;
+    const result = await matchAssets(selectedEpisode.asset_id, false);
+    if (result) {
+      toast(
+        result.updated_count > 0
+          ? `已为 ${result.updated_count} 个分镜完成资产匹配`
+          : '所有分镜已有资产关联，无需更新',
+        'success'
+      );
+      loadStoryboards();
+    } else {
+      toast('资产匹配失败，请重试', 'error');
+    }
+  };
+
 
   const handleAutoGenerateStoryboards = async () => {
     if (!selectedEpisode?.script) {
@@ -701,37 +757,16 @@ export function StoryboardDetail({
       setStoryboardImages([]);
     }
 
+    setStoryboardEditInitialTab('edit');
     dialogs.open('storyboardEdit');
   };
 
-  const handleAutoMatchAssets = async () => {
+  const handleAutoMatchAssets = () => {
     if (!editingStoryboard) {
       toast('请先保存分镜再使用自动匹配', 'info');
       return;
     }
-
-    setIsAutoMatching(true);
-    try {
-      const response = await storyboardApi.autoMatchAssets(projectId, editingStoryboard.asset_id);
-      const matched = response.data;
-
-      // 更新选中的资产
-      setSelectedScene(matched.scene_id || '');
-      setSelectedCharacters(matched.character_ids || []);
-      setSelectedProps(matched.prop_ids || []);
-
-      // 显示匹配说明
-      if (matched.explanation) {
-        toast(`已自动匹配资产：${matched.explanation}`, 'success');
-      } else {
-        toast('已自动匹配资产', 'success');
-      }
-    } catch (error: any) {
-      console.error('Failed to auto-match assets:', error);
-      toast(error.response?.data?.detail || '自动匹配失败', 'error');
-    } finally {
-      setIsAutoMatching(false);
-    }
+    return handleAutoMatchAssetsBase(editingStoryboard, setSelectedScene, setSelectedCharacters, setSelectedProps);
   };
 
   const handleSaveStoryboard = async () => {
@@ -788,18 +823,8 @@ export function StoryboardDetail({
   };
 
   const handleGenerateVideo = async (storyboard: any) => {
-    // 检查是否有图片
-    const imagesResponse = await generationApi.listImages(projectId, storyboard.asset_id);
-    const images = imagesResponse.data || [];
-
-    if (images.length === 0) {
-      toast('请先生成分镜图', 'error');
-      return;
-    }
-
-    // 打开视频生成弹框
-    setVideoGenerateStoryboard(storyboard);
-    dialogs.open('videoGenerate');
+    await handleEditStoryboard(storyboard);
+    setStoryboardEditInitialTab('video');
   };
 
   // 拖拽结束处理
@@ -875,7 +900,8 @@ export function StoryboardDetail({
                 <h3 className="text-xl font-semibold">第{selectedEpisode.episode_number}集</h3>
                 <p className="text-sm text-gray-400 mt-1">{selectedEpisode.description || ''}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                {/* AI生成分镜 */}
                 <button
                   onClick={handleAutoGenerateStoryboards}
                   className={`flex items-center gap-1 text-sm px-3 py-2 rounded ${hasRunningTask(`auto_${selectedEpisode?.asset_id}`)
@@ -896,55 +922,8 @@ export function StoryboardDetail({
                     </>
                   )}
                 </button>
-                {/* 一键生成分镜图按钮 */}
-                <button
-                  onClick={handleOneClickGenerate}
-                  disabled={isOneClickGenerating || storyboards.length === 0}
-                  className={`flex items-center gap-1 text-sm px-3 py-2 rounded font-medium ${
-                    isOneClickGenerating || storyboards.length === 0
-                      ? 'bg-gray-600 cursor-not-allowed opacity-70'
-                      : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
-                  }`}
-                  title="自动匹配资产、生成提示词和分镜图"
-                >
-                  {isOneClickGenerating ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      {oneClickPhase === 'assets' && `匹配资产 ${oneClickProgress.current}/${oneClickProgress.total}`}
-                      {oneClickPhase === 'prompts' && `生成提示词 ${oneClickProgress.current}/${oneClickProgress.total}`}
-                      {oneClickPhase === 'images' && `生成图片 ${oneClickProgress.current}/${oneClickProgress.total}`}
-                    </>
-                  ) : (
-                    <>
-                      <Zap size={14} />
-                      一键生成分镜图
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={handleRenumber}
-                  className="flex items-center gap-1 text-sm bg-yellow-600 hover:bg-yellow-700 px-3 py-2 rounded"
-                  title="重新排序分镜序号，消除间隙"
-                  disabled={storyboards.length === 0}
-                >
-                  <RefreshCcw size={14} />
-                  重新排序
-                </button>
-                <button
-                  onClick={handleRefreshStoryboards}
-                  className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded"
-                  title="刷新分镜数据"
-                >
-                  <RefreshCcw size={14} />
-                  刷新
-                </button>
-                <button
-                  onClick={handleAddStoryboard}
-                  className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded"
-                >
-                  <Plus size={14} />
-                  添加分镜
-                </button>
+
+                {/* 视频库 */}
                 <button
                   onClick={() => dialogs.open('videoGallery')}
                   className="flex items-center gap-1 text-sm bg-green-600 hover:bg-green-700 px-3 py-2 rounded"
@@ -952,13 +931,66 @@ export function StoryboardDetail({
                   <Play size={14} />
                   视频库
                 </button>
-                <button
-                  onClick={handleDeleteEpisode}
-                  className="flex items-center gap-1 text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded"
-                >
-                  <Trash2 size={14} />
-                  删除剧集
-                </button>
+
+                {/* 更多菜单 */}
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    onClick={() => setShowMoreMenu(v => !v)}
+                    className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded"
+                  >
+                    更多
+                    <ChevronDown size={14} className={`transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showMoreMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 py-1">
+                      {/* 一键生成分镜图 */}
+                      <button
+                        onClick={() => { handleOneClickGenerate(); setShowMoreMenu(false); }}
+                        disabled={isOneClickGenerating || storyboards.length === 0}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="自动匹配资产、生成提示词和分镜图"
+                      >
+                        {isOneClickGenerating ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                        {isOneClickGenerating ? '一键生成中...' : '一键生成分镜图'}
+                      </button>
+                      {/* 添加分镜 */}
+                      <button
+                        onClick={() => { handleAddStoryboard(); setShowMoreMenu(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                      >
+                        <Plus size={14} />
+                        添加分镜
+                      </button>
+                      {/* 重新排序 */}
+                      <button
+                        onClick={() => { handleRenumber(); setShowMoreMenu(false); }}
+                        disabled={storyboards.length === 0}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="重新排序分镜序号，消除间隙"
+                      >
+                        <RefreshCcw size={14} />
+                        重新排序
+                      </button>
+                      {/* 刷新 */}
+                      <button
+                        onClick={() => { handleRefreshStoryboards(); setShowMoreMenu(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                      >
+                        <RefreshCcw size={14} />
+                        刷新
+                      </button>
+                      <div className="border-t border-gray-600 my-1" />
+                      {/* 删除剧集 */}
+                      <button
+                        onClick={() => { handleDeleteEpisode(); setShowMoreMenu(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-red-400 hover:bg-gray-700"
+                      >
+                        <Trash2 size={14} />
+                        删除剧集
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1018,10 +1050,34 @@ export function StoryboardDetail({
               )}
             </div>
 
-            {/* 剧集资产统计 */}
-            {storyboards.length > 0 && (
-              <div className="mb-4 p-3 bg-gray-700 rounded">
-                <h4 className="text-sm font-semibold text-gray-400 mb-2">使用资产</h4>
+            {/* 剧集资产统计 - 常驻显示 */}
+            <div className="mb-4 p-3 bg-gray-700 rounded">
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="text-sm font-semibold text-gray-400">使用资产</h4>
+                {storyboards.length > 0 && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleExtractAssets}
+                      disabled={isExtracting || isMatching}
+                      className="flex items-center gap-1 text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-200 rounded transition-colors"
+                      title="从分镜内容中提取重要角色、场景、道具，添加到资产库"
+                    >
+                      {isExtracting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      {isExtracting ? '提取中...' : '提取资产'}
+                    </button>
+                    <button
+                      onClick={handleMatchAssets}
+                      disabled={isExtracting || isMatching}
+                      className="flex items-center gap-1 text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-200 rounded transition-colors"
+                      title="将资产库中的资产自动关联到对应分镜"
+                    >
+                      {isMatching ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                      {isMatching ? '匹配中...' : '匹配资产'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {storyboards.length > 0 ? (
                 <div className="flex flex-wrap gap-3 text-sm">
                   {/* 收集所有分镜的角色 */}
                   {(() => {
@@ -1092,14 +1148,16 @@ export function StoryboardDetail({
                     ) : null;
                   })()}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs text-gray-500 italic">暂无分镜</p>
+              )}
+            </div>
 
             {/* 分镜列表 */}
             <h4 className="text-md font-semibold mb-3">分镜 ({storyboards.length}) - 拖拽可调整顺序</h4>
             <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={storyboards.map(sb => sb.asset_id)} strategy={verticalListSortingStrategy}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 320px))' }}>
                   {storyboards.map((sb) => (
                     <SortableStoryboardCard
                       key={sb.asset_id}
@@ -1147,22 +1205,6 @@ export function StoryboardDetail({
         />
       )}
 
-      {/* 视频生成弹框 */}
-      {dialogs.isOpen('videoGenerate') && videoGenerateStoryboard && selectedEpisode && (
-        <VideoGenerateDialog
-          projectId={projectId}
-          storyboard={videoGenerateStoryboard}
-          episodeId={selectedEpisode.asset_id}
-          onClose={() => {
-            dialogs.close('videoGenerate');
-            setVideoGenerateStoryboard(null);
-          }}
-          onSuccess={() => {
-            loadStoryboards();
-          }}
-        />
-      )}
-
       {/* 剧本编辑弹框 */}
       <ScriptEditDialog
         show={dialogs.isOpen('scriptEdit')}
@@ -1179,6 +1221,8 @@ export function StoryboardDetail({
         storyboardsCount={storyboards.length}
         editingStoryboard={editingStoryboard}
         projectId={projectId}
+        episodeId={selectedEpisode?.asset_id || ''}
+        initialTab={storyboardEditInitialTab}
         saveSuccess={saveSuccess}
         contentExpanded={contentExpanded}
         setContentExpanded={setContentExpanded}
@@ -1192,6 +1236,10 @@ export function StoryboardDetail({
         setEditShotType={setEditShotType}
         editCameraAngle={editCameraAngle}
         setEditCameraAngle={setEditCameraAngle}
+        editDuration={contentEdit.editDuration}
+        setEditDuration={contentEdit.setEditDuration}
+        editResolution={contentEdit.editResolution}
+        setEditResolution={contentEdit.setEditResolution}
         selectedCharacters={selectedCharacters}
         setSelectedCharacters={setSelectedCharacters}
         selectedProps={selectedProps}
@@ -1203,10 +1251,10 @@ export function StoryboardDetail({
         props={props}
         onOpenAssetSelector={() => dialogs.open('assetSelector')}
         onAutoMatchAssets={handleAutoMatchAssets}
-        isAutoMatching={isAutoMatching}
         generatedPrompt={generatedPrompt}
         setGeneratedPrompt={setGeneratedPrompt}
         onGeneratePrompt={handleGeneratePrompt}
+        onGenerateNineGridPrompts={handleGenerateNineGridPrompts}
         storyboardImages={storyboardImages}
         hiddenImageIds={hiddenImageIds}
         getImageUrl={(img) => getImageUrl(img, projectId)}
@@ -1224,6 +1272,7 @@ export function StoryboardDetail({
           setEditingStoryboardId(null); // 状态隔离：清空
           editingStoryboardIdRef.current = null; // 保持兼容性
         }}
+        onSuccess={() => loadStoryboards()}
       />
 
       {/* 统一资产选择弹框 */}

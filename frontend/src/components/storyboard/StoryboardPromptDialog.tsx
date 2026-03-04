@@ -43,7 +43,12 @@ export function StoryboardPromptDialog({
           .map((sb, index) => {
             const duration = sb.duration || 3;
             const videoPrompt = sb.video_prompt || sb.description || `分镜${index + 1}`;
-            return `分镜${index + 1}：（时长${duration}秒）${videoPrompt}`;
+            let line = `分镜${index + 1}：（时长${duration}秒）${videoPrompt}`;
+            if (sb.dialogue) line += `；对白：${sb.dialogue}`;
+            if (sb.shot_type) line += `；镜头：${sb.shot_type}`;
+            if (sb.camera_angle) line += `；角度：${sb.camera_angle}`;
+            if (sb.action) line += `；动作：${sb.action}`;
+            return line;
           })
           .join('；\n');
         setPrompt(defaultPrompt);

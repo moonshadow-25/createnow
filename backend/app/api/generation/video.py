@@ -63,6 +63,27 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
         "duration": request.duration,
     }
 
+    # 构建 assets_desc（供模板中 {assets_desc} 使用）
+    from app.services import AssetService
+    assets_lines = []
+    img_idx = 1
+    for cid in request.characters:
+        char = AssetService.load_asset(project_id, "character", cid)
+        if char:
+            assets_lines.append(f"图{img_idx}（角色）：{char.get('name', '')} - {char.get('description', '')}")
+            img_idx += 1
+    if request.scene:
+        scene_asset = AssetService.load_asset(project_id, "scene", request.scene)
+        if scene_asset:
+            assets_lines.append(f"图{img_idx}（场景）：{scene_asset.get('name', '')} - {scene_asset.get('description', '')}")
+            img_idx += 1
+    for pid in request.props:
+        prop = AssetService.load_asset(project_id, "prop", pid)
+        if prop:
+            assets_lines.append(f"图{img_idx}（道具）：{prop.get('name', '')} - {prop.get('description', '')}")
+            img_idx += 1
+    assets_desc = "\n".join(assets_lines) if assets_lines else "（无参考资产）"
+
     try:
         result = await PromptService.generate_video_prompt(
             llm,
@@ -77,7 +98,8 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
             duration=request.duration,
             custom_template=custom_template,
             language=language,
-            style_suffix=style_suffix
+            style_suffix=style_suffix,
+            assets_desc=assets_desc
         )
         await llm.close()
         return {"prompt": result}
@@ -433,7 +455,6 @@ async def generate_multi_scene_video_prompt(
 ):
     """生成多分镜融合视频提示词（使用LLM）"""
     from app.services import ProjectService, AssetService
-    from .prompt import get_prompt_templates
 
     try:
         logger.info(f"Received multi-scene video prompt request for project {project_id}")
@@ -529,8 +550,8 @@ async def generate_multi_scene_video_prompt(
         storyboards_info.append(info)
 
     # 7. 获取提示词模板
-    templates = await get_prompt_templates(project_id)
-    template = templates.get("multi_scene_video_prompt", "")
+    ai_config = project.get("ai_config", {})
+    template = get_active_template(ai_config, "multi_scene_video")
 
     if not template:
         raise HTTPException(status_code=500, detail="Multi-scene video prompt template not found")
@@ -545,7 +566,6 @@ async def generate_multi_scene_video_prompt(
     )
 
     # 9. 调用LLM生成
-    ai_config = project.get("ai_config", {})
     llm = get_ai_service(ai_config, "llm", project_id)
 
     try:

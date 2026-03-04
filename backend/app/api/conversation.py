@@ -434,8 +434,9 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
 
             try:
                 # 调用PromptService生成分镜
+                from app.api.generation.template_helpers import get_active_template
                 storyboards = await PromptService.generate_storyboard_descriptions(
-                    llm, parameters["script"]
+                    llm, parameters["script"], get_active_template(ai_config, "storyboard")
                 )
                 await llm.close()
 
@@ -1529,7 +1530,12 @@ TOOL: add_script_scene
 END_TOOL
 """
 
-    system_prompt = f"""你是一个专业的AI短片制作助手。
+    from app.services.global_prompt_service import get_group_c_template
+    _conv_tpl = get_group_c_template("conversation_system_prompt")
+    system_prompt = _conv_tpl.format(
+        project_context=project_context,
+        tools_desc=tools_desc
+    ) if _conv_tpl else f"""你是一个专业的AI短片制作助手。
 
 {project_context}
 
@@ -1831,7 +1837,12 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
 """
 
     # 剧本分析的系统提示
-    system_prompt = f"""你是一个专业的剧本分析助手。
+    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    from app.services.global_prompt_service import get_group_c_template
+    _script_tpl = get_group_c_template("script_analysis_system_prompt")
+    system_prompt = _script_tpl.format(
+        project_context=project_context
+    ) if _script_tpl else f"""你是一个专业的剧本分析助手。
 
 {project_context}
 
