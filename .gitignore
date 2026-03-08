@@ -49,6 +49,7 @@ SERVER-TUNNEL-README.md
 
 # 隧道相关文件（包含密钥和配置）
 tunnel/
+tunnel-to-server.bat
 
 # 备份文件
 *.bak
