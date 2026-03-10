@@ -8,7 +8,7 @@ REM ========================================
 
 setlocal enabledelayedexpansion
 
-set "DIST_DIR=C:\Users\xh\wk\createnow_dist"
+set "DIST_DIR=C:\createnow_dist"
 set "SOURCE_DIR=%CD%"
 
 echo.

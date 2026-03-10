@@ -3,6 +3,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import os
+import time
 
 from app.services import AssetService, PromptService, get_ai_service
 from app.services.asset_service import ProjectService
@@ -177,20 +178,17 @@ async def generate_storyboards(project_id: str, request: StoryboardGenerateReque
 @router.get("/episode/{episode_id}", response_model=List[dict])
 async def list_episode_storyboards(project_id: str, episode_id: str):
     """列出剧集的所有分镜（包含主图URL）"""
+    t0 = time.perf_counter()
     storyboards = AssetService.list_assets(project_id, "storyboard")
-    episode_storyboards = [
-        sb for sb in storyboards if sb.get("episode_id") == episode_id
-    ]
+    episode_storyboards = [sb for sb in storyboards if sb.get("episode_id") == episode_id]
 
-    # 批量获取所有分镜的主图
     asset_ids = [sb["asset_id"] for sb in episode_storyboards]
     primary_images = ImageService.get_primary_images_batch(project_id, asset_ids)
+    t1 = time.perf_counter()
 
-    # 为每个分镜添加主图URL
     for sb in episode_storyboards:
         primary_image = primary_images.get(sb["asset_id"])
         if primary_image:
-            # 优先使用本地路径
             if primary_image.get("local_path"):
                 sb["primary_image_url"] = f"/api/projects/{project_id}/images/files/{primary_image['local_path']}"
             else:
@@ -198,8 +196,12 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
         else:
             sb["primary_image_url"] = None
 
-    # 按sequence排序后返回
     episode_storyboards.sort(key=lambda x: x.get("sequence", 0))
+
+    print(
+        f"[PERF] list_episode_storyboards | "
+        f"storyboards={len(episode_storyboards)} total={1000*(t1-t0):.1f}ms"
+    )
     return episode_storyboards
 
 

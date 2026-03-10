@@ -1,4 +1,9 @@
 import sys
+# Windows 兼容：强制 stdout/stderr 使用 UTF-8，遇到无法编码字符时替换为 ? 而非崩溃
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 import logging
 from pathlib import Path
 
@@ -38,6 +43,43 @@ from app.api.canvas import router as canvas_router
 from app.api.global_prompts import router as global_prompts_router
 from app.api.version import router as version_router
 from app.api.auth import router as auth_router
+
+def _ensure_ssl_cert():
+    """启动时自动生成自签名证书（若不存在），有效期 10 年"""
+    ssl_dir = BACKEND_DIR / ".ssl"
+    cert_file = ssl_dir / "cert.pem"
+    key_file = ssl_dir / "key.pem"
+    if cert_file.exists() and key_file.exists():
+        return str(cert_file), str(key_file)
+    ssl_dir.mkdir(exist_ok=True)
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    import datetime
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject).issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.utcnow())
+        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName([
+            x509.DNSName("localhost"), x509.IPAddress(__import__("ipaddress").ip_address("127.0.0.1"))
+        ]), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_file.write_bytes(key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption()
+    ))
+    print(f"[INFO] 已生成自签名证书: {ssl_dir}")
+    return str(cert_file), str(key_file)
+
 
 # 检查启动参数：--serve-frontend 表示同时服务前端静态文件
 SERVE_FRONTEND = "--serve-frontend" in sys.argv
@@ -292,6 +334,12 @@ async def root():
     }
 
 
+@app.head("/")
+async def root_head():
+    from fastapi.responses import Response
+    return Response(status_code=200)
+
+
 @app.get("/api/health")
 async def health():
     """API健康检查"""
@@ -350,27 +398,28 @@ else:
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import asyncio
+    from hypercorn.config import Config
+    from hypercorn.asyncio import serve
 
-    # 默认使用生产模式（高并发）
-    # 如需开发模式（热重载），请运行: python -m app.main_dev
+    ssl_certfile, ssl_keyfile = _ensure_ssl_cert()
+
     print("="*60)
-    print("启动模式: 生产环境（高并发）")
+    print("启动模式: 生产环境（HTTP/2 + HTTPS）")
     print("="*60)
-    print("✅ 高性能配置：")
-    print("   - 并发连接：5000")
-    print("   - 等待队列：8192")
+    print("[OK] 高性能配置：")
+    print("   - 协议：HTTP/2（hypercorn）")
+    print("   - HTTPS：自签名证书")
     print("   - 热重载：关闭")
     print("\n如需开发模式（热重载），请运行:")
     print("   cd backend && ../env/python.exe -m app.main_dev")
     print("="*60 + "\n")
 
-    uvicorn.run(
-        "app.main:app",
-        host=settings.API_HOST,
-        port=settings.API_PORT,
-        reload=False,  # 生产模式：关闭热重载
-        limit_concurrency=5000,  # 增加到5000个并发连接
-        backlog=8192,  # 增加等待队列大小
-        timeout_keep_alive=120  # 保持连接活跃时间（秒）
-    )
+    config = Config()
+    config.bind = [f"{settings.API_HOST}:{settings.API_PORT}"]
+    config.certfile = ssl_certfile
+    config.keyfile = ssl_keyfile
+    config.keep_alive_timeout = 120
+    config.worker_class = "asyncio"
+
+    asyncio.run(serve(app, config))

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Optional, Any
 from pydantic import BaseModel, ConfigDict
 import logging
+import time
 
 from app.services import AssetService
 from app.services.asset_service import ImageService
@@ -53,18 +54,18 @@ async def create_asset(project_id: str, asset: AssetCreate):
 @router.get("/{asset_type}", response_model=List[dict])
 async def list_assets(project_id: str, asset_type: str, include_children: bool = False):
     """列出资产（include_children=true时包含子资产，包含主图URL和图片数量）"""
+    t0 = time.perf_counter()
     assets = AssetService.list_assets(project_id, asset_type, include_children)
+    t1 = time.perf_counter()
 
-    # 批量获取所有资产的主图和图片数量
     asset_ids = [a["asset_id"] for a in assets]
     image_info = ImageService.get_primary_images_with_count_batch(project_id, asset_ids)
+    t2 = time.perf_counter()
 
-    # 为每个资产添加主图URL和图片数量
     for asset in assets:
         info = image_info.get(asset["asset_id"], {})
         primary_image = info.get("primary_image")
         if primary_image:
-            # 优先使用本地路径
             if primary_image.get("local_path"):
                 asset["primary_image_url"] = f"/api/projects/{project_id}/images/files/{primary_image['local_path']}"
             else:
@@ -73,6 +74,10 @@ async def list_assets(project_id: str, asset_type: str, include_children: bool =
             asset["primary_image_url"] = None
         asset["image_count"] = info.get("image_count", 0)
 
+    print(
+        f"[PERF] list_assets/{asset_type} | count={len(assets)} | "
+        f"list={1000*(t1-t0):.1f}ms images={1000*(t2-t1):.1f}ms total={1000*(t2-t0):.1f}ms"
+    )
     return assets
 
 

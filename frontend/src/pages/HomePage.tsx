@@ -79,14 +79,24 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             {/* 登录状态 */}
             {loggedIn ? (
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 bg-green-700 hover:bg-green-800 px-4 py-2 rounded-lg transition text-sm"
-                title={`已登录 | Key: ${apiKeyMasked}`}
-              >
-                <CheckCircle2 size={16} />
-                已登录
-              </button>
+              <>
+                <a
+                  href="http://47.117.182.216:8003/admin/login.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+                >
+                  账户
+                </a>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 bg-green-700 hover:bg-green-800 px-4 py-2 rounded-lg transition text-sm"
+                  title={`已登录 | Key: ${apiKeyMasked}`}
+                >
+                  <CheckCircle2 size={16} />
+                  已登录
+                </button>
+              </>
             ) : (
               <button
                 onClick={() => setShowLogin(true)}
