@@ -118,6 +118,7 @@ export interface ApiConfig {
   generate_audio?: boolean;  // ByteSeed视频专用：是否生成音频
   watermark?: boolean;  // ByteSeed图像/视频专用：是否添加水印
   max_images?: number;  // ByteSeed图像专用：多图生成数量（1-4）
+  multimodal_reference?: boolean;  // ByteSeed视频专用：全能参考（把资产图一起传入）
 }
 
 // 图像尺寸配置

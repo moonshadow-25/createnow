@@ -75,16 +75,24 @@ class VideoGenerateRequest(BaseModel):
     prompt: str
     duration: int = 6
     resolution: str = "1920x1080"
+    # 多模态输入（Seedance 2.0）
+    video_urls: Optional[List[str]] = None   # 参考视频公网 URL
+    audio_urls: Optional[List[str]] = None   # 参考音频公网 URL 或 Base64
+    # 2.0 新参数
+    use_web_search: bool = False             # 联网搜索增强
+    ratio: Optional[str] = None             # 宽高比（含 adaptive）
 
     @validator('image_ids', pre=True, always=True)
     def validate_images(cls, v, values):
-        """验证图片参数：必须提供 image_id 或 image_ids 之一"""
+        """验证图片参数：image_id/image_ids 或多模态输入（video_urls/audio_urls）至少提供一种"""
         image_id = values.get('image_id')
         if v is None and image_id:
-            # 自动将 image_id 转换为 image_ids
             return [image_id]
-        if v is None and not image_id:
-            raise ValueError('必须提供 image_id 或 image_ids')
+        # 多模态路径：有 video_urls 或 audio_urls 时允许无图片
+        video_urls = values.get('video_urls')
+        audio_urls = values.get('audio_urls')
+        if v is None and not image_id and not video_urls and not audio_urls:
+            raise ValueError('必须提供 image_id、image_ids 或 video_urls/audio_urls')
         if v and len(v) > 10:
             raise ValueError('最多支持10个分镜')
         return v

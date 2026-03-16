@@ -59,3 +59,7 @@ settings = Settings()
 # Ensure directories exist
 settings.PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 settings.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+# Seedance 2.0 模型 ID 常量
+SEEDANCE_2_0_MODEL = "doubao-seedance-2-0-260128"
+SEEDANCE_2_0_FAST_MODEL = "doubao-seedance-2-0-fast-260128"

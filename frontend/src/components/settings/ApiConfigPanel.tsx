@@ -570,9 +570,19 @@ export function ApiConfigPanel({
                   />
                   <span className="text-sm text-gray-300">添加水印</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.multimodal_reference || false}
+                    onChange={(e) => handleConfigChange(type, 'multimodal_reference', e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                    disabled={hasNoActiveTag}
+                  />
+                  <span className="text-sm text-gray-300">全能参考</span>
+                </label>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                字节Seed特有选项：生成音频需要使用 Seed 1.5 Pro 模型
+                字节Seed特有选项：生成音频需要使用 Seed 1.5 Pro 模型；全能参考需要使用支持多模态输入的模型
               </p>
             </>
           )}

@@ -32,6 +32,7 @@ interface StoryboardTabProps {
   scenes: Scene[];
   props: Prop[];
   onUpdated: () => void;
+  multimodalReference?: boolean;
 }
 
 export function StoryboardTab({
@@ -41,6 +42,7 @@ export function StoryboardTab({
   scenes,
   props,
   onUpdated,
+  multimodalReference = false,
 }: StoryboardTabProps) {
   return (
     <div className="flex-1 p-6 flex flex-col h-full">
@@ -56,6 +58,7 @@ export function StoryboardTab({
           scenes={scenes}
           props={props}
           onUpdated={onUpdated}
+          multimodalReference={multimodalReference}
         />
       </div>
     </div>

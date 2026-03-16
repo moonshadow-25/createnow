@@ -13,6 +13,12 @@ from app.services.ai.adapters.base import VideoAdapter
 
 logger = logging.getLogger(__name__)
 
+# Seedance 2.0 模型集合（不支持 1080p / service_tier / draft / frames / camera_fixed）
+SEEDANCE_2_0_MODELS = {
+    "doubao-seedance-2-0-260128",
+    "doubao-seedance-2-0-fast-260128",
+}
+
 
 class ByteSeedVideoAdapter(VideoAdapter):
     """字节Seed视频生成适配器"""
@@ -80,7 +86,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
         ]
 
         ratio = self._map_resolution_to_ratio(resolution)
-        return await self._create_task(content, duration, ratio, **kwargs)
+        return await self._create_task(content, duration, ratio, resolution=resolution, **kwargs)
 
     async def generate_multi_image(
         self,
@@ -133,13 +139,68 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 })
             ratio = "adaptive"  # 参考图模式使用adaptive
 
-        return await self._create_task(content, duration, ratio, **kwargs)
+        return await self._create_task(content, duration, ratio, resolution=resolution, **kwargs)
+
+    async def generate_multimodal(
+        self,
+        prompt: str,
+        image_urls: Optional[List[str]] = None,
+        video_urls: Optional[List[str]] = None,
+        audio_urls: Optional[List[str]] = None,
+        duration: int = 6,
+        resolution: str = "1920x1080",
+        ratio: Optional[str] = None,
+        use_web_search: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """多模态模式 - 支持图片+视频+音频参考（Seedance 2.0）
+
+        Args:
+            prompt: 提示词
+            image_urls: 参考图片 URL 或 base64 列表（0-9）
+            video_urls: 参考视频公网 URL 列表（0-3）
+            audio_urls: 参考音频 URL 或 base64 列表（0-3）
+            duration: 视频时长（秒），-1 表示智能选择
+            resolution: 分辨率字符串（2.0 仅支持 480p/720p，1080p 自动降级）
+            ratio: 宽高比，None 时自动推断
+            use_web_search: 是否启用联网搜索
+        """
+        content = []
+        if prompt:
+            content.append({"type": "text", "text": prompt})
+        for url in (image_urls or []):
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": url},
+                "role": "reference_image"
+            })
+        for url in (video_urls or []):
+            content.append({
+                "type": "video_url",
+                "video_url": {"url": url},
+                "role": "reference_video"
+            })
+        for url in (audio_urls or []):
+            content.append({
+                "type": "audio_url",
+                "audio_url": {"url": url},
+                "role": "reference_audio"
+            })
+
+        effective_ratio = ratio or self._map_resolution_to_ratio(resolution) or "adaptive"
+        return await self._create_task(
+            content, duration, effective_ratio,
+            use_web_search=use_web_search,
+            resolution=resolution,
+            **kwargs
+        )
 
     async def _create_task(
         self,
         content: list,
         duration: int,
         ratio: str,
+        use_web_search: bool = False,
         **kwargs
     ) -> Dict[str, Any]:
         """创建视频生成任务
@@ -148,6 +209,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
             content: content数组（包含text和image_url）
             duration: 视频时长（秒）
             ratio: 比例（16:9, 9:16, 1:1等）
+            use_web_search: 是否启用联网搜索（2.0）
             **kwargs: 其他参数
 
         Returns:
@@ -155,15 +217,39 @@ class ByteSeedVideoAdapter(VideoAdapter):
         """
         url = f"{self.api_url}/contents/generations/tasks"
 
-        payload = {
-            "model": kwargs.get("model") or self.model,
+        model = kwargs.get("model") or self.model
+        is_2_0 = model in SEEDANCE_2_0_MODELS
+
+        # 将前端分辨率字符串映射为 API 的 resolution 参数
+        resolution_str = kwargs.get("resolution", "1920x1080")
+        resolution_map = {
+            "1920x1080": "1080p",
+            "1280x720":  "720p",
+            "854x480":   "480p",
+            "1080x1920": "1080p",
+            "720x1280":  "720p",
+            "480x854":   "480p",
+        }
+        resolution_param = resolution_map.get(resolution_str, "1080p")
+        # 2.0 不支持 1080p，自动降级
+        if is_2_0 and resolution_param == "1080p":
+            resolution_param = "720p"
+
+        payload: Dict[str, Any] = {
+            "model": model,
             "content": content,
             "ratio": ratio,
-            "resolution": "1080p",  # 固定值
+            "resolution": resolution_param,
             "duration": duration,
             "watermark": self.watermark,
-            "generate_audio": kwargs.get("generate_audio", self.generate_audio)
+            "generate_audio": kwargs.get("generate_audio", True if is_2_0 else self.generate_audio),
         }
+
+        # 2.0 专属：联网搜索
+        if is_2_0 and use_web_search:
+            payload["tools"] = [{"type": "web_search"}]
+
+        # 2.0 不支持的字段不写入 payload（service_tier / draft / frames / camera_fixed 均不传）
 
         # 创建截断版本用于日志（避免base64过大）
         payload_for_log = self._truncate_payload_for_log(payload)

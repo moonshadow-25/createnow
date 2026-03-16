@@ -43,6 +43,8 @@ class StoryboardUpdate(BaseModel):
     dialogue: Optional[str] = None
     action: Optional[str] = None
     image_prompt: Optional[str] = None
+    duration: Optional[int] = None
+    resolution: Optional[str] = None
 
 
 class StoryboardGenerateRequest(BaseModel):

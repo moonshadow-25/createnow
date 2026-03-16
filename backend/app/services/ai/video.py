@@ -153,6 +153,30 @@ class VideoGenService(AIService):
             use_multipart=use_multipart if use_multipart is not None else self.use_multipart
         )
 
+    async def generate_multimodal(
+        self,
+        prompt: str,
+        image_urls: list = None,
+        video_urls: list = None,
+        audio_urls: list = None,
+        duration: int = 6,
+        resolution: str = "1920x1080",
+        ratio: str = None,
+        use_web_search: bool = False,
+    ) -> Dict[str, Any]:
+        """生成视频（多模态模式，支持图片+视频+音频参考）"""
+        adapter = self._get_adapter()
+        return await adapter.generate_multimodal(
+            prompt=prompt,
+            image_urls=image_urls,
+            video_urls=video_urls,
+            audio_urls=audio_urls,
+            duration=duration,
+            resolution=resolution,
+            ratio=ratio,
+            use_web_search=use_web_search,
+        )
+
     async def poll_video_task(self, task_id: str) -> Dict[str, Any]:
         """轮询视频生成任务状态
 

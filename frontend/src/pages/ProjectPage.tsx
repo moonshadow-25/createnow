@@ -187,6 +187,7 @@ export default function ProjectPage() {
               scenes={scenes}
               props={props}
               onUpdated={handleRefreshAssets}
+              multimodalReference={currentProject?.ai_config?.video?.multimodal_reference || false}
             />
           </div>
         )}

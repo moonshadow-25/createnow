@@ -8,9 +8,13 @@ interface UseVideoGenerationOptions {
   projectId: string;
   episodeId: string;
   onSuccess: () => void;
+  characters?: any[];
+  scenes?: any[];
+  props?: any[];
+  multimodalReference?: boolean;
 }
 
-export const useVideoGeneration = ({ projectId, episodeId, onSuccess }: UseVideoGenerationOptions) => {
+export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters, scenes, props, multimodalReference }: UseVideoGenerationOptions) => {
   const { toast } = useToast();
   const { startTask, completeTask, failTask, hasRunningTask, getTaskStatus } = useStoryboardGenerationStore();
 
@@ -209,15 +213,40 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess }: UseVideo
         camera_angle: editCameraAngle,
         video_prompt: videoPrompt,
         duration: editDuration,
-      });
-      await generationApi.generateVideo(projectId, {
-        storyboard_id: storyboard.asset_id,
-        episode_id: episodeId,
-        image_id: primaryImage.image_id,
-        prompt: videoPrompt,
-        duration: editDuration,
         resolution: editResolution,
       });
+      if (multimodalReference) {
+        const assetImageIds: string[] = [];
+        for (const charId of storyboard.character_ids || []) {
+          const char = characters?.find((c: any) => c.asset_id === charId);
+          if (char?.image_id) assetImageIds.push(char.image_id);
+        }
+        if (storyboard.scene_id) {
+          const scene = scenes?.find((s: any) => s.asset_id === storyboard.scene_id);
+          if (scene?.image_id) assetImageIds.push(scene.image_id);
+        }
+        for (const propId of storyboard.prop_ids || []) {
+          const prop = props?.find((p: any) => p.asset_id === propId);
+          if (prop?.image_id) assetImageIds.push(prop.image_id);
+        }
+        await generationApi.generateVideoMultimodal(projectId, {
+          storyboard_id: storyboard.asset_id,
+          episode_id: episodeId,
+          image_ids: [primaryImage.image_id, ...assetImageIds],
+          prompt: videoPrompt,
+          duration: editDuration,
+          resolution: editResolution,
+        });
+      } else {
+        await generationApi.generateVideo(projectId, {
+          storyboard_id: storyboard.asset_id,
+          episode_id: episodeId,
+          image_id: primaryImage.image_id,
+          prompt: videoPrompt,
+          duration: editDuration,
+          resolution: editResolution,
+        });
+      }
       toast('视频生成任务已提交，请在已生成视频中查看进度', 'success');
       loadVideos(storyboard);
       onSuccess();
@@ -229,7 +258,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess }: UseVideo
       toast(`视频生成失败: ${errorMsg}`, 'error');
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
-  }, [projectId, episodeId, primaryImage, videoPrompt, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
+  }, [projectId, episodeId, primaryImage, videoPrompt, multimodalReference, characters, scenes, props, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
 
   const handleExport = useCallback(async (storyboard: any) => {
     setIsExporting(true);

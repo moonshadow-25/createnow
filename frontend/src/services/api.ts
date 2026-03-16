@@ -116,6 +116,19 @@ export const generationApi = {
       duration: data.duration || 6,
       resolution: data.resolution || '1920x1080'
     }),
+  generateVideoMultimodal: (projectId: string, data: {
+    storyboard_id: string;
+    episode_id: string;
+    image_ids?: string[];
+    video_urls?: string[];
+    audio_urls?: string[];
+    prompt: string;
+    duration?: number;
+    resolution?: string;
+    ratio?: string;
+    use_web_search?: boolean;
+  }) =>
+    api.post(`/projects/${projectId}/generate/video`, data),
   // 视频列表和查询
   listVideos: (projectId: string, episodeId?: string) =>
     api.get(`/projects/${projectId}/generate/videos`, { params: { episode_id: episodeId } }),

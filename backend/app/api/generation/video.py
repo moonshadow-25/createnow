@@ -168,10 +168,30 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
     ai_config = project.get("ai_config", {})
     video_service = get_ai_service(ai_config, "video", project_id)
 
+    # 多模态路径（video_urls / audio_urls）：不需要 image_ids
+    has_multimodal = bool(request.video_urls or request.audio_urls)
+
     # 使用 image_ids（已由 validator 自动转换）
-    image_ids = request.image_ids
-    if not image_ids:
+    image_ids = list(request.image_ids) if request.image_ids else []
+    if not image_ids and not has_multimodal:
         raise HTTPException(status_code=400, detail="No images provided")
+
+    # 全能参考：后端自动追加分镜关联资产的主图 ID
+    multimodal_reference = ai_config.get("video", {}).get("multimodal_reference", False)
+    if multimodal_reference and request.storyboard_id:
+        from app.services import AssetService
+        storyboard = AssetService.load_asset(project_id, "storyboard", request.storyboard_id)
+        if storyboard:
+            asset_pairs = (
+                [("character", cid) for cid in storyboard.get("character_ids") or []] +
+                ([("scene", storyboard["scene_id"])] if storyboard.get("scene_id") else []) +
+                [("prop", pid) for pid in storyboard.get("prop_ids") or []]
+            )
+            for asset_type, asset_id in asset_pairs:
+                primary = ImageService.get_primary_image(project_id, asset_id)
+                if primary and primary.get("image_id"):
+                    image_ids.append(primary["image_id"])
+                    logger.info(f"[视频生成] 全能参考追加资产图: {asset_type}/{asset_id}")
 
     # 记录请求日志
     request_log = {
@@ -187,7 +207,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         # 处理所有图片，转换为URL或base64
         image_urls = []
 
-        for image_id in image_ids:
+        for image_id in (image_ids or []):
             image = ImageService.get_image(project_id, image_id)
             if not image:
                 raise HTTPException(status_code=404, detail=f"Image {image_id} not found")
@@ -233,10 +253,22 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         # 读取传输格式配置（默认使用multipart/form-data）
         use_multipart = ai_config.get("video", {}).get("use_multipart", True)
         logger.info(f"[视频生成] 传输格式: {'multipart/form-data' if use_multipart else 'JSON'}")
-        logger.info(f"[视频生成] 图片数量: {len(image_urls)} ({'首尾帧模式' if len(image_urls) == 2 else '单图模式'})")
 
         # 调用视频生成服务
-        if len(image_urls) == 1:
+        if has_multimodal or (multimodal_reference and len(image_urls) > 1):
+            # 多模态路径（Seedance 2.0 / 全能参考）
+            logger.info(f"[视频生成] 多模态模式: images={len(image_urls)}, videos={len(request.video_urls or [])}, audios={len(request.audio_urls or [])}")
+            result = await video_service.generate_multimodal(
+                prompt=request.prompt,
+                image_urls=image_urls if image_urls else None,
+                video_urls=request.video_urls,
+                audio_urls=request.audio_urls,
+                duration=request.duration,
+                resolution=request.resolution,
+                ratio=request.ratio,
+                use_web_search=request.use_web_search,
+            )
+        elif len(image_urls) == 1:
             # 单图模式
             result = await video_service.generate(
                 image_url=image_urls[0],

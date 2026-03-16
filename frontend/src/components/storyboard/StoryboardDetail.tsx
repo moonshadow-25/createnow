@@ -31,6 +31,7 @@ interface StoryboardDetailProps {
   scenes: any[];
   props: any[];
   onUpdated: () => void;
+  multimodalReference?: boolean;
 }
 
 export function StoryboardDetail({
@@ -39,7 +40,8 @@ export function StoryboardDetail({
   characters,
   scenes,
   props,
-  onUpdated
+  onUpdated,
+  multimodalReference = false,
 }: StoryboardDetailProps) {
   const { toast } = useToast();
   const [selectedEpisode, setSelectedEpisode] = useState<any>(null);
@@ -794,6 +796,8 @@ export function StoryboardDetail({
       baseData.scene_id = selectedScene;
       baseData.prop_ids = selectedProps;
       if (generatedPrompt.trim()) baseData.image_prompt = generatedPrompt.trim();
+      baseData.duration = contentEdit.editDuration;
+      baseData.resolution = contentEdit.editResolution;
 
       if (isCreating) {
         // 创建模式 - 使用专门的分镜API
@@ -1273,6 +1277,7 @@ export function StoryboardDetail({
           editingStoryboardIdRef.current = null; // 保持兼容性
         }}
         onSuccess={() => loadStoryboards()}
+        multimodalReference={multimodalReference}
       />
 
       {/* 统一资产选择弹框 */}

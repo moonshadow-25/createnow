@@ -75,6 +75,7 @@ export interface StoryboardEditDialogProps {
   onSplitTripleGrid: () => void;
   onClose: () => void;
   onSuccess: () => void;
+  multimodalReference?: boolean;
 }
 
 export function StoryboardEditDialog({
@@ -131,6 +132,7 @@ export function StoryboardEditDialog({
   onSplitTripleGrid,
   onClose,
   onSuccess,
+  multimodalReference = false,
 }: StoryboardEditDialogProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'video'>(initialTab);
 
@@ -139,7 +141,7 @@ export function StoryboardEditDialog({
     if (show) setActiveTab(initialTab);
   }, [show, initialTab]);
 
-  const videoGen = useVideoGeneration({ projectId, episodeId, onSuccess });
+  const videoGen = useVideoGeneration({ projectId, episodeId, onSuccess, characters, scenes, props, multimodalReference });
 
   // 当切换到 video tab 或弹框打开时初始化视频数据
   useEffect(() => {
