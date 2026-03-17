@@ -15,7 +15,7 @@ type TabType = 'chat' | 'assets' | 'script' | 'storyboard' | 'canvas';
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { currentProject } = useProjectStore();
+  const { currentProject, fetchProject } = useProjectStore();
   const { characters, scenes, props, episodes, fetchAssets } = useAssetStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
@@ -45,18 +45,16 @@ export default function ProjectPage() {
 
   // 初始化加载
   useEffect(() => {
-    if (projectId) {
-      if (!currentProject || currentProject.project_id !== projectId) {
-        // 重新加载项目
-        window.location.reload();
-      }
-      // 加载资产
-      fetchAssets(projectId, 'character');
-      fetchAssets(projectId, 'scene');
-      fetchAssets(projectId, 'prop');
-      fetchAssets(projectId, 'episode');
-      fetchAssets(projectId, 'storyboard');
+    if (!projectId) return;
+    // 刷新后 currentProject 为 null，从 API 重新加载，不能 reload() 否则死循环
+    if (!currentProject || currentProject.project_id !== projectId) {
+      fetchProject(projectId);
     }
+    fetchAssets(projectId, 'character');
+    fetchAssets(projectId, 'scene');
+    fetchAssets(projectId, 'prop');
+    fetchAssets(projectId, 'episode');
+    fetchAssets(projectId, 'storyboard');
   }, [projectId]);
 
   const handleOpenSettings = () => {

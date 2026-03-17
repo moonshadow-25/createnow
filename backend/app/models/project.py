@@ -35,6 +35,12 @@ class Project:
         (self.project_dir / "canvas").mkdir(exist_ok=True)
         (self.project_dir / "canvas_elements").mkdir(exist_ok=True)
 
+        # 项目进度配置
+        self.total_episodes: int = 0
+        self.minutes_per_episode: float = 0.0
+        self.compute_budget_per_minute: float = 0.0
+        self.project_duration_days: int = 0
+
         # AI配置
         self.ai_config = {
             "llm": {
@@ -70,7 +76,11 @@ class Project:
             "description": self.description,
             "created_at": self.created_at,
             "updated_at": datetime.now().isoformat(),
-            "ai_config": self.ai_config
+            "ai_config": self.ai_config,
+            "total_episodes": self.total_episodes,
+            "minutes_per_episode": self.minutes_per_episode,
+            "compute_budget_per_minute": self.compute_budget_per_minute,
+            "project_duration_days": self.project_duration_days,
         }
         metadata_path = self.project_dir / "metadata.json"
         with open(metadata_path, "w", encoding="utf-8") as f:
@@ -97,6 +107,10 @@ class Project:
         project.updated_at = metadata["updated_at"]
         project.project_dir = project_dir
         project.ai_config = metadata.get("ai_config", {})
+        project.total_episodes = metadata.get("total_episodes", 0)
+        project.minutes_per_episode = metadata.get("minutes_per_episode", 0.0)
+        project.compute_budget_per_minute = metadata.get("compute_budget_per_minute", 0.0)
+        project.project_duration_days = metadata.get("project_duration_days", 0)
 
         # 确保所有必要的子目录存在（兼容旧项目）
         (project_dir / "episodes").mkdir(exist_ok=True)
@@ -120,7 +134,11 @@ class Project:
             "description": self.description,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "ai_config": self.ai_config
+            "ai_config": self.ai_config,
+            "total_episodes": self.total_episodes,
+            "minutes_per_episode": self.minutes_per_episode,
+            "compute_budget_per_minute": self.compute_budget_per_minute,
+            "project_duration_days": self.project_duration_days,
         }
 
 

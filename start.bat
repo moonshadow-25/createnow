@@ -40,14 +40,14 @@ echo [OK] Using Python: %CD%\env\python.exe
 echo [OK] Port: %API_PORT%
 echo.
 echo Starting backend server...
-echo   - API: http://localhost:%API_PORT%/api
-echo   - Frontend: http://localhost:%API_PORT%
+echo   - API: https://localhost:%API_PORT%/api
+echo   - Frontend: https://localhost:%API_PORT%
 echo.
 echo Press Ctrl+C to stop the server
 echo.
 
 REM Start a minimized background task to open browser after delay
-start /min cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:%API_PORT%"
+start /min cmd /c "timeout /t 3 /nobreak >nul && start https://localhost:%API_PORT%"
 
 REM Start server in current window
 cd /d "%CD%\backend"

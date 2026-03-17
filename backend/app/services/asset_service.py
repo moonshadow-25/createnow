@@ -255,6 +255,11 @@ class ProjectService:
                 new_config = kwargs["ai_config"]
                 project.ai_config = {**existing_config, **new_config}
 
+            for field in ["total_episodes", "minutes_per_episode",
+                          "compute_budget_per_minute", "project_duration_days"]:
+                if field in kwargs:
+                    setattr(project, field, kwargs[field])
+
             project.save_metadata()
             return project.to_dict()
         except FileNotFoundError:

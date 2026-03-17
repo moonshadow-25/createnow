@@ -237,6 +237,15 @@ class ImageDownloadService:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
+            # 同步更新内存缓存，避免下次请求仍返回旧的外链 URL
+            from app.services.asset_service import _images_cache
+            if project_id in _images_cache:
+                cache = _images_cache[project_id]
+                for i, img in enumerate(cache):
+                    if img.get("image_id") == image_id:
+                        cache[i] = data
+                        break
+
     @staticmethod
     def get_local_image_path(project_id: str, image_id: str) -> Optional[str]:
         """获取图片的本地路径（如果已下载）"""

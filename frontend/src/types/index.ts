@@ -171,4 +171,8 @@ export interface Project {
       image_edit_prompt_template?: string;
     };
   };
+  total_episodes?: number;
+  minutes_per_episode?: number;
+  compute_budget_per_minute?: number;
+  project_duration_days?: number;
 }

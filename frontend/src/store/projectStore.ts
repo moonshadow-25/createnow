@@ -8,6 +8,7 @@ interface ProjectState {
   loading: boolean;
   error: string | null;
   fetchProjects: () => Promise<void>;
+  fetchProject: (id: string) => Promise<Project | null>;
   setCurrentProject: (project: Project | null) => void;
   createProject: (name: string, description?: string) => Promise<Project>;
   updateProject: (id: string, data: any) => Promise<void>;
@@ -32,6 +33,17 @@ export const useProjectStore = create<ProjectState>()((set) => ({
 
   setCurrentProject: (project) => {
     set({ currentProject: project });
+  },
+
+  fetchProject: async (id) => {
+    try {
+      const response = await projectApi.get(id);
+      const project = response.data;
+      set({ currentProject: project });
+      return project;
+    } catch {
+      return null;
+    }
   },
 
   createProject: async (name, description) => {

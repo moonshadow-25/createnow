@@ -12,6 +12,26 @@ const api = axios.create({
   },
 });
 
+// 请求拦截器：注入管理员 JWT
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('admin_token');
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 响应拦截器：401 时发送全局事件
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      window.dispatchEvent(new CustomEvent('admin:unauthorized'));
+    }
+    return Promise.reject(error);
+  }
+);
+
 // 项目相关API
 export const projectApi = {
   list: () => api.get('/projects'),
@@ -20,6 +40,7 @@ export const projectApi = {
     api.post('/projects', data),
   update: (id: string, data: any) => api.put(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
+  getStats: (id: string) => api.get(`/projects/${id}/stats`),
 };
 
 // 资产相关API
@@ -43,10 +64,14 @@ export const chatApi = {
   send: (projectId: string, message: string, conversationId?: string) => {
     const url = `/projects/${projectId}/chat`;
     const body = { message, conversation_id: conversationId };
+    const token = localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
     return {
       url: `${API_BASE_URL}${url}`,
       body: JSON.stringify(body),
+      headers,
     };
   },
   uploadScript: (projectId: string, file: File) => {
@@ -467,4 +492,28 @@ export const authApi = {
   poll:   () => api.get('/auth/poll'),
   getKey: () => api.get('/auth/key'),
   logout: () => api.post('/auth/logout'),
+};
+
+// 管理员账户认证 API
+export const adminAuthApi = {
+  login:  (username: string, password: string) => {
+    const formData = new URLSearchParams();
+    formData.append('username', username);
+    formData.append('password', password);
+    return api.post('/admin/login', formData.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+  },
+  me:     () => api.get('/admin/me'),
+  logout: () => api.post('/admin/logout'),
+};
+
+// 管理员用户管理 API
+export const adminUserApi = {
+  list: () => api.get('/admin/users'),
+  create: (data: { username: string; password: string; display_name?: string; assigned_project_ids?: string[] }) =>
+    api.post('/admin/users', data),
+  update: (userId: string, data: { display_name?: string; password?: string; assigned_project_ids?: string[] }) =>
+    api.put(`/admin/users/${userId}`, data),
+  delete: (userId: string) => api.delete(`/admin/users/${userId}`),
 };

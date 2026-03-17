@@ -12,6 +12,9 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='[%(levelname)s] %(name)s: %(message)s'
 )
+# 压制第三方库的 DEBUG 噪音
+for _noisy in ("hpack", "h11", "h2", "asyncio", "hypercorn.access", "multipart"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # 添加 backend 目录到 sys.path，确保能找到 app 模块
 BACKEND_DIR = Path(__file__).parent.parent
@@ -43,6 +46,7 @@ from app.api.canvas import router as canvas_router
 from app.api.global_prompts import router as global_prompts_router
 from app.api.version import router as version_router
 from app.api.auth import router as auth_router
+from app.api.admin_auth import router as admin_auth_router
 
 def _ensure_ssl_cert():
     """启动时自动生成自签名证书（若不存在），有效期 10 年"""
@@ -104,6 +108,9 @@ async def lifespan(app: FastAPI):
         print(f"[INFO] 已创建: {json_path}")
     else:
         load_global_prompts()  # 预热缓存
+    # 初始化默认管理员账号
+    from app.services.user_service import ensure_default_admin
+    ensure_default_admin()
     yield
     # 关闭时
     print("Application shutting down...")
@@ -146,6 +153,74 @@ class ProjectContextMiddleware(BaseHTTPMiddleware):
 
 # 注册项目上下文中间件
 app.add_middleware(ProjectContextMiddleware)
+
+
+# ==================== 管理员认证中间件 ====================
+class AdminAuthMiddleware(BaseHTTPMiddleware):
+    """验证所有 /api/ 路由（白名单除外）必须携带有效的管理员 JWT"""
+
+    # 无需 token 即可访问的路径前缀 / 完整路径
+    _WHITELIST_PREFIXES = (
+        "/api/admin/login",
+        "/api/auth/",
+        "/api/health",
+    )
+    # 图片/视频直接访问路径（<img src> / <video src> 无法携带 token）
+    _WHITELIST_CONTAINS = (
+        "/images/files/",
+        "/images/thumbnails/",
+        "/thumbnails/",
+        "/videos/files/",
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        method = request.method
+
+        # 放行：OPTIONS 预检
+        if method == "OPTIONS":
+            return await call_next(request)
+
+        # 放行：非 /api/ 路径
+        if not path.startswith("/api/"):
+            return await call_next(request)
+
+        # 放行：白名单（路径前缀）
+        for prefix in self._WHITELIST_PREFIXES:
+            if path.startswith(prefix):
+                return await call_next(request)
+
+        # 放行：图片访问路径（img src 无法携带 token）
+        for substr in self._WHITELIST_CONTAINS:
+            if substr in path:
+                return await call_next(request)
+
+        # 验证 Bearer token
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        token = auth_header[len("Bearer "):]
+        from app.core.security import decode_access_token
+        payload = decode_access_token(token)
+        if not payload:
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or expired token"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        request.state.admin_user = payload  # {"sub": "username", "role": "admin"}
+        return await call_next(request)
+
+
+app.add_middleware(AdminAuthMiddleware)
 
 
 # ==================== 本地图片访问路由 ====================
@@ -360,6 +435,7 @@ app.include_router(canvas_router, prefix="/api")
 app.include_router(global_prompts_router, prefix="/api")
 app.include_router(version_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
+app.include_router(admin_auth_router, prefix="/api")
 
 
 # ==================== 前端静态文件服务 ====================

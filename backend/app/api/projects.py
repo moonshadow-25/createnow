@@ -1,11 +1,14 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from typing import List
 from pydantic import BaseModel
 import uuid
+import json as _json
 from datetime import datetime
 
 from app.services import ProjectService
+from app.services.asset_service import AssetService
 from app.services.auth_service import get_auth_state
+from app.services.user_service import get_user_by_username
 from app.core.config import settings
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -20,11 +23,18 @@ class ProjectUpdate(BaseModel):
     name: str = None
     description: str = None
     ai_config: dict = None
+    total_episodes: int = None
+    minutes_per_episode: float = None
+    compute_budget_per_minute: float = None
+    project_duration_days: int = None
 
 
 @router.post("", response_model=dict)
-async def create_project(project: ProjectCreate):
+async def create_project(request: Request, project: ProjectCreate):
     """创建新项目"""
+    admin_user = getattr(request.state, "admin_user", None)
+    if admin_user and admin_user.get("role") == "user":
+        raise HTTPException(status_code=403, detail="子账号不能创建项目")
     result = ProjectService.create_project(project.name, project.description)
 
     # 若用户已登录，为新项目创建完整的 createnow 预设结构
@@ -77,9 +87,15 @@ async def create_project(project: ProjectCreate):
 
 
 @router.get("", response_model=List[dict])
-async def list_projects():
+async def list_projects(request: Request):
     """列出所有项目"""
-    return ProjectService.list_projects()
+    projects = ProjectService.list_projects()
+    admin_user = getattr(request.state, "admin_user", None)
+    if admin_user and admin_user.get("role") == "user":
+        user = get_user_by_username(admin_user["sub"])
+        allowed = set(user.get("assigned_project_ids") or []) if user else set()
+        projects = [p for p in projects if p.get("project_id") in allowed]
+    return projects
 
 
 @router.get("/{project_id}", response_model=dict)
@@ -101,6 +117,10 @@ async def update_project(project_id: str, project: ProjectUpdate):
         update_data["description"] = project.description
     if project.ai_config is not None:
         update_data["ai_config"] = project.ai_config
+    for field in ["total_episodes", "minutes_per_episode", "compute_budget_per_minute", "project_duration_days"]:
+        val = getattr(project, field)
+        if val is not None:
+            update_data[field] = val
 
     result = ProjectService.update_project(project_id, **update_data)
     if not result:
@@ -108,9 +128,48 @@ async def update_project(project_id: str, project: ProjectUpdate):
     return result
 
 
+@router.get("/{project_id}/stats")
+async def get_project_stats(project_id: str):
+    """获取项目统计数据"""
+    project_dir = settings.PROJECTS_DIR / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    storyboards = AssetService.list_assets(project_id, "storyboard")
+    total_storyboards = len(storyboards)
+    storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
+
+    videos_dir = project_dir / "videos"
+    primary_storyboard_ids: set = set()
+    total_video_seconds = 0.0
+    if videos_dir.exists():
+        for vf in videos_dir.glob("*.json"):
+            with open(vf, encoding="utf-8") as f:
+                v = _json.load(f)
+            total_video_seconds += float(v.get("duration") or 0)
+            if v.get("is_primary") and v.get("storyboard_id"):
+                primary_storyboard_ids.add(v["storyboard_id"])
+
+    images_dir = project_dir / "images"
+    total_images = len(list(images_dir.glob("*.json"))) if images_dir.exists() else 0
+    episodes = AssetService.list_assets(project_id, "episode")
+
+    return {
+        "episode_count": len(episodes),
+        "total_storyboards": total_storyboards,
+        "storyboards_with_image": storyboards_with_image,
+        "storyboards_with_video": len(primary_storyboard_ids),
+        "total_images": total_images,
+        "total_video_seconds": total_video_seconds,
+    }
+
+
 @router.delete("/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(request: Request, project_id: str):
     """删除项目"""
+    admin_user = getattr(request.state, "admin_user", None)
+    if admin_user and admin_user.get("role") == "user":
+        raise HTTPException(status_code=403, detail="子账号不能删除项目")
     success = ProjectService.delete_project(project_id)
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")

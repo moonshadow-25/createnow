@@ -60,7 +60,12 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
 
         const response = await fetch('/api/projects/' + projectId + '/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('admin_token')
+              ? { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
+              : {}),
+          },
           body: JSON.stringify(request),
         });
 

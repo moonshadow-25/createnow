@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjectStore } from '@/store/projectStore';
 import { useAuthStore } from '@/store/authStore';
+import { useAdminAuthStore } from '@/store/adminAuthStore';
 import { useToast } from '@/components/common/Toast';
 import { LoginModal } from '@/components/auth/LoginModal';
-import { Plus, FolderOpen, Trash2, LogIn, CheckCircle2 } from 'lucide-react';
+import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
+import { ProjectCard } from '@/components/project/ProjectCard';
+import { ProjectEditModal } from '@/components/project/ProjectEditModal';
+import { Plus, LogIn, CheckCircle2, Users, LogOut } from 'lucide-react';
+import { projectApi } from '@/services/api';
+import { Project } from '@/types';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -12,13 +18,40 @@ export default function HomePage() {
   const { projects, loading, fetchProjects, createProject, deleteProject, setCurrentProject } =
     useProjectStore();
   const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
+  const { username: adminUsername, role: adminRole, logout: adminLogout, isAuthenticated } = useAdminAuthStore();
 
   const [showLogin, setShowLogin] = useState(false);
+  const [showUserPanel, setShowUserPanel] = useState(false);
+  const [projectStats, setProjectStats] = useState<Record<string, any>>({});
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  const isAdmin = adminRole === 'admin';
+
+  const loadStats = useCallback(async (list: Project[]) => {
+    if (!list?.length) return;
+    const results = await Promise.allSettled(list.map(p => projectApi.getStats(p.project_id)));
+    const statsMap: Record<string, any> = {};
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') statsMap[list[i].project_id] = r.value.data;
+      else statsMap[list[i].project_id] = null;
+    });
+    setProjectStats(statsMap);
+  }, []);
 
   useEffect(() => {
     fetchProjects();
     fetchAuthInfo();
   }, [fetchProjects, fetchAuthInfo]);
+
+  // 登录成功后重新加载项目列表
+  useEffect(() => {
+    if (isAuthenticated) fetchProjects();
+  }, [isAuthenticated, fetchProjects]);
+
+  // Load stats whenever projects list changes
+  useEffect(() => {
+    if (projects.length > 0) loadStats(projects);
+  }, [projects, loadStats]);
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -37,12 +70,10 @@ export default function HomePage() {
     const project = projects.find(p => p.project_id === id);
     if (!project) return;
 
-    // 第一次确认
     if (!confirm(`确定要删除项目「${project.name}」吗？\n\n删除后项目将被移至回收站，可以手动恢复。`)) {
       return;
     }
 
-    // 第二次确认：输入项目名称
     const inputName = prompt(`请输入项目名称以确认删除：\n\n「${project.name}」`);
     if (inputName !== project.name) {
       if (inputName !== null) {
@@ -51,7 +82,6 @@ export default function HomePage() {
       return;
     }
 
-    // 执行删除
     try {
       await deleteProject(id);
       toast('项目已移至回收站', 'success');
@@ -71,13 +101,21 @@ export default function HomePage() {
     toast('已退出登录', 'success');
   };
 
+  const handleAdminLogout = () => {
+    adminLogout();
+  };
+
+  const handleEditSaved = async () => {
+    setEditingProject(null);
+    fetchProjects();
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">AI短片生成软件</h1>
+          <h1 className="text-3xl font-bold">DreamMaster</h1>
           <div className="flex items-center gap-3">
-            {/* 登录状态 */}
             {loggedIn ? (
               <>
                 <a
@@ -106,13 +144,40 @@ export default function HomePage() {
                 登录
               </button>
             )}
-            <button
-              onClick={handleCreateProject}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
-            >
-              <Plus size={20} />
-              新建项目
-            </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => setShowUserPanel(true)}
+                className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+                title="用户管理"
+              >
+                <Users size={16} />
+                用户管理
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                onClick={handleCreateProject}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
+              >
+                <Plus size={20} />
+                新建项目
+              </button>
+            )}
+
+            {adminUsername && (
+              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
+                <span className="text-xs text-gray-400">{adminUsername}</span>
+                <button
+                  onClick={handleAdminLogout}
+                  className="flex items-center gap-1 text-gray-400 hover:text-white transition text-sm"
+                  title="退出登录"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -121,54 +186,41 @@ export default function HomePage() {
         ) : projects.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <p className="text-xl mb-4">还没有项目</p>
-            <button
-              onClick={handleCreateProject}
-              className="text-blue-400 hover:text-blue-300 underline"
-            >
-              创建第一个项目
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleCreateProject}
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                创建第一个项目
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map((project) => (
-              <div
+              <ProjectCard
                 key={project.project_id}
-                className="bg-gray-800 rounded-lg p-6 hover:bg-gray-750 transition cursor-pointer"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-xl font-semibold flex-1">{project.name}</h3>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteProject(project.project_id);
-                    }}
-                    className="text-red-400 hover:text-red-300 p-1"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-                <p className="text-gray-400 text-sm mb-4 line-clamp-2">
-                  {project.description || '暂无描述'}
-                </p>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-500">
-                    {new Date(project.created_at).toLocaleDateString()}
-                  </span>
-                  <button
-                    onClick={() => handleOpenProject(project)}
-                    className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm"
-                  >
-                    <FolderOpen size={16} />
-                    打开
-                  </button>
-                </div>
-              </div>
+                project={project}
+                stats={projectStats[project.project_id]}
+                isAdmin={isAdmin}
+                onOpen={() => handleOpenProject(project)}
+                onDelete={() => handleDeleteProject(project.project_id)}
+                onEdit={() => setEditingProject(project)}
+              />
             ))}
           </div>
         )}
       </div>
 
       <LoginModal open={showLogin} onClose={() => setShowLogin(false)} />
+      {showUserPanel && <AdminUserPanel onClose={() => setShowUserPanel(false)} />}
+      {editingProject && (
+        <ProjectEditModal
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+          onSaved={handleEditSaved}
+        />
+      )}
     </div>
   );
 }
