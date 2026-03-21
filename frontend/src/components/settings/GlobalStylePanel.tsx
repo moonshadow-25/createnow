@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { generationApi } from '../../services/api';
 import { useToast } from '@/components/common/Toast';
+import { useGlobalStyleStore } from '@/store/globalStyleStore';
 
 interface CustomPreset {
   id: string;
@@ -20,6 +21,8 @@ interface GlobalStyleConfig {
   prompt_language: string;
   image_style: StyleConfig;
   video_style: StyleConfig;
+  global_resolution?: string;
+  nine_grid_mode?: boolean;
 }
 
 interface StylePreset {
@@ -55,6 +58,7 @@ function migrateStyle(raw: any): StyleConfig {
 
 export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId }) => {
   const { toast } = useToast();
+  const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const [config, setConfig] = useState<GlobalStyleConfig | null>(null);
   const [imagePresets, setImagePresets] = useState<StylePreset[]>([]);
   const [videoPresets, setVideoPresets] = useState<StylePreset[]>([]);
@@ -100,6 +104,10 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
         image_style: migrateStyle(data.image_style),
         video_style: migrateStyle(data.video_style),
       });
+      setGlobalStyleConfig({
+        global_resolution: data.global_resolution || '1280x720',
+        nine_grid_mode: data.nine_grid_mode || false,
+      });
     } catch (e) {
       console.error('加载全局风格配置失败', e);
     }
@@ -120,6 +128,10 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     setSaving(true);
     try {
       await generationApi.updateGlobalStyleConfig(projectId, config);
+      setGlobalStyleConfig({
+        global_resolution: config.global_resolution || '1280x720',
+        nine_grid_mode: config.nine_grid_mode || false,
+      });
       toast('全局风格配置已保存', 'success');
     } catch (e) {
       toast('保存失败', 'error');
@@ -314,6 +326,35 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
           <option value="en">英文</option>
           <option value="auto">自动检测</option>
         </select>
+      </div>
+
+      {/* Global resolution */}
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-gray-300 whitespace-nowrap">全局分辨率</label>
+        <select
+          value={config.global_resolution || '1280x720'}
+          onChange={e => setConfig({ ...config, global_resolution: e.target.value })}
+          className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+        >
+          <option value="1920x1080">1920x1080（横屏 FHD）</option>
+          <option value="1280x720">1280x720（横屏 HD）</option>
+          <option value="1080x1920">1080x1920（竖屏 FHD）</option>
+          <option value="720x1280">720x1280（竖屏 HD）</option>
+        </select>
+      </div>
+
+      {/* Nine-grid mode */}
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-gray-300 whitespace-nowrap">九宫格模式</label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={config.nine_grid_mode || false}
+            onChange={e => setConfig({ ...config, nine_grid_mode: e.target.checked })}
+            className="w-3.5 h-3.5 accent-purple-500"
+          />
+          <span className="text-xs text-gray-400">启用后调整提示词面板标签名称</span>
+        </label>
       </div>
 
       {/* Two-column layout */}

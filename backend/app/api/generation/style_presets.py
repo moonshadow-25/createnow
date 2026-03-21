@@ -46,16 +46,16 @@ IMAGE_STYLE_PRESETS = {
         "name": "照片级写实",
         "name_en": "Photorealistic",
         "category": "写实",
-        "suffix": "Photorealistic, DSLR quality, natural lighting, accurate anatomy, realistic textures, professional photography, 8K resolution",
-        "suffix_zh": "照片级写实，单反品质，自然光照，准确解剖，真实质感，专业摄影，8K分辨率，杰作，8K，超高清"
+        "suffix": "Photorealistic, DSLR quality, natural lighting, accurate anatomy, realistic textures, professional photography, 8K resolution, hyperrealistic, NOT cartoon, NOT anime, NOT illustrated",
+        "suffix_zh": "照片级写实，单反品质，自然光照，准确解剖，真实质感，专业摄影，8K分辨率，超写实，禁止卡通，禁止动漫，禁止插画风格，杰作，8K，超高清"
     },
 
     "cinematic_realistic": {
         "name": "电影级写实",
         "name_en": "Cinematic Realistic",
         "category": "写实",
-        "suffix": "Cinematic realism, Hollywood quality, dramatic lighting, shallow depth of field, color grading, professional cinematography, 4K",
-        "suffix_zh": "电影级写实，好莱坞品质，戏剧性光影，浅景深，调色，专业电影摄影，4K，杰作，8K，超高清"
+        "suffix": "Cinematic realism, Hollywood quality, dramatic lighting, shallow depth of field, color grading, professional cinematography, 4K, photorealistic, NOT cartoon, NOT anime, NOT illustrated",
+        "suffix_zh": "电影级写实，好莱坞品质，戏剧性光影，浅景深，调色，专业电影摄影，4K，真人写实，禁止卡通，禁止动漫，禁止插画风格，杰作，8K，超高清"
     },
 
     # 4. 题材风格
@@ -63,56 +63,56 @@ IMAGE_STYLE_PRESETS = {
         "name": "现代都市",
         "name_en": "Modern Urban",
         "category": "题材",
-        "suffix": "Modern urban setting, contemporary architecture, city lights, realistic street scenes, photographic quality, cinematic composition",
-        "suffix_zh": "现代都市场景，当代建筑，城市灯光，真实街景，摄影级品质，电影级构图，杰作，8K，超高清"
+        "suffix": "Modern urban setting, contemporary architecture, city lights, realistic street scenes, photographic quality, cinematic composition, photorealistic, hyperrealistic, live-action style, NOT cartoon, NOT anime",
+        "suffix_zh": "现代都市场景，当代建筑，城市灯光，真实街景，摄影级品质，电影级构图，真人写实，超写实，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "chinese_costume": {
         "name": "中国古装",
         "name_en": "Chinese Costume Drama",
         "category": "题材",
-        "suffix": "Chinese historical costume drama style, traditional architecture, elegant hanfu clothing, classical aesthetics, cinematic quality",
-        "suffix_zh": "中国古装剧风格，传统建筑，典雅汉服，古典美学，电影级品质，杰作，8K，超高清"
+        "suffix": "Chinese historical costume drama style, traditional architecture, elegant hanfu clothing, classical aesthetics, cinematic quality, photorealistic, live-action drama style, realistic human figures, NOT cartoon, NOT anime",
+        "suffix_zh": "中国古装剧风格，传统建筑，典雅汉服，古典美学，电影级品质，真人写实，电视剧真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "oriental_fantasy": {
         "name": "东方魔幻",
         "name_en": "Oriental Fantasy (Fengshen)",
         "category": "题材",
-        "suffix": "Oriental fantasy style, mythological creatures, ancient Chinese aesthetics, magical atmosphere, epic composition, Fengshen movie quality",
-        "suffix_zh": "东方魔幻风格，神话生物，中国古代美学，魔幻氛围，史诗级构图，封神榜电影品质，杰作，8K，超高清"
+        "suffix": "Oriental fantasy style, mythological creatures, ancient Chinese aesthetics, magical atmosphere, epic composition, Fengshen movie quality, photorealistic, live-action movie style, realistic rendering, NOT cartoon, NOT anime",
+        "suffix_zh": "东方魔幻风格，神话生物，中国古代美学，魔幻氛围，史诗级构图，封神榜电影品质，真人写实，电影级真实渲染，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "western_fantasy": {
         "name": "西方魔幻",
         "name_en": "Western Fantasy (LOTR)",
         "category": "题材",
-        "suffix": "Western fantasy style, medieval architecture, epic landscapes, magical elements, detailed armor, Lord of the Rings aesthetic",
-        "suffix_zh": "西方魔幻风格，中世纪建筑，史诗级风景，魔法元素，精致盔甲，指环王美学，杰作，8K，超高清"
+        "suffix": "Western fantasy style, medieval architecture, epic landscapes, magical elements, detailed armor, Lord of the Rings aesthetic, photorealistic, live-action movie style, realistic rendering, NOT cartoon, NOT anime",
+        "suffix_zh": "西方魔幻风格，中世纪建筑，史诗级风景，魔法元素，精致盔甲，指环王美学，真人写实，电影级真实渲染，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "xianxia_cultivation": {
         "name": "修仙",
         "name_en": "Xianxia Cultivation",
         "category": "题材",
-        "suffix": "Chinese xianxia cultivation style, flowing robes, mystical energy, mountain peaks, ethereal atmosphere, Chinese Paladin aesthetic",
-        "suffix_zh": "中国修仙风格，飘逸长袍，神秘能量，山峰仙境，空灵氛围，仙剑奇侠传美学，杰作，8K，超高清"
+        "suffix": "Chinese xianxia cultivation style, flowing robes, mystical energy, mountain peaks, ethereal atmosphere, Chinese Paladin aesthetic, photorealistic, live-action drama style, realistic human figures, NOT cartoon, NOT anime, NOT game art, NOT illustrated",
+        "suffix_zh": "中国修仙风格，飘逸长袍，神秘能量，山峰仙境，空灵氛围，仙剑奇侠传美学，真人写实，电视剧真实质感，禁止卡通，禁止动漫，禁止游戏原画，禁止插画，杰作，8K，超高清"
     },
 
     "wuxia_martial": {
         "name": "武侠",
         "name_en": "Wuxia Martial Arts",
         "category": "题材",
-        "suffix": "Chinese wuxia style, martial arts aesthetics, traditional robes, ancient architecture, dynamic poses, Jin Yong novel quality",
-        "suffix_zh": "中国武侠风格，武术美学，传统服饰，古代建筑，动态姿势，金庸小说品质，杰作，8K，超高清"
+        "suffix": "Chinese wuxia style, martial arts aesthetics, traditional robes, ancient architecture, dynamic poses, Jin Yong novel quality, photorealistic, live-action movie style, realistic human figures, NOT cartoon, NOT anime",
+        "suffix_zh": "中国武侠风格，武术美学，传统服饰，古代建筑，动态姿势，金庸小说品质，真人写实，电影级真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "sci_fi_future": {
         "name": "科幻未来",
         "name_en": "Sci-Fi Future",
         "category": "题材",
-        "suffix": "Futuristic sci-fi style, advanced technology, sleek design, neon lights, high-tech environment, cinematic quality",
-        "suffix_zh": "科幻未来风格，先进科技，流线设计，霓虹灯光，高科技环境，电影级品质，杰作，8K，超高清"
+        "suffix": "Futuristic sci-fi style, advanced technology, sleek design, neon lights, high-tech environment, cinematic quality, photorealistic, hyperrealistic, live-action movie style, NOT cartoon, NOT anime",
+        "suffix_zh": "科幻未来风格，先进科技，流线设计，霓虹灯光，高科技环境，电影级品质，真人写实，超写实，电影级真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     # 5. 特殊风格
@@ -120,8 +120,8 @@ IMAGE_STYLE_PRESETS = {
         "name": "赛博朋克",
         "name_en": "Cyberpunk",
         "category": "特殊",
-        "suffix": "Cyberpunk aesthetic, neon-lit urban environment, high-tech low-life, futuristic dystopia, glowing holograms, Blade Runner inspired",
-        "suffix_zh": "赛博朋克美学，霓虹灯城市，高科技低生活，未来反乌托邦，发光全息图，银翼杀手风格，杰作，8K，超高清"
+        "suffix": "Cyberpunk aesthetic, neon-lit urban environment, high-tech low-life, futuristic dystopia, glowing holograms, Blade Runner inspired, photorealistic, hyperrealistic, live-action movie style, NOT cartoon, NOT anime",
+        "suffix_zh": "赛博朋克美学，霓虹灯城市，高科技低生活，未来反乌托邦，发光全息图，银翼杀手风格，真人写实，超写实，电影级真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     # 6. 默认
@@ -176,16 +176,16 @@ VIDEO_STYLE_PRESETS = {
         "name": "电影级写实",
         "name_en": "Cinematic Realistic",
         "category": "写实",
-        "suffix": "Cinematic realism, Hollywood film quality, natural camera movements, dramatic lighting, shallow depth of field, professional cinematography, 4K",
-        "suffix_zh": "电影级写实，好莱坞电影品质，自然相机运动，戏剧性光影，浅景深，专业电影摄影，4K，杰作，8K，超高清"
+        "suffix": "Cinematic realism, Hollywood film quality, natural camera movements, dramatic lighting, shallow depth of field, professional cinematography, 4K, photorealistic, NOT cartoon, NOT anime, NOT illustrated",
+        "suffix_zh": "电影级写实，好莱坞电影品质，自然相机运动，戏剧性光影，浅景深，专业电影摄影，4K，真人写实，禁止卡通，禁止动漫，禁止插画风格，杰作，8K，超高清"
     },
 
     "photorealistic_video": {
         "name": "照片级写实视频",
         "name_en": "Photorealistic Video",
         "category": "写实",
-        "suffix": "Photorealistic video, lifelike motion, accurate physics, realistic lighting, natural interactions, high-fidelity rendering, 60fps",
-        "suffix_zh": "照片级写实视频，逼真运动，准确物理，真实光影，自然交互，高保真渲染，60帧，杰作，8K，超高清"
+        "suffix": "Photorealistic video, lifelike motion, accurate physics, realistic lighting, natural interactions, high-fidelity rendering, 60fps, hyperrealistic, NOT cartoon, NOT anime, NOT illustrated",
+        "suffix_zh": "照片级写实视频，逼真运动，准确物理，真实光影，自然交互，高保真渲染，60帧，超写实，禁止卡通，禁止动漫，禁止插画风格，杰作，8K，超高清"
     },
 
     # 4. 题材风格
@@ -193,56 +193,56 @@ VIDEO_STYLE_PRESETS = {
         "name": "现代都市剧",
         "name_en": "Modern Urban Drama",
         "category": "题材",
-        "suffix": "Modern urban drama style, contemporary city scenes, realistic movements, natural lighting, cinematic camera work, TV series quality",
-        "suffix_zh": "现代都市剧风格，当代城市场景，真实运动，自然光照，电影级镜头，电视剧品质，杰作，8K，超高清"
+        "suffix": "Modern urban drama style, contemporary city scenes, realistic movements, natural lighting, cinematic camera work, TV series quality, photorealistic, hyperrealistic, live-action style, NOT cartoon, NOT anime",
+        "suffix_zh": "现代都市剧风格，当代城市场景，真实运动，自然光照，电影级镜头，电视剧品质，真人写实，超写实，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "chinese_costume_video": {
         "name": "中国古装剧",
         "name_en": "Chinese Costume Drama",
         "category": "题材",
-        "suffix": "Chinese historical costume drama, traditional architecture, elegant movements, classical aesthetics, cinematic camera work, TV series quality",
-        "suffix_zh": "中国古装剧，传统建筑，典雅动作，古典美学，电影级镜头，电视剧品质，杰作，8K，超高清"
+        "suffix": "Chinese historical costume drama, traditional architecture, elegant movements, classical aesthetics, cinematic camera work, TV series quality, photorealistic, live-action drama style, realistic human figures, NOT cartoon, NOT anime",
+        "suffix_zh": "中国古装剧，传统建筑，典雅动作，古典美学，电影级镜头，电视剧品质，真人写实，电视剧真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "oriental_fantasy_video": {
         "name": "东方魔幻",
         "name_en": "Oriental Fantasy (Fengshen)",
         "category": "题材",
-        "suffix": "Oriental fantasy video, mythological elements, magical effects, dynamic action, epic cinematography, Fengshen movie quality",
-        "suffix_zh": "东方魔幻视频，神话元素，魔法特效，动态动作，史诗级电影摄影，封神榜电影品质，杰作，8K，超高清"
+        "suffix": "Oriental fantasy video, mythological elements, magical effects, dynamic action, epic cinematography, Fengshen movie quality, photorealistic, live-action movie style, realistic rendering, NOT cartoon, NOT anime",
+        "suffix_zh": "东方魔幻视频，神话元素，魔法特效，动态动作，史诗级电影摄影，封神榜电影品质，真人写实，电影级真实渲染，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "western_fantasy_video": {
         "name": "西方魔幻",
         "name_en": "Western Fantasy (GoT)",
         "category": "题材",
-        "suffix": "Western fantasy video, medieval settings, epic battles, dramatic camera work, detailed costumes, Game of Thrones aesthetic",
-        "suffix_zh": "西方魔幻视频，中世纪场景，史诗战斗，戏剧性镜头，精致服饰，权力的游戏美学，杰作，8K，超高清"
+        "suffix": "Western fantasy video, medieval settings, epic battles, dramatic camera work, detailed costumes, Game of Thrones aesthetic, photorealistic, live-action movie style, realistic rendering, NOT cartoon, NOT anime",
+        "suffix_zh": "西方魔幻视频，中世纪场景，史诗战斗，戏剧性镜头，精致服饰，权力的游戏美学，真人写实，电影级真实渲染，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "xianxia_cultivation_video": {
         "name": "修仙剧",
         "name_en": "Xianxia Cultivation Drama",
         "category": "题材",
-        "suffix": "Xianxia cultivation drama, flowing movements, mystical energy effects, mountain scenery, ethereal atmosphere, Chinese Paladin quality",
-        "suffix_zh": "修仙剧，飘逸动作，神秘能量特效，山峰仙境，空灵氛围，仙剑奇侠传品质，杰作，8K，超高清"
+        "suffix": "Xianxia cultivation drama, flowing movements, mystical energy effects, mountain scenery, ethereal atmosphere, Chinese Paladin quality, photorealistic, live-action drama style, realistic human figures, NOT cartoon, NOT anime, NOT game art, NOT illustrated",
+        "suffix_zh": "修仙剧，飘逸动作，神秘能量特效，山峰仙境，空灵氛围，仙剑奇侠传品质，真人写实，电视剧真实质感，禁止卡通，禁止动漫，禁止游戏原画，禁止插画，杰作，8K，超高清"
     },
 
     "wuxia_martial_video": {
         "name": "武侠剧",
         "name_en": "Wuxia Martial Arts Drama",
         "category": "题材",
-        "suffix": "Wuxia martial arts drama, dynamic fight choreography, traditional robes, ancient settings, cinematic camera work, Jin Yong quality",
-        "suffix_zh": "武侠剧，动态武打编排，传统服饰，古代场景，电影级镜头，金庸作品品质，杰作，8K，超高清"
+        "suffix": "Wuxia martial arts drama, dynamic fight choreography, traditional robes, ancient settings, cinematic camera work, Jin Yong quality, photorealistic, live-action movie style, realistic human figures, NOT cartoon, NOT anime",
+        "suffix_zh": "武侠剧，动态武打编排，传统服饰，古代场景，电影级镜头，金庸作品品质，真人写实，电影级真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "sci_fi_future_video": {
         "name": "科幻未来",
         "name_en": "Sci-Fi Future",
         "category": "题材",
-        "suffix": "Futuristic sci-fi video, advanced technology, sleek movements, neon lighting, high-tech environments, cinematic quality",
-        "suffix_zh": "科幻未来视频，先进科技，流畅运动，霓虹灯光，高科技环境，电影级品质，杰作，8K，超高清"
+        "suffix": "Futuristic sci-fi video, advanced technology, sleek movements, neon lighting, high-tech environments, cinematic quality, photorealistic, hyperrealistic, live-action movie style, NOT cartoon, NOT anime",
+        "suffix_zh": "科幻未来视频，先进科技，流畅运动，霓虹灯光，高科技环境，电影级品质，真人写实，超写实，电影级真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     # 5. 特殊风格
@@ -250,8 +250,8 @@ VIDEO_STYLE_PRESETS = {
         "name": "赛博朋克",
         "name_en": "Cyberpunk",
         "category": "特殊",
-        "suffix": "Cyberpunk video, neon-lit streets, futuristic urban scenes, dynamic camera movements, glowing effects, Blade Runner inspired",
-        "suffix_zh": "赛博朋克视频，霓虹灯街道，未来都市场景，动态镜头运动，发光特效，银翼杀手风格，杰作，8K，超高清"
+        "suffix": "Cyberpunk video, neon-lit streets, futuristic urban scenes, dynamic camera movements, glowing effects, Blade Runner inspired, photorealistic, hyperrealistic, live-action movie style, NOT cartoon, NOT anime",
+        "suffix_zh": "赛博朋克视频，霓虹灯街道，未来都市场景，动态镜头运动，发光特效，银翼杀手风格，真人写实，超写实，电影级真实质感，禁止卡通，禁止动漫，杰作，8K，超高清"
     },
 
     "claymation": {

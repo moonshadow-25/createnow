@@ -165,6 +165,11 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/videos/${videoId}/set-primary`, {
       storyboard_id: storyboardId,
     }),
+  // Volcengine 素材库
+  submitAsset: (projectId: string, imageIds: string[]) =>
+    api.post(`/projects/${projectId}/generate/assets/submit`, { image_ids: imageIds }),
+  getAssetStatus: (projectId: string, assetId: string) =>
+    api.get(`/projects/${projectId}/generate/assets/${assetId}/status`),
   // 提示词模板管理
   getPromptTemplates: (projectId: string) =>
     api.get(`/projects/${projectId}/generate/prompt-templates`),

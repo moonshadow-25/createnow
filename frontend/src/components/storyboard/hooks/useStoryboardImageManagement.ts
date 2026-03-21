@@ -95,7 +95,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
   const handleGeneratePrompt = useCallback(async (
     editingStoryboard: any,
     selectedCharacters: string[],
-    selectedScene: string,
+    selectedScenes: string[],
     selectedProps: string[],
     characters: any[],
     scenes: any[],
@@ -110,7 +110,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
     startTask(editingStoryboard.asset_id, 'prompt');
     try {
       // 判断是否有选中资产
-      const hasSelectedAssets = selectedCharacters.length > 0 || selectedScene || selectedProps.length > 0;
+      const hasSelectedAssets = selectedCharacters.length > 0 || selectedScenes.length > 0 || selectedProps.length > 0;
 
       let enhancedDescription: string;
       let useImageEdit = false;
@@ -121,7 +121,9 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
         .map(id => characters.find(c => c.asset_id === id))
         .filter(Boolean);
 
-      const sceneObj = scenes.find(s => s.asset_id === selectedScene);
+      const sceneObjs = selectedScenes
+        .map(id => scenes.find(s => s.asset_id === id))
+        .filter(Boolean);
 
       const selectedPropObjs = selectedProps
         .map(id => props.find(p => p.asset_id === id))
@@ -154,8 +156,8 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           imageIndex++;
         });
 
-        // 场景引用：名字 + 描述
-        if (sceneObj) {
+        // 场景引用：名字 + 描述（支持多场景）
+        sceneObjs.forEach(sceneObj => {
           const parts = [sceneObj.name];
 
           if (sceneObj.description) {
@@ -166,7 +168,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
 
           referenceImages.push(`image${imageIndex}: ${parts.join('，')}`);
           imageIndex++;
-        }
+        });
 
         // 道具引用：名字 + 描述
         selectedPropObjs.forEach(p => {
@@ -199,7 +201,9 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           return info.join(' - ');
         });
 
-        const sceneDetail = sceneObj ? `${sceneObj.name}${sceneObj.location ? ` (${sceneObj.location})` : ''}` : '';
+        const sceneDetail = sceneObjs.length > 0
+          ? sceneObjs.map(s => `${s.name}${s.location ? ` (${s.location})` : ''}`).join(', ')
+          : '';
 
         const propObjs = props
           .filter(p => selectedProps.includes(p.asset_id))
@@ -251,7 +255,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
     editingStoryboard: any,
     generatedPrompt: string,
     selectedCharacters: string[],
-    selectedScene: string,
+    selectedScenes: string[],
     selectedProps: string[],
     characters: any[],
     scenes: any[],
@@ -271,7 +275,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
       // 判断是否选择了资产
       const hasAssets = selectedCharacters.length > 0 ||
                         selectedProps.length > 0 ||
-                        selectedScene;
+                        selectedScenes.length > 0;
 
       if (hasAssets) {
         // 收集所有选中资产的主图ID
@@ -285,9 +289,9 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           }
         }
 
-        // 获取场景主图
-        if (selectedScene) {
-          const scene = scenes.find(s => s.asset_id === selectedScene);
+        // 获取场景主图（多场景）
+        for (const sceneId of selectedScenes) {
+          const scene = scenes.find(s => s.asset_id === sceneId);
           if (scene?.image_id) {
             refImageIds.push(scene.image_id);
           }
@@ -355,7 +359,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
    */
   const handleAutoMatchAssets = useCallback(async (
     editingStoryboard: any,
-    setSelectedScene: (v: string) => void,
+    setSelectedScenes: (v: string[]) => void,
     setSelectedCharacters: (v: string[]) => void,
     setSelectedProps: (v: string[]) => void
   ) => {
@@ -368,7 +372,10 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
       const matched = response.data;
 
       if (editingStoryboardIdRef.current === requestStoryboardId) {
-        setSelectedScene(matched.scene_id || '');
+        const matchedScenes = matched.scene_ids?.length
+          ? matched.scene_ids
+          : (matched.scene_id ? [matched.scene_id] : []);
+        setSelectedScenes(matchedScenes);
         setSelectedCharacters(matched.character_ids || []);
         setSelectedProps(matched.prop_ids || []);
         if (matched.explanation) {

@@ -18,6 +18,7 @@ router = APIRouter(prefix="/projects/{project_id}/chat", tags=["conversation"])
 class ChatMessage(BaseModel):
     message: str
     conversation_id: Optional[str] = None
+    episode_id: Optional[str] = None  # 当前工作剧集ID，传入后AI具备该集的剧本+分镜上下文
 
 
 # 工具定义
@@ -177,22 +178,25 @@ TOOLS = [
     },
     {
         "name": "create_storyboard",
-        "description": "创建单个分镜镜头。当用户要求创建、添加某个具体的分镜镜头时调用。需要指定所属的剧集ID。",
+        "description": "创建单个分镜（视频段落）。每个分镜是一段独立的15秒视频，由video_prompt驱动。需要指定所属的剧集ID。",
         "parameters": {
             "type": "object",
             "properties": {
                 "episode_id": {"type": "string", "description": "所属剧集的ID"},
-                "sequence": {"type": "integer", "description": "镜头序号"},
-                "description": {"type": "string", "description": "分镜画面描述"},
-                "action": {"type": "string", "description": "动作描述（可选）"},
-                "dialogue": {"type": "string", "description": "对白（可选）"},
-                "camera_angle": {"type": "string", "description": "镜头角度（可选，如：特写、中景、远景等）"},
-                "shot_type": {"type": "string", "description": "镜头类型（可选，如：固定、推拉、平移等）"},
+                "sequence": {"type": "integer", "description": "分镜序号"},
+                "description": {"type": "string", "description": "分镜简要描述（可选，若提供video_prompt则可省略）"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片"},
+                "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
-                "scene_id": {"type": "string", "description": "场景ID（可选）"},
-                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表（可选）"}
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
+                "scene_id": {"type": "string", "description": "场景ID（兼容旧版，优先使用scene_ids）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表（可选）"},
+                "action": {"type": "string", "description": "动作描述（可选，新版已弃用）"},
+                "dialogue": {"type": "string", "description": "对白（可选，新版已弃用）"},
+                "camera_angle": {"type": "string", "description": "镜头角度（可选，新版已弃用）"},
+                "shot_type": {"type": "string", "description": "镜头类型（可选，新版已弃用）"}
             },
-            "required": ["episode_id", "sequence", "description"]
+            "required": ["episode_id", "sequence"]
         }
     },
     {
@@ -205,26 +209,30 @@ TOOLS = [
                 "episode_id": {"type": "string", "description": "所属剧集ID（用于查找）"},
                 "sequence": {"type": "integer", "description": "镜头序号（用于查找）"},
                 "description": {"type": "string", "description": "新的画面描述"},
-                "action": {"type": "string", "description": "新的动作描述"},
-                "dialogue": {"type": "string", "description": "新的对白"},
-                "camera_angle": {"type": "string", "description": "镜头角度"},
-                "shot_type": {"type": "string", "description": "镜头类型"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片"},
+                "duration": {"type": "integer", "description": "视频时长（秒）"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "角色ID列表"},
-                "scene_id": {"type": "string", "description": "场景ID"},
-                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表"}
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表"},
+                "scene_id": {"type": "string", "description": "场景ID（兼容旧版）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表"},
+                "action": {"type": "string", "description": "动作描述（可选）"},
+                "dialogue": {"type": "string", "description": "对白（可选）"},
+                "camera_angle": {"type": "string", "description": "镜头角度（可选）"},
+                "shot_type": {"type": "string", "description": "镜头类型（可选）"}
             },
             "required": []
         }
     },
     {
         "name": "delete_storyboard",
-        "description": "删除指定的分镜。当用户要求删除、移除某个分镜时调用。",
+        "description": "删除指定的分镜。当用户要求删除、移除某个分镜时调用。若分镜已有视频提示词，必须传入confirmed=true才能删除（先告知用户再确认）。",
         "parameters": {
             "type": "object",
             "properties": {
                 "storyboard_id": {"type": "string", "description": "要删除的分镜ID"},
                 "episode_id": {"type": "string", "description": "所属剧集ID（用于查找）"},
-                "sequence": {"type": "integer", "description": "镜头序号（用于查找）"}
+                "sequence": {"type": "integer", "description": "镜头序号（用于查找）"},
+                "confirmed": {"type": "boolean", "description": "用户是否已确认删除（默认false）。若分镜有内容，必须传true"}
             },
             "required": []
         }
@@ -237,16 +245,19 @@ TOOLS = [
             "properties": {
                 "episode_id": {"type": "string", "description": "所属剧集的asset_id（必须是UUID格式的ID，不要用集数名称如'第2集'）"},
                 "insert_at_sequence": {"type": "integer", "description": "插入位置（在这个序号前插入，插入后的新分镜使用此序号）"},
-                "description": {"type": "string", "description": "分镜画面描述"},
+                "description": {"type": "string", "description": "分镜画面描述（可选，新版主要使用video_prompt）"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片"},
+                "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
+                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
+                "scene_id": {"type": "string", "description": "场景ID（兼容旧版）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表（可选）"},
                 "action": {"type": "string", "description": "动作描述（可选）"},
                 "dialogue": {"type": "string", "description": "对白（可选）"},
-                "camera_angle": {"type": "string", "description": "镜头角度（可选，如：特写、中景、远景等）"},
-                "shot_type": {"type": "string", "description": "镜头类型（可选，如：固定、推拉、平移等）"},
-                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
-                "scene_id": {"type": "string", "description": "场景ID（可选）"},
-                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表（可选）"}
+                "camera_angle": {"type": "string", "description": "镜头角度（可选）"},
+                "shot_type": {"type": "string", "description": "镜头类型（可选）"}
             },
-            "required": ["episode_id", "insert_at_sequence", "description"]
+            "required": ["episode_id", "insert_at_sequence"]
         }
     },
     # ==================== 剧本创作工具 ====================
@@ -322,19 +333,51 @@ def check_similar_asset(project_id: str, asset_type: str, name: str, description
     """检查相似的资产（可能需要创建子资产）"""
     existing_assets = AssetService.list_assets(project_id, asset_type)
     for asset in existing_assets:
-        # 检查是否有相同的基础名称（例如"赵昊"和"少年赵昊"）
         asset_name = asset.get("name", "")
         if name in asset_name or asset_name in name:
-            # 进一步检查描述相似度
             asset_desc = asset.get("description", "")
-            # 简单的相似度检查：如果一个描述包含另一个的关键词
             if description and asset_desc:
-                # 提取关键词进行比较（这里用简单的包含关系）
                 name_words = set(name.split())
                 asset_name_words = set(asset_name.split())
                 common_words = name_words & asset_name_words
                 if common_words:
                     return asset
+    return None
+
+
+def _resolve_episode_id(project_id: str, episode_id_input: str):
+    """将 '第X集' 或 UUID 解析为实际 episode UUID。返回 (resolved_uuid, error_msg)。"""
+    match = re.match(r'第(\d+)集', str(episode_id_input))
+    if match:
+        episode_number = int(match.group(1))
+        episodes = AssetService.list_assets(project_id, "episode")
+        for ep in episodes:
+            if ep.get("episode_number") == episode_number:
+                return ep["asset_id"], None
+        return None, f"未找到第{episode_number}集"
+    return episode_id_input, None
+
+
+def validate_asset_refs(project_id: str, character_ids: list, scene_ids: list, prop_ids: list) -> Optional[str]:
+    """校验分镜关联的资产ID是否存在且类型正确，返回错误信息或 None。"""
+    for cid in (character_ids or []):
+        if not cid:
+            continue
+        asset = AssetService.load_asset(project_id, "character", cid)
+        if not asset:
+            return f"character_ids 包含不存在的角色ID: {cid}（请确认该ID是角色资产）"
+    for sid in (scene_ids or []):
+        if not sid:
+            continue
+        asset = AssetService.load_asset(project_id, "scene", sid)
+        if not asset:
+            return f"scene_ids 包含不存在的场景ID: {sid}（请确认该ID是场景资产）"
+    for pid in (prop_ids or []):
+        if not pid:
+            continue
+        asset = AssetService.load_asset(project_id, "prop", pid)
+        if not asset:
+            return f"prop_ids 包含不存在的道具ID: {pid}（请确认该ID是道具资产）"
     return None
 
 
@@ -488,18 +531,11 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             if not current:
                 return {"success": False, "error": "角色不存在"}
 
-            # 更新字段 - 对于description，追加而不是替换
+            # 更新字段
             if "description" in parameters and parameters["description"]:
-                current_desc = current.get("description", "")
-                new_desc = parameters["description"]
-                # 如果新描述不是包含旧描述，则追加
-                if new_desc not in current_desc:
-                    current["description"] = f"{current_desc}\n{new_desc}".strip()
-                else:
-                    current["description"] = new_desc
+                current["description"] = parameters["description"]
 
-            # 其他字段直接替换
-            for key in ["gender", "age", "appearance", "personality", "background"]:
+            for key in ["gender", "age", "appearance", "personality", "background", "image_prompt"]:
                 if key in parameters and parameters[key]:
                     current[key] = parameters[key]
             current["updated_at"] = datetime.now().isoformat()
@@ -525,18 +561,12 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             if not current:
                 return {"success": False, "error": "场景不存在"}
 
-            # 更新字段 - 对于description，追加而不是替换
+            # 更新字段
             if "description" in parameters and parameters["description"]:
-                current_desc = current.get("description", "")
-                new_desc = parameters["description"]
-                # 如果新描述不是包含旧描述，则追加
-                if new_desc not in current_desc:
-                    current["description"] = f"{current_desc}\n{new_desc}".strip()
-                else:
-                    current["description"] = new_desc
+                current["description"] = parameters["description"]
 
             # 其他字段直接替换
-            for key in ["location", "time_of_day", "weather", "mood"]:
+            for key in ["location", "time_of_day", "weather", "mood", "image_prompt"]:
                 if key in parameters and parameters[key]:
                     current[key] = parameters[key]
             current["updated_at"] = datetime.now().isoformat()
@@ -562,18 +592,12 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             if not current:
                 return {"success": False, "error": "道具不存在"}
 
-            # 更新字段 - 对于description，追加而不是替换
+            # 更新字段
             if "description" in parameters and parameters["description"]:
-                current_desc = current.get("description", "")
-                new_desc = parameters["description"]
-                # 如果新描述不是包含旧描述，则追加
-                if new_desc not in current_desc:
-                    current["description"] = f"{current_desc}\n{new_desc}".strip()
-                else:
-                    current["description"] = new_desc
+                current["description"] = parameters["description"]
 
             # 其他字段直接替换
-            for key in ["category", "era"]:
+            for key in ["category", "era", "material", "image_prompt"]:
                 if key in parameters and parameters[key]:
                     current[key] = parameters[key]
             current["updated_at"] = datetime.now().isoformat()
@@ -601,8 +625,12 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             if not current:
                 return {"success": False, "error": "剧集不存在"}
 
-            # 更新字段
-            for key in ["title", "script", "summary"]:
+            # 更新字段（title 映射到模型字段 name）
+            if "title" in parameters and parameters["title"]:
+                current["name"] = parameters["title"]
+            if "description" in parameters and parameters["description"]:
+                current["description"] = parameters["description"]
+            for key in ["script"]:
                 if key in parameters and parameters[key]:
                     current[key] = parameters[key]
             current["updated_at"] = datetime.now().isoformat()
@@ -659,27 +687,19 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
                 return {"success": False, "error": "缺少必需字段: episode_id"}
             if "sequence" not in parameters:
                 return {"success": False, "error": "缺少必需字段: sequence"}
+            # description 可选（视频段落主要靠 video_prompt）
             if "description" not in parameters:
-                return {"success": False, "error": "缺少必需字段: description"}
+                parameters["description"] = parameters.get("video_prompt", "")[:100] if parameters.get("video_prompt") else ""
+            # 设置默认时长
+            if "duration" not in parameters:
+                parameters["duration"] = 15
 
-            # 如果episode_id是"第X集"格式，解析并查找实际的UUID
-            episode_id = parameters["episode_id"]
-            import re
-            match = re.match(r'第(\d+)集', str(episode_id))
-            if match:
-                episode_number = int(match.group(1))
-                # 查找对应的episode
-                episodes = AssetService.list_assets(project_id, "episode")
-                target_episode = None
-                for ep in episodes:
-                    if ep.get("episode_number") == episode_number:
-                        target_episode = ep
-                        break
-                if target_episode:
-                    parameters["episode_id"] = target_episode["asset_id"]
-                    print(f"[DEBUG] Resolved episode_id from '第{episode_number}集' to '{target_episode['asset_id']}'")
-                else:
-                    return {"success": False, "error": f"未找到第{episode_number}集"}
+            # 解析 episode_id（支持 '第X集' 格式或直接UUID）
+            episode_id, ep_err = _resolve_episode_id(project_id, parameters["episode_id"])
+            if ep_err:
+                return {"success": False, "error": ep_err}
+            parameters["episode_id"] = episode_id
+            print(f"[DEBUG] Resolved episode_id: {episode_id}")
 
             # 检查剧集是否存在
             episode = AssetService.load_asset(project_id, "episode", parameters["episode_id"])
@@ -697,6 +717,16 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
                         "success": False,
                         "error": f"第{parameters['sequence']}镜已存在"
                     }
+
+            # 校验资产引用
+            ref_err = validate_asset_refs(
+                project_id,
+                parameters.get("character_ids", []),
+                parameters.get("scene_ids", []) or ([parameters["scene_id"]] if parameters.get("scene_id") else []),
+                parameters.get("prop_ids", [])
+            )
+            if ref_err:
+                return {"success": False, "error": ref_err}
 
             # 保存分镜
             result = AssetService.save_asset(project_id, "storyboard", parameters)
@@ -725,37 +755,16 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             storyboard_id = parameters.get("storyboard_id")
 
             if not storyboard_id and "episode_id" in parameters and "sequence" in parameters:
-                episode_id_input = parameters["episode_id"]
                 sequence = parameters["sequence"]
-
-                # 首先尝试直接匹配episode_id
+                # 解析 episode_id（支持 '第X集' 格式）
+                resolved_ep_id, ep_err = _resolve_episode_id(project_id, parameters["episode_id"])
+                if ep_err:
+                    return {"success": False, "error": ep_err}
                 existing_storyboards = AssetService.list_assets(project_id, "storyboard")
                 for sb in existing_storyboards:
-                    if (sb.get("episode_id") == episode_id_input and
-                        sb.get("sequence") == sequence):
+                    if sb.get("episode_id") == resolved_ep_id and sb.get("sequence") == sequence:
                         storyboard_id = sb["asset_id"]
                         break
-
-                # 如果没找到，尝试解析episode_id为"第X集"格式并查���对应的UUID
-                if not storyboard_id:
-                    import re
-                    match = re.match(r'第(\d+)集', str(episode_id_input))
-                    if match:
-                        episode_number = int(match.group(1))
-                        # 查找对应的episode
-                        episodes = AssetService.list_assets(project_id, "episode")
-                        target_episode = None
-                        for ep in episodes:
-                            if ep.get("episode_number") == episode_number:
-                                target_episode = ep
-                                break
-                        if target_episode:
-                            # 使用找到的UUID再次搜索
-                            for sb in existing_storyboards:
-                                if (sb.get("episode_id") == target_episode["asset_id"] and
-                                    sb.get("sequence") == sequence):
-                                    storyboard_id = sb["asset_id"]
-                                    break
 
                 if not storyboard_id:
                     return {
@@ -771,19 +780,24 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             if not current:
                 return {"success": False, "error": "分镜不存在"}
 
-            # 更新字段 - 对于description，追加而不是替换
+            # 更新字段
             if "description" in parameters and parameters["description"]:
-                current_desc = current.get("description", "")
-                new_desc = parameters["description"]
-                if new_desc not in current_desc:
-                    current["description"] = f"{current_desc}\n{new_desc}".strip()
-                else:
-                    current["description"] = new_desc
+                current["description"] = parameters["description"]
 
             # 其他字段直接替换
-            for key in ["action", "dialogue", "camera_angle", "shot_type", "character_ids", "scene_id", "prop_ids"]:
+            for key in ["action", "dialogue", "camera_angle", "shot_type", "character_ids", "scene_id", "scene_ids", "prop_ids", "video_prompt", "duration", "image_prompt"]:
                 if key in parameters and parameters[key] is not None:
                     current[key] = parameters[key]
+
+            # 校验即将保存的资产引用
+            ref_err = validate_asset_refs(
+                project_id,
+                current.get("character_ids", []),
+                current.get("scene_ids", []) or ([current["scene_id"]] if current.get("scene_id") else []),
+                current.get("prop_ids", [])
+            )
+            if ref_err:
+                return {"success": False, "error": ref_err}
 
             current["updated_at"] = datetime.now().isoformat()
 
@@ -792,6 +806,10 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
                 "success": True,
                 "storyboard_id": result["asset_id"],
                 "sequence": result.get("sequence"),
+                "character_ids": result.get("character_ids", []),
+                "scene_ids": result.get("scene_ids", []),
+                "prop_ids": result.get("prop_ids", []),
+                "video_prompt_preview": (result.get("video_prompt") or "")[:80],
                 "updated": True
             }
 
@@ -800,37 +818,15 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             storyboard_id = parameters.get("storyboard_id")
 
             if not storyboard_id and "episode_id" in parameters and "sequence" in parameters:
-                episode_id_input = parameters["episode_id"]
                 sequence = parameters["sequence"]
-
-                # 首先尝试直接匹配episode_id
+                resolved_ep_id, ep_err = _resolve_episode_id(project_id, parameters["episode_id"])
+                if ep_err:
+                    return {"success": False, "error": ep_err}
                 existing_storyboards = AssetService.list_assets(project_id, "storyboard")
                 for sb in existing_storyboards:
-                    if (sb.get("episode_id") == episode_id_input and
-                        sb.get("sequence") == sequence):
+                    if sb.get("episode_id") == resolved_ep_id and sb.get("sequence") == sequence:
                         storyboard_id = sb["asset_id"]
                         break
-
-                # 如果没找到，尝试解析episode_id为"第X集"格式并查找对应的UUID
-                if not storyboard_id:
-                    import re
-                    match = re.match(r'第(\d+)集', str(episode_id_input))
-                    if match:
-                        episode_number = int(match.group(1))
-                        # 查找对应的episode
-                        episodes = AssetService.list_assets(project_id, "episode")
-                        target_episode = None
-                        for ep in episodes:
-                            if ep.get("episode_number") == episode_number:
-                                target_episode = ep
-                                break
-                        if target_episode:
-                            # 使用找到的UUID再次搜索
-                            for sb in existing_storyboards:
-                                if (sb.get("episode_id") == target_episode["asset_id"] and
-                                    sb.get("sequence") == sequence):
-                                    storyboard_id = sb["asset_id"]
-                                    break
 
                 if not storyboard_id:
                     return {
@@ -845,6 +841,17 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
             if not storyboard:
                 return {"success": False, "error": "分镜不存在"}
+
+            # 二次确认：若分镜有内容且未确认，拦截删除
+            has_content = bool(storyboard.get("video_prompt") or storyboard.get("description"))
+            confirmed = parameters.get("confirmed", False)
+            if has_content and not confirmed:
+                seq = storyboard.get("sequence", "?")
+                desc = (storyboard.get("video_prompt") or storyboard.get("description") or "")[:60]
+                return {
+                    "success": False,
+                    "error": f"⚠️ 第{seq}镜已有内容（{desc}...），删除前请向用户确认，确认后传入 confirmed=true 重新调用"
+                }
 
             episode_id = storyboard.get("episode_id")
 
@@ -880,26 +887,10 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
             if "description" not in parameters:
                 return {"success": False, "error": "缺少必需字段: description"}
 
-            episode_id = parameters["episode_id"]
+            episode_id, ep_err = _resolve_episode_id(project_id, parameters["episode_id"])
+            if ep_err:
+                return {"success": False, "error": ep_err}
             insert_at = parameters["insert_at_sequence"]
-
-            # 如果episode_id是"第X集"格式，解析并查找实际的UUID
-            import re
-            match = re.match(r'第(\d+)集', str(episode_id))
-            if match:
-                episode_number = int(match.group(1))
-                # 查找对应的episode
-                episodes = AssetService.list_assets(project_id, "episode")
-                target_episode = None
-                for ep in episodes:
-                    if ep.get("episode_number") == episode_number:
-                        target_episode = ep
-                        break
-                if target_episode:
-                    episode_id = target_episode["asset_id"]
-                    print(f"[DEBUG] Resolved episode_id from '第{episode_number}集' to '{episode_id}'")
-                else:
-                    return {"success": False, "error": f"未找到第{episode_number}集"}
 
             # 检查剧集是否存在
             episode = AssetService.load_asset(project_id, "episode", episode_id)
@@ -927,16 +918,29 @@ async def execute_tool_call(project_id: str, tool_name: str, parameters: Dict) -
                 "episode_id": episode_id,
                 "sequence": insert_at,
                 "description": parameters.get("description", ""),
+                "video_prompt": parameters.get("video_prompt", ""),
+                "duration": parameters.get("duration", 15),
                 "action": parameters.get("action", ""),
                 "dialogue": parameters.get("dialogue", ""),
                 "camera_angle": parameters.get("camera_angle", ""),
                 "shot_type": parameters.get("shot_type", ""),
                 "character_ids": parameters.get("character_ids", []),
                 "scene_id": parameters.get("scene_id", ""),
+                "scene_ids": parameters.get("scene_ids", []),
                 "prop_ids": parameters.get("prop_ids", []),
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat()
             }
+
+            # 校验资产引用
+            ref_err = validate_asset_refs(
+                project_id,
+                parameters.get("character_ids", []),
+                parameters.get("scene_ids", []) or ([parameters["scene_id"]] if parameters.get("scene_id") else []),
+                parameters.get("prop_ids", [])
+            )
+            if ref_err:
+                return {"success": False, "error": ref_err}
 
             result = AssetService.save_asset(project_id, "storyboard", new_storyboard)
             print(f"[DEBUG] Storyboard inserted at sequence {insert_at}, moved {moved_count} storyboards")
@@ -1232,8 +1236,8 @@ def parse_tool_calls(content: str) -> List[Dict]:
     return tool_calls
 
 
-async def stream_conversation(project_id: str, message: str, conversation_id: Optional[str] = None):
-    """流式对话处理，支持Function Calling"""
+async def stream_conversation(project_id: str, message: str, conversation_id: Optional[str] = None, episode_id: Optional[str] = None):
+    """流式对话处理，支持Function Calling和Agentic Loop"""
 
     # 加载项目配置
     from app.services import ProjectService
@@ -1243,6 +1247,24 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
         return
 
     ai_config = project.get("ai_config", {})
+
+    # 提取全局视频风格
+    from app.api.generation.style_presets import VIDEO_STYLE_PRESETS
+    global_style_cfg = ai_config.get("global_style_config", {})
+    video_style_cfg = global_style_cfg.get("video_style", {})
+    global_style_text = ""
+    if video_style_cfg.get("enabled", True):
+        preset_id = video_style_cfg.get("preset_id", "none")
+        custom = video_style_cfg.get("custom_suffix", "")
+        parts = []
+        if preset_id and preset_id != "none":
+            preset = VIDEO_STYLE_PRESETS.get(preset_id, {})
+            suffix_zh = preset.get("suffix_zh", "")
+            if suffix_zh:
+                parts.append(suffix_zh)
+        if custom:
+            parts.append(custom)
+        global_style_text = "，".join(parts)
 
     # 检查API配置
     llm_config = ai_config.get("llm", {})
@@ -1279,478 +1301,245 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
     for ep_id in storyboards_by_episode:
         storyboards_by_episode[ep_id].sort(key=lambda x: x.get("sequence", 0))
 
-    # 构建分镜信息字符串
-    storyboard_info_lines = []
+    is_storyboard_tab = bool(episode_id)
+
+    # 分镜计数摘要（不含分镜ID，防止跨界面/跨集操作）
+    storyboard_count_lines = []
     for ep in existing_episodes:
         ep_id = ep.get("asset_id", "")
         ep_number = ep.get("episode_number", "?")
-        ep_storyboards = storyboards_by_episode.get(ep_id, [])
-        if ep_storyboards:
-            storyboard_info_lines.append(f"**第{ep_number}集** ({len(ep_storyboards)}个分镜):")
-            for sb in ep_storyboards[:30]:  # 增加到30个分镜
-                seq = sb.get("sequence", "?")
-                desc = sb.get("description", "")
-                action = sb.get("action", "")
-                dialogue = sb.get("dialogue", "")
-                # 完整显示描述，不要截断
-                parts = [f"第{seq}镜: {desc}"]
-                if action:
-                    parts.append(f"动作: {action}")
-                if dialogue:
-                    parts.append(f"对白: {dialogue}")
-                storyboard_info_lines.append(f"  - {'. '.join(parts)}")
-            if len(ep_storyboards) > 30:
-                storyboard_info_lines.append(f"  ... (还有{len(ep_storyboards)-30}个分镜)")
+        count = len(storyboards_by_episode.get(ep_id, []))
+        if count > 0:
+            storyboard_count_lines.append(f"第{ep_number}集: {count}个分镜")
+    storyboard_summary = "，".join(storyboard_count_lines) if storyboard_count_lines else "（暂无分镜）"
 
-    storyboard_info = "\n".join(storyboard_info_lines) if storyboard_info_lines else "（暂无分镜）"
+    # 全局视频风格 + 提示词语言（所有 tab 均注入）
+    lang_label = "中文" if global_style_cfg.get("prompt_language", "zh") == "zh" else "English"
+    global_info = f"【全局视频风格】{global_style_text or '（未设置）'}\n【提示词语言】{lang_label}"
+
+    # 分镜区块：资产 tab 不注入任何分镜信息；分镜 tab 注入计数摘要 + 当前集详情
+    if is_storyboard_tab:
+        storyboard_section = f"\n**分镜概况（参考用，不要修改其他集）:** {storyboard_summary}\n{{episode_context}}"
+    else:
+        storyboard_section = ""
+
+    # 构建当前集专属上下文（当 episode_id 传入时）
+    episode_context = ""
+    if episode_id:
+        ep_asset = AssetService.load_asset(project_id, "episode", episode_id)
+        if ep_asset:
+            ep_number = ep_asset.get("episode_number", "?")
+            ep_script = ep_asset.get("script", "（无剧本）")
+            ep_storyboards = storyboards_by_episode.get(episode_id, [])
+
+            # 构建资产可用列表（供 AI 编写 @图片N 引用）
+            asset_ref_lines = []
+            for c in existing_characters:
+                cid = c.get("asset_id", "")
+                cname = c.get("name", "")
+                has_img = bool(c.get("image_id"))
+                asset_ref_lines.append(f"  角色: {cname} (asset_id={cid}, 有图={'是' if has_img else '否'})")
+            for s in existing_scenes:
+                sid = s.get("asset_id", "")
+                sname = s.get("name", "")
+                has_img = bool(s.get("image_id"))
+                asset_ref_lines.append(f"  场景: {sname} (asset_id={sid}, 有图={'是' if has_img else '否'})")
+
+            # 构建当前集分镜详情
+            sb_detail_lines = []
+            for sb in ep_storyboards:
+                seq = sb.get("sequence", "?")
+                sb_id = sb.get("asset_id", "")
+                desc = sb.get("description", "")
+                vp = sb.get("video_prompt", "")
+                char_ids = sb.get("character_ids", [])
+                scene_ids = sb.get("scene_ids", []) or ([sb.get("scene_id")] if sb.get("scene_id") else [])
+                sb_detail_lines.append(f"  第{seq}镜 [ID:{sb_id}]:")
+                if desc:
+                    sb_detail_lines.append(f"    描述: {desc}")
+                if vp:
+                    sb_detail_lines.append(f"    视频提示词: {str(vp)[:200]}")
+                if char_ids:
+                    sb_detail_lines.append(f"    角色IDs: {char_ids}")
+                if scene_ids:
+                    sb_detail_lines.append(f"    场景IDs: {scene_ids}")
+
+            episode_context = f"""
+== 当前工作集：第{ep_number}集 ==
+
+【剧本内容】
+{ep_script}
+
+【当前集分镜列表（{len(ep_storyboards)}个，每个15秒）】
+{chr(10).join(sb_detail_lines) if sb_detail_lines else "（暂无分镜）"}
+
+【可用资产（用于视频提示词中的 @图片N 引用）】
+{chr(10).join(asset_ref_lines) if asset_ref_lines else "（暂无资产）"}
+
+【全局视频风格（必须嵌入每个video_prompt）】
+{global_style_text if global_style_text else "（未设置，跳过）"}
+
+== 分镜新模型说明 ==
+- 每个分镜 = 一段独立的15秒视频，由 video_prompt 驱动
+- video_prompt 使用 Seedance 2.0 格式：自然语言描述画面，@图片N 引用上面的资产图片
+- 资产引用规则：按使用顺序编号，@图片1=第一个引用的角色/场景，@图片2=第二个...
+- 旧字段（shot_type/camera_angle/dialogue/action）不再必要，重心在 video_prompt
+- 删除/修改已有分镜前，必须先告知用户并等待确认
+"""
 
     # 构建项目上下文信息
+    _storyboard_section = storyboard_section.replace("{episode_context}", episode_context)
     project_context = f"""
 ## 当前项目已有资产：
 
 **角色 ({len(existing_characters)}个):**
-{chr(10).join([f"- {c.get('name', '')}: {c.get('description', '')[:50]}" for c in existing_characters[:10]])}
+{chr(10).join([f"- {c.get('name', '')} [ID:{c.get('asset_id','')}]: {c.get('description', '')[:50]}" for c in existing_characters[:10]])}
 
 **场景 ({len(existing_scenes)}个):**
-{chr(10).join([f"- {s.get('name', '')}: {s.get('location', '')}" for s in existing_scenes[:10]])}
+{chr(10).join([f"- {s.get('name', '')} [ID:{s.get('asset_id','')}]: {s.get('location', '')}" for s in existing_scenes[:10]])}
 
 **道具 ({len(existing_props)}个):**
-{chr(10).join([f"- {p.get('name', '')}" for p in existing_props[:10]])}
+{chr(10).join([f"- {p.get('name', '')} [ID:{p.get('asset_id','')}]" for p in existing_props[:10]])}
 
 **剧集 ({len(existing_episodes)}个):**
 ⚠️ 注意：episode_id必须使用下面的asset_id（UUID格式），不能使用"第2集"这样的名称！
 {chr(10).join([f"- 第{e.get('episode_number', '')}集: asset_id={e.get('asset_id', '')} | {e.get('script', '')[:80]}..." for e in existing_episodes[:5]])}
 
-**分镜信息:**
-{storyboard_info}
+{global_info}
+{_storyboard_section}
 """
 
-    # 工具定义 - 使用更清晰的格式
-    tools_desc = """
-可用工具：
-
-**资产创建工具：**
-1. create_character - 创建角色（需要：name, description）
-2. create_scene - 创建场景（需要：name, description, location）
-3. create_prop - 创建道具（需要：name, description）- 仅重要道具
-4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description）
-
-**资产更新工具（重要！）：**
-6. update_character - 更新现有角色（需要：name用于查找，其他字段可选）
-7. update_scene - 更新现有场景（需要：name用于查找，其他字段可选）
-8. update_prop - 更新现有道具（需要：name用于查找，其他字段可选）
-9. update_episode - 更新现有剧集（需要：episode_number用于查找，其他字段可选）
-10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence）
-
-**删除工具：**
-11. delete_storyboard - 删除分镜（需要：storyboard_id或episode_id+sequence）
-
-**插入工具：**
-12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description）
-
-**剧本创作工具：**
-13. create_script - 创建新剧本（需要：title）
-14. import_script_content - 导入格式化剧本内容到剧本系统（需要：script_id, content）
-15. add_script_character - 添加剧本人物（需要：script_id, name）
-16. add_script_scene - 添加剧本场景（需要：script_id, episode_number, location, content）
-
-⚠️ **关键规则**：
-- 当用户说"修改"、"更新"、"完善"、"补充"、"调整"等词汇时，**必须使用update工具**，不要创建新资产！
-- 只有在用户明确要求"创建"、"添加"、"新建"时，才使用create工具
-- 使用update工具时，通过name找到现有资产，只更新用户提到的字段
-
-调用格式（必须严格遵循）：
-
-TOOL: create_character
-{
-  "name": "角色名",
-  "description": "详细描述",
-  "gender": "性别（可选）",
-  "age": "年龄（可选）"
-}
-END_TOOL
-
-TOOL: update_character
-{
-  "name": "要修改的角色名（用于查找）",
-  "description": "新的描述",
-  "gender": "性别（可选）",
-  "age": "年龄（可选）"
-}
-END_TOOL
-
-TOOL: create_scene
-{
-  "name": "场景名",
-  "description": "场景详细描述",
-  "location": "地点"
-}
-END_TOOL
-
-TOOL: update_scene
-{
-  "name": "要修改的场景名（用于查找）",
-  "description": "新的描述",
-  "location": "地点（可选）"
-}
-END_TOOL
-
-TOOL: create_episode
-{
-  "script": "完整的剧本内容，必须包含场景、人物、对白等"
-}
-END_TOOL
-
-TOOL: create_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式，从上面剧集列表中复制）",
-  "sequence": 1,
-  "description": "分镜画面描述",
-  "action": "动作描述（可选）",
-  "dialogue": "对白（可选）",
-  "camera_angle": "特写/中景/远景（可选）"
-}
-END_TOOL
-
-TOOL: update_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "sequence": 1,
-  "description": "新的画面描述",
-  "action": "新的动作描述",
-  "dialogue": "新的对白"
-}
-END_TOOL
-
-TOOL: delete_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "sequence": 1
-}
-END_TOOL
-
-TOOL: insert_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "insert_at_sequence": 4,
-  "description": "新的分镜描述",
-  "action": "动作描述",
-  "camera_angle": "中景"
-}
-END_TOOL
-
-**剧本创作工具示例：**
-
-## 剧本创作工作流程（小说转剧本）
-
-当用户提供小说、故事或长篇文本要求创建剧本时：
-1. 分析文本，提取主要角色、场景划分、剧情节点
-2. 按照下面的剧本格式规范，将内容转换为剧本格式
-3. 调用 create_script，同时传入转换后的完整剧本内容
-
-## 剧本格式规范（严格遵守）
-
-```
-《剧本名称》
-人物表：
-角色名：年龄，性别，描述
-角色名：描述
-
-第1集
-一、场景名  日  外
-△ 【视觉描述】：镜头内容
-角色名（语气）：台词内容
-角色名（OS）：画外音台词
-```
-
-**格式要求检查清单**：
-- ✅ 标题：使用书名号《剧本名》
-- ✅ 人物表：有"人物表："行
-- ✅ 集数：使用"第1集"、"第2集"格式
-- ✅ 场景头：使用中文数字序号"一、场景名  日/夜  内/外"（空格分隔）
-  - 支持"1. 场景名 日 外"容错格式
-  - 支持"场景1：场景名 日 外"容错格式
-- ✅ 视觉镜头：使用"△"开头，如"△ 【视觉开场】：镜头描述"
-  - 支持"[视觉]:镜头描述"容错格式
-- ✅ 对话：使用"角色名（语气）：台词"或"角色名（OS）：台词"
-  - 冒号前不要有空格，冒号后要有空格
-
-## 示例1：创建空白剧本
-
-TOOL: create_script
-{
-  "title": "小阁老"
-}
-END_TOOL
-
-## 示例2：根据小说内容直接创建完整剧本
-
-TOOL: create_script
-{
-  "title": "小阁老",
-  "content": "《小阁老》\\n人物表：\\n马湘兰：秦淮八艳之一。\\n赵昊：15岁，穿越者，现代是明史专业教师。\\n赵守正：赵昊之父，中年男子。\\n\\n第1集\\n一、金陵秦淮河 日 外\\n△ 【视觉开场】：镜头由远及近，俯瞰大明留都南京的繁华。秦淮河两岸金粉楼台，画舫穿梭。\\n△ 画舫之上，马湘兰正执扇清唱昆曲《北西厢》，曲声悠扬。\\n出片名：小阁老\\n\\n二、赵府内院大厅 日 内\\n△ 延续马湘兰的昆曲，丝竹之声绕梁。\\n（画外音OS）：大明嘉靖四十四年，南京正三品大员的五进大宅里，十五岁少年公子赵昊正被婢女环绕，尽享家世显赫、吃喝不愁的衙内生活。\\n△ 赵昊用绣着金线的锦巾蒙住双眼，正张开双臂，嬉皮笑脸地在一群俏丽婢女中穿梭。\\n赵昊（大喊）：一、二、三，摸瞎鱼！小宝贝们，谁也别想跑！"
-}
-END_TOOL
-
-## 示例3：先创建剧本，再导入内容
-
-TOOL: create_script
-{
-  "title": "新剧本"
-}
-END_TOOL
-
-TOOL: import_script_content
-{
-  "script_id": "刚才创建的剧本的script_id",
-  "content": "《新剧本》\\n人物表：\\n主角：20岁，男\\n\\n第1集\\n一、场景名 日 外\\n△ 视觉描述\\n角色名：台词"
-}
-END_TOOL
-
-TOOL: add_script_character
-{
-  "script_id": "剧本ID",
-  "name": "赵昊",
-  "age": "15岁",
-  "gender": "男",
-  "description": "穿越者"
-}
-END_TOOL
-
-TOOL: add_script_scene
-{
-  "script_id": "剧本ID",
-  "episode_number": 1,
-  "location": "金陵秦淮河",
-  "time_of_day": "日",
-  "interior_exterior": "外",
-  "content": "△ 【视觉开场】：镜头由远及近，俯瞰大明留都南京的繁华。"
-}
-END_TOOL
-"""
-
+    # 从模板加载工具描述和系统提示词（分镜 tab 用完整工具集，资产 tab 用无分镜工具版）
     from app.services.global_prompt_service import get_group_c_template
+    tools_desc_key = "conversation_tools_desc" if is_storyboard_tab else "conversation_tools_desc_assets"
+    tools_desc = get_group_c_template(tools_desc_key) or get_group_c_template("conversation_tools_desc") or ""
     _conv_tpl = get_group_c_template("conversation_system_prompt")
-    system_prompt = _conv_tpl.format(
+    system_prompt = (_conv_tpl or "").format(
         project_context=project_context,
         tools_desc=tools_desc
-    ) if _conv_tpl else f"""你是一个专业的AI短片制作助手。
-
-{project_context}
-
-{tools_desc}
-
-## ⚠️⚠️⚠️ 最重要：分镜操作的核心原则 ⚠️⚠️⚠️
-
-**如果用户提到"第X镜"、"拆分"、"修改分镜"等与分镜相关的操作：**
-1. **首先查看上面的"分镜信息"，找到对应的分镜**
-2. **必须基于该分镜现有的description内容进行操作**
-3. **绝对禁止**从剧集剧本重新生成或创建分镜内容
-4. **拆分分镜时**：将原分镜的description分解成多个部分，每个部分成为新分镜的description
-
-**违反此规则的后果**：用户会得到完全错误的分镜内容！
-
-## ⚠️ 剧集创建的最重要的规则：
-当用户提供了完整的剧本内容时，create_episode工具的script字段必须包含：
-1. **直接使用用户提供的完整剧本原文** - 不要自己改写或总结
-2. 如果用户提供了分集剧本（如"第1集"、"第2集"），为每一集分别调用create_episode
-3. script字段的值就是用户剧本的完整文本，保持原有格式
-
-**检查剧集是否已存在**：
-- 在创建剧集前，**必须先查看"当前项目已有资产"中的剧集列表**
-- 如果剧本标题是"第1集"且"第1集"已存在，**不要重复创建**，直接告知用户"第1集已存在"
-- 只有当剧集不存在时，才调用create_episode工具创建
-
-**错误示例**（不要这样做）：
-{{
-  "name": "第一集",
-  "description": "剧情摘要..."  // ❌ 这是错误的！不要用description
-}}
-
-**正确示例**（必须这样做）：
-{{
-  "script": "第1集\\n\\n一、金陵秦淮河 日 外\\n△ 【视觉开场】：镜头由远及近...\\n\\n（这里是用户提供的完整剧本原文，一字不改）"
-}}
-
-## ⚠️ 批量更新资产的重要规则：
-当用户要求"修改所有角色"、"更新所有场景"等批量操作时：
-1. **查看"当前项目已有资产"列表**，找出所有相关资产
-2. **为每个资产分别调用update工具**（不是create！）
-3. 只更新用户要求的字段，其他字段保持不变
-4. **在更新描述时，保留原有描述内容，在其后追加新内容**，不要完全替换
-
-**错误示例**：
-- ❌ 用户说"修改所有角色"，AI创建新角色
-- ❌ 用户说"更新场景描述"，AI创建新场景
-- ❌ 用户说"加入风格描述"，AI完全替换了原有描述
-
-**正确示例**：
-- ✅ 用户说"修改所有角色风格为皮克斯"，AI为每个现有角色调用update_character，在原描述后追加"皮克斯卡通3D风格..."
-- ✅ 用户说"更新所有场景加入3D效果"，AI为每个现有场景调用update_scene，在原描述后追加"采用3D渲染效果..."
-- ✅ update时description格式："[原有描述] + [用户要求的新内容]"
-
-## ⚠️ 资产提取的重要原则：
-**只提取主要、重要、对剧情有关键作用的资产，避免过度提取**
-
-1. **角色**：只提取有名字、有台词、有重要戏份的主要角色。不要提取路人、群众演员、无台词的小角色
-2. **场景**：只提取剧情发生的主要场景。如果多个场景本质相同（如"客厅"、"沙发旁"），只创建一个主场景
-3. **道具**：只提取对剧情推动有重要作用的关键道具。不要提取普通家具、日常用品等无关紧要的道具
-
-**过度提取的错误示例**：
-- ❌ 为"一个路人"、"路人甲"等创建角色
-- ❌ 为"椅子"、"桌子"、"窗户"等普通家具创建道具
-- ❌ 为"门口"、"窗边"等位置创建独立场景（应该归入主场景）
-
-## ⚠️ 分镜操作的重要规则：
-
-**在操作分镜前，必须先查看"当前项目已有资产"中的分镜信息**
-
-1. **更新现有分镜**：
-   - 当用户说"修改第X镜"、"更新第X镜"、"第X镜改成..."时，使用 `update_storyboard` 工具
-   - 必须提供 `episode_id` 和 `sequence` 来定位分镜
-   - 只更新用户提到的字段
-
-2. **拆分分镜（最重要的规则）**：
-   - 当用户要求"拆分第X镜"、"把第X镜分成N个镜头"时：
-   - **必须使用 `insert_storyboard` 工具**，严禁使用 `create_storyboard`！
-   - `insert_storyboard` 会自动处理后续分镜的序号位移
-   - **严禁调用 `reorder_storyboards`！insert已经自动处理了序号！**
-   - **必须基于原分镜的description内容进行拆分**，绝对不能从剧本重新生成！
-   - **episode_id必须使用UUID格式，不能使用"第2集"这样的显示名称！**
-   - 操作步骤：先调用 `update_storyboard` 修改原分镜内容为第一部分，然后多次调用 `insert_storyboard` 插入后续部分
-   - 例如：原第3镜是"快速移动镜头，从河面掠过，穿过层层叠叠的黛瓦屋顶和院墙，最终摇进一座气派府邸的后花园"
-     - 拆分成3个：
-       1. update_storyboard: episode_id="uuid-xxx", sequence=3, description="从河面快速掠过"
-       2. insert_storyboard: episode_id="uuid-xxx", insert_at_sequence=4, description="穿过黛瓦屋顶和院墙"
-       3. insert_storyboard: episode_id="uuid-xxx", insert_at_sequence=5, description="摇进府邸后花园"
-
-3. **删除分镜**：
-   - 当用户说"删除第X镜"��"移除第X镜"时，使用 `delete_storyboard` 工具
-
-4. **创建新分镜**：
-   - 当用户要求"添加一个镜头"、"在X镜后面插入"时，使用 `create_storyboard` 工具
-   - 需要指定合适的 sequence 号
-
-**错误示例（绝对不要这样做）**：
-- ❌ 用户说"把第3镜拆成3个"，AI忽略现有分镜内容，从剧本重新生成3个新分镜
-- ❌ 用户说"修改第3镜"，AI使用剧集剧本而不是现有分镜内容
-- ❌ 拆分时使用create_storyboard而不是insert_storyboard
-- ❌ 拆分后调用reorder_storyboards（完全多余，insert已自动处理）
-- ❌ 使用"第2集"作为episode_id（必须使用UUID格式的asset_id）
-
-**正确示例（必须这样做）**：
-- ✅ 用户说"修改第3镜，把特写改成中景"，AI调用 update_storyboard，修改 camera_angle
-- ✅ 用户说"把第3镜拆成3个"，AI基于原第3镜的description进行拆分：
-  - update第3镜为第一部分
-  - insert第4镜为第二部分
-  - insert第5镜为第三部分
-  - 不调用reorder_storyboards
-- ✅ 拆分时原分镜的description必须保留，只是分解成多个镜头
-- ✅ episode_id使用UUID格式（从剧集列表中复制asset_id）
-
-## 工作流程：
-1. 先从用户输入中识别出**主要角色**（有名字、有台词、重要戏份），调用create_character创建
-2. 识别出**主要场景**（剧情发生的关键地点），调用create_scene创建
-3. 识别出**关键道具**（对剧情有推动作用），调用create_prop创建
-4. 最后，如果用户提供了剧本，**直接使用用户提供的剧本原文**调用create_episode
-
-## ⚠️ 其他注意事项：
-- create_episode只需要script字段，不需要name、description等
-- **检查资产是否存在**：在创建角色、场景、道具前，先查看"当前项目已有资产"，如果同名资产已存在，不要重复创建
-- **宁缺毋滥**：如果某个资产不重要或不确定，就不要创建
-- 必须使用TOOL:格式调用工具
-- 每次调用后必须用END_TOOL结束
-- JSON格式必须正确
-- 创建资产后要告知用户
-
-开始工作吧！"""
+    )
 
     # 创建LLM服务
     llm = get_ai_service(ai_config, "llm")
 
+    # 构建初始消息列表（agentic loop 共享）
+    loop_messages = list(context)
+
+    MAX_ITERATIONS = 20
+    all_thinking_content = ""
+    all_assistant_content = ""
+
     try:
-        thinking_buffer = ""
-        content_buffer = ""
-        all_tool_calls = []
+        for iteration in range(MAX_ITERATIONS):
+            thinking_buffer = ""
+            content_buffer = ""
 
-        async for chunk in llm.chat_stream(context, system_prompt):
-            chunk_type = chunk.get("type")
-            chunk_content = chunk.get("content", "")
+            async for chunk in llm.chat_stream(loop_messages, system_prompt):
+                chunk_type = chunk.get("type")
+                chunk_content = chunk.get("content", "")
 
-            if chunk_type == "thinking":
-                thinking_buffer += chunk_content
-                yield f"data: {json.dumps({'type': 'thinking', 'content': chunk_content})}\n\n"
+                if chunk_type == "thinking":
+                    thinking_buffer += chunk_content
+                    yield f"data: {json.dumps({'type': 'thinking', 'content': chunk_content})}\n\n"
 
-            elif chunk_type == "thinking_end":
-                yield f"data: {json.dumps({'type': 'thinking_end', 'content': thinking_buffer})}\n\n"
+                elif chunk_type == "thinking_end":
+                    yield f"data: {json.dumps({'type': 'thinking_end', 'content': thinking_buffer})}\n\n"
 
-            elif chunk_type == "content":
-                content_buffer += chunk_content
-                yield f"data: {json.dumps({'type': 'content', 'content': chunk_content})}\n\n"
+                elif chunk_type == "content":
+                    content_buffer += chunk_content
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk_content})}\n\n"
 
-            elif chunk_type == "content_end":
-                yield f"data: {json.dumps({'type': 'content_end', 'content': content_buffer})}\n\n"
+                elif chunk_type == "content_end":
+                    yield f"data: {json.dumps({'type': 'content_end', 'content': content_buffer})}\n\n"
 
-            elif chunk_type == "error":
-                yield f"data: {json.dumps({'type': 'error', 'content': chunk_content})}\n\n"
+                elif chunk_type == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'content': chunk_content})}\n\n"
 
-        # 解析工具调用 - 支持两种格式
-        tool_calls = parse_tool_calls(content_buffer)
+            all_thinking_content += thinking_buffer
+            all_assistant_content += content_buffer
 
-        # 添加调试日志
-        print(f"[DEBUG] Parsed {len(tool_calls)} tool calls from content_buffer")
+            # 解析工具调用 - 支持两种格式
+            tool_calls = parse_tool_calls(content_buffer)
 
-        # 也尝试解析TOOL:格式
-        tool_pattern = r'TOOL:\s*(\w+)\s*\n(.*?)\nEND_TOOL'
-        tool_matches = re.findall(tool_pattern, content_buffer, re.DOTALL)
+            print(f"[DEBUG] Iteration {iteration+1}: Parsed {len(tool_calls)} tool calls from content_buffer")
 
-        print(f"[DEBUG] Found {len(tool_matches)} TOOL: format matches")
+            # 也尝试解析TOOL:格式
+            tool_pattern = r'TOOL:\s*(\w+)\s*\n(.*?)\nEND_TOOL'
+            tool_matches = re.findall(tool_pattern, content_buffer, re.DOTALL)
 
-        for tool_name, params_json in tool_matches:
-            try:
-                params = json.loads(params_json.strip())
-                tool_calls.append({"name": tool_name, "parameters": params})
-                print(f"[DEBUG] Parsed TOOL: {tool_name} with params: {params}")
-            except Exception as e:
-                print(f"[DEBUG] Failed to parse TOOL: {tool_name}, error: {e}")
+            print(f"[DEBUG] Found {len(tool_matches)} TOOL: format matches")
 
-        # 执行所有工具调用
-        for tool_call in tool_calls:
-            tool_name = tool_call.get("name")
-            parameters = tool_call.get("parameters", {})
+            for tool_name, params_json in tool_matches:
+                try:
+                    params = json.loads(params_json.strip())
+                    tool_calls.append({"name": tool_name, "parameters": params})
+                    print(f"[DEBUG] Parsed TOOL: {tool_name} with params: {params}")
+                except Exception as e:
+                    print(f"[DEBUG] Failed to parse TOOL: {tool_name}, error: {e}")
 
-            # 发送工具调用通知
-            yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': tool_call})}\n\n"
+            # 若无工具调用，本轮结束
+            if not tool_calls:
+                break
 
-            # 执行工具
-            result = await execute_tool_call(project_id, tool_name, parameters)
+            # 执行所有工具调用，收集结果
+            tool_results_lines = []
+            STORYBOARD_TOOLS = {
+                "create_storyboard", "update_storyboard", "delete_storyboard",
+                "insert_storyboard", "generate_storyboard", "create_child_asset"
+            }
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("name")
+                parameters = tool_call.get("parameters", {})
 
-            # 发送工具执行结果
-            if result.get("success"):
-                # 根据不同工具类型返回不同的成功消息
-                if tool_name == "create_storyboard":
-                    success_msg = f'✅ 成功创建第{result.get("sequence", "")}镜'
-                elif tool_name == "insert_storyboard":
-                    moved = result.get("moved_count", 0)
-                    success_msg = f'✅ 成功在第{result.get("sequence", "")}镜位置插入新分镜' + (f'，已将{moved}个后续分镜后移' if moved > 0 else '')
-                elif tool_name == "update_storyboard":
-                    success_msg = f'✅ 成功更新第{result.get("sequence", "")}镜'
-                elif tool_name == "delete_storyboard":
-                    success_msg = f'✅ 成功删除分镜'
-                elif "name" in result:
-                    success_msg = f'✅ 成功创建: {result.get("name", tool_name)}'
+                # 发送工具调用通知
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': tool_call})}\n\n"
+
+                # Layer 3：资产 tab 硬拦截分镜工具
+                if not is_storyboard_tab and tool_name in STORYBOARD_TOOLS:
+                    error_msg = "❌ 当前界面（资产管理）不允许执行分镜操作"
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                    tool_results_lines.append(f"{tool_name} → {error_msg}")
+                    continue
+
+                # 执行工具
+                result = await execute_tool_call(project_id, tool_name, parameters)
+
+                # 发送工具执行结果
+                if result.get("success"):
+                    if tool_name == "create_storyboard":
+                        success_msg = f'✅ 成功创建第{result.get("sequence", "")}镜'
+                    elif tool_name == "insert_storyboard":
+                        moved = result.get("moved_count", 0)
+                        success_msg = f'✅ 成功在第{result.get("sequence", "")}镜位置插入新分镜' + (f'，已将{moved}个后续分镜后移' if moved > 0 else '')
+                    elif tool_name == "update_storyboard":
+                        success_msg = f'✅ 成功更新第{result.get("sequence", "")}镜'
+                    elif tool_name == "delete_storyboard":
+                        success_msg = f'✅ 成功删除分镜'
+                    elif "name" in result:
+                        success_msg = f'✅ 成功创建: {result.get("name", tool_name)}'
+                    else:
+                        success_msg = f'✅ {tool_name} 操作成功'
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': success_msg})}\n\n"
+                    tool_results_lines.append(f"{tool_name} → {success_msg}")
                 else:
-                    success_msg = f'✅ {tool_name} 操作成功'
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': success_msg})}\n\n"
-            else:
-                error_msg = f'❌ 失败: {result.get("error", "未知错误")}'
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                    error_msg = f'❌ 失败: {result.get("error", "未知错误")}'
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                    tool_results_lines.append(f"{tool_name} → {error_msg}")
 
-            all_tool_calls.append(tool_call)
+            # 将本轮 assistant 响应和工具结果追加到消息列表，供下一轮 LLM 使用
+            loop_messages.append({"role": "assistant", "content": content_buffer})
+            tool_results_text = "\n".join(tool_results_lines)
+            loop_messages.append({
+                "role": "user",
+                "content": f"工具执行结果：\n{tool_results_text}\n\n请继续完成剩余任务。若所有任务已完成，请向用户汇报结果。"
+            })
 
-        # 保存助手回复
-        conversation.add_message("assistant", content_buffer, thinking_buffer)
+        else:
+            # 达到最大迭代次数
+            yield f"data: {json.dumps({'type': 'content', 'content': '\n\n[已达最大操作轮次，请继续发消息完成剩余任务]'})}\n\n"
+
+        # 保存助手回复（合并所有轮次的内容）
+        conversation.add_message("assistant", all_assistant_content, all_thinking_content)
 
         # 发送完成消息
         yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation.conversation_id})}\n\n"
@@ -1761,9 +1550,9 @@ END_TOOL
 
 @router.post("")
 async def chat(project_id: str, chat_msg: ChatMessage):
-    """对话接口（流式响应，支持Function Calling）"""
+    """对话接口（流式响应，支持Function Calling和Agentic Loop）"""
     return StreamingResponse(
-        stream_conversation(project_id, chat_msg.message, chat_msg.conversation_id),
+        stream_conversation(project_id, chat_msg.message, chat_msg.conversation_id, chat_msg.episode_id),
         media_type="text/event-stream"
     )
 
@@ -1837,56 +1626,12 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
 """
 
     # 剧本分析的系统提示
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 系统提示词从模板加载，在 data/config/default_prompt_templates.json 中修改
     from app.services.global_prompt_service import get_group_c_template
     _script_tpl = get_group_c_template("script_analysis_system_prompt")
-    system_prompt = _script_tpl.format(
+    system_prompt = (_script_tpl or "").format(
         project_context=project_context
-    ) if _script_tpl else f"""你是一个专业的剧本分析助手。
-
-{project_context}
-
-## 任务：
-分析用户上传的完整剧本，提取出所有资产并创建。
-
-## 工具可用：
-1. create_character - 创建角色
-2. create_scene - 创建场景
-3. create_prop - 创建道具
-4. create_episode - 创建剧集
-
-## 调用格式：
-TOOL: create_character
-{{
-  "name": "角色名",
-  "description": "详细描述",
-  "gender": "性别",
-  "age": "年龄"
-}}
-END_TOOL
-
-TOOL: create_episode
-{{
-  "episode_number": 集数,
-  "script": "剧本内容（保持原有格式）"
-}}
-END_TOOL
-
-## ⚠️ 重要规则：
-1. **先创建所有角色、场景、道具**，最后创建剧集
-2. **检查资产是否已存在**，不要重复创建
-3. **完整保留剧本原文**在create_episode的script字段中
-4. 如果剧本包含多集（如"第1集"、"第2集"），为每一集分别调用create_episode
-5. 如果没有明确分集，将整个剧本作为第1集
-
-## 工作流程：
-1. 先识别并列出所有角色，逐个调用create_character
-2. 识别并列出所有场景，逐个调用create_scene
-3. 识别并列出重要道具，逐个调用create_prop
-4. 最后按集数创建剧集
-
-开始分析剧本吧！
-"""
+    )
 
     yield f"data: {json.dumps({'type': 'status', 'content': f'正在分析剧本文件: {filename}...'})}\n\n"
     yield f"data: {json.dumps({'type': 'status', 'content': '剧本内容预览（前200字）：'})}\n\n"

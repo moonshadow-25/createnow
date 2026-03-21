@@ -191,6 +191,8 @@ class GlobalStyleConfig(BaseModel):
     prompt_language: str = "zh"  # 提示词语言：zh/en/auto
     image_style: StyleConfig = Field(default_factory=StyleConfig)
     video_style: StyleConfig = Field(default_factory=StyleConfig)
+    global_resolution: str = "1280x720"  # 全局默认分辨率
+    nine_grid_mode: bool = False          # 九宫格模式
 
 
 class GlobalStyleConfigUpdate(BaseModel):
@@ -198,3 +200,5 @@ class GlobalStyleConfigUpdate(BaseModel):
     prompt_language: Optional[str] = None
     image_style: Optional[StyleConfig] = None
     video_style: Optional[StyleConfig] = None
+    global_resolution: Optional[str] = None
+    nine_grid_mode: Optional[bool] = None

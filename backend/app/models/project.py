@@ -195,7 +195,8 @@ class Storyboard(Asset):
     sequence: int
     description: str = ""
     character_ids: List[str] = []  # 参演角色
-    scene_id: Optional[str] = None  # 场景
+    scene_id: Optional[str] = None  # 场景（旧字段，保留兼容）
+    scene_ids: List[str] = []  # 多场景支持
     prop_ids: List[str] = []  # 道具
     camera_angle: Optional[str] = None
     shot_type: Optional[str] = None
@@ -219,6 +220,8 @@ class ImageGeneration(BaseModel):
     image_path: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     is_primary: bool = False
+    volcengine_asset_id: Optional[str] = None      # e.g. "asset-20260318071009-xxxxx"
+    volcengine_asset_status: Optional[str] = None  # "Processing" | "Active" | "Failed"
 
 
 class AudioGeneration(BaseModel):

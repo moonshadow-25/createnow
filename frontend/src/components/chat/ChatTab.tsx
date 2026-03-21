@@ -5,21 +5,19 @@ import { ChatInput, UploadedFile } from './ChatInput';
 
 interface ChatTabProps {
   projectId: string;
-  onAssetsCreated?: () => void;
+  episodeId?: string;
+  label?: string;
 }
 
-export function ChatTab({ projectId, onAssetsCreated }: ChatTabProps) {
+export function ChatTab({ projectId, episodeId, label }: ChatTabProps) {
   const [inputMessage, setInputMessage] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
   const { messages, currentMessage, currentThinking, isStreaming, sendMessage, error, toolCalls, clearMessages } =
-    useChat(projectId, {
-      onAssetsCreated,
-    });
+    useChat(projectId, { episodeId, label });
 
   const handleSendMessage = async (message: string) => {
     if (isStreaming) return;
-
     setInputMessage('');
     setUploadedFiles([]);
     await sendMessage(message);
@@ -34,7 +32,7 @@ export function ChatTab({ projectId, onAssetsCreated }: ChatTabProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       <MessageList
         messages={messages}
         currentMessage={currentMessage}

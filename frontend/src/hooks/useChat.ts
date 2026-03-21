@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Message, StreamChunk, ToolCall } from '@/types';
 
-export function useChat(projectId: string, options?: { onAssetsCreated?: () => void }) {
+export function useChat(projectId: string, options?: { label?: string; episodeId?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [currentThinking, setCurrentThinking] = useState('');
@@ -10,10 +10,17 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
   const [conversationId, setConversationId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
+  const storageKey = options?.episodeId
+    ? `conversation_${projectId}_${options.episodeId}`
+    : `conversation_${projectId}`;
+
   // 加载历史对话
   useEffect(() => {
-    // 从localStorage恢复conversationId
-    const saved = localStorage.getItem(`conversation_${projectId}`);
+    setMessages([]);
+    setConversationId('');
+    setError(null);
+
+    const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
         const data = JSON.parse(saved);
@@ -23,17 +30,19 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
         console.error('Failed to load conversation:', e);
       }
     }
-  }, [projectId]);
+  }, [storageKey]);
 
-  // 保存对话到localStorage
+  // 保存对话到 localStorage（附加 label + updatedAt）
   useEffect(() => {
     if (conversationId) {
-      localStorage.setItem(`conversation_${projectId}`, JSON.stringify({
+      localStorage.setItem(storageKey, JSON.stringify({
         conversationId,
         messages,
+        label: options?.label || '',
+        updatedAt: new Date().toISOString(),
       }));
     }
-  }, [conversationId, messages, projectId]);
+  }, [conversationId, messages, storageKey, options?.label]);
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -43,7 +52,6 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
       setCurrentThinking('');
       setToolCalls([]);
 
-      // 添加用户消息
       const userMessage: Message = {
         message_id: Date.now().toString(),
         role: 'user',
@@ -56,6 +64,7 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
         const request = {
           message: content,
           conversation_id: conversationId || undefined,
+          episode_id: options?.episodeId || undefined,
         };
 
         const response = await fetch('/api/projects/' + projectId + '/chat', {
@@ -81,11 +90,8 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
         let currentToolCalls: ToolCall[] = [];
         let assetsWereCreated = false;
 
-        // 改进的TOOL块过滤函数 - 同时清理多余空行
         const filterToolBlocks = (text: string): string => {
-          // 移除完整的TOOL...END_TOOL块
           let filtered = text.replace(/TOOL:\s*\w+\s*\n[\s\S]*?END_TOOL/g, '');
-          // 清理多余的连续空行（超过2个连续换行符替换为2个）
           filtered = filtered.replace(/\n{3,}/g, '\n\n');
           return filtered;
         };
@@ -111,16 +117,13 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
                   case 'thinking_end':
                     break;
                   case 'content':
-                    // 过滤掉TOOL/END_TOOL原始JSON，只保留干净的文本
-                    let content = filterToolBlocks(chunk.content || '');
-                    assistantMessage += content;
-                    setCurrentMessage(assistantMessage);
+                    assistantMessage += filterToolBlocks(chunk.content || '');
+                    // 不实时更新 UI，等完成后一次性显示
                     break;
                   case 'tool_call':
                     if (chunk.tool_call) {
                       currentToolCalls.push(chunk.tool_call);
                       setToolCalls([...currentToolCalls]);
-                      // 检查是否是资产创建/更新工具或分镜相关工具
                       if (chunk.tool_call.name?.startsWith('create_') ||
                           chunk.tool_call.name?.startsWith('update_') ||
                           chunk.tool_call.name?.startsWith('delete_') ||
@@ -130,8 +133,6 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
                     }
                     break;
                   case 'tool_result':
-                    // 工具执行结果不在消息中显示，只通过toast通知
-                    // 不再添加到assistantMessage中
                     break;
                   case 'content_end':
                     break;
@@ -149,10 +150,8 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
           }
         }
 
-        // 最后再过滤一次，确保没有残留的TOOL块
         assistantMessage = filterToolBlocks(assistantMessage);
 
-        // 添加助手消息
         const aiMessage: Message = {
           message_id: Date.now().toString(),
           role: 'assistant',
@@ -169,12 +168,14 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
         };
         setMessages((prev) => [...prev, aiMessage]);
 
-        // 如果创建了资产，触发回调
-        if (assetsWereCreated && options?.onAssetsCreated) {
-          options.onAssetsCreated();
+        // 用全局事件通知资产刷新，替代 onAssetsCreated prop
+        if (assetsWereCreated) {
+          window.dispatchEvent(new CustomEvent('vibe-drama:assets-created', { detail: { projectId } }));
         }
       } catch (err: any) {
-        setError(err.message);
+        if (err.name !== 'AbortError') {
+          setError(err.message);
+        }
       } finally {
         setIsStreaming(false);
         setCurrentMessage('');
@@ -182,15 +183,15 @@ export function useChat(projectId: string, options?: { onAssetsCreated?: () => v
         setToolCalls([]);
       }
     },
-    [projectId, conversationId, options]
+    [projectId, conversationId, options?.episodeId, options?.label]
   );
 
   const clearMessages = useCallback(() => {
     setMessages([]);
     setConversationId('');
     setError(null);
-    localStorage.removeItem(`conversation_${projectId}`);
-  }, [projectId]);
+    localStorage.removeItem(storageKey);
+  }, [storageKey]);
 
   return {
     messages,

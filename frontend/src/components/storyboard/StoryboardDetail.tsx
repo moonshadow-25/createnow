@@ -23,6 +23,7 @@ import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-ki
 import { useOneClickGeneration } from './hooks/useOneClickGeneration';
 import { useDialogManager } from './hooks/useDialogManager';
 import { useAssetExtraction } from './hooks/useAssetExtraction';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -32,6 +33,7 @@ interface StoryboardDetailProps {
   props: any[];
   onUpdated: () => void;
   multimodalReference?: boolean;
+  showAssetSubmit?: boolean;
 }
 
 export function StoryboardDetail({
@@ -42,6 +44,7 @@ export function StoryboardDetail({
   props,
   onUpdated,
   multimodalReference = false,
+  showAssetSubmit = false,
 }: StoryboardDetailProps) {
   const { toast } = useToast();
   const [selectedEpisode, setSelectedEpisode] = useState<any>(null);
@@ -63,6 +66,30 @@ export function StoryboardDetail({
   // 更多菜单
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Vibe Drama：设置上下文 + 订阅资产刷新事件
+  const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
+  useEffect(() => {
+    if (!selectedEpisode || !projectId) return;
+    setVibeDramaContext({
+      projectId,
+      episodeId: selectedEpisode.asset_id,
+      tabName: 'storyboard',
+      label: `第${selectedEpisode.episode_number}集`,
+    });
+  }, [selectedEpisode?.asset_id, projectId]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.projectId === projectId) {
+        loadStoryboards();
+        onUpdated();
+      }
+    };
+    window.addEventListener('vibe-drama:assets-created', handler);
+    return () => window.removeEventListener('vibe-drama:assets-created', handler);
+  }, [projectId]);
   useEffect(() => {
     if (!showMoreMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -84,7 +111,7 @@ export function StoryboardDetail({
   const [editingStoryboard, setEditingStoryboard] = useState<any>(null);
   const [isCreating, setIsCreating] = useState(false); // 区分创建/编辑模式
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
-  const [selectedScene, setSelectedScene] = useState('');
+  const [selectedScenes, setSelectedScenes] = useState<string[]>([]);
   const [selectedProps, setSelectedProps] = useState<string[]>([]);
   const [generatedPrompt, setGeneratedPrompt] = useState('');
 
@@ -124,6 +151,7 @@ export function StoryboardDetail({
 
   // 状态隔离：跟踪当前编辑的分镜ID，防止异步响应污染其他分镜
   const editingStoryboardIdRef = useRef<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 多选状态
   const [selectedStoryboardIds, setSelectedStoryboardIds] = useState<Set<string>>(new Set());
@@ -402,11 +430,12 @@ export function StoryboardDetail({
     return handleSetPrimaryStoryboardImageBase(editingStoryboard, imageId, setStoryboardImages);
   };
 
-  const handleGeneratePrompt = () => {
+  const handleGeneratePrompt = async () => {
+    await saveCurrentStoryboard();
     return handleGeneratePromptBase(
       editingStoryboard,
       selectedCharacters,
-      selectedScene,
+      selectedScenes,
       selectedProps,
       characters,
       scenes,
@@ -415,18 +444,20 @@ export function StoryboardDetail({
     );
   };
 
-  const handleGenerateNineGridPrompts = () => {
+  const handleGenerateNineGridPrompts = async () => {
+    await saveCurrentStoryboard();
     return handleGenerateNineGridPromptsBase(editingStoryboard, setGeneratedPrompt, (videoPrompt: string) => {
       setEditingStoryboard((prev: any) => prev ? { ...prev, video_prompt: videoPrompt } : prev);
     });
   };
 
-  const handleGenerateImageFromEdit = () => {
+  const handleGenerateImageFromEdit = async () => {
+    await saveCurrentStoryboard();
     return handleGenerateImageFromEditBase(
       editingStoryboard,
       generatedPrompt,
       selectedCharacters,
-      selectedScene,
+      selectedScenes,
       selectedProps,
       characters,
       scenes,
@@ -454,7 +485,8 @@ export function StoryboardDetail({
   } = tripleGridOps;
 
   // 包装函数以适配现有调用方式
-  const handleGenerateTripleGrid = (prompt: string) => {
+  const handleGenerateTripleGrid = async (prompt: string) => {
+    await saveCurrentStoryboard();
     return handleGenerateTripleGridBase(
       editingStoryboard,
       storyboardImages,
@@ -698,7 +730,7 @@ export function StoryboardDetail({
     editingStoryboardIdRef.current = null; // 保持兼容性
     // 重置表单
     setSelectedCharacters([]);
-    setSelectedScene('');
+    setSelectedScenes([]);
     setSelectedProps([]);
     setGeneratedPrompt('');
     resetEditState(); // 使用 hook 的重置函数
@@ -725,7 +757,11 @@ export function StoryboardDetail({
 
     setEditingStoryboard(latestStoryboard);
     setSelectedCharacters(latestStoryboard.character_ids || []);
-    setSelectedScene(latestStoryboard.scene_id || '');
+    setSelectedScenes(
+      latestStoryboard.scene_ids?.length
+        ? latestStoryboard.scene_ids
+        : (latestStoryboard.scene_id ? [latestStoryboard.scene_id] : [])
+    );
     setSelectedProps(latestStoryboard.prop_ids || []);
     setGeneratedPrompt(latestStoryboard.image_prompt || '');
     // 初始化分镜内容编辑状态
@@ -768,7 +804,35 @@ export function StoryboardDetail({
       toast('请先保存分镜再使用自动匹配', 'info');
       return;
     }
-    return handleAutoMatchAssetsBase(editingStoryboard, setSelectedScene, setSelectedCharacters, setSelectedProps);
+    return handleAutoMatchAssetsBase(editingStoryboard, setSelectedScenes, setSelectedCharacters, setSelectedProps);
+  };
+
+  const handleImagePromptChange = (newPrompt: string) => {
+    setGeneratedPrompt(newPrompt);
+  };
+
+  // 统一保存当前分镜所有字段
+  const saveCurrentStoryboard = async () => {
+    if (!editingStoryboard) return;
+    setIsSaving(true);
+    try {
+      const data: any = {
+        description: editDescription.trim(),
+        dialogue: editDialogue.trim(),
+        action: editAction.trim(),
+        shot_type: editShotType,
+        camera_angle: editCameraAngle,
+        duration: contentEdit.editDuration,
+        resolution: contentEdit.editResolution,
+        character_ids: selectedCharacters,
+        scene_ids: selectedScenes,
+        prop_ids: selectedProps,
+      };
+      if (generatedPrompt.trim()) data.image_prompt = generatedPrompt.trim();
+      await storyboardApi.update(projectId, editingStoryboard.asset_id, data);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSaveStoryboard = async () => {
@@ -793,7 +857,7 @@ export function StoryboardDetail({
       if (editAction.trim()) baseData.action = editAction.trim();
       // 资产字段需要始终传递，即使为空数组，以便支持删除操作
       baseData.character_ids = selectedCharacters;
-      baseData.scene_id = selectedScene;
+      baseData.scene_ids = selectedScenes;
       baseData.prop_ids = selectedProps;
       if (generatedPrompt.trim()) baseData.image_prompt = generatedPrompt.trim();
       baseData.duration = contentEdit.editDuration;
@@ -1248,8 +1312,8 @@ export function StoryboardDetail({
         setSelectedCharacters={setSelectedCharacters}
         selectedProps={selectedProps}
         setSelectedProps={setSelectedProps}
-        selectedScene={selectedScene}
-        setSelectedScene={setSelectedScene}
+        selectedScenes={selectedScenes}
+        setSelectedScenes={setSelectedScenes}
         characters={characters}
         scenes={scenes}
         props={props}
@@ -1257,8 +1321,10 @@ export function StoryboardDetail({
         onAutoMatchAssets={handleAutoMatchAssets}
         generatedPrompt={generatedPrompt}
         setGeneratedPrompt={setGeneratedPrompt}
+        onImagePromptChange={handleImagePromptChange}
         onGeneratePrompt={handleGeneratePrompt}
         onGenerateNineGridPrompts={handleGenerateNineGridPrompts}
+        isSaving={isSaving}
         storyboardImages={storyboardImages}
         hiddenImageIds={hiddenImageIds}
         getImageUrl={(img) => getImageUrl(img, projectId)}
@@ -1271,28 +1337,45 @@ export function StoryboardDetail({
         onOpenTripleGridDialog={() => dialogs.open('tripleGrid')}
         isSplittingTripleGrid={isSplittingTripleGrid}
         onSplitTripleGrid={handleSplitTripleGrid}
-        onClose={() => {
+        onClose={async () => {
+          await saveCurrentStoryboard();
           dialogs.close('storyboardEdit');
-          setEditingStoryboardId(null); // 状态隔离：清空
-          editingStoryboardIdRef.current = null; // 保持兼容性
+          setEditingStoryboardId(null);
+          editingStoryboardIdRef.current = null;
         }}
+        onSaveBeforeGenerate={saveCurrentStoryboard}
         onSuccess={() => loadStoryboards()}
+        onRefreshImages={async () => {
+          if (!editingStoryboard) return;
+          try {
+            const response = await generationApi.listImages(projectId, editingStoryboard.asset_id);
+            const sortedImages = (response.data || []).sort((a: any, b: any) => {
+              if (a.is_primary && !b.is_primary) return -1;
+              if (!a.is_primary && b.is_primary) return 1;
+              return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+            setStoryboardImages(sortedImages);
+          } catch {}
+        }}
         multimodalReference={multimodalReference}
+        showAssetSubmit={showAssetSubmit}
       />
 
       {/* 统一资产选择弹框 */}
       <AssetSelectorDialog
         show={dialogs.isOpen('assetSelector')}
+        projectId={projectId}
         characters={characters}
         scenes={scenes}
         props={props}
         selectedCharacters={selectedCharacters}
         setSelectedCharacters={setSelectedCharacters}
-        selectedScene={selectedScene}
-        setSelectedScene={setSelectedScene}
+        selectedScenes={selectedScenes}
+        setSelectedScenes={setSelectedScenes}
         selectedProps={selectedProps}
         setSelectedProps={setSelectedProps}
         onClose={() => dialogs.close('assetSelector')}
+        onAssetsAdded={onUpdated}
       />
 
       {/* 分镜图片库 */}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Plus, Wand2, ImagePlus, Edit3, Grid3X3, Scissors, RefreshCcw, CheckCircle, Sparkles, Film, Loader2, Eye, Download, Video, Play } from 'lucide-react';
-import { assetApi } from '@/services/api';
+import { ChevronDown, ChevronRight, Plus, Wand2, ImagePlus, Edit3, Grid3X3, Scissors, RefreshCcw, CheckCircle, Sparkles, Film, Loader2, Download, Video, Play, Upload } from 'lucide-react';
+import { generationApi } from '@/services/api';
 import { VideoGallery } from './VideoGallery';
 import { useVideoGeneration } from './hooks/useVideoGeneration';
 import { getVideoUrl } from './utils/mediaUtils';
@@ -42,8 +42,8 @@ export interface StoryboardEditDialogProps {
   setSelectedCharacters: (v: string[]) => void;
   selectedProps: string[];
   setSelectedProps: (v: string[]) => void;
-  selectedScene: string;
-  setSelectedScene: (v: string) => void;
+  selectedScenes: string[];
+  setSelectedScenes: (v: string[]) => void;
   characters: any[];
   scenes: any[];
   props: any[];
@@ -53,8 +53,12 @@ export interface StoryboardEditDialogProps {
   // 提示词
   generatedPrompt: string;
   setGeneratedPrompt: (v: string) => void;
+  onImagePromptChange: (v: string) => void;
   onGeneratePrompt: () => void;
   onGenerateNineGridPrompts: () => void;
+
+  // 保存状态
+  isSaving: boolean;
 
   // 图片
   storyboardImages: any[];
@@ -75,7 +79,10 @@ export interface StoryboardEditDialogProps {
   onSplitTripleGrid: () => void;
   onClose: () => void;
   onSuccess: () => void;
+  onRefreshImages?: () => Promise<void>;
+  onSaveBeforeGenerate: () => Promise<void>;
   multimodalReference?: boolean;
+  showAssetSubmit?: boolean;
 }
 
 export function StoryboardEditDialog({
@@ -107,17 +114,18 @@ export function StoryboardEditDialog({
   setSelectedCharacters,
   selectedProps,
   setSelectedProps,
-  selectedScene,
-  setSelectedScene,
+  selectedScenes,
+  setSelectedScenes,
   characters,
   scenes,
   props,
   onOpenAssetSelector,
   onAutoMatchAssets,
   generatedPrompt,
-  setGeneratedPrompt,
+  onImagePromptChange,
   onGeneratePrompt,
   onGenerateNineGridPrompts,
+  isSaving,
   storyboardImages,
   hiddenImageIds,
   getImageUrl: getImageUrlProp,
@@ -132,14 +140,71 @@ export function StoryboardEditDialog({
   onSplitTripleGrid,
   onClose,
   onSuccess,
+  onRefreshImages,
+  onSaveBeforeGenerate,
   multimodalReference = false,
+  showAssetSubmit = false,
 }: StoryboardEditDialogProps) {
   const [activeTab, setActiveTab] = useState<'edit' | 'video'>(initialTab);
+
+  // 素材提交状态（分镜主图 image_id -> bool）
+  const [assetSubmitting, setAssetSubmitting] = useState<Record<string, boolean>>({});
+  // 关联资产主图的 volcengine 状态（image_id -> { asset_id?, status? }）
+  const [assetImageStatuses, setAssetImageStatuses] = useState<Record<string, { asset_id?: string; status?: string }>>({});
+
+  const loadAssetImageStatuses = async (storyboard: any) => {
+    if (!storyboard) return;
+    const updates: Record<string, { asset_id?: string; status?: string }> = {};
+    const assetIds: Array<{ assetId: string; imageId: string }> = [];
+    for (const charId of storyboard.character_ids || []) {
+      const char = characters.find((c: any) => c.asset_id === charId);
+      if (char?.image_id) assetIds.push({ assetId: charId, imageId: char.image_id });
+    }
+    const sceneIds: string[] = storyboard.scene_ids?.length
+      ? storyboard.scene_ids
+      : (storyboard.scene_id ? [storyboard.scene_id] : []);
+    for (const sceneId of sceneIds) {
+      const scene = scenes.find((s: any) => s.asset_id === sceneId);
+      if (scene?.image_id) assetIds.push({ assetId: sceneId, imageId: scene.image_id });
+    }
+    for (const propId of storyboard.prop_ids || []) {
+      const prop = props.find((p: any) => p.asset_id === propId);
+      if (prop?.image_id) assetIds.push({ assetId: propId, imageId: prop.image_id });
+    }
+    await Promise.all(assetIds.map(async ({ assetId, imageId }) => {
+      try {
+        const res = await generationApi.listImages(projectId, assetId);
+        const imgs: any[] = res.data || [];
+        const primary = imgs.find(i => i.is_primary) || imgs[0];
+        if (primary) updates[imageId] = { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status };
+      } catch {}
+    }));
+    setAssetImageStatuses(prev => ({ ...prev, ...updates }));
+  };
 
   // 当 initialTab 或 show 变化时重置 tab
   useEffect(() => {
     if (show) setActiveTab(initialTab);
   }, [show, initialTab]);
+
+  // 弹框打开时加载关联资产的 volcengine 状态，并对非 Active 的已有 asset_id 自动轮询
+  useEffect(() => {
+    if (!show || !editingStoryboard) return;
+    loadAssetImageStatuses(editingStoryboard);
+    // 对主图中非 Active 的 asset_id 自动轮询一次，同步最新状态
+    const autoSync = async () => {
+      if (!onRefreshImages) return;
+      const nonActiveImages = storyboardImages.filter(
+        img => img.volcengine_asset_id && img.volcengine_asset_status !== 'Active'
+      );
+      if (nonActiveImages.length === 0) return;
+      await Promise.all(nonActiveImages.map(img =>
+        generationApi.getAssetStatus(projectId, img.volcengine_asset_id).catch(() => {})
+      ));
+      if (onRefreshImages) await onRefreshImages();
+    };
+    autoSync();
+  }, [show, editingStoryboard?.asset_id]);
 
   const videoGen = useVideoGeneration({ projectId, episodeId, onSuccess, characters, scenes, props, multimodalReference });
 
@@ -160,6 +225,65 @@ export function StoryboardEditDialog({
       if (!a.is_primary && b.is_primary) return 1;
       return 0;
     });
+
+  const handleSubmitAsset = async () => {
+    if (!editingStoryboard) return;
+    const primaryImg = visibleStoryboardImages.find(i => i.is_primary) || visibleStoryboardImages[0];
+
+    // 收集所有需要提交的 image_id
+    const imageIds: string[] = [];
+    if (primaryImg?.image_id) imageIds.push(primaryImg.image_id);
+    for (const charId of editingStoryboard.character_ids || []) {
+      const char = characters.find((c: any) => c.asset_id === charId);
+      if (char?.image_id) imageIds.push(char.image_id);
+    }
+    const sbSceneIds: string[] = editingStoryboard.scene_ids?.length
+      ? editingStoryboard.scene_ids
+      : (editingStoryboard.scene_id ? [editingStoryboard.scene_id] : []);
+    for (const sceneId of sbSceneIds) {
+      const scene = scenes.find((s: any) => s.asset_id === sceneId);
+      if (scene?.image_id) imageIds.push(scene.image_id);
+    }
+    for (const propId of editingStoryboard.prop_ids || []) {
+      const prop = props.find((p: any) => p.asset_id === propId);
+      if (prop?.image_id) imageIds.push(prop.image_id);
+    }
+    if (imageIds.length === 0) return;
+
+    const trackingId = primaryImg?.image_id ?? imageIds[0];
+    setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
+    try {
+      const res = await generationApi.submitAsset(projectId, imageIds);
+      const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+
+      // 对每个 Processing 的 asset_id 轮询，直接用响应中的 asset_id，不依赖闭包
+      const pollOne = async (assetId: string) => {
+        const r = await generationApi.getAssetStatus(projectId, assetId);
+        if (r.data.status === 'Processing') {
+          setTimeout(() => pollOne(assetId), 5000);
+        }
+      };
+      const processingItems = submitted.filter(s => s.status === 'Processing');
+      const refreshAll = async () => {
+        onSuccess();
+        if (onRefreshImages) await onRefreshImages();
+        await videoGen.loadPrimaryImage(editingStoryboard);
+        loadAssetImageStatuses(editingStoryboard);
+      };
+      if (processingItems.length > 0) {
+        setTimeout(async () => {
+          await Promise.all(processingItems.map(s => pollOne(s.asset_id)));
+          setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
+          await refreshAll();
+        }, 3000);
+      } else {
+        setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
+        await refreshAll();
+      }
+    } catch (e) {
+      setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -317,7 +441,7 @@ export function StoryboardEditDialog({
             <div>
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-sm font-semibold text-gray-400">
-                  已选资产 ({selectedCharacters.length + selectedProps.length + (selectedScene ? 1 : 0)})
+                  已选资产 ({selectedCharacters.length + selectedProps.length + selectedScenes.length})
                 </label>
                 <div className="flex gap-2">
                   <button
@@ -341,34 +465,46 @@ export function StoryboardEditDialog({
                 </div>
               </div>
 
-              {(selectedCharacters.length > 0 || selectedProps.length > 0 || selectedScene) ? (
+              {(selectedCharacters.length > 0 || selectedProps.length > 0 || selectedScenes.length > 0) ? (
                 <div className="flex flex-wrap gap-2">
                   {selectedCharacters.map((charId) => {
                     const char = characters.find(c => c.asset_id === charId);
                     if (!char) return null;
+                    const imgStatus = char.image_id ? assetImageStatuses[char.image_id]?.status : undefined;
                     return (
                       <div key={charId} className="flex items-center gap-2 bg-blue-900 text-blue-300 rounded px-3 py-2">
                         <span className="text-sm">{char.name}</span>
+                        {imgStatus === 'Active' && <CheckCircle size={12} className="text-green-400" />}
+                        {imgStatus === 'Processing' && <Loader2 size={12} className="text-yellow-400 animate-spin" />}
+                        {imgStatus === 'Failed' && <span className="text-red-400 text-xs">!</span>}
                         <button onClick={() => setSelectedCharacters(selectedCharacters.filter(id => id !== charId))} className="text-red-400 hover:text-red-300">✕</button>
                       </div>
                     );
                   })}
-                  {selectedScene && (() => {
-                    const scene = scenes.find(s => s.asset_id === selectedScene);
+                  {selectedScenes.map((sceneId) => {
+                    const scene = scenes.find(s => s.asset_id === sceneId);
                     if (!scene) return null;
+                    const imgStatus = scene.image_id ? assetImageStatuses[scene.image_id]?.status : undefined;
                     return (
-                      <div className="flex items-center gap-2 bg-green-900 text-green-300 rounded px-3 py-2">
+                      <div key={sceneId} className="flex items-center gap-2 bg-green-900 text-green-300 rounded px-3 py-2">
                         <span className="text-sm">{scene.name}</span>
-                        <button onClick={() => setSelectedScene('')} className="text-red-400 hover:text-red-300">✕</button>
+                        {imgStatus === 'Active' && <CheckCircle size={12} className="text-green-400" />}
+                        {imgStatus === 'Processing' && <Loader2 size={12} className="text-yellow-400 animate-spin" />}
+                        {imgStatus === 'Failed' && <span className="text-red-400 text-xs">!</span>}
+                        <button onClick={() => setSelectedScenes(selectedScenes.filter(id => id !== sceneId))} className="text-red-400 hover:text-red-300">✕</button>
                       </div>
                     );
-                  })()}
+                  })}
                   {selectedProps.map((propId) => {
                     const prop = props.find(p => p.asset_id === propId);
                     if (!prop) return null;
+                    const imgStatus = prop.image_id ? assetImageStatuses[prop.image_id]?.status : undefined;
                     return (
                       <div key={propId} className="flex items-center gap-2 bg-purple-900 text-purple-300 rounded px-3 py-2">
                         <span className="text-sm">{prop.name}</span>
+                        {imgStatus === 'Active' && <CheckCircle size={12} className="text-green-400" />}
+                        {imgStatus === 'Processing' && <Loader2 size={12} className="text-yellow-400 animate-spin" />}
+                        {imgStatus === 'Failed' && <span className="text-red-400 text-xs">!</span>}
                         <button onClick={() => setSelectedProps(selectedProps.filter(id => id !== propId))} className="text-red-400 hover:text-red-300">✕</button>
                       </div>
                     );
@@ -403,19 +539,10 @@ export function StoryboardEditDialog({
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-semibold text-gray-400">图片提示词</label>
-                  {generatedPrompt && <span className="text-xs text-gray-500">✓ 已保存到分镜中</span>}
                 </div>
                 <textarea
                   value={generatedPrompt}
-                  onChange={(e) => {
-                    const newPrompt = e.target.value;
-                    setGeneratedPrompt(newPrompt);
-                    if (editingStoryboard) {
-                      assetApi.update(projectId, 'storyboard', editingStoryboard.asset_id, {
-                        image_prompt: newPrompt || undefined
-                      }).catch(console.error);
-                    }
-                  }}
+                  onChange={(e) => onImagePromptChange(e.target.value)}
                   className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm resize-y min-h-[400px]"
                   placeholder="点击上方按钮生成AI提示词，或手动输入提示词..."
                 />
@@ -451,6 +578,46 @@ export function StoryboardEditDialog({
                     <button onClick={onOpenImageGallery} className="flex items-center gap-1 text-green-400 hover:text-green-300 text-sm ml-auto">
                       <ImagePlus size={14} />管理
                     </button>
+                    {/* 提交素材按钮（主图） */}
+                    {showAssetSubmit && (() => {
+                      const primaryImg = visibleStoryboardImages.find(i => i.is_primary) || visibleStoryboardImages[0];
+                      if (!primaryImg) return null;
+                      const isSubmitting = assetSubmitting[primaryImg.image_id];
+
+                      // 收集所有关联资产的 volcengine 状态
+                      const allStatuses: (string | undefined)[] = [primaryImg.volcengine_asset_status];
+                      for (const charId of editingStoryboard?.character_ids || []) {
+                        const char = characters.find((c: any) => c.asset_id === charId);
+                        if (char?.image_id) allStatuses.push(assetImageStatuses[char.image_id]?.status);
+                      }
+                      if (editingStoryboard?.scene_id) {
+                        const scene = scenes.find((s: any) => s.asset_id === editingStoryboard.scene_id);
+                        if (scene?.image_id) allStatuses.push(assetImageStatuses[scene.image_id]?.status);
+                      }
+                      for (const propId of editingStoryboard?.prop_ids || []) {
+                        const prop = props.find((p: any) => p.asset_id === propId);
+                        if (prop?.image_id) allStatuses.push(assetImageStatuses[prop.image_id]?.status);
+                      }
+
+                      const anyFailed = allStatuses.some(s => s === 'Failed');
+                      const anyProcessing = allStatuses.some(s => s === 'Processing');
+                      const allActive = allStatuses.length > 0 && allStatuses.every(s => s === 'Active');
+
+                      if (isSubmitting || anyProcessing) {
+                        return <span className="text-xs text-yellow-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" />审核中...</span>;
+                      }
+                      if (allActive) {
+                        return <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle size={12} />已入库</span>;
+                      }
+                      return (
+                        <button
+                          onClick={() => handleSubmitAsset()}
+                          className={`text-xs flex items-center gap-1 ${anyFailed ? 'text-red-400 hover:text-red-300' : 'text-blue-400 hover:text-blue-300'}`}
+                        >
+                          <Upload size={12} />{anyFailed ? '部分失败，重试' : '提交素材'}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -482,14 +649,41 @@ export function StoryboardEditDialog({
             setEditResolution={setEditResolution}
             videoGen={videoGen}
             onSuccess={onSuccess}
+            onSaveBeforeGenerate={onSaveBeforeGenerate}
+            multimodalReference={multimodalReference}
+            assetSubmitting={assetSubmitting}
+            assetImageStatuses={assetImageStatuses}
+            characters={characters}
+            scenes={scenes}
+            props={props}
+            selectedCharacters={selectedCharacters}
+            setSelectedCharacters={setSelectedCharacters}
+            selectedScenes={selectedScenes}
+            setSelectedScenes={setSelectedScenes}
+            selectedProps={selectedProps}
+            setSelectedProps={setSelectedProps}
+            onOpenAssetSelector={onOpenAssetSelector}
+            onAutoMatchAssets={onAutoMatchAssets}
+            handleSubmitAsset={handleSubmitAsset}
+            showAssetSubmit={showAssetSubmit}
+            getTaskStatus={getTaskStatus}
           />
         )}
 
         {/* 底部按钮 */}
         {activeTab === 'edit' && (
           <div className="flex justify-between gap-3 mt-6">
-            <div className="flex gap-2">
-              <button onClick={onSave} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 rounded">保存资产</button>
+            <div className="flex gap-2 items-center">
+              {isCreating ? (
+                <button onClick={onSave} className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 rounded">保存资产</button>
+              ) : (
+                <div className="flex items-center gap-1 text-xs h-[30px]">
+                  {isSaving
+                    ? <><Loader2 size={12} className="animate-spin text-gray-400" /><span className="text-gray-400">保存中...</span></>
+                    : <span className="text-gray-500">关闭时自动保存</span>
+                  }
+                </div>
+              )}
               <button
                 onClick={onGenerateImage}
                 disabled={!editingStoryboard || getTaskStatus(editingStoryboard.asset_id, 'image') === 'generating' || !generatedPrompt}
@@ -560,6 +754,24 @@ interface VideoTabProps {
   setEditResolution: (v: string) => void;
   videoGen: ReturnType<typeof useVideoGeneration>;
   onSuccess: () => void;
+  onSaveBeforeGenerate: () => Promise<void>;
+  multimodalReference?: boolean;
+  assetSubmitting: Record<string, boolean>;
+  assetImageStatuses: Record<string, { asset_id?: string; status?: string }>;
+  characters: any[];
+  scenes: any[];
+  props: any[];
+  selectedCharacters: string[];
+  setSelectedCharacters: (v: string[]) => void;
+  selectedScenes: string[];
+  setSelectedScenes: (v: string[]) => void;
+  selectedProps: string[];
+  setSelectedProps: (v: string[]) => void;
+  onOpenAssetSelector: () => void;
+  onAutoMatchAssets: () => void;
+  handleSubmitAsset: () => void;
+  showAssetSubmit?: boolean;
+  getTaskStatus: (storyboardId: string, taskType: any) => string | null;
 }
 
 function VideoTab({
@@ -583,9 +795,28 @@ function VideoTab({
   editResolution,
   setEditResolution,
   videoGen,
+  onSaveBeforeGenerate,
+  multimodalReference = false,
+  assetSubmitting,
+  assetImageStatuses,
+  characters,
+  scenes,
+  props,
+  selectedCharacters,
+  setSelectedCharacters,
+  selectedScenes,
+  setSelectedScenes,
+  selectedProps,
+  setSelectedProps,
+  onOpenAssetSelector,
+  onAutoMatchAssets,
+  handleSubmitAsset,
+  showAssetSubmit = false,
+  getTaskStatus: getTaskStatusProp,
 }: VideoTabProps) {
   const {
     videoPrompt,
+    videoSegmentCount,
     primaryImage,
     videos,
     loadingVideos,
@@ -597,15 +828,14 @@ function VideoTab({
     getTaskStatus,
     handlePromptChange,
     handleGenerateVideoPrompt,
-    handleReverseVideoPrompt,
     handleGenerateVideo,
+    handleGenerateVideoSegment,
     handleExport,
     handleDownload,
     loadVideos,
   } = videoGen;
 
   const isGeneratingPrompt = getTaskStatus(storyboard.asset_id, 'video_prompt') === 'generating';
-  const isReversingPrompt = getTaskStatus(storyboard.asset_id, 'video_reverse') === 'generating';
   const isGenerating = hasRunningTask(storyboard.asset_id);
 
   return (
@@ -689,7 +919,7 @@ function VideoTab({
                 <input
                   type="number"
                   value={editDuration}
-                  onChange={(e) => videoGen.handleDurationChange(Math.max(1, parseInt(e.target.value) || 6), storyboard, setEditDuration)}
+                  onChange={(e) => setEditDuration(Math.max(1, parseInt(e.target.value) || 6))}
                   min={1}
                   max={60}
                   className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
@@ -710,6 +940,82 @@ function VideoTab({
               </div>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* 已选资产 */}
+      <div>
+        <div className="flex justify-between items-center mb-2">
+          <label className="block text-sm font-semibold text-gray-400">
+            已选资产 ({selectedCharacters.length + selectedProps.length + selectedScenes.length})
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={onAutoMatchAssets}
+              disabled={getTaskStatusProp(storyboard.asset_id, 'auto_match') === 'generating'}
+              className="text-xs text-purple-400 hover:text-purple-300 disabled:text-gray-500 flex items-center gap-1"
+            >
+              {getTaskStatusProp(storyboard.asset_id, 'auto_match') === 'generating' ? (
+                <><RefreshCcw size={12} className="animate-spin" />匹配中...</>
+              ) : (
+                <><Sparkles size={12} />自动匹配</>
+              )}
+            </button>
+            <button
+              onClick={onOpenAssetSelector}
+              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+            >
+              <Plus size={12} />选择资产
+            </button>
+          </div>
+        </div>
+        {(selectedCharacters.length > 0 || selectedScenes.length > 0 || selectedProps.length > 0) ? (
+          <div className="flex flex-wrap gap-2">
+            {selectedCharacters.map((charId) => {
+              const char = characters.find((c: any) => c.asset_id === charId);
+              if (!char) return null;
+              const imgStatus = char.image_id ? assetImageStatuses[char.image_id]?.status : undefined;
+              return (
+                <div key={charId} className="flex items-center gap-2 bg-blue-900 text-blue-300 rounded px-3 py-2">
+                  <span className="text-sm">{char.name}</span>
+                  {imgStatus === 'Active' && <CheckCircle size={12} className="text-green-400" />}
+                  {imgStatus === 'Processing' && <Loader2 size={12} className="text-yellow-400 animate-spin" />}
+                  {imgStatus === 'Failed' && <span className="text-red-400 text-xs">!</span>}
+                  <button onClick={() => setSelectedCharacters(selectedCharacters.filter(id => id !== charId))} className="text-red-400 hover:text-red-300">✕</button>
+                </div>
+              );
+            })}
+            {selectedScenes.map((sceneId) => {
+              const scene = scenes.find((s: any) => s.asset_id === sceneId);
+              if (!scene) return null;
+              const imgStatus = scene.image_id ? assetImageStatuses[scene.image_id]?.status : undefined;
+              return (
+                <div key={sceneId} className="flex items-center gap-2 bg-green-900 text-green-300 rounded px-3 py-2">
+                  <span className="text-sm">{scene.name}</span>
+                  {imgStatus === 'Active' && <CheckCircle size={12} className="text-green-400" />}
+                  {imgStatus === 'Processing' && <Loader2 size={12} className="text-yellow-400 animate-spin" />}
+                  {imgStatus === 'Failed' && <span className="text-red-400 text-xs">!</span>}
+                  <button onClick={() => setSelectedScenes(selectedScenes.filter(id => id !== sceneId))} className="text-red-400 hover:text-red-300">✕</button>
+                </div>
+              );
+            })}
+            {selectedProps.map((propId) => {
+              const prop = props.find((p: any) => p.asset_id === propId);
+              if (!prop) return null;
+              const imgStatus = prop.image_id ? assetImageStatuses[prop.image_id]?.status : undefined;
+              return (
+                <div key={propId} className="flex items-center gap-2 bg-purple-900 text-purple-300 rounded px-3 py-2">
+                  <span className="text-sm">{prop.name}</span>
+                  {imgStatus === 'Active' && <CheckCircle size={12} className="text-green-400" />}
+                  {imgStatus === 'Processing' && <Loader2 size={12} className="text-yellow-400 animate-spin" />}
+                  {imgStatus === 'Failed' && <span className="text-red-400 text-xs">!</span>}
+                  <button onClick={() => setSelectedProps(selectedProps.filter(id => id !== propId))} className="text-red-400 hover:text-red-300">✕</button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500 italic bg-gray-700 rounded p-3">未选择资产</div>
         )}
       </div>
 
@@ -783,21 +1089,12 @@ function VideoTab({
           <label className="block text-sm font-semibold text-gray-400">视频提示词</label>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => handleGenerateVideoPrompt(storyboard, editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration)}
-              disabled={isGeneratingPrompt || isReversingPrompt || !editDescription}
+              onClick={async () => { await onSaveBeforeGenerate(); handleGenerateVideoPrompt(storyboard, editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration); }}
+              disabled={isGeneratingPrompt || !editDescription}
               className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 disabled:text-gray-600"
             >
               {isGeneratingPrompt ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
               {isGeneratingPrompt ? '生成中...' : 'AI生成提示词'}
-            </button>
-            <button
-              onClick={() => handleReverseVideoPrompt(storyboard, editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration)}
-              disabled={isReversingPrompt || isGeneratingPrompt || !primaryImage}
-              className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 disabled:text-gray-600"
-              title={!primaryImage ? '需要先生成分镜图' : '根据分镜图反推提示词'}
-            >
-              {isReversingPrompt ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
-              {isReversingPrompt ? '反推中...' : 'AI反推提示词'}
             </button>
           </div>
         </div>
@@ -813,13 +1110,24 @@ function VideoTab({
               <div className="space-y-3">
                 {promptSegments.map((segment, idx) => (
                   <div key={idx}>
-                    <div className="text-xs text-gray-400 mb-1">第 {idx + 1} 段</div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs text-gray-400">第 {idx + 1} 段</div>
+                      {multimodalReference && (
+                        <button
+                          onClick={async () => { await onSaveBeforeGenerate(); handleGenerateVideoSegment(storyboard, idx, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
+                          disabled={isGenerating || !primaryImage || !segment.trim()}
+                          className="px-2 py-0.5 text-xs bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 rounded flex items-center gap-1"
+                        >
+                          <Film size={11} />生成此段
+                        </button>
+                      )}
+                    </div>
                     <textarea
                       value={segment}
                       onChange={(e) => {
                         const newArr = [...promptSegments!];
                         newArr[idx] = e.target.value;
-                        handlePromptChange(JSON.stringify(newArr), storyboard);
+                        handlePromptChange(JSON.stringify(newArr));
                       }}
                       className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none min-h-[200px]"
                       rows={4}
@@ -834,7 +1142,7 @@ function VideoTab({
           return (
             <textarea
               value={videoPrompt}
-              onChange={(e) => handlePromptChange(e.target.value, storyboard)}
+              onChange={(e) => handlePromptChange(e.target.value)}
               className="w-full h-[400px] bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
               placeholder="输入视频生成提示词，或点击右上角按钮AI生成..."
             />
@@ -872,13 +1180,56 @@ function VideoTab({
             {isDownloading ? <><Loader2 size={16} className="animate-spin" />下载中...</> : <><Download size={16} />下载资源</>}
           </button>
         </div>
-        <button
-          onClick={() => handleGenerateVideo(storyboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle)}
-          disabled={isGenerating || !primaryImage || !videoPrompt.trim()}
-          className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded flex items-center gap-2"
-        >
-          {isGenerating ? <><Loader2 size={16} className="animate-spin" />生成中...</> : <><Film size={16} />生成视频</>}
-        </button>
+        <div className="flex items-center gap-2">
+          {showAssetSubmit && (() => {
+            const primaryImg = primaryImage as any;
+            const trackingId = primaryImg?.image_id ?? storyboard.asset_id;
+            const isSubmitting = assetSubmitting[trackingId];
+            const allStatuses: (string | undefined)[] = [];
+            if (primaryImg) allStatuses.push(primaryImg.volcengine_asset_status);
+            for (const charId of storyboard.character_ids || []) {
+              const char = characters.find((c: any) => c.asset_id === charId);
+              if (char?.image_id) allStatuses.push(assetImageStatuses[char.image_id]?.status);
+            }
+            const sbSceneIds2: string[] = storyboard.scene_ids?.length
+              ? storyboard.scene_ids
+              : (storyboard.scene_id ? [storyboard.scene_id] : []);
+            for (const sceneId of sbSceneIds2) {
+              const scene = scenes.find((s: any) => s.asset_id === sceneId);
+              if (scene?.image_id) allStatuses.push(assetImageStatuses[scene.image_id]?.status);
+            }
+            for (const propId of storyboard.prop_ids || []) {
+              const prop = props.find((p: any) => p.asset_id === propId);
+              if (prop?.image_id) allStatuses.push(assetImageStatuses[prop.image_id]?.status);
+            }
+            if (allStatuses.length === 0) return null;
+            const anyFailed = allStatuses.some(s => s === 'Failed');
+            const anyProcessing = allStatuses.some(s => s === 'Processing');
+            const allActive = allStatuses.every(s => s === 'Active');
+
+            if (isSubmitting || anyProcessing) {
+              return <span className="text-sm text-yellow-400 flex items-center gap-1"><Loader2 size={14} className="animate-spin" />审核中...</span>;
+            }
+            if (allActive) {
+              return <span className="text-sm text-green-400 flex items-center gap-1"><CheckCircle size={14} />已入库</span>;
+            }
+            return (
+              <button
+                onClick={handleSubmitAsset}
+                className={`px-4 py-2 rounded flex items-center gap-2 ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
+              >
+                <Upload size={16} />{anyFailed ? '部分失败，重试' : '提交素材'}
+              </button>
+            );
+          })()}
+          <button
+            onClick={async () => { await onSaveBeforeGenerate(); handleGenerateVideo(storyboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
+            disabled={isGenerating || !videoPrompt.trim()}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded flex items-center gap-2"
+          >
+            {isGenerating ? <><Loader2 size={16} className="animate-spin" />生成中...</> : <><Film size={16} />{multimodalReference && videoSegmentCount > 1 ? `生成全部 ${videoSegmentCount} 段（各15秒）` : '生成视频'}</>}
+          </button>
+        </div>
       </div>
 
       {/* 视频库弹框 */}

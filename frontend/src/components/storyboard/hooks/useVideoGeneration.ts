@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from 'react';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
-import { getImageUrl } from '../utils/mediaUtils';
 
 interface UseVideoGenerationOptions {
   projectId: string;
@@ -30,8 +29,6 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
   const [showVideoGallery, setShowVideoGallery] = useState(false);
   const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
 
-  const promptSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const durationSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingStoryboardIdRef = useRef<string | null>(null);
 
   const loadPrimaryImage = useCallback(async (storyboard: any) => {
@@ -86,28 +83,13 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     loadVideos(storyboard);
   }, [loadPrimaryImage, loadVideos]);
 
-  const handlePromptChange = useCallback((newPrompt: string, storyboard: any) => {
+  const handlePromptChange = useCallback((newPrompt: string) => {
     setVideoPromptState(newPrompt);
-    if (promptSaveTimeoutRef.current) clearTimeout(promptSaveTimeoutRef.current);
-    promptSaveTimeoutRef.current = setTimeout(() => {
-      let promptToSave: string | string[] = newPrompt;
-      try {
-        const parsed = JSON.parse(newPrompt);
-        if (Array.isArray(parsed)) promptToSave = parsed;
-      } catch {}
-      assetApi.update(projectId, 'storyboard', storyboard.asset_id, { video_prompt: promptToSave })
-        .then(() => onSuccess())
-        .catch(console.error);
-    }, 1000);
-  }, [projectId, onSuccess]);
+  }, []);
 
-  const handleDurationChange = useCallback((newDuration: number, storyboard: any, setEditDuration: (v: number) => void) => {
+  const handleDurationChange = useCallback((newDuration: number, _storyboard: any, setEditDuration: (v: number) => void) => {
     setEditDuration(newDuration);
-    if (durationSaveTimeoutRef.current) clearTimeout(durationSaveTimeoutRef.current);
-    durationSaveTimeoutRef.current = setTimeout(() => {
-      assetApi.update(projectId, 'storyboard', storyboard.asset_id, { duration: newDuration }).catch(console.error);
-    }, 1000);
-  }, [projectId]);
+  }, []);
 
   const handleGenerateVideoPrompt = useCallback(async (
     storyboard: any,
@@ -129,7 +111,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         shot_type: editShotType,
         camera_angle: editCameraAngle,
         characters: storyboard.character_ids || [],
-        scene: storyboard.scene_id || '',
+        scene: (storyboard.scene_ids?.length ? storyboard.scene_ids[0] : storyboard.scene_id) || '',
         props: storyboard.prop_ids || [],
         duration: editDuration,
       });
@@ -151,58 +133,43 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     }
   }, [projectId, toast, onSuccess, startTask, completeTask, failTask]);
 
-  const handleReverseVideoPrompt = useCallback(async (storyboard: any, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, editDuration: number) => {
-    if (!primaryImage) { toast('请先生成分镜图', 'error'); return; }
-    const requestId = storyboard.asset_id;
-    startTask(requestId, 'video_reverse');
-    try {
-      const imageUrl = getImageUrl(primaryImage, projectId);
-      let imageBase64 = '';
-      if (imageUrl.startsWith('/api/') || !imageUrl.startsWith('data:')) {
-        const res = await fetch(imageUrl);
-        const blob = await res.blob();
-        imageBase64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-      } else {
-        imageBase64 = imageUrl;
-      }
-      const response = await generationApi.generateVideoReversePrompt(projectId, {
-        storyboard_id: storyboard.asset_id,
-        image_base64: imageBase64,
-        description: editDescription,
-        dialogue: editDialogue,
-        action: editAction,
-        shot_type: editShotType,
-        camera_angle: editCameraAngle,
-        characters: storyboard.character_ids || [],
-        scene: storyboard.scene_id || '',
-        props: storyboard.prop_ids || [],
-        duration: editDuration,
-      });
-      const newPrompt = response.data.prompt || '';
-      // 后端保存：始终执行，与弹框状态无关
-      await assetApi.update(projectId, 'storyboard', storyboard.asset_id, { video_prompt: newPrompt });
-      onSuccess();
-      // UI 更新：只在弹框仍显示同一分镜时执行
-      if (editingStoryboardIdRef.current === requestId) {
-        setVideoPromptState(newPrompt);
-        toast('视频提示词已反推并保存', 'success');
-      }
-      completeTask(requestId, 'video_reverse');
-    } catch (error: any) {
-      if (editingStoryboardIdRef.current === requestId) {
-        toast(`反推提示词失败: ${error.response?.data?.detail || error.message || '反推失败'}`, 'error');
-      }
-      failTask(requestId, 'video_reverse', error.message || '未知错误');
+  // 收集资产图片ID（兼容 scene_ids + 旧 scene_id）
+  const collectAssetImageIds = useCallback((storyboard: any): string[] => {
+    const ids: string[] = [];
+    for (const charId of storyboard.character_ids || []) {
+      const char = characters?.find((c: any) => c.asset_id === charId);
+      if (char?.image_id) ids.push(char.image_id);
     }
-  }, [projectId, primaryImage, toast, onSuccess, startTask, completeTask, failTask]);
+    const sceneIds: string[] = storyboard.scene_ids?.length
+      ? storyboard.scene_ids
+      : (storyboard.scene_id ? [storyboard.scene_id] : []);
+    for (const sid of sceneIds) {
+      const scene = scenes?.find((s: any) => s.asset_id === sid);
+      if (scene?.image_id) ids.push(scene.image_id);
+    }
+    for (const propId of storyboard.prop_ids || []) {
+      const prop = props?.find((p: any) => p.asset_id === propId);
+      if (prop?.image_id) ids.push(prop.image_id);
+    }
+    return ids;
+  }, [characters, scenes, props]);
 
   const handleGenerateVideo = useCallback(async (storyboard: any, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string) => {
-    if (!primaryImage) { toast('请先生成分镜图', 'error'); return; }
     if (!videoPrompt.trim()) { toast('请输入或生成视频提示词', 'error'); return; }
+
+    const assetImageIds = collectAssetImageIds(storyboard);
+    const allImageIds = [...assetImageIds, ...(primaryImage ? [primaryImage.image_id] : [])];
+    if (allImageIds.length === 0) { toast('请选择资产或生成分镜图', 'error'); return; }
+
+    let prompts: string[];
+    try {
+      const parsed = JSON.parse(videoPrompt);
+      prompts = Array.isArray(parsed) && parsed.length > 0 ? parsed : [videoPrompt];
+    } catch {
+      prompts = [videoPrompt];
+    }
+    const isMultiSegment = multimodalReference && prompts.length > 1;
+
     startTask(storyboard.asset_id, 'video');
     try {
       await assetApi.update(projectId, 'storyboard', storyboard.asset_id, {
@@ -215,29 +182,27 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         duration: editDuration,
         resolution: editResolution,
       });
-      if (multimodalReference) {
-        const assetImageIds: string[] = [];
-        for (const charId of storyboard.character_ids || []) {
-          const char = characters?.find((c: any) => c.asset_id === charId);
-          if (char?.image_id) assetImageIds.push(char.image_id);
+      if (isMultiSegment) {
+        for (const segmentPrompt of prompts) {
+          await generationApi.generateVideoMultimodal(projectId, {
+            storyboard_id: storyboard.asset_id,
+            episode_id: episodeId,
+            image_ids: allImageIds,
+            prompt: segmentPrompt,
+            duration: 15,
+            resolution: editResolution,
+          });
         }
-        if (storyboard.scene_id) {
-          const scene = scenes?.find((s: any) => s.asset_id === storyboard.scene_id);
-          if (scene?.image_id) assetImageIds.push(scene.image_id);
-        }
-        for (const propId of storyboard.prop_ids || []) {
-          const prop = props?.find((p: any) => p.asset_id === propId);
-          if (prop?.image_id) assetImageIds.push(prop.image_id);
-        }
+      } else if (multimodalReference) {
         await generationApi.generateVideoMultimodal(projectId, {
           storyboard_id: storyboard.asset_id,
           episode_id: episodeId,
-          image_ids: [primaryImage.image_id, ...assetImageIds],
+          image_ids: allImageIds,
           prompt: videoPrompt,
           duration: editDuration,
           resolution: editResolution,
         });
-      } else {
+      } else if (primaryImage) {
         await generationApi.generateVideo(projectId, {
           storyboard_id: storyboard.asset_id,
           episode_id: episodeId,
@@ -246,8 +211,21 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           duration: editDuration,
           resolution: editResolution,
         });
+      } else {
+        // 无主图但有资产：用 multimodal 接口
+        await generationApi.generateVideoMultimodal(projectId, {
+          storyboard_id: storyboard.asset_id,
+          episode_id: episodeId,
+          image_ids: allImageIds,
+          prompt: videoPrompt,
+          duration: editDuration,
+          resolution: editResolution,
+        });
       }
-      toast('视频生成任务已提交，请在已生成视频中查看进度', 'success');
+      const successMsg = isMultiSegment
+        ? `已提交 ${prompts.length} 段视频生成任务，请在已生成视频中查看进度`
+        : '视频生成任务已提交，请在已生成视频中查看进度';
+      toast(successMsg, 'success');
       loadVideos(storyboard);
       onSuccess();
       completeTask(storyboard.asset_id, 'video');
@@ -258,7 +236,55 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       toast(`视频生成失败: ${errorMsg}`, 'error');
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
-  }, [projectId, episodeId, primaryImage, videoPrompt, multimodalReference, characters, scenes, props, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
+  }, [projectId, episodeId, primaryImage, videoPrompt, multimodalReference, collectAssetImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
+
+  const handleGenerateVideoSegment = useCallback(async (storyboard: any, segmentIndex: number, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string) => {
+    let prompts: string[];
+    try {
+      const parsed = JSON.parse(videoPrompt);
+      prompts = Array.isArray(parsed) && parsed.length > 0 ? parsed : [videoPrompt];
+    } catch {
+      prompts = [videoPrompt];
+    }
+    const segmentPrompt = prompts[segmentIndex];
+    if (!segmentPrompt?.trim()) { toast('该段提示词为空', 'error'); return; }
+
+    const assetImageIds = collectAssetImageIds(storyboard);
+    const allImageIds = [...assetImageIds, ...(primaryImage ? [primaryImage.image_id] : [])];
+    if (allImageIds.length === 0) { toast('请选择资产或生成分镜图', 'error'); return; }
+
+    startTask(storyboard.asset_id, 'video');
+    try {
+      await assetApi.update(projectId, 'storyboard', storyboard.asset_id, {
+        description: editDescription,
+        dialogue: editDialogue,
+        action: editAction,
+        shot_type: editShotType,
+        camera_angle: editCameraAngle,
+        video_prompt: videoPrompt,
+        duration: editDuration,
+        resolution: editResolution,
+      });
+      await generationApi.generateVideoMultimodal(projectId, {
+        storyboard_id: storyboard.asset_id,
+        episode_id: episodeId,
+        image_ids: allImageIds,
+        prompt: segmentPrompt,
+        duration: 15,
+        resolution: editResolution,
+      });
+      toast(`第 ${segmentIndex + 1} 段视频任务已提交`, 'success');
+      loadVideos(storyboard);
+      onSuccess();
+      completeTask(storyboard.asset_id, 'video');
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.detail
+        ? (typeof error.response.data.detail === 'string' ? error.response.data.detail : JSON.stringify(error.response.data.detail))
+        : error.message || '生成失败';
+      toast(`视频生成失败: ${errorMsg}`, 'error');
+      failTask(storyboard.asset_id, 'video', errorMsg);
+    }
+  }, [projectId, episodeId, primaryImage, videoPrompt, collectAssetImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
 
   const handleExport = useCallback(async (storyboard: any) => {
     setIsExporting(true);
@@ -328,8 +354,15 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     }
   }, [projectId, loadPrimaryImage, onSuccess]);
 
+  let videoSegmentCount = 1;
+  try {
+    const parsed = JSON.parse(videoPrompt);
+    if (Array.isArray(parsed) && parsed.length > 1) videoSegmentCount = parsed.length;
+  } catch {}
+
   return {
     videoPrompt,
+    videoSegmentCount,
     primaryImage,
     storyboardImages,
     videos,
@@ -345,12 +378,13 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     hasRunningTask,
     getTaskStatus,
     initForStoryboard,
+    loadPrimaryImage,
     loadVideos,
     handlePromptChange,
     handleDurationChange,
     handleGenerateVideoPrompt,
-    handleReverseVideoPrompt,
     handleGenerateVideo,
+    handleGenerateVideoSegment,
     handleExport,
     handleDownload,
     handleSetPrimaryImage,

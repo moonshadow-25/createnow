@@ -206,7 +206,9 @@ export function ApiConfigPanel({
       // createnow 默认模型
       model: apiType === 'createnow' ? 'nova-pro' : config.model,
       // 特殊处理：OpenAI 不需要 image_edit_model
-      image_edit_model: apiType === 'openai' ? undefined : config.image_edit_model
+      image_edit_model: apiType === 'openai' ? undefined : config.image_edit_model,
+      // createnow 默认开启生成音频和全能参考
+      ...(apiType === 'createnow' ? { generate_audio: true, multimodal_reference: true } : {})
     };
 
     setLocalConfig({ ...localConfig, [type]: newConfig });
@@ -360,8 +362,10 @@ export function ApiConfigPanel({
     const showImageEditModel = type === 'image' && isDashscope;
     const showVoiceField = type === 'tts' && !isLocal;  // OpenAI和阿里百炼显示voice
     const showIdField = type === 'tts' && isLocal;  // 本地API显示id
-    const showByteSeedVideoOptions = type === 'video' && isByteSeed;  // ByteSeed视频特有选项
+    const showByteSeedVideoOptions = type === 'video' && (isByteSeed || isCreatenow);  // ByteSeed/CreateNow视频特有选项
+    const showMultimodalReference = type === 'video' && (isByteSeed || isCreatenow);  // 全能参考：ByteSeed 和 CreateNow 均支持
     const showByteSeedImageOptions = type === 'image' && isByteSeed;  // ByteSeed图像特有选项
+    const showVolcengineAkSk = type === 'video' && isByteSeed;  // 仅 byteseed 时显示 AK/SK（createnow 由服务器注入）
 
     // ✅ 增强判断：不仅检查 null，还检查预设是否真实存在
     const hasNoActiveTag =
@@ -570,21 +574,54 @@ export function ApiConfigPanel({
                   />
                   <span className="text-sm text-gray-300">添加水印</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={config.multimodal_reference || false}
-                    onChange={(e) => handleConfigChange(type, 'multimodal_reference', e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
-                    disabled={hasNoActiveTag}
-                  />
-                  <span className="text-sm text-gray-300">全能参考</span>
-                </label>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                字节Seed特有选项：生成音频需要使用 Seed 1.5 Pro 模型；全能参考需要使用支持多模态输入的模型
+                字节Seed特有选项：生成音频需要使用 Seed 1.5 Pro 模型；CreateNow 官方接口同样支持
               </p>
             </>
+          )}
+
+          {showMultimodalReference && (
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.multimodal_reference || false}
+                  onChange={(e) => handleConfigChange(type, 'multimodal_reference', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                  disabled={hasNoActiveTag}
+                />
+                <span className="text-sm text-gray-300">全能参考</span>
+              </label>
+            </div>
+          )}
+
+          {showVolcengineAkSk && (
+            <div className="space-y-3 border-t border-gray-700 pt-3">
+              <p className="text-xs text-gray-400">Volcengine 素材库（可选，用于提交虚拟人像素材）</p>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Volcengine Access Key</label>
+                <input
+                  type="text"
+                  value={(config as any).volcengine_ak || ''}
+                  onChange={(e) => handleConfigChange(type, 'volcengine_ak' as any, e.target.value)}
+                  placeholder="AK..."
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                  disabled={hasNoActiveTag}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Volcengine Secret Key</label>
+                <input
+                  type="password"
+                  value={(config as any).volcengine_sk || ''}
+                  onChange={(e) => handleConfigChange(type, 'volcengine_sk' as any, e.target.value)}
+                  placeholder="SK..."
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                  disabled={hasNoActiveTag}
+                />
+              </div>
+            </div>
           )}
 
           {showByteSeedImageOptions && (

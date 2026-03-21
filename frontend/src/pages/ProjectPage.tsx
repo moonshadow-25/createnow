@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { MessageSquare, Users, Film, FileText, Settings, Palette, ChevronDown } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
+import { useGlobalStyleStore } from '@/store/globalStyleStore';
 import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
 import { StoryboardTab } from '@/components/storyboard/StoryboardTab';
 import { ScriptTab } from '@/components/script/ScriptTab';
 import { CanvasTab } from '@/components/canvas/CanvasTab';
 import { SettingsModal } from '@/components/settings/SettingsModal';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
 type TabType = 'chat' | 'assets' | 'script' | 'storyboard' | 'canvas';
 
@@ -17,11 +19,43 @@ export default function ProjectPage() {
   const navigate = useNavigate();
   const { currentProject, fetchProject } = useProjectStore();
   const { characters, scenes, props, episodes, fetchAssets } = useAssetStore();
+  const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
+  const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
+  const TAB_LABELS: Record<string, string> = {
+    assets: '资产面板', script: '剧本', canvas: '画布', chat: '项目对话',
+  };
+  useEffect(() => {
+    if (!projectId || activeTab === 'storyboard') return;
+    setVibeDramaContext({
+      projectId,
+      tabName: activeTab,
+      label: TAB_LABELS[activeTab] || activeTab,
+    });
+  }, [activeTab, projectId]);
+
+  // 订阅 Vibe Drama 资产刷新事件
+  useEffect(() => {
+    if (!projectId) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.projectId === projectId) {
+        fetchAssets(projectId, 'character');
+        fetchAssets(projectId, 'scene');
+        fetchAssets(projectId, 'prop');
+        fetchAssets(projectId, 'episode');
+        fetchAssets(projectId, 'storyboard');
+      }
+    };
+    window.addEventListener('vibe-drama:assets-created', handler);
+    return () => window.removeEventListener('vibe-drama:assets-created', handler);
+  }, [projectId]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -56,6 +90,17 @@ export default function ProjectPage() {
     fetchAssets(projectId, 'episode');
     fetchAssets(projectId, 'storyboard');
   }, [projectId]);
+
+  // 同步全局风格配置到 store
+  useEffect(() => {
+    const cfg = (currentProject as any)?.ai_config?.global_style_config;
+    if (cfg) {
+      setGlobalStyleConfig({
+        global_resolution: cfg.global_resolution || '1280x720',
+        nine_grid_mode: cfg.nine_grid_mode || false,
+      });
+    }
+  }, [(currentProject as any)?.ai_config?.global_style_config]);
 
   const handleOpenSettings = () => {
     setShowSettings(true);
@@ -154,7 +199,7 @@ export default function ProjectPage() {
       <div className="h-[calc(100vh-73px)]">
         {activeTab === 'chat' && (
           <div className="flex h-full">
-            <ChatTab projectId={projectId!} onAssetsCreated={handleRefreshAssets} />
+            <ChatTab projectId={projectId!} />
           </div>
         )}
 
@@ -186,6 +231,7 @@ export default function ProjectPage() {
               props={props}
               onUpdated={handleRefreshAssets}
               multimodalReference={currentProject?.ai_config?.video?.multimodal_reference || false}
+              showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
             />
           </div>
         )}

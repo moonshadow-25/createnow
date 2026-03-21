@@ -27,7 +27,6 @@ export function ChatInput({
   onClearFile,
 }: ChatInputProps) {
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -52,15 +51,6 @@ export function ChatInput({
     }
 
     onSend(message);
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      Array.from(files).forEach(handleFileLoad);
-    }
-    // 重置 input 以允许选择同一文件
-    e.target.value = '';
   };
 
   const handleFileLoad = async (file: File) => {
@@ -165,22 +155,6 @@ export function ChatInput({
         )}
 
         <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".txt,.md"
-            multiple
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition text-sm text-gray-300"
-            title="选择剧本文件"
-          >
-            <Upload size={16} />
-            选择剧本
-          </button>
           <textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}

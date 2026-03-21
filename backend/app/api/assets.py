@@ -124,10 +124,32 @@ async def update_asset(project_id: str, asset_type: str, asset_id: str, asset: A
 
 @router.delete("/{asset_type}/{asset_id}")
 async def delete_asset(project_id: str, asset_type: str, asset_id: str):
-    """删除资产"""
+    """删除资产，并级联清理分镜中的引用"""
     success = AssetService.delete_asset(project_id, asset_type, asset_id)
     if not success:
         raise HTTPException(status_code=404, detail="Asset not found")
+
+    # 级联清理：从所有分镜中移除对该资产的引用
+    if asset_type in ("character", "scene", "prop"):
+        all_storyboards = AssetService.list_assets(project_id, "storyboard")
+        for sb in all_storyboards:
+            changed = False
+            if asset_type == "character" and asset_id in sb.get("character_ids", []):
+                sb["character_ids"] = [x for x in sb["character_ids"] if x != asset_id]
+                changed = True
+            elif asset_type == "scene":
+                if asset_id in sb.get("scene_ids", []):
+                    sb["scene_ids"] = [x for x in sb["scene_ids"] if x != asset_id]
+                    changed = True
+                if sb.get("scene_id") == asset_id:
+                    sb["scene_id"] = None
+                    changed = True
+            elif asset_type == "prop" and asset_id in sb.get("prop_ids", []):
+                sb["prop_ids"] = [x for x in sb["prop_ids"] if x != asset_id]
+                changed = True
+            if changed:
+                AssetService.save_asset(project_id, "storyboard", sb)
+
     return {"success": True}
 
 

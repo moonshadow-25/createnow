@@ -314,12 +314,14 @@ def get_video_adapter(
     from app.services.ai.adapters.dashscope import DashScopeVideoAdapter
     from app.services.ai.adapters.local import LocalVideoAdapter
     from app.services.ai.adapters.byteseed import ByteSeedVideoAdapter
+    from app.services.ai.adapters.createnow import CreatenowVideoAdapter
 
     adapters = {
         "openai": OpenAIVideoAdapter,
         "dashscope": DashScopeVideoAdapter,
         "local": LocalVideoAdapter,
         "byteseed": ByteSeedVideoAdapter,
+        "createnow": CreatenowVideoAdapter,
     }
 
     adapter_cls = adapters.get(api_type)

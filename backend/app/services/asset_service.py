@@ -51,7 +51,14 @@ class AssetService:
 
     @staticmethod
     def load_asset(project_id: str, asset_type: str, asset_id: str) -> Optional[Dict]:
-        """加载资产"""
+        """加载资产，优先从内存缓存查找"""
+        # 先查缓存
+        if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
+            for a in _assets_cache[project_id][asset_type]:
+                if a.get("asset_id") == asset_id:
+                    return a
+
+        # 缓存未命中，从磁盘加载
         project_dir = settings.PROJECTS_DIR / project_id
         file_path = project_dir / f"{asset_type}s" / f"{asset_id}.json"
 
@@ -59,7 +66,19 @@ class AssetService:
             return None
 
         with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            asset = json.load(f)
+
+        # 写入缓存（触发该类型的缓存初始化或追加）
+        if project_id not in _assets_cache:
+            _assets_cache[project_id] = {}
+        if asset_type not in _assets_cache[project_id]:
+            _assets_cache[project_id][asset_type] = []
+        cache = _assets_cache[project_id][asset_type]
+        # 避免重复追加
+        if not any(a.get("asset_id") == asset_id for a in cache):
+            cache.append(asset)
+
+        return asset
 
     @staticmethod
     def list_assets(project_id: str, asset_type: str, include_children: bool = False) -> List[Dict]:

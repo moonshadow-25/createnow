@@ -21,6 +21,7 @@ from .download import router as download_router
 from .prompt import router as prompt_router
 from .global_style import router as global_style_router
 from .logs import router as logs_router
+from .assets import router as assets_router
 
 # 创建主路由器
 router = APIRouter(prefix="/projects/{project_id}/generate", tags=["generation"])
@@ -34,6 +35,7 @@ router.include_router(audio_router)
 router.include_router(prompt_router)
 router.include_router(global_style_router)
 router.include_router(logs_router)
+router.include_router(assets_router)
 
 # 导出模板供外部使用
 from .templates import DEFAULT_PROMPT_TEMPLATES

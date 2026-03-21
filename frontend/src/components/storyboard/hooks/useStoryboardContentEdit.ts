@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useGlobalStyleStore } from '@/store/globalStyleStore';
 
 export interface StoryboardContentEditState {
   contentExpanded: boolean;
@@ -20,13 +21,8 @@ export interface StoryboardContentEditState {
   resetEditState: (storyboard?: any) => void;
 }
 
-/**
- * 分镜内容编辑状态管理 Hook
- * 用于管理分镜的描述、对话、动作、镜头类型、机位角度等编辑状态
- *
- * @returns 编辑状态和设置函数
- */
 export const useStoryboardContentEdit = (): StoryboardContentEditState => {
+  const global_resolution = useGlobalStyleStore(s => s.global_resolution);
   const [contentExpanded, setContentExpanded] = useState(false);
   const [editDescription, setEditDescription] = useState('');
   const [editDialogue, setEditDialogue] = useState('');
@@ -34,7 +30,12 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
   const [editShotType, setEditShotType] = useState('中景');
   const [editCameraAngle, setEditCameraAngle] = useState('平视');
   const [editDuration, setEditDuration] = useState(6);
-  const [editResolution, setEditResolution] = useState('1920x1080');
+  const [editResolution, setEditResolution] = useState('1280x720');
+
+  // 全局分辨率变化时同步更新
+  useEffect(() => {
+    setEditResolution(global_resolution || '1280x720');
+  }, [global_resolution]);
 
   const resetEditState = (storyboard?: any) => {
     if (storyboard) {
@@ -44,7 +45,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditShotType(storyboard.shot_type || '中景');
       setEditCameraAngle(storyboard.camera_angle || '平视');
       setEditDuration(storyboard.duration || 6);
-      setEditResolution(storyboard.resolution || '1920x1080');
+      setEditResolution(global_resolution || '1280x720');
     } else {
       setEditDescription('');
       setEditDialogue('');
@@ -52,7 +53,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditShotType('中景');
       setEditCameraAngle('平视');
       setEditDuration(6);
-      setEditResolution('1920x1080');
+      setEditResolution(global_resolution || '1280x720');
     }
   };
 

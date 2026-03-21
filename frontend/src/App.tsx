@@ -5,6 +5,7 @@ import ProjectPage from '@/pages/ProjectPage';
 import { ToastProvider } from '@/components/common/Toast';
 import { AdminLoginModal } from '@/components/auth/AdminLoginModal';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { VibeDramaPanel } from '@/components/chat/VibeDramaPanel';
 
 function App() {
   const { isAuthenticated, restoreFromStorage } = useAdminAuthStore();
@@ -40,6 +41,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      <VibeDramaPanel />
     </ToastProvider>
   );
 }

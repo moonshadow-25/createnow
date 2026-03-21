@@ -176,22 +176,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
     if not image_ids and not has_multimodal:
         raise HTTPException(status_code=400, detail="No images provided")
 
-    # 全能参考：后端自动追加分镜关联资产的主图 ID
     multimodal_reference = ai_config.get("video", {}).get("multimodal_reference", False)
-    if multimodal_reference and request.storyboard_id:
-        from app.services import AssetService
-        storyboard = AssetService.load_asset(project_id, "storyboard", request.storyboard_id)
-        if storyboard:
-            asset_pairs = (
-                [("character", cid) for cid in storyboard.get("character_ids") or []] +
-                ([("scene", storyboard["scene_id"])] if storyboard.get("scene_id") else []) +
-                [("prop", pid) for pid in storyboard.get("prop_ids") or []]
-            )
-            for asset_type, asset_id in asset_pairs:
-                primary = ImageService.get_primary_image(project_id, asset_id)
-                if primary and primary.get("image_id"):
-                    image_ids.append(primary["image_id"])
-                    logger.info(f"[视频生成] 全能参考追加资产图: {asset_type}/{asset_id}")
 
     # 记录请求日志
     request_log = {
@@ -214,18 +199,24 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
             image_url = None
 
-            # 优先使用本地文件（转base64）
-            local_path = image.get("local_path")
-            if local_path:
-                local_file_path = settings.PROJECTS_DIR / project_id / "images" / "files" / local_path
+            # 优先使用 Volcengine Asset ID（asset:// URI）
+            if image.get("volcengine_asset_id") and image.get("volcengine_asset_status") == "Active":
+                image_url = f"asset://{image['volcengine_asset_id']}"
+                logger.info(f"[视频生成] 使用 Volcengine Asset URI: {image_url}")
 
-                if local_file_path.exists():
-                    try:
-                        from app.services.image_download_service import ImageDownloadService
-                        image_url = ImageDownloadService.image_to_base64_url(local_file_path)
-                        logger.info(f"[视频生成] 使用本地图片 (base64): {local_path}")
-                    except Exception as e:
-                        logger.warning(f"[视频生成] 读取本地图片失败 {local_path}: {e}，尝试使用URL")
+            # 其次使用本地文件（转base64）
+            if not image_url:
+                local_path = image.get("local_path")
+                if local_path:
+                    local_file_path = settings.PROJECTS_DIR / project_id / "images" / "files" / local_path
+
+                    if local_file_path.exists():
+                        try:
+                            from app.services.image_download_service import ImageDownloadService
+                            image_url = ImageDownloadService.image_to_base64_url(local_file_path)
+                            logger.info(f"[视频生成] 使用本地图片 (base64): {local_path}")
+                        except Exception as e:
+                            logger.warning(f"[视频生成] 读取本地图片失败 {local_path}: {e}，尝试使用URL")
 
             # 降级到外部URL
             if not image_url:
@@ -240,9 +231,9 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                     detail=f"Image {image_id}: 本地文件不存在且无有效URL"
                 )
 
-            # 根据配置决定是否压缩图片到1080p（默认不压缩）
+            # 根据配置决定是否压缩图片到1080p（asset:// URI 跳过缩放）
             scale_to_1080p = ai_config.get("video", {}).get("scale_to_1080p", False)
-            if scale_to_1080p:
+            if scale_to_1080p and not image_url.startswith("asset://"):
                 logger.info(f"[视频生成] 1080p缩放已启用，开始压缩图片")
                 image_url = video_service.scale_image_to_1080p(image_url)
             else:
@@ -532,7 +523,9 @@ async def generate_multi_scene_video_prompt(
     for sb in storyboards:
         if sb.get("character_ids"):
             character_ids.update(sb["character_ids"])
-        if sb.get("scene_id"):
+        if sb.get("scene_ids"):
+            scene_ids.update(sb["scene_ids"])
+        elif sb.get("scene_id"):
             scene_ids.add(sb["scene_id"])
         if sb.get("prop_ids"):
             prop_ids.update(sb["prop_ids"])
