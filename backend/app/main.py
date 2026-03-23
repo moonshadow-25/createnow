@@ -165,12 +165,14 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
         "/api/auth/",
         "/api/health",
     )
-    # 图片/视频直接访问路径（<img src> / <video src> 无法携带 token）
+    # 图片/视频/音频直接访问路径（<img src> / <video src> / <audio src> 无法携带 token）
     _WHITELIST_CONTAINS = (
         "/images/files/",
         "/images/thumbnails/",
         "/thumbnails/",
         "/videos/files/",
+        "/audios/files/",
+        "/generate/audios/",
     )
 
     async def dispatch(self, request: Request, call_next):

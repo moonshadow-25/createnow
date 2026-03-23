@@ -146,6 +146,12 @@ class JianyingExportRequest(BaseModel):
     existing_project_id: Optional[str] = None  # 现有项目ID（mode=existing 时必填）
 
 
+class JianyingDownloadRequest(BaseModel):
+    """剪映下载导出请求（生成可下载 ZIP 包）"""
+    episode_id: str
+    project_name: Optional[str] = None  # 可选，默认按日期生成
+
+
 class ImageSplitTripleRequest(BaseModel):
     """拆解三宫格图片请求"""
     storyboard_id: str  # 要拆解的分镜ID

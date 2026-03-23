@@ -19,6 +19,7 @@ class ChatMessage(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     episode_id: Optional[str] = None  # 当前工作剧集ID，传入后AI具备该集的剧本+分镜上下文
+    context_messages: Optional[List[Dict]] = None  # 浏览器端存储的历史消息，优先用于LLM上下文
 
 
 # 工具定义
@@ -185,7 +186,7 @@ TOOLS = [
                 "episode_id": {"type": "string", "description": "所属剧集的ID"},
                 "sequence": {"type": "integer", "description": "分镜序号"},
                 "description": {"type": "string", "description": "分镜简要描述（可选，若提供video_prompt则可省略）"},
-                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片；若角色有主音色（有音色=是），末尾需注明@音频N是xxx的声音"},
                 "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
                 "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
@@ -209,7 +210,7 @@ TOOLS = [
                 "episode_id": {"type": "string", "description": "所属剧集ID（用于查找）"},
                 "sequence": {"type": "integer", "description": "镜头序号（用于查找）"},
                 "description": {"type": "string", "description": "新的画面描述"},
-                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片；若角色有主音色（有音色=是），末尾需注明@音频N是xxx的声音"},
                 "duration": {"type": "integer", "description": "视频时长（秒）"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "角色ID列表"},
                 "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表"},
@@ -246,7 +247,7 @@ TOOLS = [
                 "episode_id": {"type": "string", "description": "所属剧集的asset_id（必须是UUID格式的ID，不要用集数名称如'第2集'）"},
                 "insert_at_sequence": {"type": "integer", "description": "插入位置（在这个序号前插入，插入后的新分镜使用此序号）"},
                 "description": {"type": "string", "description": "分镜画面描述（可选，新版主要使用video_prompt）"},
-                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词，使用@图片N引用资产图片；若角色有主音色（有音色=是），末尾需注明@音频N是xxx的声音"},
                 "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
                 "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
@@ -1236,7 +1237,7 @@ def parse_tool_calls(content: str) -> List[Dict]:
     return tool_calls
 
 
-async def stream_conversation(project_id: str, message: str, conversation_id: Optional[str] = None, episode_id: Optional[str] = None):
+async def stream_conversation(project_id: str, message: str, conversation_id: Optional[str] = None, episode_id: Optional[str] = None, context_messages: Optional[List[Dict]] = None):
     """流式对话处理，支持Function Calling和Agentic Loop"""
 
     # 加载项目配置
@@ -1272,14 +1273,19 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
         yield f"data: {json.dumps({'type': 'error', 'content': '请先配置LLM API密钥（点击右上角设置图标）'})}\n\n"
         return
 
-    # 加载或创建对话
+    # 加载或创建对话（仅用于审计日志写入，不再作为LLM上下文来源）
     conversation = Conversation(project_id, conversation_id)
 
-    # 添加用户消息
+    # 添加用户消息（写入文件，作为审计日志）
     conversation.add_message("user", message)
 
-    # 获取对话上下文
-    context = conversation.get_context(last_n=20)
+    # 获取对话上下文：优先使用浏览器端传来的历史（实现用户级隔离），否则从文件加载（兼容旧调用）
+    if context_messages is not None:
+        recent = context_messages[-19:]  # 最多19条，加上当前消息共20条
+        context = [{"role": m["role"], "content": m["content"]} for m in recent if "role" in m and "content" in m]
+        context.append({"role": "user", "content": message})
+    else:
+        context = conversation.get_context(last_n=20)
 
     # 加载项目现有资产，提供给AI作为上下文
     from app.services.asset_service import AssetService
@@ -1332,13 +1338,14 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
             ep_script = ep_asset.get("script", "（无剧本）")
             ep_storyboards = storyboards_by_episode.get(episode_id, [])
 
-            # 构建资产可用列表（供 AI 编写 @图片N 引用）
+            # 构建资产可用列表（供 AI 编写 @图片N / @音频N 引用）
             asset_ref_lines = []
             for c in existing_characters:
                 cid = c.get("asset_id", "")
                 cname = c.get("name", "")
                 has_img = bool(c.get("image_id"))
-                asset_ref_lines.append(f"  角色: {cname} (asset_id={cid}, 有图={'是' if has_img else '否'})")
+                has_voice = bool(c.get("voice_audio_id"))
+                asset_ref_lines.append(f"  角色: {cname} (asset_id={cid}, 有图={'是' if has_img else '否'}, 有音色={'是' if has_voice else '否'})")
             for s in existing_scenes:
                 sid = s.get("asset_id", "")
                 sname = s.get("name", "")
@@ -1373,7 +1380,7 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
 【当前集分镜列表（{len(ep_storyboards)}个，每个15秒）】
 {chr(10).join(sb_detail_lines) if sb_detail_lines else "（暂无分镜）"}
 
-【可用资产（用于视频提示词中的 @图片N 引用）】
+【可用资产（用于视频提示词中的 @图N / @音频N 引用）】
 {chr(10).join(asset_ref_lines) if asset_ref_lines else "（暂无资产）"}
 
 【全局视频风格（必须嵌入每个video_prompt）】
@@ -1381,8 +1388,8 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
 
 == 分镜新模型说明 ==
 - 每个分镜 = 一段独立的15秒视频，由 video_prompt 驱动
-- video_prompt 使用 Seedance 2.0 格式：自然语言描述画面，@图片N 引用上面的资产图片
-- 资产引用规则：按使用顺序编号，@图片1=第一个引用的角色/场景，@图片2=第二个...
+- video_prompt 使用 Seedance 2.0 格式：自然语言描述画面，@图N 引用上面的资产图片
+- 资产引用规则：按使用顺序编号，@图1=第一个引用的角色/场景，@图2=第二个...
 - 旧字段（shot_type/camera_angle/dialogue/action）不再必要，重心在 video_prompt
 - 删除/修改已有分镜前，必须先告知用户并等待确认
 """
@@ -1410,10 +1417,13 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
 """
 
     # 从模板加载工具描述和系统提示词（分镜 tab 用完整工具集，资产 tab 用无分镜工具版）
-    from app.services.global_prompt_service import get_group_c_template
+    # 传入 ai_config 使项目级提示词覆盖（prompt_overrides）生效
+    from app.services.global_prompt_service import get_prompt_content
     tools_desc_key = "conversation_tools_desc" if is_storyboard_tab else "conversation_tools_desc_assets"
-    tools_desc = get_group_c_template(tools_desc_key) or get_group_c_template("conversation_tools_desc") or ""
-    _conv_tpl = get_group_c_template("conversation_system_prompt")
+    tools_desc = (get_prompt_content(tools_desc_key, ai_config)
+                  or get_prompt_content("conversation_tools_desc", ai_config)
+                  or "")
+    _conv_tpl = get_prompt_content("conversation_system_prompt", ai_config)
     system_prompt = (_conv_tpl or "").format(
         project_context=project_context,
         tools_desc=tools_desc
@@ -1552,7 +1562,7 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
 async def chat(project_id: str, chat_msg: ChatMessage):
     """对话接口（流式响应，支持Function Calling和Agentic Loop）"""
     return StreamingResponse(
-        stream_conversation(project_id, chat_msg.message, chat_msg.conversation_id, chat_msg.episode_id),
+        stream_conversation(project_id, chat_msg.message, chat_msg.conversation_id, chat_msg.episode_id, chat_msg.context_messages),
         media_type="text/event-stream"
     )
 
@@ -1626,9 +1636,9 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
 """
 
     # 剧本分析的系统提示
-    # 系统提示词从模板加载，在 data/config/default_prompt_templates.json 中修改
-    from app.services.global_prompt_service import get_group_c_template
-    _script_tpl = get_group_c_template("script_analysis_system_prompt")
+    # 系统提示词从模板加载，支持项目级覆盖（通过 ai_config.prompt_overrides 配置）
+    from app.services.global_prompt_service import get_prompt_content
+    _script_tpl = get_prompt_content("script_analysis_system_prompt", ai_config)
     system_prompt = (_script_tpl or "").format(
         project_context=project_context
     )

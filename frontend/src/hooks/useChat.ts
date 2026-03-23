@@ -1,7 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Message, StreamChunk, ToolCall } from '@/types';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
-export function useChat(projectId: string, options?: { label?: string; episodeId?: string }) {
+export function useChat(projectId: string, options?: { label?: string; episodeId?: string; tabName?: string }) {
+  const removeSession = useVibeDramaStore(s => s.removeSession);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [currentThinking, setCurrentThinking] = useState('');
@@ -10,9 +12,13 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
   const [conversationId, setConversationId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
+  // 用 ref 保存最新 messages，避免 sendMessage 闭包中取到过期值
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   const storageKey = options?.episodeId
     ? `conversation_${projectId}_${options.episodeId}`
-    : `conversation_${projectId}`;
+    : `conversation_${projectId}_${options?.tabName || ''}`;
 
   // 加载历史对话
   useEffect(() => {
@@ -65,6 +71,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
           message: content,
           conversation_id: conversationId || undefined,
           episode_id: options?.episodeId || undefined,
+          context_messages: messagesRef.current.map(m => ({ role: m.role, content: m.content })),
         };
 
         const response = await fetch('/api/projects/' + projectId + '/chat', {
@@ -191,7 +198,12 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     setConversationId('');
     setError(null);
     localStorage.removeItem(storageKey);
-  }, [storageKey]);
+    // 同步从历史面板移除该 session 条目
+    const sessionKey = options?.episodeId
+      ? `${projectId}_${options.episodeId}`
+      : `${projectId}_${options?.tabName || ''}`;
+    removeSession(sessionKey);
+  }, [storageKey, projectId, options?.episodeId, options?.tabName, options?.label, removeSession]);
 
   return {
     messages,

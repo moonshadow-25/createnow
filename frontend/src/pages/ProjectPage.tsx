@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MessageSquare, Users, Film, FileText, Settings, Palette, ChevronDown } from 'lucide-react';
+import { MessageSquare, Users, Film, FileText, Settings, Palette, ChevronDown, RefreshCw } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
+import { adminApi } from '@/services/api';
 import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
 import { StoryboardTab } from '@/components/storyboard/StoryboardTab';
@@ -25,6 +26,7 @@ export default function ProjectPage() {
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [isClearingCache, setIsClearingCache] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
@@ -75,6 +77,20 @@ export default function ProjectPage() {
     fetchAssets(projectId, 'prop');
     fetchAssets(projectId, 'episode');
     fetchAssets(projectId, 'storyboard');
+  };
+
+  // 清后端内存缓存，再重新拉取所有资产
+  const handleClearCache = async () => {
+    if (!projectId || isClearingCache) return;
+    setIsClearingCache(true);
+    try {
+      await adminApi.clearCache(projectId);
+      await handleRefreshAssets();
+    } catch (e) {
+      console.error('清缓存失败', e);
+    } finally {
+      setIsClearingCache(false);
+    }
   };
 
   // 初始化加载
@@ -175,10 +191,19 @@ export default function ProjectPage() {
                   </button>
                   <button
                     onClick={() => { setActiveTab('canvas'); setShowMoreMenu(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-b-lg hover:bg-gray-600 ${activeTab === 'canvas' ? 'text-blue-400' : 'text-gray-200'}`}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 ${activeTab === 'canvas' ? 'text-blue-400' : 'text-gray-200'}`}
                   >
                     <Palette size={16} />
                     画布
+                  </button>
+                  <div className="border-t border-gray-600 my-1" />
+                  <button
+                    onClick={() => { handleClearCache(); setShowMoreMenu(false); }}
+                    disabled={isClearingCache}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-b-lg hover:bg-gray-600 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <RefreshCw size={16} className={isClearingCache ? 'animate-spin' : ''} />
+                    {isClearingCache ? '刷新中...' : '刷新缓存'}
                   </button>
                 </div>
               )}
@@ -199,7 +224,7 @@ export default function ProjectPage() {
       <div className="h-[calc(100vh-73px)]">
         {activeTab === 'chat' && (
           <div className="flex h-full">
-            <ChatTab projectId={projectId!} />
+            <ChatTab projectId={projectId!} tabName="chat" />
           </div>
         )}
 

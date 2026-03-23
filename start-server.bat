@@ -3,8 +3,8 @@ chcp 65001 >nul
 REM ========================================
 REM CreateNow - 一键启动服务器映射（单窗口）
 REM ========================================
-REM 功能：后台启动本地服务(8001) + 前台SSH隧道
-REM 访问：http://47.117.182.216:8002
+REM 功能：后台启动本地服务(8501) + 前台SSH隧道
+REM 访问：http://47.117.182.216:8102
 
 setlocal enabledelayedexpansion
 
@@ -19,14 +19,14 @@ set SERVER_USER=root
 set SERVER_IP=47.117.182.216
 set SSH_PORT=22
 set SSH_KEY=%~dp047.117.182.216_id_ed25519
-set LOCAL_PORT=8001
-set REMOTE_PORT=8001
+set LOCAL_PORT=8501
+set REMOTE_PORT=8102
 set SCRIPT_DIR=%~dp0
 
 echo [配置信息]
 echo 本地服务端口: %LOCAL_PORT%
 echo 服务器地址: %SERVER_USER%@%SERVER_IP%:%SSH_PORT%
-echo 公网访问: http://%SERVER_IP%:8002
+echo 公网访问: http://%SERVER_IP%:8102
 echo.
 
 REM ========================================
@@ -116,7 +116,7 @@ echo   已就绪！
 echo ========================================
 echo.
 echo 本地服务: http://localhost:%LOCAL_PORT%
-echo 公网访问: http://%SERVER_IP%:8002
+echo 公网访问: http://%SERVER_IP%:8102
 echo 服务日志: server.log
 echo.
 echo 按 Ctrl+C 关闭隧道（本地服务也会随之停止）

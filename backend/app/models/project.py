@@ -163,6 +163,9 @@ class Character(Asset):
     personality: str = ""
     background: str = ""
     parent_id: Optional[str] = None  # 父角色ID，用于继承
+    voice_prompt: Optional[str] = None   # 音色描述（提示词）
+    voice_id: Optional[str] = None       # TTS 音色名称/ID（如 "zhichu"）
+    voice_audio_id: Optional[str] = None  # 主音色样本 AudioGeneration.audio_id
 
 
 class Scene(Asset):
@@ -230,6 +233,7 @@ class AudioGeneration(BaseModel):
     project_id: str  # 所属项目
     storyboard_id: Optional[str] = None  # 关联的分镜（可选）
     episode_id: Optional[str] = None  # 关联的剧集（可选）
+    character_id: Optional[str] = None  # 关联的角色（角色音色样本专用）
     text: str  # 转换的文本内容
     voice: Optional[str] = None  # 音色（OpenAI/阿里百炼）
     speaker_id: Optional[str] = None  # Speaker ID（本地API）

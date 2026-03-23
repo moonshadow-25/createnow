@@ -50,31 +50,27 @@ export function VibeDramaPanel() {
 
   return (
     <>
-      {/* FAB 触发按钮 */}
-      <button
+      {/* FAB 触发按钮（面板打开时隐藏，避免遮挡输入区） */}
+      {!isOpen && <button
         onClick={toggle}
         className="fixed bottom-6 right-6 z-50 w-13 h-13 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 bg-indigo-600 hover:bg-indigo-500 active:scale-95"
         style={{ width: 52, height: 52 }}
         title="Vibe Drama AI"
       >
-        {isOpen ? (
-          <X size={22} className="text-white" />
-        ) : (
-          <Sparkles size={22} className="text-white" />
-        )}
+        <Sparkles size={22} className="text-white" />
         {/* 有上下文时的绿点 */}
-        {activeSession && !isOpen && (
+        {activeSession && (
           <span className="absolute top-0.5 right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-gray-900" />
         )}
-      </button>
+      </button>}
 
       {/* 滑出面板 */}
       <div
-        className="fixed top-16 right-0 bg-gray-900 border-l border-gray-700 flex flex-col z-40 transition-transform duration-300 shadow-2xl"
+        className="fixed bottom-0 right-0 bg-gray-900 border-l border-gray-700 flex flex-col z-40 transition-transform duration-300 shadow-2xl"
         style={{
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           width: panelWidth,
-          height: 'calc(100vh - 64px)',
+          height: 'calc((100vh - 64px) * 0.8)',
         }}
       >
         {/* 左侧拖拽调宽手柄 */}
@@ -176,6 +172,7 @@ export function VibeDramaPanel() {
               projectId={session.projectId}
               episodeId={session.episodeId}
               label={session.label}
+              tabName={session.tabName}
             />
           </div>
         ))}

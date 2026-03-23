@@ -13,6 +13,14 @@ from .templates import OLD_TO_NEW_TEMPLATE_MAPPING
 
 router = APIRouter()
 
+# 这些模板是 AI agent 工具调用 schema，是底层脚手架，不开放给用户自定义。
+# 用户覆盖这些模板会破坏 AI 工具调用机制。
+# 注意：全局提示词管理接口（GlobalPromptPanel）仍保持对这些 key 的完整访问。
+_HIDDEN_KEYS = {
+    "conversation_tools_desc",
+    "conversation_tools_desc_assets",
+}
+
 
 @router.get("/prompt-templates")
 async def get_prompt_templates(project_id: str):
@@ -56,6 +64,8 @@ async def get_prompt_templates(project_id: str):
     result = {}
 
     for key, prompt_data in all_prompts.items():
+        if key in _HIDDEN_KEYS:
+            continue
         presets = prompt_data.get("presets", {})
 
         # 确定 custom 和 active
@@ -150,6 +160,8 @@ async def update_prompt_templates(project_id: str, templates: Dict[str, Any]):
     valid_keys = set(load_prompts().keys())
 
     for key, type_data in templates.items():
+        if key in _HIDDEN_KEYS:
+            continue   # 拒绝写入工具 schema 类隐藏 key
         if key not in valid_keys:
             continue
         if not isinstance(type_data, dict):

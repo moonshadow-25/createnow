@@ -7,14 +7,15 @@ interface ChatTabProps {
   projectId: string;
   episodeId?: string;
   label?: string;
+  tabName?: string;
 }
 
-export function ChatTab({ projectId, episodeId, label }: ChatTabProps) {
+export function ChatTab({ projectId, episodeId, label, tabName }: ChatTabProps) {
   const [inputMessage, setInputMessage] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
   const { messages, currentMessage, currentThinking, isStreaming, sendMessage, error, toolCalls, clearMessages } =
-    useChat(projectId, { episodeId, label });
+    useChat(projectId, { episodeId, label, tabName });
 
   const handleSendMessage = async (message: string) => {
     if (isStreaming) return;

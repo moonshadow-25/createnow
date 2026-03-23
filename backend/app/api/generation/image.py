@@ -533,6 +533,8 @@ async def generate_fusion_prompt(project_id: str, request: FusionPromptRequest):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    ai_config = project.get("ai_config", {})
+
     # 验证资产数量
     if len(request.asset_ids) != len(request.asset_types):
         raise HTTPException(status_code=400, detail="asset_ids and asset_types length mismatch")
@@ -558,9 +560,9 @@ async def generate_fusion_prompt(project_id: str, request: FusionPromptRequest):
         for info in assets_info
     ])
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
-    from app.services.global_prompt_service import get_group_c_template
-    _fusion_tpl = get_group_c_template("fusion_image_prompt")
+    # 模板在 data/config/default_prompt_templates.json 中修改，支持项目级覆盖
+    from app.services.global_prompt_service import get_prompt_content
+    _fusion_tpl = get_prompt_content("fusion_image_prompt", ai_config)
     if _fusion_tpl:
         prompt_template = _fusion_tpl.format(assets_desc=assets_desc, user_prompt=request.user_prompt)
     else:

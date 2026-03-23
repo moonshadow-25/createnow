@@ -32,6 +32,26 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * 带认证的文件下载：通过 axios 请求（自动注入 Bearer token），
+ * 将响应转为 Blob URL 再触发浏览器下载，避免直链被 auth 中间件拦截。
+ * @param url 后端返回的下载路径，如 /api/projects/.../export-download/xxx.zip
+ */
+export async function downloadWithAuth(url: string, filename?: string): Promise<void> {
+  // api 实例 baseURL 已含 /api，需去掉 url 中的 /api 前缀
+  const path = url.startsWith('/api/') ? url.slice(4) : url;
+  const response = await api.get(path, { responseType: 'blob' });
+  const blobUrl = URL.createObjectURL(response.data);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename || decodeURIComponent(url.split('/').pop() || 'download');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // 延迟释放，确保浏览器已开始下载
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+}
+
 // 项目相关API
 export const projectApi = {
   list: () => api.get('/projects'),
@@ -41,6 +61,12 @@ export const projectApi = {
   update: (id: string, data: any) => api.put(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
   getStats: (id: string) => api.get(`/projects/${id}/stats`),
+};
+
+// 管理员相关API
+export const adminApi = {
+  clearCache: (projectId?: string) =>
+    api.post('/admin/cache/clear', null, { params: projectId ? { project_id: projectId } : {} }),
 };
 
 // 资产相关API
@@ -57,6 +83,8 @@ export const assetApi = {
     api.put(`/projects/${projectId}/assets/${assetType}/${assetId}`, data),
   delete: (projectId: string, assetType: string, assetId: string) =>
     api.delete(`/projects/${projectId}/assets/${assetType}/${assetId}`),
+  reorderEpisodes: (projectId: string, episodeIds: string[]) =>
+    api.post(`/projects/${projectId}/assets/episode/reorder`, { episode_ids: episodeIds }),
 };
 
 // 对话相关API
@@ -276,6 +304,14 @@ export const generationApi = {
     }),
   getJianyingExportStatus: (projectId: string) =>
     api.get(`/projects/${projectId}/generate/videos/jiaying-export-status`),
+  // 剪映下载导出（生成可下载 ZIP 包）
+  exportToJiayingDownload: (projectId: string, episodeId: string, projectName?: string) =>
+    api.post(`/projects/${projectId}/generate/videos/export-to-jiaying-download`, {
+      episode_id: episodeId,
+      project_name: projectName,
+    }),
+  getJiayingDownloadStatus: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/videos/jiaying-download-status`),
   // 拆解三宫格
   splitTripleGrid: (projectId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/generate/images/split-triple`, {
@@ -296,6 +332,28 @@ export const generationApi = {
     api.get(`/projects/${projectId}/generate/style-presets`),
   getStylePresetDetail: (projectId: string, presetType: 'image' | 'video', presetId: string) =>
     api.get(`/projects/${projectId}/generate/style-presets/detail/${presetType}/${presetId}`),
+  // 角色音色
+  generateCharacterVoice: (projectId: string, characterId: string, data: {
+    voice_prompt: string;
+    sample_text: string;
+    voice?: string;
+    speaker_id?: string;
+    format?: string;
+  }) =>
+    api.post(`/projects/${projectId}/generate/characters/${characterId}/voice`, data),
+  uploadCharacterVoice: (projectId: string, characterId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/projects/${projectId}/generate/characters/${characterId}/voice/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  listCharacterVoices: (projectId: string, characterId: string) =>
+    api.get(`/projects/${projectId}/generate/audios`, { params: { character_id: characterId } }),
+  setCharacterPrimaryVoice: (projectId: string, audioId: string, characterId: string) =>
+    api.post(`/projects/${projectId}/generate/audios/${audioId}/set-primary`, { character_id: characterId }),
+  deleteCharacterVoice: (projectId: string, audioId: string) =>
+    api.delete(`/projects/${projectId}/generate/audios/${audioId}`),
 };
 
 // 验证相关API

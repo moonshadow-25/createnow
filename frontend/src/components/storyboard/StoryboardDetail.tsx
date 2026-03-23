@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
-import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown } from 'lucide-react';
+import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, Download, GripVertical } from 'lucide-react';
 import { VideoGallery } from './VideoGallery';
 import { ImageGallery } from '@/components/assets/ImageGallery';
 import { useToast } from '@/components/common/Toast';
@@ -19,11 +19,13 @@ import { AssetSelectorDialog } from './AssetSelectorDialog';
 import { StoryboardBatchActions } from './StoryboardBatchActions';
 import { StoryboardPromptDialog } from './StoryboardPromptDialog';
 import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useOneClickGeneration } from './hooks/useOneClickGeneration';
 import { useDialogManager } from './hooks/useDialogManager';
 import { useAssetExtraction } from './hooks/useAssetExtraction';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { useJianyingExport } from './hooks/useJianyingExport';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -34,6 +36,45 @@ interface StoryboardDetailProps {
   onUpdated: () => void;
   multimodalReference?: boolean;
   showAssetSubmit?: boolean;
+}
+
+interface SortableEpisodeButtonProps {
+  episode: any;
+  displayIndex: number;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+function SortableEpisodeButton({ episode, displayIndex, isSelected, onClick }: SortableEpisodeButtonProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: episode.asset_id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="flex flex-col items-center gap-0.5">
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300"
+        title="拖拽排序"
+      >
+        <GripVertical size={12} />
+      </div>
+      <button
+        onClick={onClick}
+        className={`w-10 h-10 rounded flex items-center justify-center font-semibold transition ${
+          isSelected ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+        }`}
+        title={`第${displayIndex}集`}
+      >
+        {displayIndex}
+      </button>
+    </div>
+  );
 }
 
 export function StoryboardDetail({
@@ -47,7 +88,14 @@ export function StoryboardDetail({
   showAssetSubmit = false,
 }: StoryboardDetailProps) {
   const { toast } = useToast();
+
+  // 剪映下载导出 hook
+  const { isDownloadExporting, downloadExportProgress, handleExportAllToJiayingDownload } =
+    useJianyingExport({ projectId, episodeId: undefined, selectedStoryboardIds: new Set(), toast });
+
   const [selectedEpisode, setSelectedEpisode] = useState<any>(null);
+  const [orderedEpisodes, setOrderedEpisodes] = useState<any[]>([]);
+  const isReorderingEpisodes = useRef(false);
   const [storyboards, setStoryboards] = useState<any[]>([]);
   const [storyboardPrimaryImages, setStoryboardPrimaryImages] = useState<Map<string, string>>(new Map());
 
@@ -77,7 +125,7 @@ export function StoryboardDetail({
       tabName: 'storyboard',
       label: `第${selectedEpisode.episode_number}集`,
     });
-  }, [selectedEpisode?.asset_id, projectId]);
+  }, [selectedEpisode?.asset_id, selectedEpisode?.episode_number, projectId]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -300,14 +348,21 @@ export function StoryboardDetail({
   };
   */
 
-  // 初始化时默认选中最新集
+  // 从 episodes prop 同步显示顺序（升序）
   useEffect(() => {
-    if (episodes.length > 0 && !selectedEpisode) {
-      // 按 episode_number 倒序排列，选中第一集（最新的）
-      const sortedEpisodes = [...episodes].sort((a, b) => (b.episode_number || 0) - (a.episode_number || 0));
-      setSelectedEpisode(sortedEpisodes[0]);
+    const sorted = [...episodes].sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0));
+    setOrderedEpisodes(sorted);
+  }, [episodes]);
+
+  // 当 orderedEpisodes 重建时，仅在没有选中集或选中集已不存在时才默认选第1集
+  useEffect(() => {
+    if (isReorderingEpisodes.current) return;
+    if (orderedEpisodes.length === 0) return;
+    const isSelectedValid = selectedEpisode && orderedEpisodes.some(ep => ep.asset_id === selectedEpisode.asset_id);
+    if (!isSelectedValid) {
+      setSelectedEpisode(orderedEpisodes[0]);
     }
-  }, [episodes, selectedEpisode]);
+  }, [orderedEpisodes]);
 
   useEffect(() => {
     if (selectedEpisode) {
@@ -923,25 +978,52 @@ export function StoryboardDetail({
     }
   };
 
+  const handleEpisodeDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedEpisodes.findIndex(ep => ep.asset_id === active.id);
+    const newIndex = orderedEpisodes.findIndex(ep => ep.asset_id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(orderedEpisodes, oldIndex, newIndex);
+    isReorderingEpisodes.current = true;
+    setOrderedEpisodes(newOrder);
+    setTimeout(() => { isReorderingEpisodes.current = false; }, 0);
+
+    try {
+      await assetApi.reorderEpisodes(projectId, newOrder.map(ep => ep.asset_id));
+      onUpdated();
+    } catch (error) {
+      console.error('Failed to reorder episodes:', error);
+      const restored = [...episodes].sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0));
+      isReorderingEpisodes.current = true;
+      setOrderedEpisodes(restored);
+      setTimeout(() => { isReorderingEpisodes.current = false; }, 0);
+    }
+  };
+
+  const selectedEpisodeDisplayIndex = selectedEpisode
+    ? orderedEpisodes.findIndex(ep => ep.asset_id === selectedEpisode.asset_id) + 1
+    : 0;
+
   return (
     <div className="flex gap-4 h-full min-h-0">
       {/* 左侧：剧集数字按钮 */}
       <div className="bg-gray-800 rounded-lg p-2 overflow-y-auto flex-shrink-0">
-        <div className="flex flex-col gap-2">
-          {[...episodes].sort((a, b) => (b.episode_number || 0) - (a.episode_number || 0)).map((episode) => (
-            <button
-              key={episode.asset_id}
-              onClick={() => setSelectedEpisode(episode)}
-              className={`w-10 h-10 rounded flex items-center justify-center font-semibold transition ${
-                selectedEpisode?.asset_id === episode.asset_id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-              title={`第${episode.episode_number}集`}
-            >
-              {episode.episode_number}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1">
+          <DndContext collisionDetection={closestCenter} onDragEnd={handleEpisodeDragEnd}>
+            <SortableContext items={orderedEpisodes.map(ep => ep.asset_id)} strategy={verticalListSortingStrategy}>
+              {orderedEpisodes.map((episode, index) => (
+                <SortableEpisodeButton
+                  key={episode.asset_id}
+                  episode={episode}
+                  displayIndex={index + 1}
+                  isSelected={selectedEpisode?.asset_id === episode.asset_id}
+                  onClick={() => setSelectedEpisode(episode)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           {/* 新增剧集按钮 */}
           <button
             onClick={handleAddEpisode}
@@ -950,7 +1032,7 @@ export function StoryboardDetail({
           >
             +
           </button>
-          {episodes.length === 0 && (
+          {orderedEpisodes.length === 0 && (
             <div className="text-gray-500 text-xs p-2 text-center w-10">
               空
             </div>
@@ -965,7 +1047,7 @@ export function StoryboardDetail({
           <>
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-xl font-semibold">第{selectedEpisode.episode_number}集</h3>
+                <h3 className="text-xl font-semibold">第{selectedEpisodeDisplayIndex}集</h3>
                 <p className="text-sm text-gray-400 mt-1">{selectedEpisode.description || ''}</p>
               </div>
               <div className="flex gap-2 items-center">
@@ -987,6 +1069,29 @@ export function StoryboardDetail({
                     <>
                       <Sparkles size={14} />
                       AI生成分镜
+                    </>
+                  )}
+                </button>
+
+                {/* 导出到剪映 */}
+                <button
+                  onClick={() => selectedEpisode && handleExportAllToJiayingDownload(selectedEpisode.asset_id)}
+                  disabled={isDownloadExporting || !selectedEpisode}
+                  className={`flex items-center gap-1 text-sm px-3 py-2 rounded ${
+                    isDownloadExporting || !selectedEpisode
+                      ? 'bg-gray-600 cursor-not-allowed opacity-70'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {isDownloadExporting ? (
+                    <>
+                      <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                      {downloadExportProgress > 0 ? `${downloadExportProgress}%` : '导出中...'}
+                    </>
+                  ) : (
+                    <>
+                      <Download size={14} />
+                      导出到剪映
                     </>
                   )}
                 </button>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { generationApi } from '@/services/api';
+import { generationApi, downloadWithAuth } from '@/services/api';
 
 interface SelectedStoryboardsExportContext {
   projectId: string;
@@ -91,13 +91,12 @@ export const useSelectedStoryboardsExport = (context: SelectedStoryboardsExportC
                 toast('导出完成！', 'success');
               }
 
-              // 自动触发下载
-              const link = document.createElement('a');
-              link.href = download_url;
-              link.download = '';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
+              // 自动触发下载（带 auth token）
+              try {
+                await downloadWithAuth(download_url);
+              } catch (e) {
+                console.error('Download failed:', e);
+              }
             } else {
               setIsExporting(false);
             }

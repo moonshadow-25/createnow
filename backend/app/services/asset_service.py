@@ -58,7 +58,21 @@ class AssetService:
                 if a.get("asset_id") == asset_id:
                     return a
 
-        # 缓存未命中，从磁盘加载
+        # 缓存未命中。
+        # 若该类型缓存尚未初始化，先触发全量磁盘加载（由 list_assets 负责），
+        # 再从缓存中查找——避免只追加单条导致缓存不完整，使后续 list_assets 命中
+        # 残缺缓存而漏返回其他资产（核心 bug 修复）。
+        if project_id not in _assets_cache or asset_type not in _assets_cache.get(project_id, {}):
+            AssetService.list_assets(project_id, asset_type, include_children=True)
+            # list_assets 已将全量写入缓存，再从缓存查找
+            cache = _assets_cache.get(project_id, {}).get(asset_type, [])
+            for a in cache:
+                if a.get("asset_id") == asset_id:
+                    return a
+            # 全量加载后仍未找到，说明磁盘上确实不存在该文件
+            return None
+
+        # 缓存已初始化但未命中（该资产是缓存初始化后新增的），从磁盘读取并追加
         project_dir = settings.PROJECTS_DIR / project_id
         file_path = project_dir / f"{asset_type}s" / f"{asset_id}.json"
 
@@ -68,13 +82,8 @@ class AssetService:
         with open(file_path, "r", encoding="utf-8") as f:
             asset = json.load(f)
 
-        # 写入缓存（触发该类型的缓存初始化或追加）
-        if project_id not in _assets_cache:
-            _assets_cache[project_id] = {}
-        if asset_type not in _assets_cache[project_id]:
-            _assets_cache[project_id][asset_type] = []
+        # 追加到已初始化的缓存中（避免重复）
         cache = _assets_cache[project_id][asset_type]
-        # 避免重复追加
         if not any(a.get("asset_id") == asset_id for a in cache):
             cache.append(asset)
 

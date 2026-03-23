@@ -4,6 +4,7 @@
 import json
 import shutil
 import uuid
+import zipfile
 import aiohttp
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -18,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 # 导出状态存储（内存中，按项目ID）
 _export_status: Dict[str, Dict] = {}
+
+# 下载导出状态存储（生成可下载 ZIP 包）
+_download_export_status: Dict[str, Dict] = {}
 
 
 class JianyingExportService:
@@ -609,6 +613,276 @@ class JianyingExportService:
         except Exception as e:
             logger.error(f"Export to Jiaying failed: {e}", exc_info=True)
             JianyingExportService._update_status(
+                project_id,
+                status="error",
+                current_step="导出失败",
+                errors=[str(e)]
+            )
+
+    # ------------------------------------------------------------------ #
+    # 可下载 ZIP 包导出（适用于 Web 用户）
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def get_download_export_status(project_id: str) -> Dict:
+        """获取下载导出状态"""
+        return _download_export_status.get(project_id, {
+            "status": "idle",
+            "progress": 0,
+            "current_step": "",
+            "download_url": None,
+            "errors": []
+        })
+
+    @staticmethod
+    def _update_download_status(project_id: str, **kwargs):
+        """更新下载导出状态"""
+        if project_id not in _download_export_status:
+            _download_export_status[project_id] = {
+                "status": "idle",
+                "progress": 0,
+                "current_step": "",
+                "download_url": None,
+                "errors": []
+            }
+        _download_export_status[project_id].update(kwargs)
+
+    @staticmethod
+    async def export_to_jiaying_download(
+        project_id: str,
+        episode_id: str,
+        project_name: Optional[str] = None
+    ):
+        """
+        生成可供 Web 用户下载的剪映项目 ZIP 包。
+
+        ZIP 结构：
+          {project_name}/
+          ├── install.bat          # Windows 一键安装脚本
+          ├── install.sh           # macOS 一键安装脚本
+          ├── README.txt
+          ├── draft_content.json   # 含 {INSTALL_PATH} 占位符
+          ├── draft_meta_info.json # 含 {INSTALL_PATH} 占位符
+          └── videos/
+              ├── 01.mp4
+              └── ...
+        """
+        try:
+            if not project_name:
+                project_name = f"CreateNow_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            JianyingExportService._update_download_status(
+                project_id,
+                status="processing",
+                progress=0,
+                current_step="收集视频文件"
+            )
+
+            # 1. 收集所有分镜视频
+            videos = await JianyingExportService._collect_videos(
+                project_id, episode_id, storyboard_ids=None
+            )
+
+            if not videos:
+                raise Exception("没有找到可导出的视频，请先生成视频")
+
+            JianyingExportService._update_download_status(
+                project_id,
+                progress=20,
+                current_step=f"准备打包 {len(videos)} 个视频"
+            )
+
+            # 2. 创建临时目录
+            exports_dir = settings.PROJECTS_DIR / project_id / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            temp_dir = exports_dir / f"tmp_{int(time.time())}"
+            project_temp = temp_dir / project_name
+            videos_temp = project_temp / "videos"
+            project_temp.mkdir(parents=True, exist_ok=True)
+            videos_temp.mkdir(parents=True, exist_ok=True)
+
+            # 3. 按 sequence 编号复制视频，记录编号对应关系
+            numbered_videos = []
+            for video in videos:
+                num = f"{len(numbered_videos) + 1:02d}"
+                filename = f"{num}.mp4"
+                dst = videos_temp / filename
+                shutil.copy2(video["path"], dst)
+                numbered_videos.append({
+                    **video,
+                    "zip_filename": filename,
+                    # 在 draft JSON 中用占位符表示绝对路径
+                    "draft_path_win": f"{{INSTALL_PATH}}\\videos\\{filename}",
+                    "draft_path_unix": f"{{INSTALL_PATH}}/videos/{filename}",
+                })
+
+            JianyingExportService._update_download_status(
+                project_id,
+                progress=50,
+                current_step="生成剪映项目文件"
+            )
+
+            # 4. 生成 draft_content.json（使用 Windows 风格路径，脚本替换占位符）
+            # 重用 _generate_draft_content，但先替换 path 字段
+            win_videos = [{**v, "path": v["draft_path_win"]} for v in numbered_videos]
+            draft_content = JianyingExportService._generate_draft_content(project_name, win_videos)
+            with open(project_temp / "draft_content.json", 'w', encoding='utf-8') as f:
+                json.dump(draft_content, f, ensure_ascii=False, indent=2)
+
+            # 5. 生成 draft_meta_info.json（draft_fold_path 使用占位符）
+            class _FakePath:
+                """让 _generate_draft_meta_info 接受占位符路径"""
+                def absolute(self):
+                    return self
+                def __str__(self):
+                    return "{INSTALL_PATH}"
+                @property
+                def name(self):
+                    return ""
+
+            draft_meta = JianyingExportService._generate_draft_meta_info(
+                project_name, _FakePath(), win_videos
+            )
+            # 同时修正 value[*].file_Path（元信息里也有绝对路径）
+            for mat in draft_meta.get("draft_materials", []):
+                for item in mat.get("value", []):
+                    fname = item.get("extra_info", "")
+                    item["file_Path"] = f"{{INSTALL_PATH}}\\videos\\{fname}"
+            with open(project_temp / "draft_meta_info.json", 'w', encoding='utf-8') as f:
+                json.dump(draft_meta, f, ensure_ascii=False, indent=2)
+
+            # 6. 生成 install.bat (Windows)
+            win_drafts = r"%LOCALAPPDATA%\JianyingPro\User Data\Projects\com.lveditor.draft"
+            install_bat = f"""@echo off
+chcp 65001 >nul
+echo ========================================
+echo  剪映项目安装脚本 - {project_name}
+echo ========================================
+echo.
+
+set "DEST={win_drafts}\\{project_name}"
+
+if not exist "%LOCALAPPDATA%\\JianyingPro" (
+    echo [错误] 未找到剪映安装目录，请确认已安装剪映
+    pause
+    exit /b 1
+)
+
+echo 正在创建项目目录...
+mkdir "%DEST%\\videos" 2>nul
+
+echo 正在复制视频文件...
+xcopy /E /I /Y "videos" "%DEST%\\videos\\" >nul
+
+echo 正在生成项目配置...
+powershell -NoProfile -Command ^
+  "$dest = '%DEST%'.Replace('\\', '\\\\'); ^
+   (Get-Content 'draft_content.json' -Raw).Replace('{{INSTALL_PATH}}', $dest) ^
+   | Set-Content -Path '%DEST%\\draft_content.json' -Encoding UTF8; ^
+   (Get-Content 'draft_meta_info.json' -Raw).Replace('{{INSTALL_PATH}}', $dest) ^
+   | Set-Content -Path '%DEST%\\draft_meta_info.json' -Encoding UTF8"
+
+echo.
+echo [完成] 项目 "{project_name}" 已安装！
+echo 请打开剪映，在草稿列表中找到该项目。
+echo.
+pause
+"""
+            with open(project_temp / "install.bat", 'w', encoding='utf-8') as f:
+                f.write(install_bat)
+
+            # 7. 生成 install.sh (macOS)
+            mac_drafts = "$HOME/Library/Containers/com.lemon.lvpro/Data/Movies/JianyingPro/User Data/Projects/com.lveditor.draft"
+            install_sh = f"""#!/bin/bash
+echo "========================================"
+echo " 剪映项目安装脚本 - {project_name}"
+echo "========================================"
+echo ""
+
+DEST="{mac_drafts}/{project_name}"
+
+if [ ! -d "$HOME/Library/Containers/com.lemon.lvpro" ]; then
+    echo "[错误] 未找到剪映安装目录，请确认已安装剪映"
+    exit 1
+fi
+
+echo "正在创建项目目录..."
+mkdir -p "$DEST/videos"
+
+echo "正在复制视频文件..."
+cp -f videos/* "$DEST/videos/"
+
+echo "正在生成项目配置..."
+sed "s|{{INSTALL_PATH}}|$DEST|g" draft_content.json > "$DEST/draft_content.json"
+sed "s|{{INSTALL_PATH}}|$DEST|g" draft_meta_info.json > "$DEST/draft_meta_info.json"
+
+echo ""
+echo "[完成] 项目 \\"{project_name}\\" 已安装！"
+echo "请打开剪映，在草稿列表中找到该项目。"
+"""
+            with open(project_temp / "install.sh", 'w', encoding='utf-8') as f:
+                f.write(install_sh)
+
+            # 8. 生成 README.txt
+            readme = f"""剪映项目包 - {project_name}
+包含 {len(numbered_videos)} 个视频片段
+
+使用方法：
+========
+
+Windows 用户：
+  1. 解压此 ZIP 包到任意目录
+  2. 进入解压后的 {project_name} 文件夹
+  3. 双击运行 install.bat
+  4. 安装完成后打开剪映，在草稿中找到项目
+
+macOS 用户：
+  1. 解压此 ZIP 包到任意目录
+  2. 打开终端，进入解压后的 {project_name} 文件夹
+  3. 运行：chmod +x install.sh && ./install.sh
+  4. 安装完成后打开剪映，在草稿中找到项目
+
+注意事项：
+- 安装前请确保已安装剪映（海外版 CapCut 暂不支持）
+- 视频按分镜顺序排列，已包含时间线信息
+- 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+            with open(project_temp / "README.txt", 'w', encoding='utf-8') as f:
+                f.write(readme)
+
+            JianyingExportService._update_download_status(
+                project_id,
+                progress=80,
+                current_step="打包 ZIP"
+            )
+
+            # 9. 打包 ZIP
+            zip_name = f"jiaying_{project_name}_{int(time.time())}.zip"
+            zip_path = exports_dir / zip_name
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for file_path in project_temp.rglob("*"):
+                    if file_path.is_file():
+                        zf.write(file_path, file_path.relative_to(temp_dir))
+
+            # 10. 清理临时目录
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+            download_url = f"/api/projects/{project_id}/generate/videos/export-download/{zip_name}"
+
+            JianyingExportService._update_download_status(
+                project_id,
+                status="completed",
+                progress=100,
+                current_step="导出完成",
+                download_url=download_url
+            )
+            logger.info(f"Jiaying download export completed: {zip_path}")
+
+        except Exception as e:
+            logger.error(f"Jiaying download export failed: {e}", exc_info=True)
+            if 'temp_dir' in locals():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            JianyingExportService._update_download_status(
                 project_id,
                 status="error",
                 current_step="导出失败",

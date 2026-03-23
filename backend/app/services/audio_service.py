@@ -52,7 +52,7 @@ class AudioService:
             return json.load(f)
 
     @staticmethod
-    def list_audios(project_id: str, storyboard_id: Optional[str] = None, episode_id: Optional[str] = None) -> List[dict]:
+    def list_audios(project_id: str, storyboard_id: Optional[str] = None, episode_id: Optional[str] = None, character_id: Optional[str] = None) -> List[dict]:
         """列出音频记录"""
         audios_dir = AudioService.get_audios_dir(project_id)
         if not audios_dir.exists():
@@ -68,6 +68,8 @@ class AudioService:
                     if storyboard_id and audio.get("storyboard_id") != storyboard_id:
                         continue
                     if episode_id and audio.get("episode_id") != episode_id:
+                        continue
+                    if character_id and audio.get("character_id") != character_id:
                         continue
 
                     audios.append(audio)
@@ -108,11 +110,16 @@ class AudioService:
             return False
 
     @staticmethod
-    def set_primary_audio(project_id: str, storyboard_id: str, audio_id: str) -> bool:
-        """设置主音频"""
-        audios = AudioService.list_audios(project_id, storyboard_id=storyboard_id)
+    def set_primary_audio(project_id: str, audio_id: str, storyboard_id: Optional[str] = None, character_id: Optional[str] = None) -> bool:
+        """设置主音频（支持按 storyboard_id 或 character_id 范围）"""
+        if character_id:
+            audios = AudioService.list_audios(project_id, character_id=character_id)
+        elif storyboard_id:
+            audios = AudioService.list_audios(project_id, storyboard_id=storyboard_id)
+        else:
+            return False
 
-        # 取消所有音频的主音频状态
+        # 取消同范围内所有音频的主音频状态
         for audio in audios:
             if audio.get("is_primary"):
                 audio["is_primary"] = False
@@ -125,4 +132,13 @@ class AudioService:
 
         target_audio["is_primary"] = True
         AudioService.save_generation_record(project_id, target_audio)
+
+        # 若是角色音色，回写角色的 voice_audio_id
+        if character_id:
+            from app.services.asset_service import AssetService
+            char = AssetService.load_asset(project_id, "character", character_id)
+            if char:
+                char["voice_audio_id"] = audio_id
+                AssetService.save_asset(project_id, "character", char)
+
         return True

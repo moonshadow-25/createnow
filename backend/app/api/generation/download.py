@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
-from .models import VideoExportRequest, JianyingExportRequest, StoryboardExportRequest
+from .models import VideoExportRequest, JianyingExportRequest, JianyingDownloadRequest, StoryboardExportRequest
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ async def download_export_file(project_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     # 验证文件名格式，防止路径遍历
-    if not filename.startswith("export_") or not filename.endswith(".zip"):
+    if not filename.endswith(".zip") or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     export_path = settings.PROJECTS_DIR / project_id / "exports" / filename
@@ -316,6 +316,48 @@ async def get_jiaying_export_status(project_id: str):
         "method": status.get("method"),
         "path": status.get("path"),
         "message": status.get("message", ""),
+        "errors": status.get("errors", [])
+    }
+
+
+@router.post("/videos/export-to-jiaying-download")
+async def export_to_jiaying_download(project_id: str, request: JianyingDownloadRequest):
+    """生成可下载的剪映项目 ZIP 包（适用于 Web 用户）"""
+    from app.services import ProjectService
+    from app.services.jiaying_export_service import JianyingExportService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    asyncio.create_task(
+        JianyingExportService.export_to_jiaying_download(
+            project_id,
+            request.episode_id,
+            project_name=request.project_name
+        )
+    )
+
+    return {"success": True, "message": "剪映导出任务已启动"}
+
+
+@router.get("/videos/jiaying-download-status")
+async def get_jiaying_download_status(project_id: str):
+    """获取剪映下载导出状态"""
+    from app.services import ProjectService
+    from app.services.jiaying_export_service import JianyingExportService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    status = JianyingExportService.get_download_export_status(project_id)
+
+    return {
+        "status": status.get("status", "idle"),
+        "progress": status.get("progress", 0),
+        "current_step": status.get("current_step", ""),
+        "download_url": status.get("download_url"),
         "errors": status.get("errors", [])
     }
 

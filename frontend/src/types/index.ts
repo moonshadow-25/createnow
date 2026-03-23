@@ -58,6 +58,9 @@ export interface Character extends Asset {
   age?: string;
   appearance?: string;
   personality?: string;
+  voice_prompt?: string;      // 音色描述
+  voice_id?: string;          // TTS 音色名
+  voice_audio_id?: string;    // 主音色样本音频 ID
 }
 
 // 场景类型

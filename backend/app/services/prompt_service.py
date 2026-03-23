@@ -340,7 +340,8 @@ class PromptService:
         custom_template: Optional[str] = None,
         language: str = "zh",
         style_suffix: str = "",
-        assets_desc: str = ""
+        assets_desc: str = "",
+        audios_desc: str = ""
     ) -> str:
         """生成视频提示词
 
@@ -397,7 +398,8 @@ class PromptService:
                 scene=scene or "无",
                 props=", ".join(props) if props else "无",
                 duration=duration,
-                assets_desc=assets_desc or "（无参考资产）"
+                assets_desc=assets_desc or "（无参考资产）",
+                audios_desc=audios_desc or ""
             )
         except KeyError:
             # 如果模板不支持某些新变量，回退到精简格式（保留核心变量）

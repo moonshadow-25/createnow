@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File
 from pydantic import BaseModel
 
 from app.services import AudioService, get_tts_service
@@ -113,7 +113,7 @@ async def generate_audio(project_id: str, request: AudioGenerateRequest):
         if request.storyboard_id:
             audios = AudioService.list_audios(project_id, storyboard_id=request.storyboard_id)
             if len(audios) == 1:
-                AudioService.set_primary_audio(project_id, request.storyboard_id, audio_id)
+                AudioService.set_primary_audio(project_id, audio_id, storyboard_id=request.storyboard_id)
                 saved["is_primary"] = True
 
         return saved
@@ -131,10 +131,11 @@ async def generate_audio(project_id: str, request: AudioGenerateRequest):
 async def list_audios(
     project_id: str,
     storyboard_id: Optional[str] = None,
-    episode_id: Optional[str] = None
+    episode_id: Optional[str] = None,
+    character_id: Optional[str] = None
 ):
     """列出音频记录"""
-    audios = AudioService.list_audios(project_id, storyboard_id, episode_id)
+    audios = AudioService.list_audios(project_id, storyboard_id, episode_id, character_id)
     return audios
 
 
@@ -156,16 +157,226 @@ async def delete_audio(project_id: str, audio_id: str):
     return {"success": True}
 
 
+@router.get("/audios/{audio_id}/file")
+async def get_audio_file(project_id: str, audio_id: str):
+    """获取音频文件（本地存储）"""
+    from fastapi.responses import FileResponse
+    audio = AudioService.get_audio(project_id, audio_id)
+    if not audio:
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    local_path = audio.get("local_path")
+    if not local_path:
+        raise HTTPException(status_code=404, detail="No local file for this audio")
+
+    file_path = settings.PROJECTS_DIR / project_id / "audios" / "files" / local_path
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+
+    fmt = audio.get("format", "mp3")
+    media_type_map = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4", "ogg": "audio/ogg"}
+    return FileResponse(str(file_path), media_type=media_type_map.get(fmt, "audio/mpeg"))
+
+
+class SetPrimaryAudioRequest(BaseModel):
+    storyboard_id: Optional[str] = None
+    character_id: Optional[str] = None
+
+
 @router.post("/audios/{audio_id}/set-primary")
 async def set_primary_audio(
     project_id: str,
     audio_id: str,
-    storyboard_id: str = Body(..., embed=True)
+    request: SetPrimaryAudioRequest
 ):
-    """设置主音频"""
-    success = AudioService.set_primary_audio(project_id, storyboard_id, audio_id)
+    """设置主音频（支持 storyboard_id 或 character_id）"""
+    if not request.storyboard_id and not request.character_id:
+        raise HTTPException(status_code=400, detail="storyboard_id or character_id required")
+
+    success = AudioService.set_primary_audio(
+        project_id, audio_id,
+        storyboard_id=request.storyboard_id,
+        character_id=request.character_id
+    )
     if not success:
         raise HTTPException(status_code=404, detail="Audio not found")
 
     audio = AudioService.get_audio(project_id, audio_id)
     return {"success": True, "audio": audio}
+
+
+class CharacterVoiceRequest(BaseModel):
+    """角色音色生成请求"""
+    voice_prompt: str                    # 音色描述，存入角色
+    sample_text: str                     # 朗读文本
+    voice: Optional[str] = None          # TTS 音色名（可选）
+    speaker_id: Optional[str] = None     # 本地 API speaker_id（可选）
+    format: str = "mp3"
+
+
+async def _save_character_voice_audio(
+    project_id: str,
+    character_id: str,
+    audio_id: str,
+    result: dict,
+    record: dict,
+    fmt: str
+):
+    """保存角色音色音频并自动设主（内部复用）"""
+    if "audio_data" in result:
+        local_path = await AudioDownloadService.save_audio_data(
+            project_id=project_id,
+            audio_id=audio_id,
+            audio_data=result["audio_data"],
+            format=fmt
+        )
+        if local_path:
+            record["local_path"] = local_path
+    elif "audio_url" in result:
+        record["audio_path"] = result["audio_url"]
+        import asyncio
+        asyncio.create_task(
+            AudioDownloadService.download_and_save_audio(
+                project_id=project_id,
+                audio_id=audio_id,
+                url=result["audio_url"],
+                format=fmt
+            )
+        )
+
+    saved = AudioService.save_generation_record(project_id, record)
+
+    # 若是该角色第一条音色，自动设为主音色
+    existing = AudioService.list_audios(project_id, character_id=character_id)
+    if len(existing) == 1:
+        AudioService.set_primary_audio(project_id, audio_id, character_id=character_id)
+        saved["is_primary"] = True
+
+    return saved
+
+
+@router.post("/characters/{character_id}/voice")
+async def generate_character_voice(project_id: str, character_id: str, request: CharacterVoiceRequest):
+    """为角色生成音色样本"""
+    from app.services import ProjectService
+    from app.services.asset_service import AssetService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    char = AssetService.load_asset(project_id, "character", character_id)
+    if not char:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    ai_config = project.get("ai_config", {})
+
+    try:
+        tts_service = get_tts_service(ai_config, project_id)
+        result = await tts_service.generate(
+            text=request.sample_text,
+            voice=request.voice,
+            speaker_id=request.speaker_id,
+            format=request.format
+        )
+        await tts_service.close()
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error"))
+
+        audio_id = str(uuid.uuid4())
+        record = {
+            "audio_id": audio_id,
+            "project_id": project_id,
+            "character_id": character_id,
+            "text": request.sample_text,
+            "voice": request.voice,
+            "speaker_id": request.speaker_id,
+            "model": ai_config.get("tts", {}).get("model", "tts-1"),
+            "format": request.format,
+            "created_at": datetime.now().isoformat(),
+            "is_primary": False
+        }
+
+        saved = await _save_character_voice_audio(project_id, character_id, audio_id, result, record, request.format)
+
+        # 更新角色的 voice_prompt / voice_id
+        char["voice_prompt"] = request.voice_prompt
+        if request.voice:
+            char["voice_id"] = request.voice
+        elif request.speaker_id:
+            char["voice_id"] = request.speaker_id
+        AssetService.save_asset(project_id, "character", char)
+
+        return {"audio": saved, "character": char}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        if 'tts_service' in locals():
+            await tts_service.close()
+        logger.error(f"[CharacterVoice] 生成失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/characters/{character_id}/voice/upload")
+async def upload_character_voice(
+    project_id: str,
+    character_id: str,
+    file: UploadFile = File(...)
+):
+    """上传角色音色文件"""
+    from app.services import ProjectService
+    from app.services.asset_service import AssetService
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    char = AssetService.load_asset(project_id, "character", character_id)
+    if not char:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    # 校验文件类型
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ("mp3", "wav", "m4a", "ogg"):
+        raise HTTPException(status_code=400, detail="Unsupported audio format")
+
+    try:
+        audio_data = await file.read()
+        audio_id = str(uuid.uuid4())
+
+        local_path = await AudioDownloadService.save_audio_data(
+            project_id=project_id,
+            audio_id=audio_id,
+            audio_data=audio_data,
+            format=ext
+        )
+
+        record = {
+            "audio_id": audio_id,
+            "project_id": project_id,
+            "character_id": character_id,
+            "text": "",
+            "model": "manual_upload",
+            "format": ext,
+            "local_path": local_path,
+            "created_at": datetime.now().isoformat(),
+            "is_primary": False
+        }
+
+        saved = AudioService.save_generation_record(project_id, record)
+
+        # 若是第一条，自动设为主音色
+        existing = AudioService.list_audios(project_id, character_id=character_id)
+        if len(existing) == 1:
+            AudioService.set_primary_audio(project_id, audio_id, character_id=character_id)
+            saved["is_primary"] = True
+
+        return saved
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CharacterVoice] 上传失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

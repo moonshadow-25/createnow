@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { generationApi } from '@/services/api';
+import { generationApi, downloadWithAuth } from '@/services/api';
 
 interface JianyingExportContext {
   projectId: string;
@@ -16,8 +16,12 @@ export const useJianyingExport = (context: JianyingExportContext) => {
   const [exportMethod, setExportMethod] = useState<'new' | 'existing' | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
 
+  // 下载导出状态（生成可下载 ZIP 包）
+  const [isDownloadExporting, setIsDownloadExporting] = useState(false);
+  const [downloadExportProgress, setDownloadExportProgress] = useState(0);
+
   /**
-   * 导出到剪映
+   * 导出到剪映（写入本机剪映目录）
    * @param options 对话框返回的选项
    */
   const handleExportToJiaying = async (options: {
@@ -63,7 +67,30 @@ export const useJianyingExport = (context: JianyingExportContext) => {
   };
 
   /**
-   * 轮询导出状态
+   * 导出全部分镜到剪映（生成可下载 ZIP 包）
+   */
+  const handleExportAllToJiayingDownload = async (currentEpisodeId: string, projectName?: string) => {
+    if (!currentEpisodeId) {
+      toast('请先选择剧集', 'error');
+      return;
+    }
+
+    if (isDownloadExporting) return;
+
+    try {
+      setIsDownloadExporting(true);
+      setDownloadExportProgress(0);
+
+      await generationApi.exportToJiayingDownload(projectId, currentEpisodeId, projectName);
+      toast('开始生成剪映项目包...', 'info');
+    } catch (error: any) {
+      setIsDownloadExporting(false);
+      toast('启动导出失败: ' + error.message, 'error');
+    }
+  };
+
+  /**
+   * 轮询写入本机剪映目录的导出状态
    */
   useEffect(() => {
     let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -119,11 +146,73 @@ export const useJianyingExport = (context: JianyingExportContext) => {
     };
   }, [isExporting, projectId, toast]);
 
+  /**
+   * 轮询下载导出状态，完成后自动触发浏览器下载
+   */
+  useEffect(() => {
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let isCancelled = false;
+
+    if (isDownloadExporting) {
+      pollInterval = setInterval(async () => {
+        if (isCancelled) return;
+
+        try {
+          const response = await generationApi.getJiayingDownloadStatus(projectId);
+          const { status, progress, download_url, errors } = response.data;
+
+          if (isCancelled) return;
+
+          setDownloadExportProgress(progress || 0);
+
+          if (status === 'completed' && download_url) {
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+            }
+            setIsDownloadExporting(false);
+            setDownloadExportProgress(0);
+
+            // 带 auth token 下载
+            try {
+              await downloadWithAuth(download_url);
+            } catch (e) {
+              console.error('Download failed:', e);
+            }
+
+            toast('✅ 剪映项目包已下载，解压后运行 install.bat（Windows）或 install.sh（Mac）即可导入', 'success');
+          } else if (status === 'error') {
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+            }
+            setIsDownloadExporting(false);
+            setDownloadExportProgress(0);
+            const errorMsg = errors && errors.length > 0 ? errors[0] : '导出失败';
+            toast(errorMsg, 'error');
+          }
+        } catch (error) {
+          console.error('Failed to poll jiaying download status:', error);
+        }
+      }, 1000);
+    }
+
+    return () => {
+      isCancelled = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [isDownloadExporting, projectId, toast]);
+
   return {
     isExporting,
     exportProgress,
     exportMethod,
     exportPath,
     handleExportToJiaying,
+    isDownloadExporting,
+    downloadExportProgress,
+    handleExportAllToJiayingDownload,
   };
 };

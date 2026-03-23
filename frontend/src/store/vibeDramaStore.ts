@@ -49,6 +49,14 @@ export const useVibeDramaStore = create<VibeDramaState>()(
 
       removeSession: (key) => {
         const { sessions, activeKey } = get();
+        // 同时清除该 session 对应的 localStorage 对话数据，防止旧 conversationId 残留
+        const session = sessions.find(s => s.key === key);
+        if (session) {
+          const storageKey = session.episodeId
+            ? `conversation_${session.projectId}_${session.episodeId}`
+            : `conversation_${session.projectId}_${session.tabName}`;
+          localStorage.removeItem(storageKey);
+        }
         const remaining = sessions.filter(s => s.key !== key);
         const newActive = activeKey === key
           ? (remaining.length > 0 ? remaining[remaining.length - 1].key : null)

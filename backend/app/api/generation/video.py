@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Body
 
-from app.services import get_ai_service, PromptService, ImageService
+from app.services import get_ai_service, PromptService, ImageService, AudioService
 from app.core.config import settings
 from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
 from .template_helpers import get_active_template
@@ -84,6 +84,16 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
             img_idx += 1
     assets_desc = "\n".join(assets_lines) if assets_lines else "（无参考资产）"
 
+    # 构建 audios_desc（供模板中 {audios_desc} 使用，告知 LLM 哪些角色有主音色）
+    audio_lines = []
+    audio_idx = 1
+    for cid in request.characters:
+        char = AssetService.load_asset(project_id, "character", cid)
+        if char and char.get("voice_audio_id"):
+            audio_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
+            audio_idx += 1
+    audios_desc = "，".join(audio_lines) if audio_lines else ""
+
     try:
         result = await PromptService.generate_video_prompt(
             llm,
@@ -99,7 +109,8 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
             custom_template=custom_template,
             language=language,
             style_suffix=style_suffix,
-            assets_desc=assets_desc
+            assets_desc=assets_desc,
+            audios_desc=audios_desc
         )
         await llm.close()
         return {"prompt": result}
@@ -170,6 +181,42 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
     # 多模态路径（video_urls / audio_urls）：不需要 image_ids
     has_multimodal = bool(request.video_urls or request.audio_urls)
+
+    # 自动注入角色主音色（仅当请求未手动指定 audio_urls）
+    if not request.audio_urls:
+        from app.services.asset_service import AssetService
+        storyboard = AssetService.load_asset(project_id, "storyboard", request.storyboard_id)
+        char_audio_urls = []
+        audio_ref_lines = []
+        audio_idx = 1
+        for char_id in (storyboard or {}).get("character_ids", []):
+            char = AssetService.load_asset(project_id, "character", char_id)
+            if char and char.get("voice_audio_id"):
+                audio = AudioService.get_audio(project_id, char["voice_audio_id"])
+                if audio:
+                    url = audio.get("audio_path")
+                    if not url and audio.get("local_path"):
+                        # 转为 base64 data URL
+                        local_file = settings.PROJECTS_DIR / project_id / "audios" / "files" / audio["local_path"]
+                        if local_file.exists():
+                            import base64
+                            ext = audio.get("format", "mp3")
+                            data = local_file.read_bytes()
+                            url = f"data:audio/{ext};base64,{base64.b64encode(data).decode()}"
+                    if url:
+                        char_audio_urls.append(url)
+                        audio_ref_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
+                        audio_idx += 1
+                        logger.info(f"[视频生成] 注入角色音色: char={char_id}, audio={audio['audio_id']}")
+        if char_audio_urls:
+            # 在 prompt 末尾追加音频引用说明（供 Seedance 2.0 理解角色声音对应关系）
+            audio_ref_text = "，".join(audio_ref_lines)
+            updated_prompt = request.prompt.rstrip() + f"\n{audio_ref_text}"
+            request = request.model_copy(update={
+                "audio_urls": char_audio_urls,
+                "prompt": updated_prompt
+            })
+            has_multimodal = True
 
     # 使用 image_ids（已由 validator 自动转换）
     image_ids = list(request.image_ids) if request.image_ids else []

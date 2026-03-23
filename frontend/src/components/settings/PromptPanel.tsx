@@ -34,6 +34,9 @@ interface TemplatesResponse {
 // 分类固定显示顺序
 const CATEGORY_ORDER = ['生成模板', '服务提示词', '系统提示词'];
 
+// 工具调用 schema 类模板，不向用户展示（用户覆盖会破坏 AI 工具调用机制）
+const HIDDEN_KEYS = new Set(['conversation_tools_desc', 'conversation_tools_desc_assets']);
+
 // 生成模板内的 key 显示顺序
 const GENERATION_KEY_ORDER = [
   'image', 'video', 'storyboard', 'storyboard_image_edit',
@@ -433,6 +436,7 @@ function getKeysForCategory(data: TemplatesResponse, category: string): string[]
   const keys = Object.entries(data)
     .filter(([key, val]) => {
       if (key === 'is_custom' || key === 'is_legacy') return false;
+      if (HIDDEN_KEYS.has(key)) return false;
       return val && typeof val === 'object' && (val as PromptTypeData).category === category;
     })
     .map(([key]) => key);

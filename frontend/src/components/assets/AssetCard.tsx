@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Users, Plus, Info } from 'lucide-react';
+import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Users, Plus, Info, Mic, Upload, Play, Pause } from 'lucide-react';
 import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
@@ -40,6 +40,18 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [showImageEditDialog, setShowImageEditDialog] = useState(false);
   // 隐藏图片状态
   const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
+
+  // 音色状态（仅角色）
+  const [voicePrompt, setVoicePrompt] = useState(asset.voice_prompt || '');
+  const [voiceId, setVoiceId] = useState(asset.voice_id || '');
+  const [sampleText, setSampleText] = useState('');
+  const [voices, setVoices] = useState<any[]>([]);
+  const [generatingVoice, setGeneratingVoice] = useState(false);
+  const [uploadingVoice, setUploadingVoice] = useState(false);
+  const [voiceSectionExpanded, setVoiceSectionExpanded] = useState(false);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({});
+  const voiceUploadRef = useRef<HTMLInputElement>(null);
 
   const isChildCharacter = assetType === 'character' && asset.parent_id;
   const [showDropdown, setShowDropdown] = useState(false);
@@ -142,6 +154,12 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     setShowEdit(true);
     // 加载图片列表用于编辑弹框中的图片预览
     await loadImages();
+    // 加载角色音色列表
+    if (assetType === 'character') {
+      setVoicePrompt(asset.voice_prompt || '');
+      setVoiceId(asset.voice_id || '');
+      await loadVoices();
+    }
   };
 
   const handleSave = async () => {
@@ -358,6 +376,98 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const handleOpenImageEdit = async () => {
     await loadImages();
     setShowImageEditDialog(true);
+  };
+
+  // ─── 音色处理函数（仅角色）────────────────────────────────────────────────
+
+  const loadVoices = async () => {
+    if (assetType !== 'character') return;
+    try {
+      const res = await generationApi.listCharacterVoices(projectId, asset.asset_id);
+      setVoices(res.data || []);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const handleGenerateVoice = async () => {
+    if (!voicePrompt.trim() || !sampleText.trim()) {
+      toast('请填写音色描述和朗读文本', 'error');
+      return;
+    }
+    setGeneratingVoice(true);
+    try {
+      await generationApi.generateCharacterVoice(projectId, asset.asset_id, {
+        voice_prompt: voicePrompt,
+        sample_text: sampleText,
+        voice: voiceId || undefined,
+      });
+      toast('音色生成成功', 'success');
+      await loadVoices();
+    } catch (error: any) {
+      toast(`生成失败: ${error.response?.data?.detail || error.message}`, 'error');
+    } finally {
+      setGeneratingVoice(false);
+    }
+  };
+
+  const handleUploadVoice = async (file: File) => {
+    setUploadingVoice(true);
+    try {
+      await generationApi.uploadCharacterVoice(projectId, asset.asset_id, file);
+      toast('音色上传成功', 'success');
+      await loadVoices();
+    } catch (error: any) {
+      toast(`上传失败: ${error.response?.data?.detail || error.message}`, 'error');
+    } finally {
+      setUploadingVoice(false);
+    }
+  };
+
+  const handleSetPrimaryVoice = async (audioId: string) => {
+    try {
+      await generationApi.setCharacterPrimaryVoice(projectId, audioId, asset.asset_id);
+      toast('已设为主音色', 'success');
+      await loadVoices();
+    } catch (error: any) {
+      toast(`操作失败: ${error.response?.data?.detail || error.message}`, 'error');
+    }
+  };
+
+  const handleDeleteVoice = async (audioId: string) => {
+    if (!confirm('确定删除该音色？')) return;
+    try {
+      await generationApi.deleteCharacterVoice(projectId, audioId);
+      toast('已删除', 'success');
+      await loadVoices();
+    } catch (error: any) {
+      toast(`删除失败: ${error.response?.data?.detail || error.message}`, 'error');
+    }
+  };
+
+  const togglePlayAudio = (audioId: string, audioSrc: string) => {
+    const current = audioRefs.current[audioId];
+    if (!current) {
+      const el = new Audio(audioSrc);
+      audioRefs.current[audioId] = el;
+      el.onended = () => setPlayingAudioId(null);
+      el.play();
+      setPlayingAudioId(audioId);
+    } else if (playingAudioId === audioId) {
+      current.pause();
+      setPlayingAudioId(null);
+    } else {
+      Object.values(audioRefs.current).forEach(a => a.pause());
+      current.currentTime = 0;
+      current.play();
+      setPlayingAudioId(audioId);
+    }
+  };
+
+  const getAudioUrl = (v: any): string | null => {
+    if (v.audio_path) return v.audio_path;
+    if (v.local_path) return `/api/projects/${projectId}/generate/audios/${v.audio_id}/file`;
+    return null;
   };
 
   return (
@@ -789,6 +899,146 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       {editingImage ? '编辑中...' : '执行图像编辑'}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* 音色管理区域 - 仅角色显示 */}
+              {assetType === 'character' && (
+                <div className="bg-gray-700 rounded overflow-hidden">
+                  <button
+                    onClick={() => {
+                      setVoiceSectionExpanded(!voiceSectionExpanded);
+                      if (!voiceSectionExpanded) loadVoices();
+                    }}
+                    className="flex items-center gap-2 hover:bg-gray-600 transition text-left w-full p-3"
+                  >
+                    {voiceSectionExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    <Mic size={14} className="text-purple-400" />
+                    <h3 className="text-sm font-semibold text-gray-300">音色管理</h3>
+                    {voices.some(v => v.is_primary) && (
+                      <span className="ml-1 text-xs bg-purple-700 text-purple-200 px-1.5 py-0.5 rounded">已设置</span>
+                    )}
+                    <span className="text-xs text-gray-500 ml-1">{voiceSectionExpanded ? '收起' : '展开'}</span>
+                  </button>
+
+                  {voiceSectionExpanded && (
+                    <div className="p-4 pt-0 space-y-3">
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">音色描述</label>
+                        <textarea
+                          value={voicePrompt}
+                          onChange={(e) => {
+                            setVoicePrompt(e.target.value);
+                            setEditData((prev: any) => ({ ...prev, voice_prompt: e.target.value }));
+                          }}
+                          className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white h-16 text-sm"
+                          placeholder="如：年轻女性，声音温柔甜美"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">音色名称（可选）</label>
+                        <input
+                          type="text"
+                          value={voiceId}
+                          onChange={(e) => {
+                            setVoiceId(e.target.value);
+                            setEditData((prev: any) => ({ ...prev, voice_id: e.target.value }));
+                          }}
+                          className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white text-sm"
+                          placeholder="如：zhichu（留空则使用默认音色）"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">朗读文本（用于生成样本）</label>
+                        <input
+                          type="text"
+                          value={sampleText}
+                          onChange={(e) => setSampleText(e.target.value)}
+                          className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white text-sm"
+                          placeholder="输入一段台词或测试文本"
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleGenerateVoice}
+                          disabled={generatingVoice || uploadingVoice}
+                          className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 px-3 py-2 rounded text-sm"
+                        >
+                          <Mic size={14} />
+                          {generatingVoice ? '生成中...' : '生成音色'}
+                        </button>
+                        <button
+                          onClick={() => voiceUploadRef.current?.click()}
+                          disabled={generatingVoice || uploadingVoice}
+                          className="flex items-center gap-1.5 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 px-3 py-2 rounded text-sm"
+                        >
+                          <Upload size={14} />
+                          {uploadingVoice ? '上传中...' : '上传音色'}
+                        </button>
+                        <input
+                          ref={voiceUploadRef}
+                          type="file"
+                          accept="audio/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleUploadVoice(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </div>
+
+                      {voices.length > 0 && (
+                        <div className="space-y-2">
+                          {voices.map((v) => {
+                            const audioUrl = getAudioUrl(v);
+                            return (
+                              <div
+                                key={v.audio_id}
+                                className={v.is_primary ? 'flex items-center gap-2 p-2 rounded bg-purple-900 bg-opacity-40 border border-purple-700' : 'flex items-center gap-2 p-2 rounded bg-gray-600'}
+                              >
+                                {audioUrl && (
+                                  <button
+                                    onClick={() => togglePlayAudio(v.audio_id, audioUrl)}
+                                    className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-500 hover:bg-gray-400 rounded-full"
+                                  >
+                                    {playingAudioId === v.audio_id ? <Pause size={14} /> : <Play size={14} />}
+                                  </button>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs text-gray-300 truncate">{v.text || '已上传音频'}</div>
+                                  <div className="text-xs text-gray-500">{v.created_at?.slice(0, 10)}</div>
+                                </div>
+                                {v.is_primary && (
+                                  <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded flex-shrink-0">主音色</span>
+                                )}
+                                {!v.is_primary && (
+                                  <button
+                                    onClick={() => handleSetPrimaryVoice(v.audio_id)}
+                                    className="text-xs text-gray-400 hover:text-white flex-shrink-0 px-2 py-0.5 border border-gray-500 rounded"
+                                  >
+                                    设为主音色
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteVoice(v.audio_id)}
+                                  className="flex-shrink-0 text-gray-500 hover:text-red-400"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {voices.length === 0 && (
+                        <div className="text-xs text-gray-500 text-center py-2">暂无音色样本，点击生成或上传</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

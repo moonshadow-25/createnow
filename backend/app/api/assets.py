@@ -22,6 +22,10 @@ class AssetCreate(BaseModel):
     tags: List[str] = []
 
 
+class EpisodeReorderRequest(BaseModel):
+    episode_ids: List[str]
+
+
 class AssetUpdate(BaseModel):
     """允许额外字段以支持不同资产类型的特有属性"""
     model_config = ConfigDict(extra='allow')
@@ -164,6 +168,19 @@ async def create_child_asset(project_id: str, asset_type: str, parent_id: str, a
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.post("/episode/reorder", response_model=dict)
+async def reorder_episodes(project_id: str, body: EpisodeReorderRequest):
+    """按传入顺序更新每集的 episode_number（从1开始）"""
+    for index, episode_id in enumerate(body.episode_ids):
+        episode = AssetService.load_asset(project_id, "episode", episode_id)
+        if not episode:
+            raise HTTPException(status_code=404, detail=f"Episode {episode_id} not found")
+        episode["episode_number"] = index + 1
+        AssetService.save_asset(project_id, "episode", episode)
+    return {"success": True, "count": len(body.episode_ids)}
 
 
 # Trigger reload for edit_image_prompt support
