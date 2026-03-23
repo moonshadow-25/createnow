@@ -1,7 +1,7 @@
 """
 大语言模型服务
 
-提供流式和非流式对话功能
+提供流式和非流式对话功能，支持 OpenAI Function Calling（tools 参数）
 """
 
 import json
@@ -19,12 +19,19 @@ class LLMService(AIService):
 
     async def chat_stream(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 32000
+        max_tokens: int = 32000,
+        tools: Optional[List[Dict]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """流式对话，返回thinking和content"""
+        """流式对话，返回 thinking、content 和 tool_calls。
+
+        当传入 tools 时，启用 OpenAI Function Calling 协议：
+        - 若模型返回 finish_reason=="tool_calls"，yield {"type": "tool_calls", "tool_calls": [...]}
+        - tool_calls 列表格式：[{"id": ..., "name": ..., "arguments": {...}}]
+        - 若模型未返回 tool_calls（fallback 模式），正常 yield content chunk
+        """
 
         # 构建消息列表
         api_messages = []
@@ -41,6 +48,11 @@ class LLMService(AIService):
             "max_tokens": max_tokens,
             "stream": True
         }
+
+        # 传入工具定义（OpenAI Function Calling）
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
 
         try:
             async with self.client.stream(
@@ -61,6 +73,10 @@ class LLMService(AIService):
                 content_buffer = ""
                 in_thinking = False
 
+                # tool_calls 累积结构：{index: {id, name, arguments_str}}
+                tool_calls_acc: Dict[int, Dict] = {}
+                finish_reason = None
+
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -71,9 +87,31 @@ class LLMService(AIService):
 
                     try:
                         data = json.loads(data_str)
-                        delta = data["choices"][0]["delta"]
+                        choice = data["choices"][0]
+                        delta = choice.get("delta", {})
+                        finish_reason = choice.get("finish_reason") or finish_reason
 
-                        # 检查是否有thinking内容（某些API支持）
+                        # ── 处理 tool_calls delta ──
+                        if "tool_calls" in delta and delta["tool_calls"]:
+                            for tc_delta in delta["tool_calls"]:
+                                idx = tc_delta.get("index", 0)
+                                if idx not in tool_calls_acc:
+                                    tool_calls_acc[idx] = {
+                                        "id": "",
+                                        "name": "",
+                                        "arguments_str": ""
+                                    }
+                                acc = tool_calls_acc[idx]
+                                if tc_delta.get("id"):
+                                    acc["id"] += tc_delta["id"]
+                                func = tc_delta.get("function", {})
+                                if func.get("name"):
+                                    acc["name"] += func["name"]
+                                if func.get("arguments"):
+                                    acc["arguments_str"] += func["arguments"]
+                            continue  # tool_calls delta 不走下面的 content 路径
+
+                        # ── 处理 thinking ──
                         if "thinking" in delta and delta["thinking"]:
                             in_thinking = True
                             thinking_buffer += delta["thinking"]
@@ -82,32 +120,53 @@ class LLMService(AIService):
                                 "content": delta["thinking"]
                             }
 
-                        # 检查是否有content
+                        # ── 处理 content ──
                         elif "content" in delta and delta["content"]:
-                            # 如果之前在thinking，现在切换到content
                             if in_thinking:
                                 in_thinking = False
                                 yield {
                                     "type": "thinking_end",
                                     "content": thinking_buffer
                                 }
-
                             content_buffer += delta["content"]
                             yield {
                                 "type": "content",
                                 "content": delta["content"]
                             }
 
-                    except (json.JSONDecodeError, KeyError) as e:
+                    except (json.JSONDecodeError, KeyError):
                         continue
 
-                # 结束
+                # ── 流结束后处理 ──
+
+                # 若有 thinking 未结束
                 if thinking_buffer:
                     yield {
                         "type": "thinking_end",
                         "content": thinking_buffer
                     }
-                if content_buffer:
+
+                # 若模型触发了 tool_calls（原生 function calling）
+                if tool_calls_acc:
+                    parsed_tool_calls = []
+                    for idx in sorted(tool_calls_acc.keys()):
+                        acc = tool_calls_acc[idx]
+                        args_str = acc["arguments_str"]
+                        try:
+                            arguments = json.loads(args_str) if args_str else {}
+                        except json.JSONDecodeError:
+                            arguments = {"_raw": args_str}
+                        parsed_tool_calls.append({
+                            "id": acc["id"],
+                            "name": acc["name"],
+                            "arguments": arguments
+                        })
+                    yield {
+                        "type": "tool_calls",
+                        "tool_calls": parsed_tool_calls
+                    }
+                elif content_buffer:
+                    # 普通内容结束
                     yield {
                         "type": "content_end",
                         "content": content_buffer
@@ -121,12 +180,13 @@ class LLMService(AIService):
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 32000
+        max_tokens: int = 32000,
+        tools: Optional[List[Dict]] = None,
     ) -> Dict[str, Any]:
-        """非流式对话"""
+        """非流式对话，支持 tools"""
         import httpx
 
         # 构建消息列表
@@ -143,6 +203,10 @@ class LLMService(AIService):
             "max_tokens": max_tokens,
             "stream": False
         }
+
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
 
         start_time = datetime.now()
 
@@ -168,8 +232,30 @@ class LLMService(AIService):
                 duration_ms=duration_ms
             )
 
+            message = data["choices"][0]["message"]
+
+            # 若模型返回了工具调用
+            if message.get("tool_calls"):
+                parsed = []
+                for tc in message["tool_calls"]:
+                    func = tc.get("function", {})
+                    args_str = func.get("arguments", "{}")
+                    try:
+                        arguments = json.loads(args_str)
+                    except json.JSONDecodeError:
+                        arguments = {"_raw": args_str}
+                    parsed.append({
+                        "id": tc.get("id", ""),
+                        "name": func.get("name", ""),
+                        "arguments": arguments
+                    })
+                return {
+                    "tool_calls": parsed,
+                    "usage": data.get("usage", {})
+                }
+
             return {
-                "content": data["choices"][0]["message"]["content"],
+                "content": message.get("content", ""),
                 "usage": data.get("usage", {})
             }
 
@@ -180,7 +266,7 @@ class LLMService(AIService):
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_detail = e.response.text
-                except:
+                except Exception:
                     pass
 
             self._log_interaction(

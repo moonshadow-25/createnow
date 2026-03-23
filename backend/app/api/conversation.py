@@ -320,6 +320,30 @@ TOOLS = [
     }
 ]
 
+# ── OpenAI Function Calling 格式的工具列表 ──
+# 全工具集（含分镜工具），用于分镜 tab
+OPENAI_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["parameters"]
+        }
+    }
+    for tool in TOOLS
+]
+
+# 仅资产工具（不含分镜工具），用于资产 tab
+_STORYBOARD_TOOL_NAMES = {
+    "create_storyboard", "update_storyboard", "delete_storyboard",
+    "insert_storyboard", "generate_storyboard", "create_child_asset"
+}
+ASSET_ONLY_TOOLS = [
+    t for t in OPENAI_TOOLS
+    if t["function"]["name"] not in _STORYBOARD_TOOL_NAMES
+]
+
 
 def check_asset_exists(project_id: str, asset_type: str, name: str) -> Optional[Dict]:
     """检查同名资产是否已存在"""
@@ -1432,6 +1456,9 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
     # 创建LLM服务
     llm = get_ai_service(ai_config, "llm")
 
+    # 选择工具集（分镜 tab 用全集，资产 tab 用无分镜子集）
+    active_tools = OPENAI_TOOLS if is_storyboard_tab else ASSET_ONLY_TOOLS
+
     # 构建初始消息列表（agentic loop 共享）
     loop_messages = list(context)
 
@@ -1443,8 +1470,9 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
         for iteration in range(MAX_ITERATIONS):
             thinking_buffer = ""
             content_buffer = ""
+            native_tool_calls = []  # 原生 function calling 结果
 
-            async for chunk in llm.chat_stream(loop_messages, system_prompt):
+            async for chunk in llm.chat_stream(loop_messages, system_prompt, tools=active_tools):
                 chunk_type = chunk.get("type")
                 chunk_content = chunk.get("content", "")
 
@@ -1462,59 +1490,113 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
                 elif chunk_type == "content_end":
                     yield f"data: {json.dumps({'type': 'content_end', 'content': content_buffer})}\n\n"
 
+                elif chunk_type == "tool_calls":
+                    # 原生 Function Calling：模型返回了 tool_calls
+                    native_tool_calls = chunk.get("tool_calls", [])
+
                 elif chunk_type == "error":
                     yield f"data: {json.dumps({'type': 'error', 'content': chunk_content})}\n\n"
 
             all_thinking_content += thinking_buffer
             all_assistant_content += content_buffer
 
-            # 解析工具调用 - 支持两种格式
-            tool_calls = parse_tool_calls(content_buffer)
+            # ── 解析工具调用 ──
+            # 优先使用原生 Function Calling 结果；若无，回退到文本解析（兼容本地模型）
+            tool_calls = []
 
-            print(f"[DEBUG] Iteration {iteration+1}: Parsed {len(tool_calls)} tool calls from content_buffer")
-
-            # 也尝试解析TOOL:格式
-            tool_pattern = r'TOOL:\s*(\w+)\s*\n(.*?)\nEND_TOOL'
-            tool_matches = re.findall(tool_pattern, content_buffer, re.DOTALL)
-
-            print(f"[DEBUG] Found {len(tool_matches)} TOOL: format matches")
-
-            for tool_name, params_json in tool_matches:
-                try:
-                    params = json.loads(params_json.strip())
-                    tool_calls.append({"name": tool_name, "parameters": params})
-                    print(f"[DEBUG] Parsed TOOL: {tool_name} with params: {params}")
-                except Exception as e:
-                    print(f"[DEBUG] Failed to parse TOOL: {tool_name}, error: {e}")
+            if native_tool_calls:
+                # 原生模式：直接使用解析好的结构
+                for tc in native_tool_calls:
+                    tool_calls.append({
+                        "id": tc.get("id", ""),
+                        "name": tc.get("name", ""),
+                        "parameters": tc.get("arguments", {})
+                    })
+                print(f"[DEBUG] Iteration {iteration+1}: {len(tool_calls)} native tool_calls")
+            else:
+                # Fallback：从文本中正则解析（本地/不支持 function calling 的模型）
+                text_tool_calls = parse_tool_calls(content_buffer)
+                tool_pattern = r'TOOL:\s*(\w+)\s*\n(.*?)\nEND_TOOL'
+                tool_matches = re.findall(tool_pattern, content_buffer, re.DOTALL)
+                for tool_name_txt, params_json in tool_matches:
+                    try:
+                        params = json.loads(params_json.strip())
+                        text_tool_calls.append({"name": tool_name_txt, "parameters": params})
+                    except Exception:
+                        pass
+                for tc in text_tool_calls:
+                    tool_calls.append({
+                        "id": str(uuid.uuid4()),
+                        "name": tc.get("name", ""),
+                        "parameters": tc.get("parameters", {})
+                    })
+                if tool_calls:
+                    print(f"[DEBUG] Iteration {iteration+1}: {len(tool_calls)} text-fallback tool_calls")
 
             # 若无工具调用，本轮结束
             if not tool_calls:
                 break
 
-            # 执行所有工具调用，收集结果
-            tool_results_lines = []
+            # ── 执行所有工具调用，收集结果 ──
             STORYBOARD_TOOLS = {
                 "create_storyboard", "update_storyboard", "delete_storyboard",
                 "insert_storyboard", "generate_storyboard", "create_child_asset"
             }
+
+            # 构建 assistant 消息（含 tool_calls，按 OpenAI 协议）
+            assistant_msg: Dict[str, Any] = {"role": "assistant"}
+            if native_tool_calls:
+                # 原生模式：assistant 消息携带 tool_calls
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name", ""),
+                            "arguments": json.dumps(tc.get("arguments", {}), ensure_ascii=False)
+                        }
+                    }
+                    for tc in native_tool_calls
+                ]
+                if content_buffer:
+                    assistant_msg["content"] = content_buffer
+                else:
+                    assistant_msg["content"] = None
+            else:
+                # Fallback 模式：assistant 消息为纯文本
+                assistant_msg["content"] = content_buffer
+
+            loop_messages.append(assistant_msg)
+
+            # 执行工具并构建 tool 角色消息
+            tool_result_msgs = []
+            tool_results_lines = []  # 用于 fallback 模式的文本汇总
+
             for tool_call in tool_calls:
-                tool_name = tool_call.get("name")
+                tool_id = tool_call.get("id", str(uuid.uuid4()))
+                tool_name = tool_call.get("name", "")
                 parameters = tool_call.get("parameters", {})
 
-                # 发送工具调用通知
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': tool_call})}\n\n"
+                # 发送工具调用通知给前端
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'name': tool_name, 'parameters': parameters}})}\n\n"
 
                 # Layer 3：资产 tab 硬拦截分镜工具
                 if not is_storyboard_tab and tool_name in STORYBOARD_TOOLS:
                     error_msg = "❌ 当前界面（资产管理）不允许执行分镜操作"
                     yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                    tool_result_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": json.dumps({"success": False, "error": error_msg}, ensure_ascii=False)
+                    })
                     tool_results_lines.append(f"{tool_name} → {error_msg}")
                     continue
 
                 # 执行工具
                 result = await execute_tool_call(project_id, tool_name, parameters)
+                result_json = json.dumps(result, ensure_ascii=False)
 
-                # 发送工具执行结果
+                # 发送工具执行结果给前端
                 if result.get("success"):
                     if tool_name == "create_storyboard":
                         success_msg = f'✅ 成功创建第{result.get("sequence", "")}镜'
@@ -1536,13 +1618,22 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
                     yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
                     tool_results_lines.append(f"{tool_name} → {error_msg}")
 
-            # 将本轮 assistant 响应和工具结果追加到消息列表，供下一轮 LLM 使用
-            loop_messages.append({"role": "assistant", "content": content_buffer})
-            tool_results_text = "\n".join(tool_results_lines)
-            loop_messages.append({
-                "role": "user",
-                "content": f"工具执行结果：\n{tool_results_text}\n\n请继续完成剩余任务。若所有任务已完成，请向用户汇报结果。"
-            })
+                tool_result_msgs.append({
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": result_json
+                })
+
+            if native_tool_calls:
+                # 原生模式：追加 tool 角色消息列表
+                loop_messages.extend(tool_result_msgs)
+            else:
+                # Fallback 模式：用 user 角色汇总工具结果（兼容不支持 role=tool 的模型）
+                tool_results_text = "\n".join(tool_results_lines)
+                loop_messages.append({
+                    "role": "user",
+                    "content": f"工具执行结果：\n{tool_results_text}\n\n请继续完成剩余任务。若所有任务已完成，请向用户汇报结果。"
+                })
 
         else:
             # 达到最大迭代次数
@@ -1662,11 +1753,12 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
 请按照上述工作流程，逐步提取并创建所有角色、场景、道具和剧集。"""
 
         content_buffer = ""
-        all_tool_calls = []
+        native_tool_calls = []
 
         async for chunk in llm.chat_stream(
             [{"role": "user", "content": message}],
-            system_prompt
+            system_prompt,
+            tools=ASSET_ONLY_TOOLS
         ):
             chunk_type = chunk.get("type")
             chunk_content = chunk.get("content", "")
@@ -1684,20 +1776,29 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
             elif chunk_type == "content_end":
                 yield f"data: {json.dumps({'type': 'content_end'})}\n\n"
 
+            elif chunk_type == "tool_calls":
+                native_tool_calls = chunk.get("tool_calls", [])
+
             elif chunk_type == "error":
                 yield f"data: {json.dumps({'type': 'error', 'content': chunk_content})}\n\n"
 
-        # 解析工具调用
-        tool_pattern = r'TOOL:\s*(\w+)\s*\n(.*?)\nEND_TOOL'
-        tool_matches = re.findall(tool_pattern, content_buffer, re.DOTALL)
-
-        for tool_name, params_json in tool_matches:
-            try:
-                params = json.loads(params_json.strip())
-                tool_calls = {"name": tool_name, "parameters": params}
-                all_tool_calls.append(tool_calls)
-            except:
-                pass
+        # 构建工具调用列表：优先原生，fallback 文本解析
+        all_tool_calls = []
+        if native_tool_calls:
+            for tc in native_tool_calls:
+                all_tool_calls.append({
+                    "name": tc.get("name", ""),
+                    "parameters": tc.get("arguments", {})
+                })
+        else:
+            tool_pattern = r'TOOL:\s*(\w+)\s*\n(.*?)\nEND_TOOL'
+            tool_matches = re.findall(tool_pattern, content_buffer, re.DOTALL)
+            for tool_name, params_json in tool_matches:
+                try:
+                    params = json.loads(params_json.strip())
+                    all_tool_calls.append({"name": tool_name, "parameters": params})
+                except Exception:
+                    pass
 
         # 执行所有工具调用
         created_assets = {"characters": [], "scenes": [], "props": [], "episodes": []}
