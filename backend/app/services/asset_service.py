@@ -406,8 +406,6 @@ class ImageService:
                     break
 
             # 更新资产的主图ID
-            AssetService.update_asset_image(project_id, "image", asset_id, image_id)
-
             for asset_type in ["character", "scene", "prop", "storyboard"]:
                 asset = AssetService.load_asset(project_id, asset_type, asset_id)
                 if asset:
