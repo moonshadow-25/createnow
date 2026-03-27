@@ -793,6 +793,7 @@ export function StoryboardDetail({
     setGeneratedPrompt('');
     resetEditState(); // 使用 hook 的重置函数
     setStoryboardImages([]);
+    setStoryboardEditInitialTab('edit');
     dialogs.open('storyboardEdit');
   };
 

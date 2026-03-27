@@ -155,28 +155,25 @@ export function StoryboardEditDialog({
   const loadAssetImageStatuses = async (storyboard: any) => {
     if (!storyboard) return;
     const updates: Record<string, { asset_id?: string; status?: string }> = {};
-    const assetIds: Array<{ assetId: string; imageId: string }> = [];
+    const assetIds: string[] = [];
     for (const charId of storyboard.character_ids || []) {
-      const char = characters.find((c: any) => c.asset_id === charId);
-      if (char?.image_id) assetIds.push({ assetId: charId, imageId: char.image_id });
+      assetIds.push(charId);
     }
     const sceneIds: string[] = storyboard.scene_ids?.length
       ? storyboard.scene_ids
       : (storyboard.scene_id ? [storyboard.scene_id] : []);
     for (const sceneId of sceneIds) {
-      const scene = scenes.find((s: any) => s.asset_id === sceneId);
-      if (scene?.image_id) assetIds.push({ assetId: sceneId, imageId: scene.image_id });
+      assetIds.push(sceneId);
     }
     for (const propId of storyboard.prop_ids || []) {
-      const prop = props.find((p: any) => p.asset_id === propId);
-      if (prop?.image_id) assetIds.push({ assetId: propId, imageId: prop.image_id });
+      assetIds.push(propId);
     }
-    await Promise.all(assetIds.map(async ({ assetId, imageId }) => {
+    await Promise.all(assetIds.map(async (assetId) => {
       try {
         const res = await generationApi.listImages(projectId, assetId);
         const imgs: any[] = res.data || [];
         const primary = imgs.find(i => i.is_primary) || imgs[0];
-        if (primary) updates[imageId] = { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status };
+        if (primary) updates[assetId] = { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status };
       } catch {}
     }));
     setAssetImageStatuses(prev => ({ ...prev, ...updates }));
@@ -604,16 +601,13 @@ export function StoryboardEditDialog({
                         : primaryImg.volcengine_asset_status;
                       const allStatuses: (string | undefined)[] = [primaryImgStatus];
                       for (const charId of selectedCharacters) {
-                        const char = characters.find((c: any) => c.asset_id === charId);
-                        if (char?.image_id) allStatuses.push(assetImageStatuses[char.image_id]?.status);
+                        allStatuses.push(assetImageStatuses[charId]?.status);
                       }
                       for (const sceneId of selectedScenes) {
-                        const scene = scenes.find((s: any) => s.asset_id === sceneId);
-                        if (scene?.image_id) allStatuses.push(assetImageStatuses[scene.image_id]?.status);
+                        allStatuses.push(assetImageStatuses[sceneId]?.status);
                       }
                       for (const propId of selectedProps) {
-                        const prop = props.find((p: any) => p.asset_id === propId);
-                        if (prop?.image_id) allStatuses.push(assetImageStatuses[prop.image_id]?.status);
+                        allStatuses.push(assetImageStatuses[propId]?.status);
                       }
 
                       const anyFailed = allStatuses.some(s => s === 'Failed');
@@ -1217,16 +1211,13 @@ function VideoTab({
               allStatuses.push(primaryImgObj.volcengine_asset_status);
             }
             for (const charId of selectedCharacters) {
-              const char = characters.find((c: any) => c.asset_id === charId);
-              if (char?.image_id) allStatuses.push(assetImageStatuses[char.image_id]?.status);
+              allStatuses.push(assetImageStatuses[charId]?.status);
             }
             for (const sceneId of selectedScenes) {
-              const scene = scenes.find((s: any) => s.asset_id === sceneId);
-              if (scene?.image_id) allStatuses.push(assetImageStatuses[scene.image_id]?.status);
+              allStatuses.push(assetImageStatuses[sceneId]?.status);
             }
             for (const propId of selectedProps) {
-              const prop = props.find((p: any) => p.asset_id === propId);
-              if (prop?.image_id) allStatuses.push(assetImageStatuses[prop.image_id]?.status);
+              allStatuses.push(assetImageStatuses[propId]?.status);
             }
             if (allStatuses.length === 0) return null;
             const anyFailed = allStatuses.some(s => s === 'Failed');
