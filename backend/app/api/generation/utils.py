@@ -2,6 +2,38 @@
 Generation API - 工具函数
 """
 
+from fastapi import HTTPException
+
+
+def check_project_budget(project: dict) -> None:
+    """检查项目预算，超出时抛出 HTTP 402（实时扫描文件计算开销）"""
+    budget_total = project.get("budget_total")
+    if budget_total is None:
+        return
+
+    import json as _json
+    from app.core.config import settings
+    project_id = project.get("project_id")
+    project_dir = settings.PROJECTS_DIR / project_id
+
+    images_dir = project_dir / "images"
+    total_images = len(list(images_dir.glob("*.json"))) if images_dir.exists() else 0
+
+    videos_dir = project_dir / "videos"
+    total_video_seconds = 0.0
+    if videos_dir.exists():
+        for vf in videos_dir.glob("*.json"):
+            with open(vf, encoding="utf-8") as f:
+                v = _json.load(f)
+            total_video_seconds += float(v.get("duration") or 0)
+
+    budget_spent = round(0.4 * total_images + 1.0 * total_video_seconds, 2)
+    if budget_spent >= budget_total:
+        raise HTTPException(
+            status_code=402,
+            detail=f"项目预算已超出（已用 {budget_spent:.2f} / 总额 {budget_total:.2f}），请联系管理员增加预算"
+        )
+
 
 def parse_size(size_str: str) -> tuple[int, int]:
     """

@@ -1,4 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
+
+// 解析 resolution（如 "1080x1920"），判断是否竖版
+function isPortraitResolution(resolution?: string): boolean {
+  if (!resolution) return false;
+  const parts = resolution.split('x');
+  const w = Number(parts[0]);
+  const h = Number(parts[1]);
+  return !!(w && h && h > w);
+}
+
+// 根据 resolution 返回容器宽高比样式
+function getAspectRatioStyle(resolution?: string): CSSProperties {
+  if (!resolution) return { aspectRatio: '16/9' };
+  const parts = resolution.split('x');
+  const w = Number(parts[0]);
+  const h = Number(parts[1]);
+  if (!w || !h) return { aspectRatio: '16/9' };
+  return { aspectRatio: `${w}/${h}` };
+}
 import { X, Download, Video, RefreshCw, Loader2, HardDrive } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useToast } from '@/components/common/Toast';
@@ -66,6 +86,7 @@ export function VideoGallery({
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videosRef = useRef<VideoRecord[]>([]); // 存储最新的allVideos状态，供定时器访问
   const parentRef = useRef<HTMLDivElement>(null); // 虚拟滚动容器ref
+  const displayedVideosRef = useRef<VideoRecord[]>([]); // 供 estimateSize 同步读取最新数据
 
   useEffect(() => {
     const init = async () => {
@@ -110,6 +131,11 @@ export function VideoGallery({
   useEffect(() => {
     videosRef.current = allVideos;
   }, [allVideos]);
+
+  // 同步 displayedVideos 到 ref，供 estimateSize 读取
+  useEffect(() => {
+    displayedVideosRef.current = displayedVideos;
+  }, [displayedVideos]);
 
   // 监听滚动，到底部时加载更多
   useEffect(() => {
@@ -343,9 +369,9 @@ export function VideoGallery({
     count: Math.ceil(displayedVideos.length / 2), // ✅ 基于displayedVideos，2列布局
     getScrollElement: () => parentRef.current,
     estimateSize: () => {
-      // 动态计算高度（增加到480/580以避免溢出遮挡）
+      // 所有卡片容器统一 16:9，高度一致
       const isWideScreen = window.innerWidth >= 768;
-      return isWideScreen ? 480 : 580; // ✅ 双列480px，单列580px（考虑gap + 实际卡片高度）
+      return isWideScreen ? 480 : 580;
     },
     overscan: 1, // ✅ 只预渲染1行（2个卡片）
   });
@@ -528,17 +554,25 @@ export function VideoGallery({
 // 视频播放器模态框
 export function VideoPlayer({ video, projectId, onClose }: { video: VideoRecord; projectId: string; onClose: () => void }) {
   const videoUrl = getVideoUrl(video, projectId);
+  const portrait = isPortraitResolution(video.resolution);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
-      <div className="w-full max-w-5xl">
+      <div className={portrait ? 'flex flex-col max-h-[90vh]' : 'w-full max-w-5xl'}>
         <div className="flex justify-between items-center mb-4 px-4">
           <h3 className="text-white text-lg">{video.prompt}</h3>
           <button onClick={onClose} className="text-white hover:text-gray-300">
             <X size={24} />
           </button>
         </div>
-        <div className="aspect-video bg-black">
+        <div
+          className="bg-black"
+          style={{
+            ...getAspectRatioStyle(video.resolution),
+            maxHeight: '80vh',
+            width: portrait ? 'auto' : '100%',
+          }}
+        >
           {videoUrl ? (
             <video
               src={videoUrl}

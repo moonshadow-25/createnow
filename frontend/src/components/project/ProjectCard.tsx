@@ -1,4 +1,4 @@
-import { FolderOpen, Trash2, Pencil } from 'lucide-react';
+import { FolderOpen, Trash2, Pencil, Lock } from 'lucide-react';
 import { Project } from '@/types';
 
 interface ProjectStats {
@@ -115,6 +115,12 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit 
       <div className="flex justify-between items-start">
         <h3 className="text-xl font-semibold flex-1 mr-2 truncate">{project.name}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {project.budget_total != null && stats &&
+            (0.4 * stats.total_images + 1.0 * stats.total_video_seconds) >= project.budget_total && (
+            <span title="预算已超出，API已锁定" className="text-red-400">
+              <Lock size={14} />
+            </span>
+          )}
           {isAdmin && (
             <button
               onClick={e => { e.stopPropagation(); onEdit(); }}
@@ -209,6 +215,31 @@ function StatsSection({ project, stats }: { project: Project; stats: ProjectStat
           {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}元/分钟` : '—'}
         </span>
       </div>
+
+      {/* Budget */}
+      {project.budget_total != null && (() => {
+        const spent = m.image_cost + m.video_cost;
+        const total = project.budget_total;
+        const pct = Math.min(spent / total, 1);
+        const isLocked = spent >= total;
+        return (
+          <div className="space-y-1">
+            <div className="flex justify-between text-gray-400">
+              <span>预算</span>
+              <span className={isLocked ? 'text-red-400 font-semibold' : ''}>
+                {spent.toFixed(2)} / {total.toFixed(2)}
+                {isLocked && ' · 已锁定'}
+              </span>
+            </div>
+            <div className="bg-gray-600 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${isLocked ? 'bg-red-500' : pct > 0.8 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+                style={{ width: `${pct * 100}%` }}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Health */}
       {(project.project_duration_days ?? 0) > 0 && (

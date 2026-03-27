@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel
 from datetime import datetime
 import os
@@ -26,6 +26,7 @@ class StoryboardCreate(BaseModel):
     description: str
     character_ids: List[str] = []
     scene_id: str = None
+    scene_ids: List[str] = []
     prop_ids: List[str] = []
     camera_angle: str = None
     shot_type: str = None
@@ -38,12 +39,14 @@ class StoryboardUpdate(BaseModel):
     description: Optional[str] = None
     character_ids: Optional[List[str]] = None
     scene_id: Optional[str] = None
+    scene_ids: Optional[List[str]] = None
     prop_ids: Optional[List[str]] = None
     camera_angle: Optional[str] = None
     shot_type: Optional[str] = None
     dialogue: Optional[str] = None
     action: Optional[str] = None
     image_prompt: Optional[str] = None
+    video_prompt: Optional[Union[str, List[str]]] = None
     duration: Optional[int] = None
     resolution: Optional[str] = None
 

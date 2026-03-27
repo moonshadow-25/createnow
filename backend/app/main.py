@@ -218,6 +218,21 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # 项目级授权：子账号仅可访问 assigned_project_ids
+        if payload.get("role") == "user":
+            project_match = re.match(r"^/api/projects/([^/]+)(?:/|$)", path)
+            if project_match:
+                project_id = project_match.group(1)
+                from app.services.user_service import get_user_by_username
+                user = get_user_by_username(payload.get("sub", ""))
+                allowed = set((user or {}).get("assigned_project_ids") or [])
+                if project_id not in allowed:
+                    from starlette.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "无权访问该项目"},
+                    )
+
         request.state.admin_user = payload  # {"sub": "username", "role": "admin"}
         return await call_next(request)
 

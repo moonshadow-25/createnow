@@ -61,6 +61,8 @@ export const projectApi = {
   update: (id: string, data: any) => api.put(`/projects/${id}`, data),
   delete: (id: string) => api.delete(`/projects/${id}`),
   getStats: (id: string) => api.get(`/projects/${id}/stats`),
+  setBudget: (id: string, budgetTotal: number | null) =>
+    api.put(`/projects/${id}/budget`, { budget_total: budgetTotal }),
 };
 
 // 管理员相关API
@@ -520,6 +522,19 @@ export const canvasApi = {
     api.put(`/projects/${projectId}/canvas/${canvasId}`, data),
   delete: (projectId: string, canvasId: string) =>
     api.delete(`/projects/${projectId}/canvas/${canvasId}`),
+
+  // Workflow
+  validateWorkflow: (projectId: string, canvasId: string) =>
+    api.post(`/projects/${projectId}/canvas/${canvasId}/validate`),
+  runWorkflow: (projectId: string, canvasId: string, data?: { trigger?: string }) =>
+    api.post(`/projects/${projectId}/canvas/${canvasId}/run`, data || { trigger: 'manual' }),
+  cancelWorkflowRun: (projectId: string, canvasId: string, runId: string) =>
+    api.post(`/projects/${projectId}/canvas/${canvasId}/runs/${runId}/cancel`),
+  listWorkflowRuns: (projectId: string, canvasId: string, limit: number = 50) =>
+    api.get(`/projects/${projectId}/canvas/${canvasId}/runs`, { params: { limit } }),
+  getWorkflowRun: (projectId: string, canvasId: string, runId: string) =>
+    api.get(`/projects/${projectId}/canvas/${canvasId}/runs/${runId}`),
+
   // 融合生成
   generateFusionPrompt: (projectId: string, data: {
     asset_ids: string[];
@@ -569,6 +584,8 @@ export const adminAuthApi = {
   },
   me:     () => api.get('/admin/me'),
   logout: () => api.post('/admin/logout'),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    api.put('/admin/me/password', { old_password: oldPassword, new_password: newPassword }),
 };
 
 // 管理员用户管理 API

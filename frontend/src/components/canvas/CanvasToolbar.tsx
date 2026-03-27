@@ -1,11 +1,29 @@
 import { useState } from 'react';
-import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize2, User, Package, MapPin, Film, Sparkles } from 'lucide-react';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  User,
+  Package,
+  MapPin,
+  Film,
+  Sparkles,
+  Boxes,
+  Network,
+} from 'lucide-react';
 import { useCanvasStore } from '@/store/canvasStore';
 import { useToast } from '@/components/common/Toast';
 import type { Canvas } from '@/types/canvas';
 
+type CanvasViewMode = 'asset' | 'workflow';
+
 interface CanvasToolbarProps {
   projectId: string;
+  mode: CanvasViewMode;
+  onModeChange: (mode: CanvasViewMode) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
@@ -19,7 +37,16 @@ interface CanvasToolbarProps {
   onToggleType: (type: keyof CanvasToolbarProps['visibleTypes']) => void;
 }
 
-export function CanvasToolbar({ projectId, onZoomIn, onZoomOut, onZoomReset, visibleTypes, onToggleType }: CanvasToolbarProps) {
+export function CanvasToolbar({
+  projectId,
+  mode,
+  onModeChange,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
+  visibleTypes,
+  onToggleType,
+}: CanvasToolbarProps) {
   const { toast } = useToast();
   const { canvasList, activeCanvasId, setActiveCanvas, createCanvas, deleteCanvas, updateCanvas } = useCanvasStore();
   const [isCreating, setIsCreating] = useState(false);
@@ -74,24 +101,21 @@ export function CanvasToolbar({ projectId, onZoomIn, onZoomOut, onZoomReset, vis
 
   return (
     <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
-      {/* 左侧：画布切换tabs */}
       <div className="flex items-center gap-2 flex-1 overflow-x-auto">
         {canvasList.map(canvas => (
           <div
             key={canvas.canvas_id}
             className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition ${
-              canvas.canvas_id === activeCanvasId
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              canvas.canvas_id === activeCanvasId ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
             {editingCanvasId === canvas.canvas_id ? (
               <input
                 type="text"
                 value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
+                onChange={e => setEditingName(e.target.value)}
                 onBlur={() => handleRenameCanvas(canvas.canvas_id)}
-                onKeyDown={(e) => {
+                onKeyDown={e => {
                   if (e.key === 'Enter') handleRenameCanvas(canvas.canvas_id);
                   if (e.key === 'Escape') {
                     setEditingCanvasId(null);
@@ -100,20 +124,17 @@ export function CanvasToolbar({ projectId, onZoomIn, onZoomOut, onZoomReset, vis
                 }}
                 className="bg-gray-900 text-white px-2 py-0.5 rounded text-sm w-24"
                 autoFocus
-                onClick={(e) => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}
               />
             ) : (
               <>
-                <span
-                  onClick={() => setActiveCanvas(canvas.canvas_id)}
-                  className="text-sm"
-                >
+                <span onClick={() => setActiveCanvas(canvas.canvas_id)} className="text-sm">
                   {canvas.name}
                 </span>
                 {canvas.canvas_id === activeCanvasId && (
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation();
                         startEditing(canvas);
                       }}
@@ -123,7 +144,7 @@ export function CanvasToolbar({ projectId, onZoomIn, onZoomOut, onZoomReset, vis
                       <Edit2 size={12} />
                     </button>
                     <button
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation();
                         handleDeleteCanvas(canvas.canvas_id);
                       }}
@@ -139,15 +160,14 @@ export function CanvasToolbar({ projectId, onZoomIn, onZoomOut, onZoomReset, vis
           </div>
         ))}
 
-        {/* 创建新画布 */}
         {isCreating ? (
           <div className="flex items-center gap-2">
             <input
               type="text"
               value={newCanvasName}
-              onChange={(e) => setNewCanvasName(e.target.value)}
+              onChange={e => setNewCanvasName(e.target.value)}
               onBlur={handleCreateCanvas}
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === 'Enter') handleCreateCanvas();
                 if (e.key === 'Escape') {
                   setIsCreating(false);
@@ -171,93 +191,94 @@ export function CanvasToolbar({ projectId, onZoomIn, onZoomOut, onZoomReset, vis
         )}
       </div>
 
-      {/* 右侧：过滤按钮和缩放控制 */}
       <div className="flex items-center gap-2 ml-4">
-        {/* 过滤按钮 */}
-        <button
-          onClick={() => onToggleType('character')}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
-            visibleTypes.character
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-400 opacity-50'
-          }`}
-          title="切换角色显示"
-        >
-          <User size={14} />
-          角色
-        </button>
-        <button
-          onClick={() => onToggleType('prop')}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
-            visibleTypes.prop
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-400 opacity-50'
-          }`}
-          title="切换道具显示"
-        >
-          <Package size={14} />
-          道具
-        </button>
-        <button
-          onClick={() => onToggleType('scene')}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
-            visibleTypes.scene
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-400 opacity-50'
-          }`}
-          title="切换场景显示"
-        >
-          <MapPin size={14} />
-          场景
-        </button>
-        <button
-          onClick={() => onToggleType('storyboard')}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
-            visibleTypes.storyboard
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-400 opacity-50'
-          }`}
-          title="切换分镜显示"
-        >
-          <Film size={14} />
-          分镜
-        </button>
-        <button
-          onClick={() => onToggleType('canvas_element')}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
-            visibleTypes.canvas_element
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-400 opacity-50'
-          }`}
-          title="切换融合元素显示"
-        >
-          <Sparkles size={14} />
-          融合
-        </button>
+        <div className="flex items-center bg-gray-700 rounded p-0.5">
+          <button
+            onClick={() => onModeChange('asset')}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+              mode === 'asset' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-600'
+            }`}
+            title="资产画布模式"
+          >
+            <Boxes size={14} />
+            资产模式
+          </button>
+          <button
+            onClick={() => onModeChange('workflow')}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+              mode === 'workflow' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-600'
+            }`}
+            title="工作流节点模式"
+          >
+            <Network size={14} />
+            工作流模式
+          </button>
+        </div>
 
-        {/* 分隔线 */}
+        {mode === 'asset' && (
+          <>
+            <button
+              onClick={() => onToggleType('character')}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+                visibleTypes.character ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 opacity-50'
+              }`}
+              title="切换角色显示"
+            >
+              <User size={14} />
+              角色
+            </button>
+            <button
+              onClick={() => onToggleType('prop')}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+                visibleTypes.prop ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 opacity-50'
+              }`}
+              title="切换道具显示"
+            >
+              <Package size={14} />
+              道具
+            </button>
+            <button
+              onClick={() => onToggleType('scene')}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+                visibleTypes.scene ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 opacity-50'
+              }`}
+              title="切换场景显示"
+            >
+              <MapPin size={14} />
+              场景
+            </button>
+            <button
+              onClick={() => onToggleType('storyboard')}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+                visibleTypes.storyboard ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 opacity-50'
+              }`}
+              title="切换分镜显示"
+            >
+              <Film size={14} />
+              分镜
+            </button>
+            <button
+              onClick={() => onToggleType('canvas_element')}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
+                visibleTypes.canvas_element ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 opacity-50'
+              }`}
+              title="切换融合元素显示"
+            >
+              <Sparkles size={14} />
+              融合
+            </button>
+          </>
+        )}
+
         <div className="w-px h-6 bg-gray-600 mx-1"></div>
 
-        {/* 缩放控制 */}
-        <button
-          onClick={onZoomOut}
-          className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded"
-          title="缩小"
-        >
+        <button onClick={onZoomOut} className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded" title="缩小">
           <ZoomOut size={16} />
         </button>
-        <button
-          onClick={onZoomReset}
-          className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded"
-          title="重置缩放"
-        >
+        <button onClick={onZoomReset} className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded" title="重置缩放">
           <Maximize2 size={16} />
         </button>
-        <button
-          onClick={onZoomIn}
-          className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded"
-          title="放大"
-        >
+        <button onClick={onZoomIn} className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded" title="放大">
           <ZoomIn size={16} />
         </button>
       </div>

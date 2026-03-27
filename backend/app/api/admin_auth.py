@@ -65,6 +65,11 @@ class UserUpdate(BaseModel):
     assigned_project_ids: Optional[list[str]] = None
 
 
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+
+
 # ============================================================
 # 路由
 # ============================================================
@@ -99,6 +104,18 @@ async def admin_logout():
     return {"success": True}
 
 
+@router.put("/me/password")
+async def change_my_password(body: PasswordChange, current_user: dict = Depends(_get_current_user)):
+    if current_user.get("is_super_admin") or current_user.get("username") == "admin":
+        raise HTTPException(status_code=403, detail="超级管理员密码不可修改")
+    if not verify_password(body.old_password, current_user["hashed_password"]):
+        raise HTTPException(status_code=400, detail="原密码错误")
+    result = update_user(current_user["id"], password=body.new_password)
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"success": True}
+
+
 # ============================================================
 # 用户管理路由（admin only）
 # ============================================================
@@ -118,12 +135,15 @@ async def admin_create_user(body: UserCreate, _admin: dict = Depends(_require_ad
 
 @router.put("/users/{user_id}")
 async def admin_update_user(user_id: str, body: UserUpdate, _admin: dict = Depends(_require_admin)):
-    result = update_user(
-        user_id,
-        display_name=body.display_name,
-        password=body.password,
-        assigned_project_ids=body.assigned_project_ids,
-    )
+    try:
+        result = update_user(
+            user_id,
+            display_name=body.display_name,
+            password=body.password,
+            assigned_project_ids=body.assigned_project_ids,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
     return result

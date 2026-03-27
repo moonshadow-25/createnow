@@ -178,4 +178,5 @@ export interface Project {
   minutes_per_episode?: number;
   compute_budget_per_minute?: number;
   project_duration_days?: number;
+  budget_total?: number;    // 项目总预算（compute units），管理员设置
 }

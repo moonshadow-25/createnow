@@ -284,7 +284,8 @@ class ProjectService:
                 project.ai_config = {**existing_config, **new_config}
 
             for field in ["total_episodes", "minutes_per_episode",
-                          "compute_budget_per_minute", "project_duration_days"]:
+                          "compute_budget_per_minute", "project_duration_days",
+                          "budget_total"]:
                 if field in kwargs:
                     setattr(project, field, kwargs[field])
 

@@ -134,6 +134,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                       if (chunk.tool_call.name?.startsWith('create_') ||
                           chunk.tool_call.name?.startsWith('update_') ||
                           chunk.tool_call.name?.startsWith('delete_') ||
+                          chunk.tool_call.name?.startsWith('insert_') ||
                           chunk.tool_call.name === 'generate_storyboard') {
                         assetsWereCreated = true;
                       }

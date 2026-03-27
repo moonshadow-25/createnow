@@ -2,22 +2,38 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { projectApi } from '@/services/api';
 import { Project } from '@/types';
+import { useAdminAuthStore } from '@/store/adminAuthStore';
+
+interface ProjectStats {
+  total_images: number;
+  total_video_seconds: number;
+}
 
 interface Props {
   project: Project;
+  stats?: ProjectStats | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function ProjectEditModal({ project, onClose, onSaved }: Props) {
+export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
+  const { role } = useAdminAuthStore();
+  const isAdmin = role === 'admin';
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description || '');
   const [totalEpisodes, setTotalEpisodes] = useState(project.total_episodes ?? 0);
   const [minutesPerEpisode, setMinutesPerEpisode] = useState(project.minutes_per_episode ?? 0);
   const [computeBudget, setComputeBudget] = useState(project.compute_budget_per_minute ?? 0);
   const [durationDays, setDurationDays] = useState(project.project_duration_days ?? 0);
+  const [budgetTotal, setBudgetTotal] = useState<string>(
+    project.budget_total != null ? String(project.budget_total) : ''
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const actualSpent = stats != null
+    ? 0.4 * stats.total_images + 1.0 * stats.total_video_seconds
+    : null;
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -35,6 +51,10 @@ export function ProjectEditModal({ project, onClose, onSaved }: Props) {
         compute_budget_per_minute: computeBudget,
         project_duration_days: durationDays,
       });
+      if (isAdmin) {
+        const parsedBudget = budgetTotal.trim() === '' ? null : Number(budgetTotal);
+        await projectApi.setBudget(project.project_id, parsedBudget);
+      }
       onSaved();
     } catch (e: any) {
       setError('保存失败，请重试');
@@ -121,6 +141,41 @@ export function ProjectEditModal({ project, onClose, onSaved }: Props) {
               />
             </div>
           </div>
+
+          {isAdmin && (
+            <>
+              <div className="border-t border-gray-700 pt-3">
+                <p className="text-xs text-gray-500 mb-3">管理员 · 项目预算</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">总预算上限</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="留空 = 不限制"
+                      value={budgetTotal}
+                      onChange={e => setBudgetTotal(e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">已消耗</label>
+                    <div className={`w-full bg-gray-700 border rounded-lg px-3 py-2 text-sm ${
+                      project.budget_total != null && actualSpent != null && actualSpent >= project.budget_total
+                        ? 'border-red-500 text-red-400'
+                        : 'border-gray-600 text-gray-300'
+                    }`}>
+                      {actualSpent != null ? actualSpent.toFixed(2) : '—'}
+                      {project.budget_total != null && actualSpent != null && actualSpent >= project.budget_total && (
+                        <span className="ml-2 text-xs text-red-400">已锁定</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
         </div>

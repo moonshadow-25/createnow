@@ -6,34 +6,58 @@ import { InfiniteCanvas } from './InfiniteCanvas';
 import { CanvasPropertyPanel } from './CanvasPropertyPanel';
 import { AssetPanel } from './AssetPanel';
 
+type CanvasViewMode = 'asset' | 'workflow';
+
 interface CanvasTabProps {
   projectId: string;
 }
 
+const TERMINAL_RUN_STATUS = new Set(['succeeded', 'failed', 'canceled', 'partial_failed']);
+
 export function CanvasTab({ projectId }: CanvasTabProps) {
-  const { fetchCanvasList, fetchCanvasElements, loading, error, selectedIds } = useCanvasStore();
+  const {
+    fetchCanvasList,
+    fetchCanvasElements,
+    fetchWorkflowRun,
+    loading,
+    error,
+    selectedIds,
+    selectedNodeId,
+    activeCanvasId,
+    activeRun,
+  } = useCanvasStore();
   const { fetchAssets } = useAssetStore();
+
   const [zoom, setZoom] = useState(1);
   const [assetPanelOpen, setAssetPanelOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<CanvasViewMode>('asset');
   const [visibleTypes, setVisibleTypes] = useState({
     character: true,
     prop: true,
     scene: true,
     storyboard: true,
-    canvas_element: true
+    canvas_element: true,
   });
 
   useEffect(() => {
-    // 加载画布列表
     fetchCanvasList(projectId);
-    // 加载画布元素
     fetchCanvasElements(projectId);
-    // 加载资产数据
     fetchAssets(projectId, 'character');
     fetchAssets(projectId, 'scene');
     fetchAssets(projectId, 'prop');
     fetchAssets(projectId, 'storyboard');
   }, [projectId]);
+
+  useEffect(() => {
+    if (!activeRun || !activeCanvasId) return;
+    if (TERMINAL_RUN_STATUS.has(activeRun.status)) return;
+
+    const timer = window.setInterval(() => {
+      fetchWorkflowRun(projectId, activeCanvasId, activeRun.run_id);
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [projectId, activeCanvasId, activeRun?.run_id, activeRun?.status]);
 
   const handleZoomIn = () => {
     setZoom(prev => Math.min(3, prev + 0.2));
@@ -54,7 +78,7 @@ export function CanvasTab({ projectId }: CanvasTabProps) {
   const handleToggleType = (type: keyof typeof visibleTypes) => {
     setVisibleTypes(prev => ({
       ...prev,
-      [type]: !prev[type]
+      [type]: !prev[type],
     }));
   };
 
@@ -76,9 +100,10 @@ export function CanvasTab({ projectId }: CanvasTabProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-gray-900">
-      {/* 工具栏 */}
       <CanvasToolbar
         projectId={projectId}
+        mode={viewMode}
+        onModeChange={setViewMode}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onZoomReset={handleZoomReset}
@@ -86,25 +111,21 @@ export function CanvasTab({ projectId }: CanvasTabProps) {
         onToggleType={handleToggleType}
       />
 
-      {/* 主内容区 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 左侧资产面板 */}
-        <AssetPanel
-          isOpen={assetPanelOpen}
-          onToggle={() => setAssetPanelOpen(!assetPanelOpen)}
-        />
+        {viewMode === 'asset' && (
+          <AssetPanel isOpen={assetPanelOpen} onToggle={() => setAssetPanelOpen(!assetPanelOpen)} />
+        )}
 
-        {/* 画布 */}
         <InfiniteCanvas
           projectId={projectId}
           zoom={zoom}
+          mode={viewMode}
           onZoomChange={handleZoomChange}
           visibleTypes={visibleTypes}
         />
 
-        {/* 右侧属性面板 - 只在选中元素时显示 */}
-        {selectedIds.length > 0 && (
-          <CanvasPropertyPanel projectId={projectId} />
+        {(selectedIds.length > 0 || selectedNodeId || viewMode === 'workflow') && (
+          <CanvasPropertyPanel projectId={projectId} mode={viewMode} />
         )}
       </div>
     </div>

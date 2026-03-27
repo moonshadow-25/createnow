@@ -3,6 +3,7 @@ import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw } 
 import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
+import { useAdminAuthStore } from '@/store/adminAuthStore';
 import { ApiConfigPanel } from './ApiConfigPanel';
 import { PromptPanel } from './PromptPanel';
 import { LogsPanel } from './LogsPanel';
@@ -21,6 +22,8 @@ interface SettingsModalProps {
 export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   const { toast } = useToast();
   const { currentProject, updateProject } = useProjectStore();
+  const { role } = useAdminAuthStore();
+  const isAdmin = role === 'admin';
   const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>('api');
   const [saving, setSaving] = useState(false);
 
@@ -270,9 +273,13 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     { id: 'api' as const, icon: Key, label: 'API设置' },
     { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
-    { id: 'global-prompts' as const, icon: Globe, label: '全局提示词' },
+    ...(isAdmin ? [
+      { id: 'global-prompts' as const, icon: Globe, label: '全局提示词' },
+    ] : []),
     { id: 'logs' as const, icon: FolderTree, label: 'AI日志' },
-    { id: 'update' as const, icon: RefreshCw, label: '检查更新' },
+    ...(isAdmin ? [
+      { id: 'update' as const, icon: RefreshCw, label: '检查更新' },
+    ] : []),
   ];
 
   return (

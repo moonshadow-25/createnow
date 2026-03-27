@@ -102,7 +102,7 @@ export const VideoCard = memo(({
     <div
       className={`bg-gray-700 rounded-lg overflow-hidden ${video.is_primary ? 'ring-2 ring-blue-500' : ''}`}
     >
-      {/* 视频预览 */}
+      {/* 视频预览：固定 16:9 容器，视频用 object-contain 自适应，竖版侧边留黑边 */}
       <div className="aspect-video bg-gray-900 relative">
         {/* 主视频标记 */}
         {video.is_primary && (
@@ -113,7 +113,7 @@ export const VideoCard = memo(({
         {videoUrl ? (
           <video
             src={videoUrl}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             controls
             poster={posterUrl}
             preload="none"

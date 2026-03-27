@@ -15,7 +15,7 @@ export function CanvasElementCard({
   isSelected,
   onSelect,
   onMouseDown,
-  onRemove
+  onRemove,
 }: CanvasElementCardProps) {
   const borderColor = BORDER_COLORS[element.type] || '#6B7280';
 
@@ -32,7 +32,7 @@ export function CanvasElementCard({
   return (
     <div
       data-canvas-element="true"
-      onMouseDown={(e) => onMouseDown(e, element)}
+      onMouseDown={e => onMouseDown(e, element)}
       onClick={handleClick}
       className={`
         relative bg-gray-800 rounded-lg overflow-hidden
@@ -43,10 +43,9 @@ export function CanvasElementCard({
         borderLeft: `4px solid ${borderColor}`,
         width: '200px',
         height: '200px',
-        cursor: 'move'
+        cursor: 'move',
       }}
     >
-      {/* 图片 */}
       <div className="w-full h-[140px] bg-gray-900 flex items-center justify-center overflow-hidden">
         {element.imageUrl ? (
           <img
@@ -63,25 +62,21 @@ export function CanvasElementCard({
         )}
       </div>
 
-      {/* 信息 */}
       <div className="p-2">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium text-white truncate flex-1">
-            {element.name}
-          </span>
+          <span className="text-xs font-medium text-white truncate flex-1">{element.name}</span>
         </div>
         <div
           className="text-xs px-2 py-0.5 rounded inline-block"
           style={{
             backgroundColor: borderColor + '20',
-            color: borderColor
+            color: borderColor,
           }}
         >
           {getTypeLabel(element.type)}
         </div>
       </div>
 
-      {/* 移除按钮 - 右上角 */}
       <button
         onClick={handleRemove}
         className="absolute top-2 right-2 w-6 h-6 bg-gray-900/80 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors z-10"
@@ -90,7 +85,6 @@ export function CanvasElementCard({
         <X size={14} className="text-gray-400" />
       </button>
 
-      {/* 选中标记 - 右下角 */}
       {isSelected && (
         <div className="absolute bottom-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
           <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -108,7 +102,7 @@ function getTypeLabel(type: string): string {
     scene: '场景',
     prop: '道具',
     storyboard: '分镜',
-    canvas_element: '画布元素'
+    canvas_element: '画布元素',
   };
   return labels[type] || type;
 }

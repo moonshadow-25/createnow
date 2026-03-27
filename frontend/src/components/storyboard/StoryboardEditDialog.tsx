@@ -55,7 +55,7 @@ export interface StoryboardEditDialogProps {
   setGeneratedPrompt: (v: string) => void;
   onImagePromptChange: (v: string) => void;
   onGeneratePrompt: () => void;
-  onGenerateNineGridPrompts: () => void;
+  videoGen: ReturnType<typeof useVideoGeneration>;
 
   // 保存状态
   isSaving: boolean;
@@ -124,7 +124,7 @@ export function StoryboardEditDialog({
   generatedPrompt,
   onImagePromptChange,
   onGeneratePrompt,
-  onGenerateNineGridPrompts,
+  videoGen,
   isSaving,
   storyboardImages,
   hiddenImageIds,
@@ -187,6 +187,20 @@ export function StoryboardEditDialog({
     if (show) setActiveTab(initialTab);
   }, [show, initialTab]);
 
+  // 当选择的资产变化时，补充加载新资产的 volcengine 状态
+  useEffect(() => {
+    if (!show) return;
+    const allSelectedIds = [...selectedCharacters, ...selectedScenes, ...selectedProps];
+    if (allSelectedIds.length === 0) return;
+    // 构造一个临时 storyboard 对象，只包含当前选择的资产
+    const tempSb = {
+      character_ids: selectedCharacters,
+      scene_ids: selectedScenes,
+      prop_ids: selectedProps,
+    };
+    loadAssetImageStatuses(tempSb);
+  }, [show, selectedCharacters.join(','), selectedScenes.join(','), selectedProps.join(',')]);
+
   // 弹框打开时加载关联资产的 volcengine 状态，并对非 Active 的已有 asset_id 自动轮询
   useEffect(() => {
     if (!show || !editingStoryboard) return;
@@ -206,8 +220,6 @@ export function StoryboardEditDialog({
     autoSync();
   }, [show, editingStoryboard?.asset_id]);
 
-  const videoGen = useVideoGeneration({ projectId, episodeId, onSuccess, characters, scenes, props, multimodalReference });
-
   // 当切换到 video tab 或弹框打开时初始化视频数据
   useEffect(() => {
     if (show && editingStoryboard && activeTab === 'video') {
@@ -226,9 +238,13 @@ export function StoryboardEditDialog({
       return 0;
     });
 
+  // 共享的主图和 trackingId，确保 handleSubmitAsset 与两个 Tab 的渲染使用同一个 key
+  const sharedPrimaryImg = visibleStoryboardImages.find(i => i.is_primary) || visibleStoryboardImages[0];
+  const sharedTrackingId = sharedPrimaryImg?.image_id ?? editingStoryboard?.asset_id ?? '';
+
   const handleSubmitAsset = async () => {
     if (!editingStoryboard) return;
-    const primaryImg = visibleStoryboardImages.find(i => i.is_primary) || visibleStoryboardImages[0];
+    const primaryImg = sharedPrimaryImg;
 
     // 收集所有需要提交的 image_id
     const imageIds: string[] = [];
@@ -250,18 +266,24 @@ export function StoryboardEditDialog({
     }
     if (imageIds.length === 0) return;
 
-    const trackingId = primaryImg?.image_id ?? imageIds[0];
+    const trackingId = sharedTrackingId;
     setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
     try {
       const res = await generationApi.submitAsset(projectId, imageIds);
       const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
 
       // 对每个 Processing 的 asset_id 轮询，直接用响应中的 asset_id，不依赖闭包
-      const pollOne = async (assetId: string) => {
-        const r = await generationApi.getAssetStatus(projectId, assetId);
-        if (r.data.status === 'Processing') {
-          setTimeout(() => pollOne(assetId), 5000);
-        }
+      const pollOne = async (assetId: string, imageId: string) => {
+        try {
+          const r = await generationApi.getAssetStatus(projectId, assetId);
+          setAssetImageStatuses(prev => ({
+            ...prev,
+            [imageId]: { asset_id: assetId, status: r.data.status }
+          }));
+          if (r.data.status === 'Processing') {
+            setTimeout(() => pollOne(assetId, imageId), 5000);
+          }
+        } catch {}
       };
       const processingItems = submitted.filter(s => s.status === 'Processing');
       const refreshAll = async () => {
@@ -272,7 +294,7 @@ export function StoryboardEditDialog({
       };
       if (processingItems.length > 0) {
         setTimeout(async () => {
-          await Promise.all(processingItems.map(s => pollOne(s.asset_id)));
+          await Promise.all(processingItems.map(s => pollOne(s.asset_id, s.image_id)));
           setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
           await refreshAll();
         }, 3000);
@@ -526,14 +548,6 @@ export function StoryboardEditDialog({
                   <Wand2 size={16} />
                   {editingStoryboard && getTaskStatus(editingStoryboard.asset_id, 'prompt') === 'generating' ? '生成中...' : generatedPrompt ? '重新生成提示词' : 'AI生成提示词'}
                 </button>
-                <button
-                  onClick={onGenerateNineGridPrompts}
-                  disabled={!editingStoryboard || getTaskStatus(editingStoryboard.asset_id, 'nine_grid') === 'generating'}
-                  className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 px-4 py-2 rounded"
-                >
-                  <Grid3X3 size={16} />
-                  {getTaskStatus(editingStoryboard?.asset_id, 'nine_grid') === 'generating' ? '生成中...' : '生成九宫格提示词'}
-                </button>
               </div>
 
               <div>
@@ -580,21 +594,24 @@ export function StoryboardEditDialog({
                     </button>
                     {/* 提交素材按钮（主图） */}
                     {showAssetSubmit && (() => {
-                      const primaryImg = visibleStoryboardImages.find(i => i.is_primary) || visibleStoryboardImages[0];
+                      const primaryImg = sharedPrimaryImg;
                       if (!primaryImg) return null;
-                      const isSubmitting = assetSubmitting[primaryImg.image_id];
+                      const isSubmitting = assetSubmitting[sharedTrackingId];
 
-                      // 收集所有关联资产的 volcengine 状态
-                      const allStatuses: (string | undefined)[] = [primaryImg.volcengine_asset_status];
-                      for (const charId of editingStoryboard?.character_ids || []) {
+                      // 收集所有关联资产的 volcengine 状态，主图优先从 assetImageStatuses 读实时状态
+                      const primaryImgStatus = primaryImg.image_id
+                        ? (assetImageStatuses[primaryImg.image_id]?.status ?? primaryImg.volcengine_asset_status)
+                        : primaryImg.volcengine_asset_status;
+                      const allStatuses: (string | undefined)[] = [primaryImgStatus];
+                      for (const charId of selectedCharacters) {
                         const char = characters.find((c: any) => c.asset_id === charId);
                         if (char?.image_id) allStatuses.push(assetImageStatuses[char.image_id]?.status);
                       }
-                      if (editingStoryboard?.scene_id) {
-                        const scene = scenes.find((s: any) => s.asset_id === editingStoryboard.scene_id);
+                      for (const sceneId of selectedScenes) {
+                        const scene = scenes.find((s: any) => s.asset_id === sceneId);
                         if (scene?.image_id) allStatuses.push(assetImageStatuses[scene.image_id]?.status);
                       }
-                      for (const propId of editingStoryboard?.prop_ids || []) {
+                      for (const propId of selectedProps) {
                         const prop = props.find((p: any) => p.asset_id === propId);
                         if (prop?.image_id) allStatuses.push(assetImageStatuses[prop.image_id]?.status);
                       }
@@ -666,6 +683,8 @@ export function StoryboardEditDialog({
             onAutoMatchAssets={onAutoMatchAssets}
             handleSubmitAsset={handleSubmitAsset}
             showAssetSubmit={showAssetSubmit}
+            submitTrackingId={sharedTrackingId}
+            submitPrimaryImg={sharedPrimaryImg}
             getTaskStatus={getTaskStatus}
           />
         )}
@@ -771,6 +790,8 @@ interface VideoTabProps {
   onAutoMatchAssets: () => void;
   handleSubmitAsset: () => void;
   showAssetSubmit?: boolean;
+  submitTrackingId: string;
+  submitPrimaryImg?: any;
   getTaskStatus: (storyboardId: string, taskType: any) => string | null;
 }
 
@@ -812,6 +833,8 @@ function VideoTab({
   onAutoMatchAssets,
   handleSubmitAsset,
   showAssetSubmit = false,
+  submitTrackingId,
+  submitPrimaryImg,
   getTaskStatus: getTaskStatusProp,
 }: VideoTabProps) {
   const {
@@ -1182,23 +1205,26 @@ function VideoTab({
         </div>
         <div className="flex items-center gap-2">
           {showAssetSubmit && (() => {
-            const primaryImg = primaryImage as any;
-            const trackingId = primaryImg?.image_id ?? storyboard.asset_id;
+            const trackingId = submitTrackingId;
             const isSubmitting = assetSubmitting[trackingId];
             const allStatuses: (string | undefined)[] = [];
-            if (primaryImg) allStatuses.push(primaryImg.volcengine_asset_status);
-            for (const charId of storyboard.character_ids || []) {
+            // 优先用 submitPrimaryImg（来自 visibleStoryboardImages，始终最新）
+            // 避免 videoGen.primaryImage 因未刷新而显示旧状态
+            const primaryImgObj = submitPrimaryImg ?? (primaryImage as any);
+            if (primaryImgObj?.image_id) {
+              allStatuses.push(assetImageStatuses[primaryImgObj.image_id]?.status ?? primaryImgObj.volcengine_asset_status);
+            } else if (primaryImgObj) {
+              allStatuses.push(primaryImgObj.volcengine_asset_status);
+            }
+            for (const charId of selectedCharacters) {
               const char = characters.find((c: any) => c.asset_id === charId);
               if (char?.image_id) allStatuses.push(assetImageStatuses[char.image_id]?.status);
             }
-            const sbSceneIds2: string[] = storyboard.scene_ids?.length
-              ? storyboard.scene_ids
-              : (storyboard.scene_id ? [storyboard.scene_id] : []);
-            for (const sceneId of sbSceneIds2) {
+            for (const sceneId of selectedScenes) {
               const scene = scenes.find((s: any) => s.asset_id === sceneId);
               if (scene?.image_id) allStatuses.push(assetImageStatuses[scene.image_id]?.status);
             }
-            for (const propId of storyboard.prop_ids || []) {
+            for (const propId of selectedProps) {
               const prop = props.find((p: any) => p.asset_id === propId);
               if (prop?.image_id) allStatuses.push(assetImageStatuses[prop.image_id]?.status);
             }

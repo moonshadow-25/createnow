@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { canvasApi, assetApi } from '@/services/api';
-import type { Canvas, CanvasElementData } from '@/types/canvas';
+import type {
+  Canvas,
+  CanvasElementData,
+  WorkflowEdge,
+  WorkflowNode,
+  WorkflowRun,
+  WorkflowValidationResult,
+} from '@/types/canvas';
 
 interface CanvasStore {
   // 状态
@@ -8,6 +15,9 @@ interface CanvasStore {
   activeCanvasId: string | null;
   canvasElements: Record<string, CanvasElementData>;
   selectedIds: string[];
+  selectedNodeId: string | null;
+  workflowRuns: Record<string, WorkflowRun[]>; // key: canvasId
+  activeRun: WorkflowRun | null;
   loading: boolean;
   error: string | null;
 
@@ -24,6 +34,21 @@ interface CanvasStore {
   // 选择操作
   selectElement: (id: string, multi: boolean) => void;
   clearSelection: () => void;
+  setSelectedNode: (nodeId: string | null) => void;
+
+  // workflow 结构操作
+  upsertNode: (projectId: string, canvasId: string, node: WorkflowNode) => Promise<void>;
+  removeNode: (projectId: string, canvasId: string, nodeId: string) => Promise<void>;
+  upsertEdge: (projectId: string, canvasId: string, edge: WorkflowEdge) => Promise<void>;
+  removeEdge: (projectId: string, canvasId: string, edgeId: string) => Promise<void>;
+  setWorkflowVariables: (projectId: string, canvasId: string, variables: Record<string, any>) => Promise<void>;
+
+  // workflow 运行
+  validateWorkflow: (projectId: string, canvasId: string) => Promise<WorkflowValidationResult | null>;
+  runWorkflow: (projectId: string, canvasId: string) => Promise<WorkflowRun | null>;
+  cancelWorkflowRun: (projectId: string, canvasId: string, runId: string) => Promise<void>;
+  fetchWorkflowRuns: (projectId: string, canvasId: string, limit?: number) => Promise<void>;
+  fetchWorkflowRun: (projectId: string, canvasId: string, runId: string) => Promise<WorkflowRun | null>;
 
   // 画布元素操作
   fetchCanvasElements: (projectId: string) => Promise<void>;
@@ -35,12 +60,25 @@ interface CanvasStore {
   reset: () => void;
 }
 
+const ensureWorkflowDefaults = (canvas: Canvas): Canvas => ({
+  ...canvas,
+  schema_version: canvas.schema_version ?? 1,
+  nodes: canvas.nodes ?? [],
+  edges: canvas.edges ?? [],
+  variables: canvas.variables ?? {},
+});
+
+const getCanvasById = (canvasList: Canvas[], canvasId: string) => canvasList.find(c => c.canvas_id === canvasId);
+
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // 初始状态
   canvasList: [],
   activeCanvasId: null,
   canvasElements: {},
   selectedIds: [],
+  selectedNodeId: null,
+  workflowRuns: {},
+  activeRun: null,
   loading: false,
   error: null,
 
@@ -49,7 +87,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await canvasApi.list(projectId);
-      const canvases = response.data || [];
+      const canvases = (response.data || []).map((c: Canvas) => ensureWorkflowDefaults(c));
 
       // 如果没有画布，自动创建默认画布
       if (canvases.length === 0) {
@@ -58,14 +96,18 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           set({
             canvasList: [newCanvas],
             activeCanvasId: newCanvas.canvas_id,
-            loading: false
+            selectedNodeId: null,
+            loading: false,
           });
+        } else {
+          set({ loading: false });
         }
       } else {
         set({
           canvasList: canvases,
           activeCanvasId: canvases[0].canvas_id,
-          loading: false
+          selectedNodeId: null,
+          loading: false,
         });
       }
     } catch (error: any) {
@@ -77,11 +119,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   createCanvas: async (projectId: string, name: string, description?: string) => {
     try {
       const response = await canvasApi.create(projectId, { name, description: description || '' });
-      const newCanvas = response.data;
+      const newCanvas = ensureWorkflowDefaults(response.data);
 
       set(state => ({
         canvasList: [...state.canvasList, newCanvas],
-        activeCanvasId: newCanvas.canvas_id
+        activeCanvasId: newCanvas.canvas_id,
+        selectedNodeId: null,
       }));
 
       return newCanvas;
@@ -95,12 +138,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   updateCanvas: async (projectId: string, canvasId: string, data: any) => {
     try {
       const response = await canvasApi.update(projectId, canvasId, data);
-      const updatedCanvas = response.data;
+      const updatedCanvas = ensureWorkflowDefaults(response.data);
 
       set(state => ({
-        canvasList: state.canvasList.map(c =>
-          c.canvas_id === canvasId ? updatedCanvas : c
-        )
+        canvasList: state.canvasList.map(c => (c.canvas_id === canvasId ? updatedCanvas : c)),
       }));
     } catch (error: any) {
       set({ error: error.message });
@@ -114,13 +155,17 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
       set(state => {
         const newList = state.canvasList.filter(c => c.canvas_id !== canvasId);
-        const newActiveId = state.activeCanvasId === canvasId
-          ? (newList.length > 0 ? newList[0].canvas_id : null)
-          : state.activeCanvasId;
+        const newActiveId = state.activeCanvasId === canvasId ? (newList.length > 0 ? newList[0].canvas_id : null) : state.activeCanvasId;
+
+        const newRuns = { ...state.workflowRuns };
+        delete newRuns[canvasId];
 
         return {
           canvasList: newList,
-          activeCanvasId: newActiveId
+          activeCanvasId: newActiveId,
+          selectedNodeId: null,
+          activeRun: newActiveId ? (newRuns[newActiveId]?.[0] || null) : null,
+          workflowRuns: newRuns,
         };
       });
     } catch (error: any) {
@@ -130,7 +175,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   // 设置当前画布
   setActiveCanvas: (canvasId: string) => {
-    set({ activeCanvasId: canvasId, selectedIds: [] });
+    set(state => ({
+      activeCanvasId: canvasId,
+      selectedIds: [],
+      selectedNodeId: null,
+      activeRun: state.workflowRuns[canvasId]?.[0] || null,
+    }));
   },
 
   // 更新布局
@@ -139,9 +189,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       await canvasApi.update(projectId, canvasId, layout);
 
       set(state => ({
-        canvasList: state.canvasList.map(c =>
-          c.canvas_id === canvasId ? { ...c, ...layout } : c
-        )
+        canvasList: state.canvasList.map(c => (c.canvas_id === canvasId ? ensureWorkflowDefaults({ ...c, ...layout }) : c)),
       }));
     } catch (error: any) {
       set({ error: error.message });
@@ -152,22 +200,178 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   selectElement: (id: string, multi: boolean) => {
     set(state => {
       if (multi) {
-        // 多选模式
         if (state.selectedIds.includes(id)) {
-          return { selectedIds: state.selectedIds.filter(i => i !== id) };
-        } else {
-          return { selectedIds: [...state.selectedIds, id] };
+          return { selectedIds: state.selectedIds.filter(i => i !== id), selectedNodeId: null };
         }
-      } else {
-        // 单选模式
-        return { selectedIds: [id] };
+        return { selectedIds: [...state.selectedIds, id], selectedNodeId: null };
       }
+      return { selectedIds: [id], selectedNodeId: null };
     });
   },
 
-  // 清除选择
   clearSelection: () => {
-    set({ selectedIds: [] });
+    set({ selectedIds: [], selectedNodeId: null });
+  },
+
+  setSelectedNode: (nodeId: string | null) => {
+    set({ selectedNodeId: nodeId, selectedIds: [] });
+  },
+
+  upsertNode: async (projectId: string, canvasId: string, node: WorkflowNode) => {
+    const canvas = getCanvasById(get().canvasList, canvasId);
+    if (!canvas) return;
+
+    const nodes = [...(canvas.nodes || [])];
+    const idx = nodes.findIndex(n => n.node_id === node.node_id);
+    if (idx >= 0) nodes[idx] = node;
+    else nodes.push(node);
+
+    await get().updateCanvas(projectId, canvasId, {
+      schema_version: 2,
+      nodes,
+    });
+  },
+
+  removeNode: async (projectId: string, canvasId: string, nodeId: string) => {
+    const canvas = getCanvasById(get().canvasList, canvasId);
+    if (!canvas) return;
+
+    const nodes = (canvas.nodes || []).filter(n => n.node_id !== nodeId);
+    const edges = (canvas.edges || []).filter(e => e.source_node_id !== nodeId && e.target_node_id !== nodeId);
+
+    await get().updateCanvas(projectId, canvasId, {
+      schema_version: 2,
+      nodes,
+      edges,
+    });
+
+    set(state => ({
+      selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+    }));
+  },
+
+  upsertEdge: async (projectId: string, canvasId: string, edge: WorkflowEdge) => {
+    const canvas = getCanvasById(get().canvasList, canvasId);
+    if (!canvas) return;
+
+    const edges = [...(canvas.edges || [])];
+    const idx = edges.findIndex(e => e.edge_id === edge.edge_id);
+    if (idx >= 0) edges[idx] = edge;
+    else edges.push(edge);
+
+    await get().updateCanvas(projectId, canvasId, {
+      schema_version: 2,
+      edges,
+    });
+  },
+
+  removeEdge: async (projectId: string, canvasId: string, edgeId: string) => {
+    const canvas = getCanvasById(get().canvasList, canvasId);
+    if (!canvas) return;
+
+    const edges = (canvas.edges || []).filter(e => e.edge_id !== edgeId);
+    await get().updateCanvas(projectId, canvasId, {
+      schema_version: 2,
+      edges,
+    });
+  },
+
+  setWorkflowVariables: async (projectId: string, canvasId: string, variables: Record<string, any>) => {
+    await get().updateCanvas(projectId, canvasId, {
+      schema_version: 2,
+      variables,
+    });
+  },
+
+  validateWorkflow: async (projectId: string, canvasId: string) => {
+    try {
+      const response = await canvasApi.validateWorkflow(projectId, canvasId);
+      return response.data as WorkflowValidationResult;
+    } catch (error: any) {
+      set({ error: error.message });
+      return null;
+    }
+  },
+
+  runWorkflow: async (projectId: string, canvasId: string) => {
+    try {
+      const response = await canvasApi.runWorkflow(projectId, canvasId, { trigger: 'manual' });
+      const run = response.data as WorkflowRun;
+
+      set(state => {
+        const runs = state.workflowRuns[canvasId] || [];
+        return {
+          workflowRuns: {
+            ...state.workflowRuns,
+            [canvasId]: [run, ...runs.filter(r => r.run_id !== run.run_id)],
+          },
+          activeRun: run,
+        };
+      });
+
+      return run;
+    } catch (error: any) {
+      set({ error: error.message });
+      return null;
+    }
+  },
+
+  cancelWorkflowRun: async (projectId: string, canvasId: string, runId: string) => {
+    try {
+      const response = await canvasApi.cancelWorkflowRun(projectId, canvasId, runId);
+      const run = response.data as WorkflowRun;
+
+      set(state => {
+        const runs = (state.workflowRuns[canvasId] || []).map(r => (r.run_id === runId ? run : r));
+        return {
+          workflowRuns: { ...state.workflowRuns, [canvasId]: runs },
+          activeRun: state.activeRun?.run_id === runId ? run : state.activeRun,
+        };
+      });
+    } catch (error: any) {
+      set({ error: error.message });
+    }
+  },
+
+  fetchWorkflowRuns: async (projectId: string, canvasId: string, limit: number = 50) => {
+    try {
+      const response = await canvasApi.listWorkflowRuns(projectId, canvasId, limit);
+      const runs = (response.data || []) as WorkflowRun[];
+      set(state => ({
+        workflowRuns: {
+          ...state.workflowRuns,
+          [canvasId]: runs,
+        },
+        activeRun: state.activeCanvasId === canvasId ? runs[0] || null : state.activeRun,
+      }));
+    } catch (error: any) {
+      set({ error: error.message });
+    }
+  },
+
+  fetchWorkflowRun: async (projectId: string, canvasId: string, runId: string) => {
+    try {
+      const response = await canvasApi.getWorkflowRun(projectId, canvasId, runId);
+      const run = response.data as WorkflowRun;
+
+      set(state => {
+        const runs = state.workflowRuns[canvasId] || [];
+        const idx = runs.findIndex(r => r.run_id === run.run_id);
+        const updatedRuns = [...runs];
+        if (idx >= 0) updatedRuns[idx] = run;
+        else updatedRuns.unshift(run);
+
+        return {
+          workflowRuns: { ...state.workflowRuns, [canvasId]: updatedRuns },
+          activeRun: state.activeRun?.run_id === runId || state.activeCanvasId === canvasId ? run : state.activeRun,
+        };
+      });
+
+      return run;
+    } catch (error: any) {
+      set({ error: error.message });
+      return null;
+    }
   },
 
   // 获取画布元素
@@ -183,7 +387,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           type: 'canvas_element',
           name: el.name,
           imageUrl: el.primary_image_url || '',
-          data: el
+          data: el,
         };
       });
 
@@ -198,7 +402,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     try {
       const response = await assetApi.create(projectId, {
         asset_type: 'canvas_element',
-        ...data
+        ...data,
       });
 
       const newElement = response.data;
@@ -212,9 +416,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
             type: 'canvas_element',
             name: newElement.name,
             imageUrl: newElement.primary_image_url || '',
-            data: newElement
-          }
-        }
+            data: newElement,
+          },
+        },
       }));
 
       // 将元素添加到当前活动画布的布局中
@@ -222,35 +426,30 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       const activeCanvas = state.canvasList.find(c => c.canvas_id === state.activeCanvasId);
 
       if (activeCanvas) {
-        // 使用提供的位置，或默认位置
         const centerX = position?.x ?? 500;
         const centerY = position?.y ?? 300;
 
-        const newPositions = [...activeCanvas.elements, {
-          id: newElement.asset_id,
-          type: 'canvas_element' as const,
-          x: centerX,
-          y: centerY,
-          width: 200,
-          height: 200
-        }];
+        const newPositions = [
+          ...activeCanvas.elements,
+          {
+            id: newElement.asset_id,
+            type: 'canvas_element' as const,
+            x: centerX,
+            y: centerY,
+            width: 200,
+            height: 200,
+          },
+        ];
 
-        // 立即更新 canvasList 状态，避免自动布局将元素放到 (50, 50)
         set(state => ({
-          canvasList: state.canvasList.map(c =>
-            c.canvas_id === activeCanvas.canvas_id
-              ? { ...c, elements: newPositions }
-              : c
-          )
+          canvasList: state.canvasList.map(c => (c.canvas_id === activeCanvas.canvas_id ? { ...c, elements: newPositions } : c)),
         }));
 
-        // 然后异步更新后端
         await get().updateLayout(projectId, activeCanvas.canvas_id, {
-          elements: newPositions
+          elements: newPositions,
         });
       }
 
-      // 返回创建的元素ID
       return newElement.asset_id;
     } catch (error: any) {
       set({ error: error.message });
@@ -281,18 +480,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (!activeCanvas) return;
 
     try {
-      // 从elements数组中移除
       const newElements = activeCanvas.elements.filter(e => e.id !== elementId);
 
-      // 更新布局
       await get().updateLayout(projectId, activeCanvas.canvas_id, {
-        elements: newElements
+        elements: newElements,
       });
 
-      // 如果该元素被选中，从selectedIds中移除
       if (state.selectedIds.includes(elementId)) {
         set(state => ({
-          selectedIds: state.selectedIds.filter(id => id !== elementId)
+          selectedIds: state.selectedIds.filter(id => id !== elementId),
         }));
       }
     } catch (error: any) {
@@ -307,8 +503,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       activeCanvasId: null,
       canvasElements: {},
       selectedIds: [],
+      selectedNodeId: null,
+      workflowRuns: {},
+      activeRun: null,
       loading: false,
-      error: null
+      error: null,
     });
-  }
+  },
 }));

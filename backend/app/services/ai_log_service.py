@@ -16,6 +16,7 @@ class AILogService:
     TYPE_LLM = "llm"
     TYPE_IMAGE = "image"
     TYPE_VIDEO = "video"
+    TYPE_ASSET = "asset"
 
     @staticmethod
     def _get_log_file(project_id: str) -> Path:

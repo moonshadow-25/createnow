@@ -8,8 +8,8 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
-import { Plus, LogIn, CheckCircle2, Users, LogOut } from 'lucide-react';
-import { projectApi } from '@/services/api';
+import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound } from 'lucide-react';
+import { projectApi, adminAuthApi } from '@/services/api';
 import { Project } from '@/types';
 
 export default function HomePage() {
@@ -24,6 +24,9 @@ export default function HomePage() {
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [projectStats, setProjectStats] = useState<Record<string, any>>({});
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [showChangePwd, setShowChangePwd] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
+  const [pwdLoading, setPwdLoading] = useState(false);
 
   const isAdmin = adminRole === 'admin';
 
@@ -105,6 +108,29 @@ export default function HomePage() {
     adminLogout();
   };
 
+  const handleChangePassword = async () => {
+    if (pwdForm.new1 !== pwdForm.new2) {
+      toast('两次输入的新密码不一致', 'error');
+      return;
+    }
+    if (!pwdForm.new1) {
+      toast('新密码不能为空', 'error');
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      await adminAuthApi.changePassword(pwdForm.old, pwdForm.new1);
+      toast('密码修改成功', 'success');
+      setShowChangePwd(false);
+      setPwdForm({ old: '', new1: '', new2: '' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || '修改失败';
+      toast(msg, 'error');
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
   const handleEditSaved = async () => {
     setEditingProject(null);
     fetchProjects();
@@ -116,25 +142,25 @@ export default function HomePage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">DreamMaster</h1>
           <div className="flex items-center gap-3">
-            {loggedIn ? (
-              <>
-                <a
-                  href="http://47.117.182.216:8003/admin/login.html"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
-                >
-                  账户
-                </a>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 bg-green-700 hover:bg-green-800 px-4 py-2 rounded-lg transition text-sm"
-                  title={`已登录 | Key: ${apiKeyMasked}`}
-                >
-                  <CheckCircle2 size={16} />
-                  已登录
-                </button>
-              </>
+            {isAdmin && loggedIn && (
+              <a
+                href="http://47.117.182.216:8003/admin/login.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+              >
+                账户
+              </a>
+            )}
+            {isAdmin && (loggedIn ? (
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 bg-green-700 hover:bg-green-800 px-4 py-2 rounded-lg transition text-sm"
+                title={`已登录 | Key: ${apiKeyMasked}`}
+              >
+                <CheckCircle2 size={16} />
+                已登录
+              </button>
             ) : (
               <button
                 onClick={() => setShowLogin(true)}
@@ -143,7 +169,7 @@ export default function HomePage() {
                 <LogIn size={16} />
                 登录
               </button>
-            )}
+            ))}
 
             {isAdmin && (
               <button
@@ -169,6 +195,15 @@ export default function HomePage() {
             {adminUsername && (
               <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
                 <span className="text-xs text-gray-400">{adminUsername}</span>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowChangePwd(true)}
+                    className="flex items-center gap-1 text-gray-400 hover:text-white transition text-sm"
+                    title="修改密码"
+                  >
+                    <KeyRound size={15} />
+                  </button>
+                )}
                 <button
                   onClick={handleAdminLogout}
                   className="flex items-center gap-1 text-gray-400 hover:text-white transition text-sm"
@@ -217,9 +252,53 @@ export default function HomePage() {
       {editingProject && (
         <ProjectEditModal
           project={editingProject}
+          stats={projectStats[editingProject.project_id]}
           onClose={() => setEditingProject(null)}
           onSaved={handleEditSaved}
         />
+      )}
+      {showChangePwd && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-80 space-y-4">
+            <h3 className="text-lg font-semibold">修改密码</h3>
+            <input
+              type="password"
+              placeholder="原密码"
+              value={pwdForm.old}
+              onChange={e => setPwdForm(f => ({ ...f, old: e.target.value }))}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              placeholder="新密码"
+              value={pwdForm.new1}
+              onChange={e => setPwdForm(f => ({ ...f, new1: e.target.value }))}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              placeholder="确认新密码"
+              value={pwdForm.new2}
+              onChange={e => setPwdForm(f => ({ ...f, new2: e.target.value }))}
+              className="w-full bg-gray-700 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => { setShowChangePwd(false); setPwdForm({ old: '', new1: '', new2: '' }); }}
+                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleChangePassword}
+                disabled={pwdLoading}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm disabled:opacity-50"
+              >
+                {pwdLoading ? '保存中...' : '确认修改'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

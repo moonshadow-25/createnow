@@ -26,6 +26,7 @@ import { useDialogManager } from './hooks/useDialogManager';
 import { useAssetExtraction } from './hooks/useAssetExtraction';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useJianyingExport } from './hooks/useJianyingExport';
+import { useVideoGeneration } from './hooks/useVideoGeneration';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -137,7 +138,7 @@ export function StoryboardDetail({
     };
     window.addEventListener('vibe-drama:assets-created', handler);
     return () => window.removeEventListener('vibe-drama:assets-created', handler);
-  }, [projectId]);
+  }, [projectId, selectedEpisode]);
   useEffect(() => {
     if (!showMoreMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -190,6 +191,16 @@ export function StoryboardDetail({
   // 保存成功提示状态
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [storyboardEditInitialTab, setStoryboardEditInitialTab] = useState<'edit' | 'video'>('edit');
+
+  const videoGen = useVideoGeneration({
+    projectId,
+    episodeId: selectedEpisode?.asset_id || '',
+    onSuccess: () => loadStoryboards(),
+    characters,
+    scenes,
+    props,
+    multimodalReference,
+  });
 
   // 图片编辑弹框数据状态（用于分镜卡片按钮）
   const [cardImageEditStoryboard, setCardImageEditStoryboard] = useState<any>(null);
@@ -470,7 +481,6 @@ export function StoryboardDetail({
     handleGeneratePrompt: handleGeneratePromptBase,
     handleGenerateImageFromEdit: handleGenerateImageFromEditBase,
     handleAutoMatchAssets: handleAutoMatchAssetsBase,
-    handleGenerateNineGridPrompts: handleGenerateNineGridPromptsBase,
   } = imageManagement;
 
   // 包装函数以适配现有调用方式
@@ -497,13 +507,6 @@ export function StoryboardDetail({
       props,
       setGeneratedPrompt
     );
-  };
-
-  const handleGenerateNineGridPrompts = async () => {
-    await saveCurrentStoryboard();
-    return handleGenerateNineGridPromptsBase(editingStoryboard, setGeneratedPrompt, (videoPrompt: string) => {
-      setEditingStoryboard((prev: any) => prev ? { ...prev, video_prompt: videoPrompt } : prev);
-    });
   };
 
   const handleGenerateImageFromEdit = async () => {
@@ -882,8 +885,9 @@ export function StoryboardDetail({
         character_ids: selectedCharacters,
         scene_ids: selectedScenes,
         prop_ids: selectedProps,
+        image_prompt: generatedPrompt.trim(),
+        video_prompt: videoGen.videoPrompt,
       };
-      if (generatedPrompt.trim()) data.image_prompt = generatedPrompt.trim();
       await storyboardApi.update(projectId, editingStoryboard.asset_id, data);
     } finally {
       setIsSaving(false);
@@ -1279,7 +1283,12 @@ export function StoryboardDetail({
                   {(() => {
                     const uniqueSceneIds = new Set<string>();
                     storyboards.forEach(sb => {
-                      if (sb.scene_id) uniqueSceneIds.add(sb.scene_id);
+                      // 兼容旧的 scene_id 和新的 scene_ids 两种格式
+                      if (sb.scene_ids?.length) {
+                        sb.scene_ids.forEach((id: string) => uniqueSceneIds.add(id));
+                      } else if (sb.scene_id) {
+                        uniqueSceneIds.add(sb.scene_id);
+                      }
                     });
                     const uniqueScenes = Array.from(uniqueSceneIds)
                       .map(id => scenes.find(s => s.asset_id === id))
@@ -1428,7 +1437,7 @@ export function StoryboardDetail({
         setGeneratedPrompt={setGeneratedPrompt}
         onImagePromptChange={handleImagePromptChange}
         onGeneratePrompt={handleGeneratePrompt}
-        onGenerateNineGridPrompts={handleGenerateNineGridPrompts}
+        videoGen={videoGen}
         isSaving={isSaving}
         storyboardImages={storyboardImages}
         hiddenImageIds={hiddenImageIds}

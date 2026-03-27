@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 import uuid
 import json as _json
@@ -60,6 +60,9 @@ async def create_project(request: Request, project: ProjectCreate):
                 preset_config["voice"] = ""
             elif svc == "image":
                 preset_config["image_edit_model"] = ""
+            elif svc == "video":
+                preset_config["generate_audio"] = True
+                preset_config["multimodal_reference"] = True
 
             config_presets[svc].append({
                 "id": preset_id,
@@ -76,6 +79,9 @@ async def create_project(request: Request, project: ProjectCreate):
             ai_config[svc]["api_url"] = base_url
             ai_config[svc]["api_key"] = auth_api_key
             ai_config[svc]["model"] = "nova-pro"
+            if svc == "video":
+                ai_config[svc]["generate_audio"] = True
+                ai_config[svc]["multimodal_reference"] = True
 
         ai_config["config_presets"] = config_presets
         ai_config["active_preset_ids"] = active_preset_ids
@@ -174,3 +180,20 @@ async def delete_project(request: Request, project_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"success": True}
+
+
+class SetBudgetRequest(BaseModel):
+    budget_total: Optional[float] = None  # None = 移除预算限制
+
+
+@router.put("/{project_id}/budget", response_model=dict)
+async def set_project_budget(project_id: str, body: SetBudgetRequest, request: Request):
+    """设置项目总预算（仅管理员）"""
+    admin_user = getattr(request.state, "admin_user", None)
+    if not admin_user or admin_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可设置项目预算")
+
+    result = ProjectService.update_project(project_id, budget_total=body.budget_total)
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return result

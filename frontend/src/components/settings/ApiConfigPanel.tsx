@@ -207,8 +207,8 @@ export function ApiConfigPanel({
       model: apiType === 'createnow' ? 'nova-pro' : config.model,
       // 特殊处理：OpenAI 不需要 image_edit_model
       image_edit_model: apiType === 'openai' ? undefined : config.image_edit_model,
-      // createnow 默认开启生成音频和全能参考
-      ...(apiType === 'createnow' ? { generate_audio: true, multimodal_reference: true } : {})
+      // createnow 视频默认开启生成音频和全能参考（其他服务类型不注入视频专用字段）
+      ...(apiType === 'createnow' && type === 'video' ? { generate_audio: true, multimodal_reference: true } : {})
     };
 
     setLocalConfig({ ...localConfig, [type]: newConfig });

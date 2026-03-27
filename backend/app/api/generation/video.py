@@ -14,6 +14,7 @@ from app.services import get_ai_service, PromptService, ImageService, AudioServi
 from app.core.config import settings
 from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
 from .template_helpers import get_active_template
+from .utils import check_project_budget
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,10 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
+
+    # 检查项目预算
+    check_project_budget(project)
+
     video_service = get_ai_service(ai_config, "video", project_id)
 
     # 多模态路径（video_urls / audio_urls）：不需要 image_ids

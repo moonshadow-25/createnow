@@ -58,9 +58,12 @@ def get_ai_service(project_config: Dict, service_type: str, project_id: Optional
         api_url = settings.CREATENOW_BASE_URL
         auth_state = get_auth_state()
         api_key = auth_state.get("api_key") or api_key
-        # 未勾选全能参考时走 OpenAI 兼容接口，勾选时走 Seed 兼容接口
-        multimodal_reference = config.get("multimodal_reference", False)
-        if not multimodal_reference:
+        # 只有视频服务区分全能参考（走 CreatenowVideoAdapter），其余服务始终走 OpenAI 兼容接口
+        if service_type == "video":
+            multimodal_reference = config.get("multimodal_reference", False)
+            if not multimodal_reference:
+                api_type = "openai"
+        else:
             api_type = "openai"
 
     logger.info(f"[AI Service] Initializing {service_type} service:")

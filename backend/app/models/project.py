@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, List, Union
+from typing import Optional, Dict, List, Union, Any
 from datetime import datetime
 from pathlib import Path
 import json
@@ -41,6 +41,9 @@ class Project:
         self.compute_budget_per_minute: float = 0.0
         self.project_duration_days: int = 0
 
+        # 项目总预算
+        self.budget_total: Optional[float] = None   # None = 无限制
+
         # AI配置
         self.ai_config = {
             "llm": {
@@ -81,6 +84,7 @@ class Project:
             "minutes_per_episode": self.minutes_per_episode,
             "compute_budget_per_minute": self.compute_budget_per_minute,
             "project_duration_days": self.project_duration_days,
+            "budget_total": self.budget_total,
         }
         metadata_path = self.project_dir / "metadata.json"
         with open(metadata_path, "w", encoding="utf-8") as f:
@@ -111,6 +115,7 @@ class Project:
         project.minutes_per_episode = metadata.get("minutes_per_episode", 0.0)
         project.compute_budget_per_minute = metadata.get("compute_budget_per_minute", 0.0)
         project.project_duration_days = metadata.get("project_duration_days", 0)
+        project.budget_total = metadata.get("budget_total", None)
 
         # 确保所有必要的子目录存在（兼容旧项目）
         (project_dir / "episodes").mkdir(exist_ok=True)
@@ -139,6 +144,7 @@ class Project:
             "minutes_per_episode": self.minutes_per_episode,
             "compute_budget_per_minute": self.compute_budget_per_minute,
             "project_duration_days": self.project_duration_days,
+            "budget_total": self.budget_total,
         }
 
 
@@ -330,7 +336,7 @@ class ShotLine(BaseModel):
 # ==================== 画布相关模型 ====================
 
 class Canvas(BaseModel):
-    """画布 - 支持多画布功能"""
+    """画布 - 支持多画布功能与工作流编排"""
     canvas_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     project_id: str
     name: str = "默认画布"
@@ -341,9 +347,17 @@ class Canvas(BaseModel):
     zoom: float = 1.0
     pan_x: float = 0.0
     pan_y: float = 0.0
-    # 元素位置信息列表
+    # 元素位置信息列表（旧画布布局，兼容保留）
     # 每个元素: {id: str, type: str, x: float, y: float, width: float, height: float}
-    elements: List[Dict] = []
+    elements: List[Dict[str, Any]] = Field(default_factory=list)
+    # 工作流 schema 版本（1=旧画布；2=工作流增强）
+    schema_version: int = 2
+    # 工作流节点
+    nodes: List[Dict[str, Any]] = Field(default_factory=list)
+    # 工作流连线
+    edges: List[Dict[str, Any]] = Field(default_factory=list)
+    # 画布级变量
+    variables: Dict[str, Any] = Field(default_factory=dict)
 
 
 class CanvasElement(Asset):

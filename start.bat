@@ -52,4 +52,5 @@ start /min cmd /c "timeout /t 3 /nobreak >nul && start https://localhost:%API_PO
 REM Start server in current window
 cd /d "%CD%\backend"
 set PYTHONPATH=%CD%
+set SSL_CERT_FILE=%~dp0env\Lib\site-packages\certifi\cacert.pem
 %CD%\..\env\python.exe app\main.py --serve-frontend

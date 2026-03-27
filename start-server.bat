@@ -62,7 +62,7 @@ echo   [OK] SSH连接测试成功
 echo.
 
 REM ========================================
-REM 步骤2：启动本地服务（后台）
+REM 步骤2：启动本地服务（前台独立窗口）
 REM ========================================
 echo [2/4] 启动本地服务...
 
@@ -72,10 +72,11 @@ if %errorlevel% equ 0 (
     goto service_ready
 )
 
-REM 后台启动，日志写入 server.log
-start /b cmd /c "cd /d "%SCRIPT_DIR%backend" && set PYTHONPATH=%SCRIPT_DIR%backend && "%SCRIPT_DIR%env\python.exe" app\main.py --serve-frontend > "%SCRIPT_DIR%server.log" 2>&1"
+REM 前台独立窗口启动，日志直接显示在窗口中
+set SSL_CERT_FILE=%SCRIPT_DIR%env\Lib\site-packages\certifi\cacert.pem
+start "CreateNow Server" cmd /k "cd /d "%SCRIPT_DIR%backend" && set PYTHONPATH=%SCRIPT_DIR%backend && set SSL_CERT_FILE=%SSL_CERT_FILE% && "%SCRIPT_DIR%env\python.exe" app\main.py --serve-frontend"
 
-echo   [OK] 服务启动中，日志写入 server.log
+echo   [OK] 服务启动中，日志显示在独立窗口
 echo   等待服务就绪...
 
 set /a count=0

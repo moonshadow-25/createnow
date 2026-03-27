@@ -154,6 +154,23 @@ export function ChatInput({
           </div>
         )}
 
+        {/* 快捷语句按钮 */}
+        <div className="flex gap-2 mb-2">
+          {[
+            { label: '提取资产', text: '提取资产' },
+            { label: '生成视频分镜', text: '生成视频分镜' },
+          ].map(({ label, text }) => (
+            <button
+              key={label}
+              onClick={() => onSend(text)}
+              disabled={isStreaming}
+              className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded-full transition"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex gap-2">
           <textarea
             value={value}

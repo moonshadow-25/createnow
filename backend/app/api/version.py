@@ -71,7 +71,7 @@ async def check_for_update():
         raise HTTPException(status_code=500, detail="version.json 中未配置 update_url")
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(remote_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.get(remote_url, timeout=aiohttp.ClientTimeout(total=10), ssl=False) as resp:
                 if resp.status != 200:
                     raise HTTPException(status_code=502, detail=f"远程服务器返回 {resp.status}")
                 remote = await resp.json(content_type=None)

@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Request
 
 from app.services import get_ai_service, PromptService, ImageService, AssetService
 from app.core.config import settings
@@ -19,7 +19,7 @@ from .models import (
     FusionImageRequest,
     VLMAnalyzeRequest,
 )
-from .utils import parse_size
+from .utils import parse_size, check_project_budget
 from .templates import DEFAULT_PROMPT_TEMPLATES
 from .template_helpers import get_active_template
 
@@ -141,6 +141,9 @@ async def generate_image(project_id: str, request: ImageGenerateRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
+
+    # 检查项目预算
+    check_project_budget(project)
 
     # 获取配置的分辨率，支持 "1x1"、"16x9" 等格式
     default_sizes = {
@@ -317,6 +320,9 @@ async def edit_image(project_id: str, request: ImageEditRequest):
         raise HTTPException(status_code=404, detail="Asset not found")
 
     ai_config = project.get("ai_config", {})
+
+    # 检查项目预算
+    check_project_budget(project)
 
     # 【模板支持】如果指定了模板，使用用户当前激活的模板内容作为提示词
     if request.template:
@@ -652,6 +658,9 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
 
     ai_config = project.get("ai_config", {})
 
+    # 检查项目预算
+    check_project_budget(project)
+
     # 获取配置的分辨率
     size_str = request.size or "1x1"
     width, height = parse_size(size_str)
@@ -729,7 +738,6 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
             "image_url": image_url,
             "revised_prompt": result.get("revised_prompt"),
         }
-
     except HTTPException:
         raise
     except Exception as e:
@@ -745,6 +753,7 @@ async def list_asset_images(project_id: str, asset_id: str):
 
 @router.post("/images/upload")
 async def upload_image(
+    request: Request,
     project_id: str,
     asset_id: str = Form(...),
     asset_type: str = Form(...),
@@ -782,7 +791,7 @@ async def upload_image(
             "model": "manual_upload",
             "width": 0,
             "height": 0,
-            "image_path": None,  # 没有远程URL
+            "image_path": str(request.base_url).rstrip("/") + f"/api/projects/{project_id}/images/files/{asset_type}/{filename}",
             "local_path": f"{asset_type}/{filename}",
             "created_at": datetime.now().isoformat(),
             "is_primary": False
@@ -790,6 +799,14 @@ async def upload_image(
 
         # 保存记录
         saved_record = ImageService.save_generation_record(project_id, record)
+
+        # 如果是该资产的第一张图片，自动设为主图
+        existing_images = ImageService.list_images(project_id, asset_id)
+        if len(existing_images) == 1:
+            ImageService.set_primary_image(project_id, asset_id, saved_record["image_id"])
+            saved_record["is_primary"] = True
+            # 同步更新资产的 image_id 字段
+            AssetService.update_asset_image(project_id, asset_type, asset_id, saved_record["image_id"])
 
         logger.info(f"Image uploaded successfully: {filename} for asset {asset_id}")
         return saved_record
