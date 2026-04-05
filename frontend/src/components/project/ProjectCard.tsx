@@ -8,6 +8,7 @@ interface ProjectStats {
   storyboards_with_video: number;
   total_images: number;
   total_video_seconds: number;
+  storyboard_video_seconds: number;
 }
 
 interface Props {
@@ -34,6 +35,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     storyboards_with_video,
     total_images,
     total_video_seconds,
+    storyboard_video_seconds,
   } = stats;
 
   // Progress
@@ -53,9 +55,11 @@ function computeMetrics(project: Project, stats: ProjectStats) {
   const completed_episodes = greenPct * episode_count;
   // 绿条宽度相对于 total_episodes，确保 greenBar ≤ yellowBar
   const greenBarPct = total_episodes > 0 ? completed_episodes / total_episodes : 0;
+  // cost_per_minute 只统计分镜正片视频，排除广场实验性生成
   let cost_per_minute: number | null = null;
   if (completed_episodes > 0 && minutes_per_episode > 0) {
-    cost_per_minute = (image_cost + video_cost) / (completed_episodes * minutes_per_episode);
+    const storyboard_video_cost = 1 * storyboard_video_seconds;
+    cost_per_minute = (image_cost + storyboard_video_cost) / (completed_episodes * minutes_per_episode);
   }
 
   let costColor = 'text-gray-400';
@@ -155,7 +159,14 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit 
           <StatsSection project={project} stats={stats} />
         )
       ) : (
-        <span className="text-xs text-gray-500 italic">未配置项目参数</span>
+        <>
+          {stats === undefined ? (
+            <div className="h-3 bg-gray-700 rounded animate-pulse w-1/2" />
+          ) : stats ? (
+            <CostOnlySection project={project} stats={stats} />
+          ) : null}
+          <span className="text-xs text-gray-500 italic">未配置项目参数</span>
+        </>
       )}
 
       {/* Footer */}
@@ -175,6 +186,43 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit 
   );
 }
 
+function CostOnlySection({ project, stats }: { project: Project; stats: ProjectStats }) {
+  const image_cost = 0.4 * stats.total_images;
+  const video_cost = 1 * stats.total_video_seconds;
+  const total_cost = image_cost + video_cost;
+  return (
+    <div className="space-y-1 text-xs">
+      <div className="flex justify-between text-gray-500">
+        <span>图片 {stats.total_images}张: {Math.round(image_cost)}元</span>
+        <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}元</span>
+        <span className="font-mono">共 {total_cost.toFixed(2)}元</span>
+      </div>
+      {project.budget_total != null && (() => {
+        const spent = total_cost;
+        const total = project.budget_total;
+        const pct = Math.min(spent / total, 1);
+        const isLocked = spent >= total;
+        return (
+          <div className="space-y-1">
+            <div className="flex justify-between text-gray-400">
+              <span>预算</span>
+              <span className={isLocked ? 'text-red-400 font-semibold' : ''}>
+                {spent.toFixed(2)} / {total.toFixed(2)}
+                {isLocked && ' · 已锁定'}
+              </span>
+            </div>
+            <div className="bg-gray-600 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${isLocked ? 'bg-red-500' : pct > 0.8 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+                style={{ width: `${pct * 100}%` }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
 function StatsSection({ project, stats }: { project: Project; stats: ProjectStats }) {
   const m = computeMetrics(project, stats);
 

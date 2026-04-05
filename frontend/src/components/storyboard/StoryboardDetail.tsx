@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
 import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, Download, GripVertical } from 'lucide-react';
@@ -25,6 +26,7 @@ import { useOneClickGeneration } from './hooks/useOneClickGeneration';
 import { useDialogManager } from './hooks/useDialogManager';
 import { useAssetExtraction } from './hooks/useAssetExtraction';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { useProjectStore } from '@/store/projectStore';
 import { useJianyingExport } from './hooks/useJianyingExport';
 import { useVideoGeneration } from './hooks/useVideoGeneration';
 
@@ -89,6 +91,8 @@ export function StoryboardDetail({
   showAssetSubmit = false,
 }: StoryboardDetailProps) {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // 剪映下载导出 hook
   const { isDownloadExporting, downloadExportProgress, handleExportAllToJiayingDownload } =
@@ -118,15 +122,17 @@ export function StoryboardDetail({
 
   // Vibe Drama：设置上下文 + 订阅资产刷新事件
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
+  const currentProject = useProjectStore(s => s.currentProject);
   useEffect(() => {
     if (!selectedEpisode || !projectId) return;
     setVibeDramaContext({
       projectId,
+      projectName: currentProject?.name || '',
       episodeId: selectedEpisode.asset_id,
       tabName: 'storyboard',
       label: `第${selectedEpisode.episode_number}集`,
     });
-  }, [selectedEpisode?.asset_id, selectedEpisode?.episode_number, projectId]);
+  }, [selectedEpisode?.asset_id, selectedEpisode?.episode_number, projectId, currentProject?.name]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -202,11 +208,8 @@ export function StoryboardDetail({
     multimodalReference,
   });
 
-  // 图片编辑弹框数据状态（用于分镜卡片按钮）
-  const [cardImageEditStoryboard, setCardImageEditStoryboard] = useState<any>(null);
-  const [cardImageEditImages, setCardImageEditImages] = useState<any[]>([]);
   // 隐藏图片状态
-  const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
+  const [hiddenImageIds] = useState<Set<string>>(new Set());
 
   // 状态隔离：跟踪当前编辑的分镜ID，防止异步响应污染其他分镜
   const editingStoryboardIdRef = useRef<string | null>(null);
@@ -371,7 +374,9 @@ export function StoryboardDetail({
     if (orderedEpisodes.length === 0) return;
     const isSelectedValid = selectedEpisode && orderedEpisodes.some(ep => ep.asset_id === selectedEpisode.asset_id);
     if (!isSelectedValid) {
-      setSelectedEpisode(orderedEpisodes[0]);
+      const targetId = (location.state as any)?.episodeId;
+      const target = targetId && orderedEpisodes.find(ep => ep.asset_id === targetId);
+      setSelectedEpisode(target || orderedEpisodes[0]);
     }
   }, [orderedEpisodes]);
 
@@ -476,7 +481,6 @@ export function StoryboardDetail({
   });
   const {
     setEditingStoryboardId,
-    handleEditImage: handleEditImageBase,
     handleSetPrimaryStoryboardImage: handleSetPrimaryStoryboardImageBase,
     handleGeneratePrompt: handleGeneratePromptBase,
     handleGenerateImageFromEdit: handleGenerateImageFromEditBase,
@@ -484,12 +488,6 @@ export function StoryboardDetail({
   } = imageManagement;
 
   // 包装函数以适配现有调用方式
-  const handleEditImage = (storyboard: any) => {
-    return handleEditImageBase(storyboard, setCardImageEditStoryboard, setCardImageEditImages, (show: boolean) => {
-      if (show) dialogs.open('cardImageEdit');
-      else dialogs.close('cardImageEdit');
-    });
-  };
 
   const handleSetPrimaryStoryboardImage = (imageId: string) => {
     return handleSetPrimaryStoryboardImageBase(editingStoryboard, imageId, setStoryboardImages);
@@ -738,6 +736,22 @@ export function StoryboardDetail({
     }
   };
 
+  const handleDeleteSelected = async () => {
+    const ids = Array.from(selectedStoryboardIds);
+    try {
+      for (const id of ids) {
+        await storyboardApi.delete(projectId, id);
+      }
+      setSelectedStoryboardIds(new Set());
+      loadStoryboards();
+      onUpdated();
+      toast(`已删除 ${ids.length} 个分镜`, 'success');
+    } catch (error: any) {
+      toast(`删除失败: ${error.response?.data?.detail || error.message}`, 'error');
+      loadStoryboards();
+    }
+  };
+
   const handleRenumber = async () => {
     if (!selectedEpisode) return;
 
@@ -797,65 +811,9 @@ export function StoryboardDetail({
     dialogs.open('storyboardEdit');
   };
 
-  const handleEditStoryboard = async (storyboard: any) => {
-    setIsCreating(false); // 设置为编辑模式
-    setEditingStoryboardId(storyboard.asset_id); // 状态隔离：记录当前编辑的分镜ID
-    editingStoryboardIdRef.current = storyboard.asset_id; // 保持兼容性
-
-    // 从后端获取最新的分镜数据，确保提示词等字段是最新的
-    let latestStoryboard = storyboard;
-    try {
-      const response = await assetApi.get(projectId, 'storyboard', storyboard.asset_id);
-      if (response.data) {
-        latestStoryboard = response.data;
-      }
-    } catch (error) {
-      console.error('Failed to fetch latest storyboard data:', error);
-      // 失败时使用传入的 storyboard 数据
-    }
-
-    setEditingStoryboard(latestStoryboard);
-    setSelectedCharacters(latestStoryboard.character_ids || []);
-    setSelectedScenes(
-      latestStoryboard.scene_ids?.length
-        ? latestStoryboard.scene_ids
-        : (latestStoryboard.scene_id ? [latestStoryboard.scene_id] : [])
-    );
-    setSelectedProps(latestStoryboard.prop_ids || []);
-    setGeneratedPrompt(latestStoryboard.image_prompt || '');
-    // 初始化分镜内容编辑状态
-    resetEditState(latestStoryboard); // 使用 hook 的重置函数
-
-    // 加载分镜的图片集
-    try {
-      const response = await generationApi.listImages(projectId, storyboard.asset_id);
-      const sortedImages = (response.data || []).sort((a: any, b: any) => {
-        if (a.is_primary && !b.is_primary) return -1;
-        if (!a.is_primary && b.is_primary) return 1;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-      setStoryboardImages(sortedImages);
-
-      // 读取隐藏图片状态
-      const storageKey = `hidden_images_${storyboard.asset_id}`;
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        try {
-          const hiddenIds = JSON.parse(stored);
-          setHiddenImageIds(new Set(hiddenIds));
-        } catch (e) {
-          console.error('Failed to parse hidden images:', e);
-        }
-      } else {
-        setHiddenImageIds(new Set());
-      }
-    } catch (error) {
-      console.error('Failed to load storyboard images:', error);
-      setStoryboardImages([]);
-    }
-
-    setStoryboardEditInitialTab('edit');
-    dialogs.open('storyboardEdit');
+  const handleEditStoryboard = (storyboard: any) => {
+    const epId = selectedEpisode?.asset_id || '';
+    navigate(`/project/${projectId}/storyboard/${storyboard.asset_id}/edit${epId ? `?episodeId=${epId}` : ''}`);
   };
 
   const handleAutoMatchAssets = () => {
@@ -948,11 +906,6 @@ export function StoryboardDetail({
     } catch (error: any) {
       toast(`保存失败: ${error.response?.data?.detail || error.message}`, 'error');
     }
-  };
-
-  const handleGenerateVideo = async (storyboard: any) => {
-    await handleEditStoryboard(storyboard);
-    setStoryboardEditInitialTab('video');
   };
 
   // 拖拽结束处理
@@ -1347,11 +1300,8 @@ export function StoryboardDetail({
                       storyboard={sb}
                       storyboardPrimaryImages={storyboardPrimaryImages}
                       onEdit={handleEditStoryboard}
-                      onEditImage={handleEditImage}
-                      onGenerateVideo={handleGenerateVideo}
                       onDelete={handleDeleteStoryboard}
                       onOpenImageGallery={handleOpenImageGallery}
-                      hasRunningTask={hasRunningTask}
                       isSelected={selectedStoryboardIds.has(sb.asset_id)}
                       onToggleSelect={handleToggleSelect}
                     />
@@ -1563,24 +1513,6 @@ export function StoryboardDetail({
         />
       )}
 
-      {/* 图片编辑对话框（分镜卡片按钮触发） */}
-      {dialogs.isOpen('cardImageEdit') && cardImageEditStoryboard && (
-        <ImageEditDialog
-          projectId={projectId}
-          assetId={cardImageEditStoryboard.asset_id}
-          assetType="storyboard"
-          assetName={`分镜 ${cardImageEditStoryboard.sequence}`}
-          images={cardImageEditImages}
-          onCompleted={async () => {
-            await loadStoryboards();
-          }}
-          onClose={() => {
-            dialogs.close('cardImageEdit');
-            setCardImageEditStoryboard(null);
-          }}
-        />
-      )}
-
       {/* 三宫格提示词弹框 */}
       {dialogs.isOpen('tripleGrid') && editingStoryboard && (
         <TripleGridPromptDialog
@@ -1607,6 +1539,7 @@ export function StoryboardDetail({
           onMultiImageFusion={() => handleOpenDialog('multi_fusion')}
           onMultiSceneVideo={() => handleOpenDialog('multi_scene_video')}
           onCreateEndFrame={() => executeCreateEndFrame(storyboards.find(sb => selectedStoryboardIds.has(sb.asset_id)))}
+          onDeleteSelected={handleDeleteSelected}
           onClearSelection={handleClearSelection}
           toast={toast}
         />

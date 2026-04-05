@@ -150,11 +150,11 @@ export function StoryboardEditDialog({
   // 素材提交状态（分镜主图 image_id -> bool）
   const [assetSubmitting, setAssetSubmitting] = useState<Record<string, boolean>>({});
   // 关联资产主图的 volcengine 状态（image_id -> { asset_id?, status? }）
-  const [assetImageStatuses, setAssetImageStatuses] = useState<Record<string, { asset_id?: string; status?: string }>>({});
+  const [assetImageStatuses, setAssetImageStatuses] = useState<Record<string, { asset_id?: string; status?: string; image_id?: string }>>({});
 
   const loadAssetImageStatuses = async (storyboard: any) => {
     if (!storyboard) return;
-    const updates: Record<string, { asset_id?: string; status?: string }> = {};
+    const updates: Record<string, { asset_id?: string; status?: string; image_id?: string }> = {};
     const assetIds: string[] = [];
     for (const charId of storyboard.character_ids || []) {
       assetIds.push(charId);
@@ -173,7 +173,7 @@ export function StoryboardEditDialog({
         const res = await generationApi.listImages(projectId, assetId);
         const imgs: any[] = res.data || [];
         const primary = imgs.find(i => i.is_primary) || imgs[0];
-        if (primary) updates[assetId] = { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status };
+        if (primary) updates[assetId] = { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status, image_id: primary.image_id };
       } catch {}
     }));
     setAssetImageStatuses(prev => ({ ...prev, ...updates }));
@@ -222,7 +222,7 @@ export function StoryboardEditDialog({
     if (show && editingStoryboard && activeTab === 'video') {
       videoGen.initForStoryboard(editingStoryboard);
     }
-  }, [show, activeTab, editingStoryboard?.asset_id]);
+  }, [show, activeTab, editingStoryboard?.asset_id, editingStoryboard?.video_prompt]);
 
   if (!show) return null;
 
@@ -243,23 +243,25 @@ export function StoryboardEditDialog({
     if (!editingStoryboard) return;
     const primaryImg = sharedPrimaryImg;
 
-    // 收集所有需要提交的 image_id
+    // 收集所有需要提交的 image_id，以 selectedCharacters/Scenes/Props（当前UI选择）为准，
+    // 而非 editingStoryboard 原始数据（用户在对话框内新增的资产不在原始数据中）
+    // image_id 优先取 assetImageStatuses（API 刷新），兜底取 props 数组（可能陈旧但同步可用）
     const imageIds: string[] = [];
     if (primaryImg?.image_id) imageIds.push(primaryImg.image_id);
-    for (const charId of editingStoryboard.character_ids || []) {
-      const char = characters.find((c: any) => c.asset_id === charId);
-      if (char?.image_id) imageIds.push(char.image_id);
+    for (const charId of selectedCharacters) {
+      const imgId = assetImageStatuses[charId]?.image_id
+        || characters.find((c: any) => c.asset_id === charId)?.image_id;
+      if (imgId && !imageIds.includes(imgId)) imageIds.push(imgId);
     }
-    const sbSceneIds: string[] = editingStoryboard.scene_ids?.length
-      ? editingStoryboard.scene_ids
-      : (editingStoryboard.scene_id ? [editingStoryboard.scene_id] : []);
-    for (const sceneId of sbSceneIds) {
-      const scene = scenes.find((s: any) => s.asset_id === sceneId);
-      if (scene?.image_id) imageIds.push(scene.image_id);
+    for (const sceneId of selectedScenes) {
+      const imgId = assetImageStatuses[sceneId]?.image_id
+        || scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
+      if (imgId && !imageIds.includes(imgId)) imageIds.push(imgId);
     }
-    for (const propId of editingStoryboard.prop_ids || []) {
-      const prop = props.find((p: any) => p.asset_id === propId);
-      if (prop?.image_id) imageIds.push(prop.image_id);
+    for (const propId of selectedProps) {
+      const imgId = assetImageStatuses[propId]?.image_id
+        || props.find((p: any) => p.asset_id === propId)?.image_id;
+      if (imgId && !imageIds.includes(imgId)) imageIds.push(imgId);
     }
     if (imageIds.length === 0) return;
 
@@ -489,7 +491,7 @@ export function StoryboardEditDialog({
                   {selectedCharacters.map((charId) => {
                     const char = characters.find(c => c.asset_id === charId);
                     if (!char) return null;
-                    const imgStatus = char.image_id ? assetImageStatuses[char.image_id]?.status : undefined;
+                    const imgStatus = assetImageStatuses[charId]?.status;
                     return (
                       <div key={charId} className="flex items-center gap-2 bg-blue-900 text-blue-300 rounded px-3 py-2">
                         <span className="text-sm">{char.name}</span>
@@ -503,7 +505,7 @@ export function StoryboardEditDialog({
                   {selectedScenes.map((sceneId) => {
                     const scene = scenes.find(s => s.asset_id === sceneId);
                     if (!scene) return null;
-                    const imgStatus = scene.image_id ? assetImageStatuses[scene.image_id]?.status : undefined;
+                    const imgStatus = assetImageStatuses[sceneId]?.status;
                     return (
                       <div key={sceneId} className="flex items-center gap-2 bg-green-900 text-green-300 rounded px-3 py-2">
                         <span className="text-sm">{scene.name}</span>
@@ -517,7 +519,7 @@ export function StoryboardEditDialog({
                   {selectedProps.map((propId) => {
                     const prop = props.find(p => p.asset_id === propId);
                     if (!prop) return null;
-                    const imgStatus = prop.image_id ? assetImageStatuses[prop.image_id]?.status : undefined;
+                    const imgStatus = assetImageStatuses[propId]?.status;
                     return (
                       <div key={propId} className="flex items-center gap-2 bg-purple-900 text-purple-300 rounded px-3 py-2">
                         <span className="text-sm">{prop.name}</span>
@@ -770,7 +772,7 @@ interface VideoTabProps {
   onSaveBeforeGenerate: () => Promise<void>;
   multimodalReference?: boolean;
   assetSubmitting: Record<string, boolean>;
-  assetImageStatuses: Record<string, { asset_id?: string; status?: string }>;
+  assetImageStatuses: Record<string, { asset_id?: string; status?: string; image_id?: string }>;
   characters: any[];
   scenes: any[];
   props: any[];
@@ -991,7 +993,7 @@ function VideoTab({
             {selectedCharacters.map((charId) => {
               const char = characters.find((c: any) => c.asset_id === charId);
               if (!char) return null;
-              const imgStatus = char.image_id ? assetImageStatuses[char.image_id]?.status : undefined;
+              const imgStatus = assetImageStatuses[charId]?.status;
               return (
                 <div key={charId} className="flex items-center gap-2 bg-blue-900 text-blue-300 rounded px-3 py-2">
                   <span className="text-sm">{char.name}</span>
@@ -1005,7 +1007,7 @@ function VideoTab({
             {selectedScenes.map((sceneId) => {
               const scene = scenes.find((s: any) => s.asset_id === sceneId);
               if (!scene) return null;
-              const imgStatus = scene.image_id ? assetImageStatuses[scene.image_id]?.status : undefined;
+              const imgStatus = assetImageStatuses[sceneId]?.status;
               return (
                 <div key={sceneId} className="flex items-center gap-2 bg-green-900 text-green-300 rounded px-3 py-2">
                   <span className="text-sm">{scene.name}</span>
@@ -1019,7 +1021,7 @@ function VideoTab({
             {selectedProps.map((propId) => {
               const prop = props.find((p: any) => p.asset_id === propId);
               if (!prop) return null;
-              const imgStatus = prop.image_id ? assetImageStatuses[prop.image_id]?.status : undefined;
+              const imgStatus = assetImageStatuses[propId]?.status;
               return (
                 <div key={propId} className="flex items-center gap-2 bg-purple-900 text-purple-300 rounded px-3 py-2">
                   <span className="text-sm">{prop.name}</span>

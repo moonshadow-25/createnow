@@ -1,9 +1,18 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 from pathlib import Path
 
+# 项目根目录（config.py 在 backend/app/core/，向上四层到根目录）
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
+
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE),
+        case_sensitive=True,
+        extra="ignore",
+    )
     # API Settings
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8501
@@ -49,9 +58,17 @@ class Settings(BaseSettings):
     CREATENOW_BASE_URL: str = "http://47.117.182.216:8003/v1"
     CREATENOW_SECRET_KEY: str = "a8f5e2c9b4d7a1e6f3c8b5d2a9e7f4c1b8d5a2e9f6c3b0d7a4e1f8c5b2d9a6e3"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # 部署模式：selfhosted（默认，现有行为） | saas（Web 公网版）
+    DEPLOY_MODE: str = "selfhosted"
+
+    # Redis（SaaS 模式使用）
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # SaaS 用户数据目录（DEPLOY_MODE=saas 时生效）
+    # 每个用户数据存放在 DATA_DIR/users/{user_id}/
+    @property
+    def USERS_DIR(self):
+        return self.DATA_DIR / "users"
 
 
 settings = Settings()

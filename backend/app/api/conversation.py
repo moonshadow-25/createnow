@@ -36,7 +36,8 @@ TOOLS = [
                 "age": {"type": "string", "description": "年龄"},
                 "appearance": {"type": "string", "description": "外貌描述"},
                 "personality": {"type": "string", "description": "性格特点"},
-                "background": {"type": "string", "description": "背景故事"}
+                "background": {"type": "string", "description": "背景故事"},
+                "image_prompt": {"type": "string", "description": "角色图片生成提示词（中文），包含完整外貌/服装/颜色/风格描述，融入全局图片风格"}
             },
             "required": ["name", "description"]
         }
@@ -54,7 +55,8 @@ TOOLS = [
                 "age": {"type": "string", "description": "年龄"},
                 "appearance": {"type": "string", "description": "外貌描述"},
                 "personality": {"type": "string", "description": "性格特点"},
-                "background": {"type": "string", "description": "背景故事"}
+                "background": {"type": "string", "description": "背景故事"},
+                "image_prompt": {"type": "string", "description": "角色图片生成提示词（中文），包含完整外貌/服装/颜色/风格描述，融入全局图片风格"}
             },
             "required": []
         }
@@ -70,7 +72,8 @@ TOOLS = [
                 "location": {"type": "string", "description": "地点"},
                 "time_of_day": {"type": "string", "description": "时间（日/夜/黄昏/黎明）"},
                 "weather": {"type": "string", "description": "天气"},
-                "mood": {"type": "string", "description": "氛围"}
+                "mood": {"type": "string", "description": "氛围"},
+                "image_prompt": {"type": "string", "description": "场景图片生成提示词（中文），包含完整环境/光线/氛围/风格描述，融入全局图片风格"}
             },
             "required": ["name", "description", "location"]
         }
@@ -87,7 +90,8 @@ TOOLS = [
                 "location": {"type": "string", "description": "地点"},
                 "time_of_day": {"type": "string", "description": "时间"},
                 "weather": {"type": "string", "description": "天气"},
-                "mood": {"type": "string", "description": "氛围"}
+                "mood": {"type": "string", "description": "氛围"},
+                "image_prompt": {"type": "string", "description": "场景图片生成提示词（中文），包含完整环境/光线/氛围/风格描述，融入全局图片风格"}
             },
             "required": []
         }
@@ -101,7 +105,8 @@ TOOLS = [
                 "name": {"type": "string", "description": "道具名称"},
                 "description": {"type": "string", "description": "道具详细描述"},
                 "category": {"type": "string", "description": "类别（兵器/装饰/日常用品等）"},
-                "era": {"type": "string", "description": "年代"}
+                "era": {"type": "string", "description": "年代"},
+                "image_prompt": {"type": "string", "description": "道具图片生成提示词（中文），包含完整外观/材质/颜色/风格描述，融入全局图片风格"}
             },
             "required": ["name", "description"]
         }
@@ -116,7 +121,8 @@ TOOLS = [
                 "asset_id": {"type": "string", "description": "资产ID（如果提供则直接使用）"},
                 "description": {"type": "string", "description": "新的道具描述"},
                 "category": {"type": "string", "description": "类别"},
-                "era": {"type": "string", "description": "年代"}
+                "era": {"type": "string", "description": "年代"},
+                "image_prompt": {"type": "string", "description": "道具图片生成提示词（中文），包含完整外观/材质/颜色/风格描述，融入全局图片风格"}
             },
             "required": []
         }
@@ -1734,6 +1740,184 @@ async def chat(project_id: str, chat_msg: ChatMessage):
         stream_conversation(project_id, chat_msg.message, chat_msg.conversation_id, chat_msg.episode_id, chat_msg.context_messages),
         media_type="text/event-stream"
     )
+
+
+@router.get("/debug-prompt")
+async def debug_prompt(project_id: str, episode_id: Optional[str] = None, tab_name: Optional[str] = None):
+    """
+    调试接口：返回当前上下文注入的完整 system_prompt 和 tools_desc，不调用 LLM。
+    仅用于开发调试，生产环境可按需删除。
+    """
+    from app.services import ProjectService
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ai_config = project.get("ai_config", {})
+
+    from app.api.generation.style_presets import VIDEO_STYLE_PRESETS
+    global_style_cfg = ai_config.get("global_style_config", {})
+    video_style_cfg = global_style_cfg.get("video_style", {})
+    global_style_text = ""
+    if video_style_cfg.get("enabled", True):
+        preset_id = video_style_cfg.get("preset_id", "none")
+        custom = video_style_cfg.get("custom_suffix", "")
+        parts = []
+        if preset_id and preset_id != "none":
+            preset = VIDEO_STYLE_PRESETS.get(preset_id, {})
+            suffix_zh = preset.get("suffix_zh", "")
+            if suffix_zh:
+                parts.append(suffix_zh)
+        if custom:
+            parts.append(custom)
+        global_style_text = "，".join(parts)
+
+    from app.services.asset_service import AssetService
+    existing_characters = AssetService.list_assets(project_id, "character")
+    existing_scenes = AssetService.list_assets(project_id, "scene")
+    existing_props = AssetService.list_assets(project_id, "prop")
+    existing_episodes = AssetService.list_assets(project_id, "episode")
+    existing_storyboards = AssetService.list_assets(project_id, "storyboard")
+
+    storyboards_by_episode: Dict[str, list] = {}
+    for sb in existing_storyboards:
+        ep_id = sb.get("episode_id", "")
+        storyboards_by_episode.setdefault(ep_id, []).append(sb)
+    for ep_id in storyboards_by_episode:
+        storyboards_by_episode[ep_id].sort(key=lambda x: x.get("sequence", 0))
+
+    is_storyboard_tab = bool(episode_id)
+
+    storyboard_count_lines = []
+    for ep in existing_episodes:
+        ep_id = ep.get("asset_id", "")
+        ep_number = ep.get("episode_number", "?")
+        count = len(storyboards_by_episode.get(ep_id, []))
+        if count > 0:
+            storyboard_count_lines.append(f"第{ep_number}集: {count}个分镜")
+    storyboard_summary = "，".join(storyboard_count_lines) if storyboard_count_lines else "（暂无分镜）"
+
+    lang_label = "中文" if global_style_cfg.get("prompt_language", "zh") == "zh" else "English"
+    global_info = f"【全局视频风格】{global_style_text or '（未设置）'}\n【提示词语言】{lang_label}"
+
+    if is_storyboard_tab:
+        storyboard_section = f"\n**分镜概况（参考用，不要修改其他集）:** {storyboard_summary}\n{{episode_context}}"
+    else:
+        storyboard_section = ""
+
+    episode_context = ""
+    if episode_id:
+        ep_asset = AssetService.load_asset(project_id, "episode", episode_id)
+        if ep_asset:
+            ep_number = ep_asset.get("episode_number", "?")
+            ep_script = ep_asset.get("script", "（无剧本）")
+            ep_storyboards = storyboards_by_episode.get(episode_id, [])
+            char_map = {c.get("asset_id"): c for c in existing_characters}
+            scene_map = {s.get("asset_id"): s for s in existing_scenes}
+
+            sb_detail_lines = []
+            for sb in ep_storyboards:
+                seq = sb.get("sequence", "?")
+                sb_id = sb.get("asset_id", "")
+                desc = sb.get("description", "")
+                vp = sb.get("video_prompt", "")
+                char_ids = sb.get("character_ids", [])
+                scene_ids = sb.get("scene_ids", []) or ([sb.get("scene_id")] if sb.get("scene_id") else [])
+                sb_detail_lines.append(f"  第{seq}镜 [ID:{sb_id}]:")
+                if desc:
+                    sb_detail_lines.append(f"    描述: {desc}")
+                if vp:
+                    sb_detail_lines.append(f"    视频提示词: {str(vp)[:200]}")
+                ref_lines = []
+                img_idx = 1
+                audio_idx = 1
+                for cid in char_ids:
+                    c = char_map.get(cid)
+                    if not c:
+                        continue
+                    cname = c.get("name", "")
+                    has_img = bool(c.get("image_id"))
+                    has_voice = bool(c.get("voice_audio_id"))
+                    if has_img:
+                        audio_part = f"，有音色引用为@音频{audio_idx}" if has_voice else ""
+                        if has_voice:
+                            audio_idx += 1
+                        ref_lines.append(f"      @图{img_idx} = {cname}（角色）{audio_part}")
+                        img_idx += 1
+                for sid in scene_ids:
+                    s = scene_map.get(sid)
+                    if not s:
+                        continue
+                    sname = s.get("name", "")
+                    if s.get("image_id"):
+                        ref_lines.append(f"      @图{img_idx} = {sname}（场景）")
+                        img_idx += 1
+                if ref_lines:
+                    sb_detail_lines.append("    本镜资产编号（必须严格使用，禁止改动）：")
+                    sb_detail_lines.extend(ref_lines)
+
+            episode_context = f"""
+== 当前工作集：第{ep_number}集（episode_id: {episode_id}）==
+
+【剧本内容】
+{ep_script}
+
+【本集可用资产（新建/修改分镜时从此选择，asset_id用于填写character_ids/scene_ids字段）】
+角色：
+{"".join([f"  - {c.get('name','')} [ID:{c.get('asset_id','')}] 有图={'是' if c.get('image_id') else '否'} 有音色={'是' if c.get('voice_audio_id') else '否'}{chr(10)}" for c in existing_characters])}场景：
+{"".join([f"  - {s.get('name','')} [ID:{s.get('asset_id','')}] 有图={'是' if s.get('image_id') else '否'}{chr(10)}" for s in existing_scenes])}
+【当前集分镜列表（{len(ep_storyboards)}个，每个15秒）】
+{chr(10).join(sb_detail_lines) if sb_detail_lines else "（暂无分镜）"}
+
+【全局视频风格（必须嵌入每个video_prompt）】
+{global_style_text if global_style_text else "（未设置，跳过）"}
+
+== 分镜新模型说明 ==
+- 每个分镜 = 一段独立的15秒视频，由 video_prompt 驱动
+- video_prompt 使用 Seedance 2.0 格式：自然语言描述画面，@图N 引用资产图片
+- ⚠️ @图N / @音频N 编号规则（严格执行）：
+  - 按 character_ids 数组顺序依次编为 @图1、@图2...，scene_ids 紧接其后继续编号
+  - 有音色的角色按其在 character_ids 中的顺序编为 @音频1、@音频2...
+  - 已有分镜的"本镜资产编号"是对照表，可作为参考
+- 旧字段（shot_type/camera_angle/dialogue/action）不再必要，重心在 video_prompt
+- 删除/修改已有分镜前，必须先告知用户并等待确认
+"""
+
+    _storyboard_section = storyboard_section.replace("{episode_context}", episode_context)
+    project_context = f"""
+## 当前项目已有资产：
+
+**角色 ({len(existing_characters)}个):**
+{chr(10).join([f"- {c.get('name', '')} [ID:{c.get('asset_id','')}] 有图={'是' if c.get('image_id') else '否'} 有音色={'是' if c.get('voice_audio_id') else '否'}: {c.get('description', '')[:50]}" for c in existing_characters[:10]])}
+
+**场景 ({len(existing_scenes)}个):**
+{chr(10).join([f"- {s.get('name', '')} [ID:{s.get('asset_id','')}]: {s.get('location', '')}" for s in existing_scenes[:10]])}
+
+**道具 ({len(existing_props)}个):**
+{chr(10).join([f"- {p.get('name', '')} [ID:{p.get('asset_id','')}]" for p in existing_props[:10]])}
+
+**剧集 ({len(existing_episodes)}个):**
+⚠️ 注意：episode_id必须使用下面的asset_id（UUID格式），不能使用"第2集"这样的名称！
+{chr(10).join([f"- 第{e.get('episode_number', '')}集: asset_id={e.get('asset_id', '')} | {e.get('script', '')[:80]}..." for e in existing_episodes[:5]])}
+
+{global_info}
+{_storyboard_section}
+"""
+
+    from app.services.global_prompt_service import get_prompt_content
+    tools_desc_key = "conversation_tools_desc" if is_storyboard_tab else "conversation_tools_desc_assets"
+    tools_desc = (get_prompt_content(tools_desc_key, ai_config)
+                  or get_prompt_content("conversation_tools_desc", ai_config)
+                  or "")
+    _conv_tpl = get_prompt_content("conversation_system_prompt", ai_config)
+    system_prompt = (_conv_tpl or "").format(
+        project_context=project_context,
+        tools_desc=tools_desc
+    )
+
+    return {"system_prompt": system_prompt, "tools_desc": tools_desc}
+
+
 
 
 @router.post("/upload-script")

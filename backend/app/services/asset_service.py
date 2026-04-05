@@ -7,6 +7,18 @@ from datetime import datetime
 
 from app.models.project import Project, Character, Scene, Prop, Episode, Storyboard, ImageGeneration
 from app.core.config import settings
+from app.core.context import get_current_data_root
+
+
+def _get_projects_dir() -> Path:
+    """返回当前请求对应的 projects 目录。
+    SaaS 模式下返回 data/users/{user_id}/projects/，
+    selfhosted 模式下返回 data/projects/（不变）。
+    """
+    data_root = get_current_data_root()
+    if data_root:
+        return Path(data_root) / "projects"
+    return settings.PROJECTS_DIR
 
 # ── 进程级内存缓存 ────────────────────────────────────────────────────────────
 # 首次访问时从磁盘加载，之后读写全走内存，磁盘仍保持同步写入。
@@ -23,7 +35,7 @@ class AssetService:
     @staticmethod
     def save_asset(project_id: str, asset_type: str, asset: Dict) -> Dict:
         """保存资产到文件，并同步更新内存缓存"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         asset_dir = project_dir / f"{asset_type}s"
 
         if not asset_dir.exists():
@@ -73,7 +85,7 @@ class AssetService:
             return None
 
         # 缓存已初始化但未命中（该资产是缓存初始化后新增的），从磁盘读取并追加
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / f"{asset_type}s" / f"{asset_id}.json"
 
         if not file_path.exists():
@@ -100,7 +112,7 @@ class AssetService:
             return [a for a in cache if not a.get("parent_id")]
 
         # 缓存未命中，从磁盘加载
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         asset_dir = project_dir / f"{asset_type}s"
 
         if not asset_dir.exists():
@@ -144,7 +156,7 @@ class AssetService:
             AssetService.delete_asset(project_id, asset_type, child["asset_id"])
 
         # 删除主资产文件
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / f"{asset_type}s" / f"{asset_id}.json"
         if not file_path.exists():
             return False
@@ -259,8 +271,11 @@ class ProjectService:
     @staticmethod
     def list_projects() -> List[Dict]:
         """列出所有项目"""
+        projects_dir = _get_projects_dir()
+        if not projects_dir.exists():
+            return []
         projects = []
-        for project_dir in settings.PROJECTS_DIR.iterdir():
+        for project_dir in projects_dir.iterdir():
             if project_dir.is_dir():
                 metadata_path = project_dir / "metadata.json"
                 if metadata_path.exists():
@@ -297,11 +312,12 @@ class ProjectService:
     @staticmethod
     def delete_project(project_id: str) -> bool:
         """删除项目（移动到回收站），并清理缓存"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        projects_dir = _get_projects_dir()
+        project_dir = projects_dir / project_id
         if not project_dir.exists():
             return False
 
-        trash_dir = settings.PROJECTS_DIR.parent / "trash"
+        trash_dir = projects_dir.parent / "trash"
         trash_dir.mkdir(exist_ok=True)
 
         import shutil
@@ -323,7 +339,7 @@ class ImageService:
     def _get_images_cache(project_id: str) -> List[Dict]:
         """返回项目图片缓存列表，首次访问时从磁盘加载"""
         if project_id not in _images_cache:
-            project_dir = settings.PROJECTS_DIR / project_id
+            project_dir = _get_projects_dir() / project_id
             images_dir = project_dir / "images"
 
             t0 = time.perf_counter()
@@ -346,7 +362,7 @@ class ImageService:
     @staticmethod
     def save_generation_record(project_id: str, record: Dict) -> Dict:
         """保存图片生成记录到磁盘，并同步更新内存缓存"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         images_dir = project_dir / "images"
         images_dir.mkdir(exist_ok=True)
 
@@ -384,7 +400,7 @@ class ImageService:
         for img in images:
             if img.get("is_primary"):
                 img["is_primary"] = False  # 直接修改缓存中的 dict
-                project_dir = settings.PROJECTS_DIR / project_id
+                project_dir = _get_projects_dir() / project_id
                 file_path = project_dir / "images" / f"{img['image_id']}.json"
                 with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(img, f, ensure_ascii=False, indent=2)
@@ -393,7 +409,7 @@ class ImageService:
         image = ImageService.get_image(project_id, image_id)
         if image:
             image["is_primary"] = True
-            project_dir = settings.PROJECTS_DIR / project_id
+            project_dir = _get_projects_dir() / project_id
             file_path = project_dir / "images" / f"{image_id}.json"
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(image, f, ensure_ascii=False, indent=2)
@@ -420,7 +436,7 @@ class ImageService:
     @staticmethod
     def get_image(project_id: str, image_id: str) -> Optional[Dict]:
         """获取单张图片记录"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / "images" / f"{image_id}.json"
 
         if file_path.exists():
@@ -451,7 +467,7 @@ class ImageService:
 
         image_id = str(uuid.uuid4())
 
-        full_path = settings.PROJECTS_DIR / project_id / "images" / "files" / local_file_path
+        full_path = _get_projects_dir() / project_id / "images" / "files" / local_file_path
         with Image.open(full_path) as img:
             width, height = img.size
 
@@ -479,7 +495,7 @@ class ImageService:
         if not local_path:
             return False
 
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         thumbnail_path = project_dir / "images" / "thumbnails" / local_path
 
         if thumbnail_path.exists():

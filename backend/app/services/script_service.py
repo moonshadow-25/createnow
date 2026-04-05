@@ -8,6 +8,15 @@ from datetime import datetime
 
 from app.models.project import Script, ScriptCharacter, ScriptEpisode, ScriptScene, ShotLine
 from app.core.config import settings
+from app.core.context import get_current_data_root
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 # 中文数字映射
@@ -49,7 +58,7 @@ class ScriptService:
     @staticmethod
     def _get_script_dir(project_id: str, script_id: str) -> Path:
         """获取剧本目录"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         script_dir = project_dir / "scripts" / script_id
         script_dir.mkdir(parents=True, exist_ok=True)
         return script_dir
@@ -94,7 +103,7 @@ class ScriptService:
     @staticmethod
     def list_scripts(project_id: str) -> List[Dict]:
         """列出项目所有剧本"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         scripts_dir = project_dir / "scripts"
 
         if not scripts_dir.exists():
@@ -135,7 +144,7 @@ class ScriptService:
     @staticmethod
     def delete_script(project_id: str, script_id: str) -> bool:
         """删除剧本"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         script_dir = project_dir / "scripts" / script_id
 
         if script_dir.exists():
@@ -393,7 +402,7 @@ class ScriptSceneService:
     def list_scenes_by_episode(project_id: str, episode_id: str) -> List[Dict]:
         """列出剧集的所有场景"""
         # 需要遍历所有剧本目录查找场景
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         scripts_dir = project_dir / "scripts"
 
         scenes = []
@@ -507,7 +516,7 @@ class ScriptLineService:
     @staticmethod
     def list_lines_by_scene(project_id: str, scene_id: str) -> List[Dict]:
         """列出场景的所有镜头行"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         scripts_dir = project_dir / "scripts"
 
         lines = []

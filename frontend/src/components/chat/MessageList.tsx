@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Sparkles, Clapperboard, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Clapperboard, CheckCircle2 } from 'lucide-react';
 import { ToolCall, Message } from '@/types';
 import { MessageBubble } from './MessageBubble';
 
@@ -51,6 +51,7 @@ interface MessageListProps {
   isStreaming: boolean;
   error?: string | null;
   onClearMessages: () => void;
+  scriptContent?: string;
 }
 
 export function MessageList({
@@ -60,6 +61,7 @@ export function MessageList({
   isStreaming,
   error,
   onClearMessages,
+  scriptContent,
 }: MessageListProps) {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [hasUserScrolled, setHasUserScrolled] = useState(false);
@@ -127,10 +129,18 @@ export function MessageList({
       )}
 
       {messages.length === 0 && !isStreaming ? (
-        <div className="text-center text-gray-400 mt-12">
-          <Sparkles size={48} className="mx-auto mb-4" />
-          <p className="text-xl">Vibe Drama，开拍！</p>
-          <p className="text-sm mt-2">把剧本扔给我，我来搞定分镜和视频提示词</p>
+        <div className="mt-6 space-y-4">
+          <div className="text-center text-gray-400">
+            <span className="text-5xl select-none">🦞</span>
+            <p className="text-base font-medium mt-2 text-gray-300">小龙虾，开拍！</p>
+            <p className="text-xs mt-1 text-gray-500">我可以创建、修改分镜、资产中的所有内容，告诉我你的想法，我来实现</p>
+          </div>
+          {scriptContent && (
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+              <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">当前剧本</p>
+              <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">{scriptContent}</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-6">

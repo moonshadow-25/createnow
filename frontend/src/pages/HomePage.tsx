@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProjectStore } from '@/store/projectStore';
 import { useAuthStore } from '@/store/authStore';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { useSaasAuthStore } from '@/store/saasAuthStore';
 import { useToast } from '@/components/common/Toast';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
@@ -19,6 +20,7 @@ export default function HomePage() {
     useProjectStore();
   const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
   const { username: adminUsername, role: adminRole, logout: adminLogout, isAuthenticated } = useAdminAuthStore();
+  const saasAuth = useSaasAuthStore();
 
   const [showLogin, setShowLogin] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
@@ -28,7 +30,18 @@ export default function HomePage() {
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
 
-  const isAdmin = adminRole === 'admin';
+  // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
+  const isSaasUser = saasAuth.isAuthenticated;
+  const isAdmin = adminRole === 'admin' || isSaasUser;
+  // 从 token payload 解析用户名作为兜底（user 异步加载前先显示）
+  const saasDisplayName = saasAuth.user?.display_name || saasAuth.user?.email || (() => {
+    try {
+      const token = saasAuth.token;
+      if (!token) return '';
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.display_name || payload.email || payload.sub || '';
+    } catch { return ''; }
+  })();
 
   const loadStats = useCallback(async (list: Project[]) => {
     if (!list?.length) return;
@@ -45,6 +58,14 @@ export default function HomePage() {
     fetchProjects();
     fetchAuthInfo();
   }, [fetchProjects, fetchAuthInfo]);
+
+  // SaaS 登录后获取用户信息 + 项目列表
+  useEffect(() => {
+    if (saasAuth.isAuthenticated) {
+      saasAuth.fetchUser();
+      fetchProjects();
+    }
+  }, [saasAuth.isAuthenticated]);
 
   // 登录成功后重新加载项目列表
   useEffect(() => {
@@ -142,7 +163,7 @@ export default function HomePage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">DreamMaster</h1>
           <div className="flex items-center gap-3">
-            {isAdmin && loggedIn && (
+            {isAdmin && !isSaasUser && loggedIn && (
               <a
                 href="http://47.117.182.216:8003/admin/login.html"
                 target="_blank"
@@ -152,7 +173,7 @@ export default function HomePage() {
                 账户
               </a>
             )}
-            {isAdmin && (loggedIn ? (
+            {isAdmin && !isSaasUser && (loggedIn ? (
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 bg-green-700 hover:bg-green-800 px-4 py-2 rounded-lg transition text-sm"
@@ -171,7 +192,7 @@ export default function HomePage() {
               </button>
             ))}
 
-            {isAdmin && (
+            {isAdmin && !isSaasUser && (
               <button
                 onClick={() => setShowUserPanel(true)}
                 className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
@@ -192,7 +213,31 @@ export default function HomePage() {
               </button>
             )}
 
-            {adminUsername && (
+            {isSaasUser && (
+              <>
+                <a
+                  href="http://47.117.182.216:8003/admin/login.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+                >
+                  账户
+                </a>
+                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
+                  {saasDisplayName && (
+                    <span className="text-xs text-gray-400">{saasDisplayName}</span>
+                  )}
+                  <button
+                    onClick={() => saasAuth.logout()}
+                    className="flex items-center gap-1 text-gray-400 hover:text-white transition text-sm"
+                    title="退出登录"
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </div>
+              </>
+            )}
+            {!isSaasUser && adminUsername && (
               <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
                 <span className="text-xs text-gray-400">{adminUsername}</span>
                 {isAdmin && (
@@ -232,7 +277,7 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project) => (
+            {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map((project) => (
               <ProjectCard
                 key={project.project_id}
                 project={project}

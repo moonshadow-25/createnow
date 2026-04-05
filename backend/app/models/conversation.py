@@ -2,6 +2,15 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
+from app.core.context import get_current_data_root
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class Message(BaseModel):
@@ -24,8 +33,7 @@ class Conversation:
         self.updated_at = datetime.now().isoformat()
 
         # 加载或创建对话文件
-        from app.core.config import settings
-        self.conversation_dir = settings.PROJECTS_DIR / project_id / "conversations"
+        self.conversation_dir = _get_projects_dir() / project_id / "conversations"
         self.conversation_dir.mkdir(exist_ok=True)
         self.file_path = self.conversation_dir / f"{self.conversation_id}.json"
 

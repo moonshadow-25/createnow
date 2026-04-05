@@ -145,6 +145,50 @@ async def check_remote_status(hardware_id: str) -> Tuple[bool, Optional[str]]:
 
 
 # ============================================================
+# SaaS 专用登录（session_id，不依赖硬件）
+# ============================================================
+
+def get_saas_login_url(session_id: str) -> str:
+    """生成 SaaS 登录 URL（用 session 参数传递 session_id）"""
+    base = _get_base_url()
+    return f"{base}/register.html?session_id={session_id}"
+
+
+async def check_saas_status(session_id: str) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+    """SaaS 模式：用 session_id 查询 CreateNow 登录状态
+
+    Returns:
+        (registered: bool, api_key: str | None, email: str | None, display_name: str | None)
+    """
+    base = _get_base_url()
+    url = f"{base}/api/status"
+    params = {"session_id": session_id}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params=params)
+            data = resp.json()
+        logger.info(f"[Auth][SaaS] status response: {data}")
+
+        status = data.get("status")
+        if status == "active":
+            return (
+                True,
+                data.get("api_key"),
+                data.get("user_name", ""),
+                data.get("user_name", ""),
+            )
+        elif status == "pending":
+            return False, None, None, None
+        else:
+            logger.warning(f"[Auth][SaaS] Unexpected status from server: {data}")
+            return False, None, None, None
+    except Exception as e:
+        logger.error(f"[Auth][SaaS] check_saas_status error: {e}")
+        raise
+
+
+# ============================================================
 # 本地状态持久化
 # ============================================================
 

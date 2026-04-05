@@ -3,7 +3,16 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from app.models.project import AudioGeneration
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class AudioService:
@@ -12,7 +21,7 @@ class AudioService:
     @staticmethod
     def get_audios_dir(project_id: str) -> Path:
         """获取项目音频存储目录"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         audios_dir = project_dir / "audios"
         audios_dir.mkdir(parents=True, exist_ok=True)
 

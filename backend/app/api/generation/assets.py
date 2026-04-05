@@ -11,10 +11,19 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services import ImageService
+from app.core.context import get_current_data_root
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class SubmitAssetRequest(BaseModel):
@@ -60,7 +69,6 @@ async def submit_asset(project_id: str, request: SubmitAssetRequest):
     返回: { submitted: [{image_id, asset_id, status}], skipped: [image_id, ...] }
     """
     from app.services import ProjectService
-    from app.core.config import settings as _settings
 
     project = ProjectService.get_project(project_id)
     if not project:
@@ -93,7 +101,7 @@ async def submit_asset(project_id: str, request: SubmitAssetRequest):
             # 优先用本地文件，降级到外部 URL
             local_path = image.get("local_path")
             if local_path:
-                abs_path = str(_settings.PROJECTS_DIR / project_id / "images" / "files" / local_path)
+                abs_path = str(_get_projects_dir() / project_id / "images" / "files" / local_path)
             else:
                 abs_path = image.get("image_path", "")
             if not abs_path:

@@ -145,18 +145,37 @@ for %%A in ("%OUTPUT_ZIP%") do (
     echo Size    : %%~zA bytes ^(!SIZE_MB! MB^)
 )
 echo.
-echo Contents:
-echo   backend/app/        - Python source code
-echo   backend/config/     - Default prompt templates
-echo   backend/requirements.txt
-echo   env/                - Python virtual environment
-echo   frontend/dist/      - Compiled frontend
-echo   install.bat         - First-time setup
-echo   start.bat           - Launch server ^(auto-opens browser^)
-echo   update.bat          - Self-update script
-echo   .env.example        - Config template
+
+REM ── 上传到服务器 ──────────────────────────────────────────
+echo ========================================
+echo   Uploading to release server...
+echo ========================================
 echo.
-echo Upload %OUTPUT_ZIP% to your release server,
-echo then update the URL in update.bat.
+
+set "SSH_KEY=%~dp047.116.221.35_id_ed25519"
+set "REMOTE=root@47.116.221.35:/www/wwwroot/linglonghome/minipc-website/download/createnow/"
+
+echo [1/2] Uploading createnow-release.zip...
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no "%OUTPUT_ZIP%" "%REMOTE%"
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to upload createnow-release.zip
+    pause
+    exit /b 1
+)
+echo   Done.
+
+echo [2/2] Uploading version.json...
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no "%~dp0version.json" "%REMOTE%"
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to upload version.json
+    pause
+    exit /b 1
+)
+echo   Done.
+
+echo.
+echo ========================================
+echo   Upload Complete!
+echo ========================================
 echo.
 pause

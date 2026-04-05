@@ -10,8 +10,17 @@ from app.services.asset_service import AssetService
 from app.services.auth_service import get_auth_state
 from app.services.user_service import get_user_by_username
 from app.core.config import settings
+from app.core.context import get_current_data_root
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class ProjectCreate(BaseModel):
@@ -29,6 +38,18 @@ class ProjectUpdate(BaseModel):
     project_duration_days: int = None
 
 
+async def _get_active_api_key(request: Request) -> Optional[str]:
+    """获取当前有效的 API Key。
+    SaaS 模式：从 request.state.saas_user 读取（Redis 中的用户信息）。
+    selfhosted 模式：从 global.json 读取（原有逻辑）。
+    """
+    if settings.DEPLOY_MODE == "saas":
+        saas_user = getattr(request.state, "saas_user", None)
+        return (saas_user or {}).get("api_key")
+    auth = get_auth_state()
+    return auth.get("api_key") if auth.get("logged_in") else None
+
+
 @router.post("", response_model=dict)
 async def create_project(request: Request, project: ProjectCreate):
     """创建新项目"""
@@ -37,12 +58,21 @@ async def create_project(request: Request, project: ProjectCreate):
         raise HTTPException(status_code=403, detail="子账号不能创建项目")
     result = ProjectService.create_project(project.name, project.description)
 
+    # SaaS 模式：将新项目加入用户的项目索引，并写入反向索引
+    if settings.DEPLOY_MODE == "saas":
+        saas_user = getattr(request.state, "saas_user", None)
+        if saas_user:
+            from app.services.user_saas_service import add_user_project
+            from app.core.redis_client import get_redis
+            await add_user_project(saas_user["user_id"], result["project_id"])
+            r = await get_redis()
+            await r.set(f"project_owner:{result['project_id']}", saas_user["user_id"])
+
     # 若用户已登录，为新项目创建完整的 createnow 预设结构
-    auth = get_auth_state()
-    if auth.get("logged_in"):
+    auth_api_key = await _get_active_api_key(request)
+    if auth_api_key:
         ai_config = result.get("ai_config", {})
         base_url = settings.CREATENOW_BASE_URL
-        auth_api_key = auth.get("api_key") or ""
         now = datetime.now().isoformat()
 
         config_presets: dict = {"llm": [], "vlm": [], "image": [], "video": [], "tts": []}
@@ -95,6 +125,16 @@ async def create_project(request: Request, project: ProjectCreate):
 @router.get("", response_model=List[dict])
 async def list_projects(request: Request):
     """列出所有项目"""
+    # SaaS 模式：只列出当前用户的项目
+    if settings.DEPLOY_MODE == "saas":
+        saas_user = getattr(request.state, "saas_user", None)
+        if saas_user:
+            from app.services.user_saas_service import get_user_project_ids
+            project_ids = await get_user_project_ids(saas_user["user_id"])
+            all_projects = ProjectService.list_projects()
+            return [p for p in all_projects if p.get("project_id") in set(project_ids)]
+        return []
+
     projects = ProjectService.list_projects()
     admin_user = getattr(request.state, "admin_user", None)
     if admin_user and admin_user.get("role") == "user":
@@ -137,7 +177,7 @@ async def update_project(project_id: str, project: ProjectUpdate):
 @router.get("/{project_id}/stats")
 async def get_project_stats(project_id: str):
     """获取项目统计数据"""
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_projects_dir() / project_id
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -148,11 +188,16 @@ async def get_project_stats(project_id: str):
     videos_dir = project_dir / "videos"
     primary_storyboard_ids: set = set()
     total_video_seconds = 0.0
+    storyboard_video_seconds = 0.0
     if videos_dir.exists():
         for vf in videos_dir.glob("*.json"):
             with open(vf, encoding="utf-8") as f:
                 v = _json.load(f)
-            total_video_seconds += float(v.get("duration") or 0)
+            if v.get("status") == "completed":
+                duration = float(v.get("duration") or 0)
+                total_video_seconds += duration
+                if v.get("storyboard_id"):
+                    storyboard_video_seconds += duration
             if v.get("is_primary") and v.get("storyboard_id"):
                 primary_storyboard_ids.add(v["storyboard_id"])
 
@@ -167,6 +212,7 @@ async def get_project_stats(project_id: str):
         "storyboards_with_video": len(primary_storyboard_ids),
         "total_images": total_images,
         "total_video_seconds": total_video_seconds,
+        "storyboard_video_seconds": storyboard_video_seconds,
     }
 
 

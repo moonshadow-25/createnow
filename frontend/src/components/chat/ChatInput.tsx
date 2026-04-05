@@ -157,14 +157,14 @@ export function ChatInput({
         {/* 快捷语句按钮 */}
         <div className="flex gap-2 mb-2">
           {[
-            { label: '提取资产', text: '提取资产' },
-            { label: '生成视频分镜', text: '生成视频分镜' },
-          ].map(({ label, text }) => (
+            { label: '提取资产', text: '提取资产', className: 'bg-emerald-700 hover:bg-emerald-600 text-emerald-100' },
+            { label: '生成视频分镜', text: '生成视频分镜', className: 'bg-blue-700 hover:bg-blue-600 text-blue-100' },
+          ].map(({ label, text, className }) => (
             <button
               key={label}
               onClick={() => onSend(text)}
               disabled={isStreaming}
-              className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded-full transition"
+              className={`px-3 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed rounded-full transition ${className}`}
             >
               {label}
             </button>
@@ -176,7 +176,7 @@ export function ChatInput({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="输入你的想法，或拖拽剧本文件到此处..."
+            placeholder="我可以创建、修改分镜、资产中的所有内容，告诉我你的想法，我来实现"
             className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 resize-none focus:outline-none focus:border-blue-500"
             rows={3}
             disabled={isStreaming}

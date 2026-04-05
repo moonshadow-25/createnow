@@ -5,8 +5,17 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
 from app.core.config import settings
+from app.core.context import get_current_data_root
 
 logger = logging.getLogger(__name__)
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class AILogService:
@@ -21,7 +30,7 @@ class AILogService:
     @staticmethod
     def _get_log_file(project_id: str) -> Path:
         """获取项目的AI日志文件路径"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         log_dir = project_dir / "ai_logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         return log_dir / "interactions.jsonl"

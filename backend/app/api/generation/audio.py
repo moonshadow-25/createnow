@@ -13,10 +13,19 @@ from pydantic import BaseModel
 from app.services import AudioService, get_tts_service
 from app.services.audio_download_service import AudioDownloadService
 from app.core.config import settings
+from app.core.context import get_current_data_root
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class AudioGenerateRequest(BaseModel):
@@ -169,7 +178,7 @@ async def get_audio_file(project_id: str, audio_id: str):
     if not local_path:
         raise HTTPException(status_code=404, detail="No local file for this audio")
 
-    file_path = settings.PROJECTS_DIR / project_id / "audios" / "files" / local_path
+    file_path = _get_projects_dir() / project_id / "audios" / "files" / local_path
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found on disk")
 

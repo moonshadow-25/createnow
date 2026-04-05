@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { generationApi } from '../../services/api';
 import { useToast } from '@/components/common/Toast';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
+import { useProjectStore } from '@/store/projectStore';
+import type { ImageSizes } from '@/types';
 
 interface CustomPreset {
   id: string;
@@ -59,6 +61,7 @@ function migrateStyle(raw: any): StyleConfig {
 export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId }) => {
   const { toast } = useToast();
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
+  const { currentProject, updateProject } = useProjectStore();
   const [config, setConfig] = useState<GlobalStyleConfig | null>(null);
   const [imagePresets, setImagePresets] = useState<StylePreset[]>([]);
   const [videoPresets, setVideoPresets] = useState<StylePreset[]>([]);
@@ -66,10 +69,19 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
   const [imageDetail, setImageDetail] = useState<StylePresetDetail | null>(null);
   const [videoDetail, setVideoDetail] = useState<StylePresetDetail | null>(null);
 
+  const defaultImageSizes: ImageSizes = { character: '1x1', scene: '16x9', prop: '1x1', storyboard: '16x9' };
+  const [imageSizes, setImageSizes] = useState<ImageSizes>(defaultImageSizes);
+
   useEffect(() => {
     loadConfig();
     loadPresets();
   }, [projectId]);
+
+  // 从项目配置加载分辨率
+  useEffect(() => {
+    const sizes = (currentProject?.ai_config as any)?.image_sizes;
+    if (sizes) setImageSizes({ ...defaultImageSizes, ...sizes });
+  }, [currentProject]);
 
   useEffect(() => {
     if (!config) return;
@@ -127,7 +139,10 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     if (!config) return;
     setSaving(true);
     try {
-      await generationApi.updateGlobalStyleConfig(projectId, config);
+      await Promise.all([
+        generationApi.updateGlobalStyleConfig(projectId, config),
+        updateProject(projectId, { ai_config: { ...(currentProject?.ai_config as any), image_sizes: imageSizes } }),
+      ]);
       setGlobalStyleConfig({
         global_resolution: config.global_resolution || '1280x720',
         nine_grid_mode: config.nine_grid_mode || false,
@@ -361,6 +376,30 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
       <div className="grid grid-cols-2 gap-4">
         {renderSection('image', config.image_style, imagePresets, imageDetail)}
         {renderSection('video', config.video_style, videoPresets, videoDetail)}
+      </div>
+
+      {/* 生图分辨率 */}
+      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <h4 className="font-medium text-gray-100 text-sm mb-3">生图分辨率</h4>
+        <p className="text-xs text-gray-400 mb-3">支持比例格式（如 1x1、16x9）或具体像素（如 1024x1024）</p>
+        <div className="grid grid-cols-2 gap-3">
+          {(['character', 'scene', 'prop', 'storyboard'] as const).map((key) => {
+            const labels = { character: '角色', scene: '场景', prop: '道具', storyboard: '分镜' };
+            const defaults = { character: '1x1', scene: '16x9', prop: '1x1', storyboard: '16x9' };
+            return (
+              <div key={key}>
+                <label className="block text-xs text-gray-400 mb-1">{labels[key]}分辨率</label>
+                <input
+                  type="text"
+                  value={imageSizes[key] || defaults[key]}
+                  onChange={e => setImageSizes({ ...imageSizes, [key]: e.target.value })}
+                  placeholder={defaults[key]}
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Save button */}

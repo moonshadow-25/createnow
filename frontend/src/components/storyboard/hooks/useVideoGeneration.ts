@@ -71,14 +71,11 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
   }, [projectId, episodeId]);
 
   const initForStoryboard = useCallback((storyboard: any) => {
-    const isSameStoryboard = editingStoryboardIdRef.current === storyboard.asset_id;
     editingStoryboardIdRef.current = storyboard.asset_id;
-    if (!isSameStoryboard) {
-      const vp = storyboard.video_prompt;
-      setVideoPromptState(
-        Array.isArray(vp) ? JSON.stringify(vp) : (vp || '')
-      );
-    }
+    const vp = storyboard.video_prompt;
+    setVideoPromptState(
+      Array.isArray(vp) ? JSON.stringify(vp) : (vp || '')
+    );
     loadPrimaryImage(storyboard);
     loadVideos(storyboard);
   }, [loadPrimaryImage, loadVideos]);

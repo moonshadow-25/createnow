@@ -9,7 +9,16 @@ from datetime import datetime
 import uuid
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from app.services import ImageService
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class ImageDownloadService:
@@ -21,7 +30,7 @@ class ImageDownloadService:
     @staticmethod
     def get_images_dir(project_id: str) -> Path:
         """获取项目图片文件存储目录"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         images_dir = project_dir / "images" / "files"
         images_dir.mkdir(parents=True, exist_ok=True)
 
@@ -223,7 +232,7 @@ class ImageDownloadService:
     @staticmethod
     def _update_image_metadata(project_id: str, image_id: str, local_path: str):
         """更新图片元数据，添加本地路径"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / "images" / f"{image_id}.json"
 
         if file_path.exists():

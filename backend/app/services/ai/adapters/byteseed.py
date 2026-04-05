@@ -85,7 +85,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
             }
         ]
 
-        ratio = self._map_resolution_to_ratio(resolution)
+        ratio = kwargs.pop('ratio', None) or self._map_resolution_to_ratio(resolution)
         return await self._create_task(content, duration, ratio, resolution=resolution, **kwargs)
 
     async def generate_multi_image(
@@ -115,6 +115,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
             }
         """
         content = [{"type": "text", "text": prompt}]
+        override_ratio = kwargs.pop('ratio', None)
 
         if len(image_urls) == 2:
             # 首尾帧模式
@@ -128,7 +129,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "image_url": {"url": image_urls[1]},
                 "role": "last_frame"
             })
-            ratio = self._map_resolution_to_ratio(resolution)
+            ratio = override_ratio or self._map_resolution_to_ratio(resolution)
         else:
             # 参考图模式（3张及以上）
             for img_url in image_urls:

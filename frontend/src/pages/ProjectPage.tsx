@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MessageSquare, Users, Film, FileText, Settings, Palette, ChevronDown, RefreshCw } from 'lucide-react';
+import { Users, Film, FileText, Settings, Palette, ChevronDown, RefreshCw, Video } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
@@ -10,33 +10,41 @@ import { AssetsTab } from '@/components/assets/AssetsTab';
 import { StoryboardTab } from '@/components/storyboard/StoryboardTab';
 import { ScriptTab } from '@/components/script/ScriptTab';
 import { CanvasTab } from '@/components/canvas/CanvasTab';
+import { GenerateTab } from '@/components/generate/GenerateTab';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
-type TabType = 'chat' | 'assets' | 'script' | 'storyboard' | 'canvas';
+type TabType = 'chat' | 'assets' | 'script' | 'storyboard' | 'canvas' | 'generate';
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { currentProject, fetchProject } = useProjectStore();
-  const { characters, scenes, props, episodes, fetchAssets } = useAssetStore();
+  const { characters, scenes, props, episodes, fetchAssets, loadedProjectId } = useAssetStore();
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
+  const vibeDramaOpen = useVibeDramaStore(s => s.isOpen);
+  const vibeDramaPanelWidth = useVibeDramaStore(s => s.panelWidth);
+  const toggleVibeDrama = useVibeDramaStore(s => s.toggle);
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  // 生成 tab 首次访问后保持挂载，避免切换时状态丢失
+  const [generateMounted, setGenerateMounted] = useState(false);
+  useEffect(() => { if (activeTab === 'generate') setGenerateMounted(true); }, [activeTab]);
 
   // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
   const TAB_LABELS: Record<string, string> = {
-    assets: '资产面板', script: '剧本', canvas: '画布', chat: '项目对话',
+    assets: '资产面板', script: '剧本', canvas: '画布', chat: '项目对话', generate: '视频生成',
   };
   useEffect(() => {
     if (!projectId || activeTab === 'storyboard') return;
     setVibeDramaContext({
       projectId,
+      projectName: currentProject?.name || '',
       tabName: activeTab,
       label: TAB_LABELS[activeTab] || activeTab,
     });
@@ -96,10 +104,12 @@ export default function ProjectPage() {
   // 初始化加载
   useEffect(() => {
     if (!projectId) return;
-    // 刷新后 currentProject 为 null，从 API 重新加载，不能 reload() 否则死循环
     if (!currentProject || currentProject.project_id !== projectId) {
       fetchProject(projectId);
     }
+    // 已有该项目缓存时跳过，避免从子页面返回时重复请求
+    // storyboard 由 StoryboardDetail.loadStoryboards() 独立管理，无需此处拉取
+    if (loadedProjectId === projectId) return;
     fetchAssets(projectId, 'character');
     fetchAssets(projectId, 'scene');
     fetchAssets(projectId, 'prop');
@@ -131,9 +141,9 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-gray-900 text-white flex flex-col">
       {/* 顶部导航 */}
-      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4">
+      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex-shrink-0">
         <div className="flex justify-between items-center">
           <div>
             <button onClick={() => navigate('/')} className="text-gray-400 hover:text-white mr-4">
@@ -165,7 +175,7 @@ export default function ProjectPage() {
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
                 className={`px-4 py-2 rounded-lg transition flex items-center gap-1 ${
-                  ['chat', 'script', 'canvas'].includes(activeTab)
+                  ['generate', 'script', 'canvas', 'chat'].includes(activeTab)
                     ? 'bg-blue-600'
                     : 'bg-gray-700 hover:bg-gray-600'
                 }`}
@@ -176,11 +186,11 @@ export default function ProjectPage() {
               {showMoreMenu && (
                 <div className="absolute right-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 min-w-[120px]">
                   <button
-                    onClick={() => { setActiveTab('chat'); setShowMoreMenu(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg hover:bg-gray-600 ${activeTab === 'chat' ? 'text-blue-400' : 'text-gray-200'}`}
+                    onClick={() => { setActiveTab('generate'); setShowMoreMenu(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg hover:bg-gray-600 ${activeTab === 'generate' ? 'text-blue-400' : 'text-gray-200'}`}
                   >
-                    <MessageSquare size={16} />
-                    对话
+                    <Video size={16} />
+                    广场
                   </button>
                   <button
                     onClick={() => { setActiveTab('script'); setShowMoreMenu(false); }}
@@ -216,56 +226,85 @@ export default function ProjectPage() {
               <Settings size={18} />
               设置
             </button>
+            {/* 小龙虾入口按钮 */}
+            <button
+              onClick={toggleVibeDrama}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition border-2 ${
+                vibeDramaOpen
+                  ? 'bg-gray-700 border-red-500 text-red-300'
+                  : 'bg-gray-700 hover:bg-gray-600 border-transparent text-gray-200'
+              }`}
+              title="小龙虾 AI 助手"
+            >
+              <span className="text-lg leading-none select-none">🦞</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 主内容区 - 条件渲染，仅挂载当前激活的tab */}
-      <div className="h-[calc(100vh-73px)]">
-        {activeTab === 'chat' && (
-          <div className="flex h-full">
-            <ChatTab projectId={projectId!} tabName="chat" />
-          </div>
-        )}
+      {/* 主体：内容区，面板打开时右侧让位 */}
+      <div
+        className="overflow-hidden h-[calc(100vh-73px)] transition-all duration-300"
+        style={{ paddingRight: vibeDramaOpen ? vibeDramaPanelWidth : 0 }}
+      >
+        {/* 主内容区 */}
+        <div className="h-full overflow-hidden">
+          {activeTab === 'chat' && (
+            <div className="flex h-full">
+              <ChatTab projectId={projectId!} tabName="chat" />
+            </div>
+          )}
 
-        {activeTab === 'assets' && (
-          <div className="flex h-full">
-            <AssetsTab
-              projectId={projectId!}
-              characters={characters}
-              scenes={scenes}
-              props={props}
-              onRefresh={handleRefreshAssets}
-            />
-          </div>
-        )}
+          {activeTab === 'assets' && (
+            <div className="flex h-full">
+              <AssetsTab
+                projectId={projectId!}
+                characters={characters}
+                scenes={scenes}
+                props={props}
+                onRefresh={handleRefreshAssets}
+              />
+            </div>
+          )}
 
-        {activeTab === 'script' && (
-          <div className="flex h-full">
-            <ScriptTab projectId={projectId!} />
-          </div>
-        )}
+          {activeTab === 'script' && (
+            <div className="flex h-full">
+              <ScriptTab projectId={projectId!} />
+            </div>
+          )}
 
-        {activeTab === 'storyboard' && (
-          <div className="flex h-full">
-            <StoryboardTab
-              projectId={projectId!}
-              episodes={episodes}
-              characters={characters}
-              scenes={scenes}
-              props={props}
-              onUpdated={handleRefreshAssets}
-              multimodalReference={currentProject?.ai_config?.video?.multimodal_reference || false}
-              showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
-            />
-          </div>
-        )}
+          {activeTab === 'storyboard' && (
+            <div className="flex h-full">
+              <StoryboardTab
+                projectId={projectId!}
+                episodes={episodes}
+                characters={characters}
+                scenes={scenes}
+                props={props}
+                onUpdated={handleRefreshAssets}
+                multimodalReference={currentProject?.ai_config?.video?.multimodal_reference || false}
+                showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
+              />
+            </div>
+          )}
 
-        {activeTab === 'canvas' && (
-          <div className="flex h-full">
-            <CanvasTab projectId={projectId!} />
-          </div>
-        )}
+          {generateMounted && (
+            <div className={`flex h-full ${activeTab !== 'generate' ? 'hidden' : ''}`}>
+              <div className="flex-1 overflow-hidden">
+                <GenerateTab
+                  projectId={projectId!}
+                  showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'canvas' && (
+            <div className="flex h-full">
+              <CanvasTab projectId={projectId!} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 设置弹框 */}

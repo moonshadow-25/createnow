@@ -5,8 +5,17 @@ from pathlib import Path
 
 from app.services import AssetService
 from app.core.config import settings
+from app.core.context import get_current_data_root
 
 router = APIRouter(prefix="/projects/{project_id}/videos", tags=["videos"])
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 @router.get("")
@@ -18,7 +27,7 @@ async def list_videos(
     """获取视频列表"""
     try:
         # 获取项目目录
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         if not project_dir.exists():
             raise HTTPException(status_code=404, detail="Project not found")
 
@@ -56,7 +65,7 @@ async def list_videos(
 async def get_video_file(project_id: str, video_id: str):
     """获取视频文件"""
     try:
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         video_json_path = project_dir / "videos" / f"{video_id}.json"
 
         if not video_json_path.exists():
@@ -96,7 +105,7 @@ async def get_video_file(project_id: str, video_id: str):
 async def delete_video(project_id: str, video_id: str):
     """删除视频"""
     try:
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         video_json_path = project_dir / "videos" / f"{video_id}.json"
 
         if not video_json_path.exists():

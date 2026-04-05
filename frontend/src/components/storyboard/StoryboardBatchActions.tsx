@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Layers, Film, Grid, Download, Loader2, Video } from 'lucide-react';
+import { Plus, Layers, Film, Grid, Download, Loader2, Video, Trash2, AlertTriangle } from 'lucide-react';
 import { useSelectedStoryboardsExport } from './hooks/useSelectedStoryboardsExport';
 import { useJianyingExport } from './hooks/useJianyingExport';
 import { JianyingExportDialog } from './JianyingExportDialog';
@@ -17,6 +17,7 @@ interface StoryboardBatchActionsProps {
   onMultiImageFusion: () => void;
   onMultiSceneVideo: () => void;
   onCreateEndFrame?: () => void;
+  onDeleteSelected: () => void;
   onClearSelection: () => void;
   toast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -34,10 +35,13 @@ export function StoryboardBatchActions({
   onMultiImageFusion,
   onMultiSceneVideo,
   onCreateEndFrame,
+  onDeleteSelected,
   onClearSelection,
   toast
 }: StoryboardBatchActionsProps) {
   const [showJianyingDialog, setShowJianyingDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState('');
 
   // 使用选中分镜导出 Hook（ZIP）
   const {
@@ -110,6 +114,14 @@ export function StoryboardBatchActions({
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition"
           >
             取消选择
+          </button>
+          <button
+            onClick={() => { setDeleteInput(''); setShowDeleteConfirm(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-sm transition"
+            title="删除选中的分镜"
+          >
+            <Trash2 size={16} />
+            删除 ({selectedCount})
           </button>
 
           {selectedCount === 1 && (
@@ -226,6 +238,49 @@ export function StoryboardBatchActions({
         onConfirm={handleJianyingDialogConfirm}
         onClose={() => setShowJianyingDialog(false)}
       />
+    )}
+
+    {/* 批量删除二次确认弹框 */}
+    {showDeleteConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+        <div className="bg-gray-800 rounded-lg p-6 w-96 shadow-xl border border-red-700">
+          <div className="flex items-center gap-3 mb-4">
+            <AlertTriangle size={22} className="text-red-400 flex-shrink-0" />
+            <h3 className="text-lg font-semibold text-white">确认批量删除</h3>
+          </div>
+          <p className="text-gray-300 text-sm mb-2">
+            即将删除 <span className="text-red-400 font-semibold">{selectedCount}</span> 个分镜，此操作不可恢复。
+          </p>
+          <p className="text-gray-400 text-sm mb-4">
+            请输入 <span className="font-mono text-red-400">delete</span> 以确认：
+          </p>
+          <input
+            type="text"
+            value={deleteInput}
+            onChange={e => setDeleteInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && deleteInput === 'delete') { setShowDeleteConfirm(false); onDeleteSelected(); } }}
+            placeholder="输入 delete"
+            autoFocus
+            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500 mb-4"
+          />
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm transition"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => { setShowDeleteConfirm(false); onDeleteSelected(); }}
+              disabled={deleteInput !== 'delete'}
+              className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={15} />
+              确认删除
+            </button>
+          </div>
+        </div>
+      </div>
     )}
   </>
   );

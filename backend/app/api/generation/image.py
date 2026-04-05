@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Requ
 
 from app.services import get_ai_service, PromptService, ImageService, AssetService
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from .models import (
     ImagePromptRequest,
     ImageGenerateRequest,
@@ -24,6 +25,15 @@ from .templates import DEFAULT_PROMPT_TEMPLATES
 from .template_helpers import get_active_template
 
 logger = logging.getLogger(__name__)
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
+
 
 router = APIRouter()
 
@@ -346,7 +356,7 @@ async def edit_image(project_id: str, request: ImageEditRequest):
         # 优先使用本地文件（转base64）
         local_path = ref_image.get("local_path")
         if local_path:
-            project_dir = settings.PROJECTS_DIR / project_id
+            project_dir = _get_projects_dir() / project_id
             local_file_path = project_dir / "images" / "files" / local_path
 
             if local_file_path.exists():
@@ -629,7 +639,7 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
         # 优先使用本地文件（转base64）
         local_path = ref_image.get("local_path")
         if local_path:
-            project_dir = settings.PROJECTS_DIR / project_id
+            project_dir = _get_projects_dir() / project_id
             local_file_path = project_dir / "images" / "files" / local_path
 
             if local_file_path.exists():
@@ -772,7 +782,7 @@ async def upload_image(
         filename = f"{uuid.uuid4()}.{ext}"
 
         # 保存文件
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         files_dir = project_dir / "images" / "files" / asset_type
         files_dir.mkdir(parents=True, exist_ok=True)
 
@@ -860,7 +870,7 @@ async def split_triple_grid_image(project_id: str, storyboard_id: str = Body(...
     if not local_path:
         raise HTTPException(status_code=400, detail="主图没有本地文件，请先下载图片")
 
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_projects_dir() / project_id
     image_file_path = project_dir / "images" / "files" / local_path
 
     if not image_file_path.exists():
@@ -995,7 +1005,7 @@ async def vlm_analyze(project_id: str, request: VLMAnalyzeRequest):
             # 优先使用本地文件
             local_path = img.get("local_path")
             if local_path:
-                project_dir = settings.PROJECTS_DIR / project_id
+                project_dir = _get_projects_dir() / project_id
                 local_file_path = project_dir / "images" / "files" / local_path
 
                 if local_file_path.exists():

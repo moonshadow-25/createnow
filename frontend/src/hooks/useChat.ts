@@ -4,6 +4,10 @@ import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
 export function useChat(projectId: string, options?: { label?: string; episodeId?: string; tabName?: string }) {
   const removeSession = useVibeDramaStore(s => s.removeSession);
+  const commitSession = useVibeDramaStore(s => s.commitSession);
+  // 用 ref 包装，避免进入 useCallback 依赖数组导致 sendMessage 在流式传输途中被重建
+  const commitSessionRef = useRef(commitSession);
+  useEffect(() => { commitSessionRef.current = commitSession; }, [commitSession]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [currentThinking, setCurrentThinking] = useState('');
@@ -52,6 +56,9 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
 
   const sendMessage = useCallback(
     async (content: string) => {
+      // 首次发消息时将当前上下文提升为正式历史 session
+      commitSessionRef.current();
+
       setIsStreaming(true);
       setError(null);
       setCurrentMessage('');
@@ -74,14 +81,13 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
           context_messages: messagesRef.current.map(m => ({ role: m.role, content: m.content })),
         };
 
+        const _token = localStorage.getItem('saas_token') || localStorage.getItem('admin_token');
         const response = await fetch('/api/projects/' + projectId + '/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(localStorage.getItem('admin_token')
-              ? { Authorization: `Bearer ${localStorage.getItem('admin_token')}` }
-              : {}),
-          },
+            ...(_token ? { Authorization: `Bearer ${_token}` } : {}),
+          } as HeadersInit,
           body: JSON.stringify(request),
         });
 

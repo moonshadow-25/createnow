@@ -15,9 +15,18 @@ from app.services.asset_service import ImageService
 from app.services.video_service import VideoService
 from app.models.project import Storyboard
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from app.api.generation.template_helpers import get_active_template
 
 router = APIRouter(prefix="/projects/{project_id}/storyboards", tags=["storyboards"])
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class StoryboardCreate(BaseModel):
@@ -315,7 +324,7 @@ async def create_end_frame(project_id: str, storyboard_id: str):
         # 视频文件在 videos/files/ 子目录下
         video_filename = primary_video["local_path"]
         video_path = os.path.join(
-            str(settings.PROJECTS_DIR),
+            str(_get_projects_dir()),
             project_id,
             "videos",
             "files",  # 视频文件在 files 子目录下
@@ -607,7 +616,7 @@ async def export_storyboard(project_id: str, storyboard_id: str):
         episode_number = None
         if episode_id:
             import json as _json
-            ep_file = settings.PROJECTS_DIR / project_id / "episodes" / f"{episode_id}.json"
+            ep_file = _get_projects_dir() / project_id / "episodes" / f"{episode_id}.json"
             if ep_file.exists():
                 with open(ep_file, "r", encoding="utf-8") as _f:
                     ep_data = _json.load(_f)
@@ -639,7 +648,7 @@ async def export_storyboard(project_id: str, storyboard_id: str):
         primary_image = ImageService.get_primary_image(project_id, storyboard_id)
         if primary_image and primary_image.get("local_path"):
             local_path = primary_image.get("local_path")
-            project_dir = settings.PROJECTS_DIR / project_id
+            project_dir = _get_projects_dir() / project_id
             source_file = project_dir / "images" / "files" / local_path
 
             if source_file.exists():
@@ -752,7 +761,7 @@ async def download_storyboard_resources(project_id: str, storyboard_id: str):
         episode_number = None
         if episode_id:
             import json as _json
-            ep_file = settings.PROJECTS_DIR / project_id / "episodes" / f"{episode_id}.json"
+            ep_file = _get_projects_dir() / project_id / "episodes" / f"{episode_id}.json"
             if ep_file.exists():
                 with open(ep_file, "r", encoding="utf-8") as _f:
                     ep_data = _json.load(_f)
@@ -763,7 +772,7 @@ async def download_storyboard_resources(project_id: str, storyboard_id: str):
         storyboard_folder = temp_dir / f"分镜{sequence}"
         storyboard_folder.mkdir(exist_ok=True)
 
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
 
         # 4. 复制分镜主图
         primary_image = ImageService.get_primary_image(project_id, storyboard_id)

@@ -31,7 +31,7 @@ from starlette.requests import Request
 import re
 
 from app.core.config import settings
-from app.core.context import set_current_project_id
+from app.core.context import set_current_project_id, set_current_data_root
 from app.api import (
     projects_router,
     assets_router,
@@ -47,6 +47,7 @@ from app.api.global_prompts import router as global_prompts_router
 from app.api.version import router as version_router
 from app.api.auth import router as auth_router
 from app.api.admin_auth import router as admin_auth_router
+from app.api.user_auth import router as user_auth_router
 
 def _ensure_ssl_cert():
     """启动时自动生成自签名证书（若不存在），有效期 10 年"""
@@ -98,6 +99,7 @@ async def lifespan(app: FastAPI):
     # 启动时
     print(f"Data directory: {settings.DATA_DIR}")
     print(f"Projects directory: {settings.PROJECTS_DIR}")
+    print(f"Deploy mode: {settings.DEPLOY_MODE}")
     # 初始化全局提示词 JSON（首次启动时从代码常量生成）
     from app.services.global_prompt_service import load_global_prompts, save_global_prompts, _get_json_path
     json_path = _get_json_path()
@@ -108,11 +110,20 @@ async def lifespan(app: FastAPI):
         print(f"[INFO] 已创建: {json_path}")
     else:
         load_global_prompts()  # 预热缓存
-    # 初始化默认管理员账号
-    from app.services.user_service import ensure_default_admin
-    ensure_default_admin()
+    # selfhosted 模式：初始化默认管理员账号
+    if settings.DEPLOY_MODE == "selfhosted":
+        from app.services.user_service import ensure_default_admin
+        ensure_default_admin()
+    # saas 模式：初始化 Redis 连接
+    if settings.DEPLOY_MODE == "saas":
+        from app.core.redis_client import get_redis
+        await get_redis()
+        settings.USERS_DIR.mkdir(parents=True, exist_ok=True)
     yield
     # 关闭时
+    if settings.DEPLOY_MODE == "saas":
+        from app.core.redis_client import close_redis
+        await close_redis()
     print("Application shutting down...")
 
 
@@ -147,6 +158,13 @@ class ProjectContextMiddleware(BaseHTTPMiddleware):
             project_id = match.group(1)
             set_current_project_id(project_id)
 
+        # SaaS 模式：将用户数据根目录注入到 context（供 asset_service 使用）
+        if settings.DEPLOY_MODE == "saas":
+            data_root = getattr(request.state, "saas_data_root", None)
+            set_current_data_root(data_root)
+        else:
+            set_current_data_root(None)
+
         response = await call_next(request)
         return response
 
@@ -163,7 +181,10 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
     _WHITELIST_PREFIXES = (
         "/api/admin/login",
         "/api/auth/",
+        "/api/user/auth/",
+        "/api/user/logout",
         "/api/health",
+        "/api/config",
     )
     # 图片/视频/音频直接访问路径（<img src> / <video src> / <audio src> 无法携带 token）
     _WHITELIST_CONTAINS = (
@@ -173,6 +194,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
         "/videos/files/",
         "/audios/files/",
         "/generate/audios/",
+        "/generate/media/files/",
     )
 
     async def dispatch(self, request: Request, call_next):
@@ -237,17 +259,141 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-app.add_middleware(AdminAuthMiddleware)
+if settings.DEPLOY_MODE != "saas":
+    app.add_middleware(AdminAuthMiddleware)
+
+
+# ==================== SaaS 用户认证中间件 ====================
+class SaasAuthMiddleware(BaseHTTPMiddleware):
+    """
+    SaaS 模式下的用户鉴权中间件（DEPLOY_MODE=saas）。
+
+    - 解析 SaaS JWT，注入 request.state.saas_user 和 request.state.saas_data_root
+    - data_root 指向该用户的数据目录：data/users/{user_id}/
+    - /api/user/auth/poll 白名单（登录流程）
+    - /api/auth/ 白名单（设备注册，兼容保留）
+    - 媒体文件路径白名单（img/video src 无法携带 token）
+    """
+    _WHITELIST_PREFIXES = (
+        "/api/user/auth/",
+        "/api/auth/",
+        "/api/health",
+        "/api/config",
+    )
+    _WHITELIST_CONTAINS = (
+        "/images/files/",
+        "/images/thumbnails/",
+        "/thumbnails/",
+        "/videos/files/",
+        "/audios/files/",
+        "/generate/audios/",
+        "/generate/media/files/",
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        method = request.method
+
+        if method == "OPTIONS":
+            return await call_next(request)
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        for prefix in self._WHITELIST_PREFIXES:
+            if path.startswith(prefix):
+                return await call_next(request)
+        for substr in self._WHITELIST_CONTAINS:
+            if substr in path:
+                return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        token = auth_header[len("Bearer "):]
+        from app.core.saas_security import decode_saas_token
+        from app.services.user_saas_service import get_session_user_id, get_user_by_id
+
+        payload = decode_saas_token(token)
+        if not payload:
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or expired token"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # 验证 Session 是否已被撤销
+        jti = payload.get("jti", "")
+        user_id = await get_session_user_id(jti)
+        if not user_id:
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Session revoked or expired"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        user = await get_user_by_id(user_id)
+        if not user:
+            from starlette.responses import JSONResponse
+            return JSONResponse(status_code=401, content={"detail": "User not found"})
+
+        # 注入用户信息和数据根路径
+        request.state.saas_user = user
+        request.state.saas_token_payload = payload
+        request.state.saas_data_root = settings.USERS_DIR / user_id
+
+        return await call_next(request)
+
+
+if settings.DEPLOY_MODE == "saas":
+    app.add_middleware(SaasAuthMiddleware)
+
+
+async def _get_project_dir_saas(project_id: str) -> Path:
+    """SaaS 模式下通过 project_id 反查 Redis 找到用户数据根路径"""
+    from app.core.redis_client import get_redis
+    r = await get_redis()
+    user_id = await r.get(f"project_owner:{project_id}")
+    if user_id:
+        return settings.USERS_DIR / user_id / "projects" / project_id
+    # 兜底：遍历 data/users/ 目录查找（用于历史项目）
+    users_dir = settings.USERS_DIR
+    if users_dir.exists():
+        for user_dir in users_dir.iterdir():
+            candidate = user_dir / "projects" / project_id
+            if candidate.exists():
+                # 补写索引，下次直接命中
+                await r.set(f"project_owner:{project_id}", user_dir.name)
+                return candidate
+    return settings.PROJECTS_DIR / project_id
+
+
+def _get_project_dir(request: Request, project_id: str) -> Path:
+    """根据部署模式返回项目目录路径"""
+    if settings.DEPLOY_MODE == "saas":
+        data_root = getattr(request.state, "saas_data_root", None)
+        if data_root:
+            return Path(data_root) / "projects" / project_id
+    return settings.PROJECTS_DIR / project_id
 
 
 # ==================== 本地图片访问路由 ====================
 # 注意：此路由在API路由注册前定义，用于直接访问本地下载的图片文件
 
 @app.get("/api/projects/{project_id}/images/files/{asset_type}/{filename}")
-async def get_local_image(project_id: str, asset_type: str, filename: str):
+async def get_local_image(request: Request, project_id: str, asset_type: str, filename: str):
     """获取本地下载的图片文件"""
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_project_dir(request, project_id)
     image_path = project_dir / "images" / "files" / asset_type / filename
+    if not image_path.exists() and settings.DEPLOY_MODE == "saas":
+        project_dir = await _get_project_dir_saas(project_id)
+        image_path = project_dir / "images" / "files" / asset_type / filename
 
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image file not found")
@@ -262,6 +408,7 @@ async def get_local_image(project_id: str, asset_type: str, filename: str):
         'gif': 'image/gif'
     }.get(ext, 'image/png')
 
+
     return FileResponse(
         image_path,
         media_type=media_type,
@@ -272,10 +419,13 @@ async def get_local_image(project_id: str, asset_type: str, filename: str):
 
 
 @app.get("/api/projects/{project_id}/audios/files/{filename}")
-async def get_local_audio(project_id: str, filename: str):
+async def get_local_audio(request: Request, project_id: str, filename: str):
     """获取本地下载的音频文件"""
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_project_dir(request, project_id)
     audio_path = project_dir / "audios" / "files" / filename
+    if not audio_path.exists() and settings.DEPLOY_MODE == "saas":
+        project_dir = await _get_project_dir_saas(project_id)
+        audio_path = project_dir / "audios" / "files" / filename
 
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
@@ -301,7 +451,7 @@ async def get_local_audio(project_id: str, filename: str):
 
 
 @app.get("/api/projects/{project_id}/thumbnails/{asset_type}/{filename}")
-async def get_thumbnail(project_id: str, asset_type: str, filename: str):
+async def get_thumbnail(request: Request, project_id: str, asset_type: str, filename: str):
     """获取缩略图（自动生成，短边360px）
 
     Args:
@@ -314,10 +464,14 @@ async def get_thumbnail(project_id: str, asset_type: str, filename: str):
     """
     from PIL import Image
 
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_project_dir(request, project_id)
 
     # 原图路径
     original_path = project_dir / "images" / "files" / asset_type / filename
+    # SaaS 模式：若路径不含 saas_data_root（白名单请求），通过 Redis 反查
+    if not original_path.exists() and settings.DEPLOY_MODE == "saas":
+        project_dir = await _get_project_dir_saas(project_id)
+        original_path = project_dir / "images" / "files" / asset_type / filename
 
     # 缩略图路径（与原图结构一致）
     thumbnail_path = project_dir / "images" / "thumbnails" / asset_type / filename
@@ -387,10 +541,13 @@ async def get_thumbnail(project_id: str, asset_type: str, filename: str):
 # 用于直接访问本地下载的视频文件
 
 @app.get("/api/projects/{project_id}/videos/files/{filename}")
-async def get_local_video(project_id: str, filename: str):
+async def get_local_video(request: Request, project_id: str, filename: str):
     """获取本地下载的视频文件"""
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_project_dir(request, project_id)
     video_path = project_dir / "videos" / "files" / filename
+    if not video_path.exists() and settings.DEPLOY_MODE == "saas":
+        project_dir = await _get_project_dir_saas(project_id)
+        video_path = project_dir / "videos" / "files" / filename
 
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video file not found")
@@ -411,6 +568,28 @@ async def get_local_video(project_id: str, filename: str):
             "Cache-Control": "public, max-age=31536000",  # 缓存1年
         }
     )
+
+
+@app.get("/api/projects/{project_id}/generate/media/files/{filename}")
+async def get_local_media(request: Request, project_id: str, filename: str):
+    """获取上传的参考视频/音频文件"""
+    project_dir = _get_project_dir(request, project_id)
+    media_path = project_dir / "generate" / "media" / filename
+    if not media_path.exists() and settings.DEPLOY_MODE == "saas":
+        project_dir = await _get_project_dir_saas(project_id)
+        media_path = project_dir / "generate" / "media" / filename
+
+    if not media_path.exists():
+        raise HTTPException(status_code=404, detail="Media file not found")
+
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    media_type_map = {
+        'mp4': 'video/mp4', 'webm': 'video/webm',
+        'mov': 'video/quicktime', 'avi': 'video/x-msvideo',
+        'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+        'm4a': 'audio/mp4', 'ogg': 'audio/ogg', 'aac': 'audio/aac',
+    }
+    return FileResponse(media_path, media_type=media_type_map.get(ext, 'application/octet-stream'))
 
 
 @app.get("/")
@@ -453,6 +632,7 @@ app.include_router(global_prompts_router, prefix="/api")
 app.include_router(version_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_auth_router, prefix="/api")
+app.include_router(user_auth_router, prefix="/api")
 
 
 # ==================== 前端静态文件服务 ====================

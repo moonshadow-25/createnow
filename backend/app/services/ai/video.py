@@ -81,6 +81,7 @@ class VideoGenService(AIService):
         prompt: str,
         duration: int = 6,
         resolution: str = "1920x1080",
+        ratio: Optional[str] = None,
         model: Optional[str] = None,
         use_multipart: Optional[bool] = None
     ) -> Dict[str, Any]:
@@ -110,6 +111,7 @@ class VideoGenService(AIService):
             prompt=prompt,
             duration=duration,
             resolution=resolution,
+            ratio=ratio,
             model=model,
             use_multipart=use_multipart if use_multipart is not None else self.use_multipart
         )
@@ -120,6 +122,7 @@ class VideoGenService(AIService):
         prompt: str,
         duration: int = 6,
         resolution: str = "1920x1080",
+        ratio: Optional[str] = None,
         model: Optional[str] = None,
         use_multipart: Optional[bool] = None
     ) -> Dict[str, Any]:
@@ -149,6 +152,7 @@ class VideoGenService(AIService):
             prompt=prompt,
             duration=duration,
             resolution=resolution,
+            ratio=ratio,
             model=model,
             use_multipart=use_multipart if use_multipart is not None else self.use_multipart
         )

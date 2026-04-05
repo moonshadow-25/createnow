@@ -11,9 +11,18 @@ from datetime import datetime
 from typing import List
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from app.services import ProjectService, AssetService, ImageService
 
 logger = logging.getLogger(__name__)
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class StoryboardExportService:
@@ -84,7 +93,7 @@ class StoryboardExportService:
             image_path = None
             if image_record.get('local_path'):
                 # 本地路径（相对于项目images目录）
-                image_path = settings.PROJECTS_DIR / project_id / 'images' / 'files' / image_record['local_path']
+                image_path = _get_projects_dir() / project_id / 'images' / 'files' / image_record['local_path']
             elif image_record.get('url'):
                 # 外部URL，无法复制，跳过
                 logger.warning(f"分镜 {sequence} 使用外部URL，无法导出")

@@ -7,6 +7,15 @@ from typing import Dict, List, Optional, Callable
 from datetime import datetime
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class VideoDownloadService:
@@ -18,7 +27,7 @@ class VideoDownloadService:
     @staticmethod
     def get_videos_dir(project_id: str) -> Path:
         """获取项目视频文件存储目录"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         videos_dir = project_dir / "videos" / "files"
         videos_dir.mkdir(parents=True, exist_ok=True)
         return videos_dir
@@ -71,7 +80,7 @@ class VideoDownloadService:
     @staticmethod
     def list_videos(project_id: str, episode_id: Optional[str] = None) -> List[Dict]:
         """获取项目的所有视频记录"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         videos_dir = project_dir / "videos"
 
         if not videos_dir.exists():
@@ -240,7 +249,7 @@ class VideoDownloadService:
     @staticmethod
     def _update_video_metadata(project_id: str, video_id: str, local_path: str):
         """更新视频元数据，添加本地路径"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / "videos" / f"{video_id}.json"
 
         if file_path.exists():

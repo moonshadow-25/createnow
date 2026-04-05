@@ -10,11 +10,20 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from .models import VideoExportRequest, JianyingExportRequest, JianyingDownloadRequest, StoryboardExportRequest
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 # ==================== 视频下载相关 API ====================
@@ -144,7 +153,7 @@ async def download_export_file(project_id: str, filename: str):
     if not filename.endswith(".zip") or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    export_path = settings.PROJECTS_DIR / project_id / "exports" / filename
+    export_path = _get_projects_dir() / project_id / "exports" / filename
     if not export_path.exists():
         raise HTTPException(status_code=404, detail="Export file not found")
 

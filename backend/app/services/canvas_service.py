@@ -6,9 +6,18 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from app.models.project import Canvas
 
 logger = logging.getLogger(__name__)
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class CanvasService:
@@ -17,7 +26,7 @@ class CanvasService:
     @staticmethod
     def get_canvas_dir(project_id: str) -> Path:
         """获取画布目录"""
-        return settings.PROJECTS_DIR / project_id / "canvas"
+        return _get_projects_dir() / project_id / "canvas"
 
     @staticmethod
     def get_canvas_path(project_id: str, canvas_id: str) -> Path:
@@ -27,7 +36,7 @@ class CanvasService:
     @staticmethod
     def get_runs_dir(project_id: str) -> Path:
         """获取工作流运行目录"""
-        return settings.PROJECTS_DIR / project_id / "canvas_runs"
+        return _get_projects_dir() / project_id / "canvas_runs"
 
     @staticmethod
     def _normalize_canvas_data(canvas_data: Dict[str, Any]) -> Dict[str, Any]:

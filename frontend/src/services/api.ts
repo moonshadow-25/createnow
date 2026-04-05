@@ -12,21 +12,26 @@ const api = axios.create({
   },
 });
 
-// 请求拦截器：注入管理员 JWT
+// 请求拦截器：注入 JWT（优先 SaaS token，其次 admin token）
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('admin_token');
+  const saasToken = localStorage.getItem('saas_token');
+  const adminToken = localStorage.getItem('admin_token');
+  const token = saasToken || adminToken;
   if (token) {
     config.headers['Authorization'] = `Bearer ${token}`;
   }
   return config;
 });
 
-// 响应拦截器：401 时发送全局事件
+// 响应拦截器：401 时发送全局事件（仅 selfhosted 模式触发重登录弹窗）
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.response?.status === 401) {
-      window.dispatchEvent(new CustomEvent('admin:unauthorized'));
+      const hasSaasToken = !!localStorage.getItem('saas_token');
+      if (!hasSaasToken) {
+        window.dispatchEvent(new CustomEvent('admin:unauthorized'));
+      }
     }
     return Promise.reject(error);
   }
@@ -94,7 +99,7 @@ export const chatApi = {
   send: (projectId: string, message: string, conversationId?: string) => {
     const url = `/projects/${projectId}/chat`;
     const body = { message, conversation_id: conversationId };
-    const token = localStorage.getItem('admin_token');
+    const token = localStorage.getItem('saas_token') || localStorage.getItem('admin_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -149,6 +154,13 @@ export const generationApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
+  uploadMedia: (projectId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/projects/${projectId}/generate/media/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
   generateVideoPrompt: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/video-prompt`, data),
   generateVideoReversePrompt: (projectId: string, data: any) =>
@@ -187,6 +199,8 @@ export const generationApi = {
   // 视频列表和查询
   listVideos: (projectId: string, episodeId?: string) =>
     api.get(`/projects/${projectId}/generate/videos`, { params: { episode_id: episodeId } }),
+  listLibraryVideos: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/videos`, { params: { library: true } }),
   getVideo: (projectId: string, videoId: string) =>
     api.get(`/projects/${projectId}/generate/videos/${videoId}`),
   pollVideo: (projectId: string, videoId: string) =>

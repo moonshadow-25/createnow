@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { generationApi } from '@/services/api';
 
 interface TripleGridOperationsContext {
@@ -31,25 +31,8 @@ export const useTripleGridOperations = (context: TripleGridOperationsContext) =>
     editingStoryboardIdRef
   } = context;
 
-  const [tripleGridPromptTemplate, setTripleGridPromptTemplate] = useState('');
+  const [tripleGridPromptTemplate] = useState('');
   const [isSplittingTripleGrid, setIsSplittingTripleGrid] = useState(false);
-
-  /**
-   * 加载三宫格提示词模板
-   */
-  useEffect(() => {
-    const loadTripleGridTemplate = async () => {
-      try {
-        const response = await generationApi.getPromptTemplates(projectId);
-        if (response.data?.triple_grid_prompt_template) {
-          setTripleGridPromptTemplate(response.data.triple_grid_prompt_template);
-        }
-      } catch (error) {
-        console.error('Failed to load triple grid template:', error);
-      }
-    };
-    loadTripleGridTemplate();
-  }, [projectId]);
 
   /**
    * 生成三宫格分镜图

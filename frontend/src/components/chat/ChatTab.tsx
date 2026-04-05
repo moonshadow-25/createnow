@@ -8,9 +8,10 @@ interface ChatTabProps {
   episodeId?: string;
   label?: string;
   tabName?: string;
+  scriptContent?: string;
 }
 
-export function ChatTab({ projectId, episodeId, label, tabName }: ChatTabProps) {
+export function ChatTab({ projectId, episodeId, label, tabName, scriptContent }: ChatTabProps) {
   const [inputMessage, setInputMessage] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
@@ -42,6 +43,7 @@ export function ChatTab({ projectId, episodeId, label, tabName }: ChatTabProps) 
         isStreaming={isStreaming}
         error={error}
         onClearMessages={clearMessages}
+        scriptContent={scriptContent}
       />
 
       <ChatInput

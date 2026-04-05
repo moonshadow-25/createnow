@@ -4,13 +4,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { useSaasAuthStore } from '@/store/saasAuthStore';
 import { ApiConfigPanel } from './ApiConfigPanel';
 import { PromptPanel } from './PromptPanel';
 import { LogsPanel } from './LogsPanel';
 import { GlobalStylePanel } from './GlobalStylePanel';
 import { GlobalPromptPanel } from './GlobalPromptPanel';
 import { UpdatePanel } from './UpdatePanel';
-import type { ApiConfig, ImageSizes, ApiConfigPresetsMap } from '@/types';
+import type { ApiConfig, ApiConfigPresetsMap } from '@/types';
 
 type SettingsPanel = 'api' | 'global-style' | 'prompts' | 'global-prompts' | 'logs' | 'update';
 
@@ -23,17 +24,12 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   const { toast } = useToast();
   const { currentProject, updateProject } = useProjectStore();
   const { role } = useAdminAuthStore();
+  const saasAuth = useSaasAuthStore();
+  const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = role === 'admin';
-  const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>('api');
+  const canSeeApiSettings = isAdmin && !isSaasUser;
+  const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(() => canSeeApiSettings ? 'api' : 'global-style');
   const [saving, setSaving] = useState(false);
-
-  // 初始化生图分辨率配置
-  const [imageSizes, setImageSizes] = useState<ImageSizes>({
-    character: '1x1',
-    scene: '16x9',
-    prop: '1x1',
-    storyboard: '16x9'
-  });
 
   // 初始化配置预设
   const [configPresets, setConfigPresets] = useState<ApiConfigPresetsMap>({
@@ -96,14 +92,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (currentProject?.ai_config) {
       const aiConfig = currentProject.ai_config as any;
-
-      // 加载分辨率配置
-      setImageSizes({
-        character: aiConfig.image_sizes?.character || '1x1',
-        scene: aiConfig.image_sizes?.scene || '16x9',
-        prop: aiConfig.image_sizes?.prop || '1x1',
-        storyboard: aiConfig.image_sizes?.storyboard || '16x9'
-      });
 
       // 加载当前选中的标签ID
       if (aiConfig.active_preset_ids) {
@@ -246,7 +234,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
       const saveData: any = {
         config_presets: configPresets,
         active_preset_ids: activePresetIds,
-        image_sizes: imageSizes
       };
 
       // 🔑 关键：将每个类型当前高亮标签的配置同步到 ai_config[type]
@@ -270,7 +257,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   };
 
   const navItems = [
-    { id: 'api' as const, icon: Key, label: 'API设置' },
+    ...(canSeeApiSettings ? [{ id: 'api' as const, icon: Key, label: 'API设置' }] : []),
     { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
     ...(isAdmin ? [
@@ -342,8 +329,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 video={getCurrentConfig('video')}
                 tts={getCurrentConfig('tts')}
                 onConfigChange={handleConfigChange}
-                imageSizes={imageSizes}
-                onImageSizesChange={setImageSizes}
                 configPresets={configPresets}
                 onPresetsChange={setConfigPresets}
                 onSwitchTag={handleSwitchTag}

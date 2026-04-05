@@ -3,6 +3,15 @@ Generation API - 工具函数
 """
 
 from fastapi import HTTPException
+from app.core.context import get_current_data_root
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 def check_project_budget(project: dict) -> None:
@@ -12,9 +21,8 @@ def check_project_budget(project: dict) -> None:
         return
 
     import json as _json
-    from app.core.config import settings
     project_id = project.get("project_id")
-    project_dir = settings.PROJECTS_DIR / project_id
+    project_dir = _get_projects_dir() / project_id
 
     images_dir = project_dir / "images"
     total_images = len(list(images_dir.glob("*.json"))) if images_dir.exists() else 0
@@ -25,7 +33,8 @@ def check_project_budget(project: dict) -> None:
         for vf in videos_dir.glob("*.json"):
             with open(vf, encoding="utf-8") as f:
                 v = _json.load(f)
-            total_video_seconds += float(v.get("duration") or 0)
+            if v.get("status") == "completed":
+                total_video_seconds += float(v.get("duration") or 0)
 
     budget_spent = round(0.4 * total_images + 1.0 * total_video_seconds, 2)
     if budget_spent >= budget_total:

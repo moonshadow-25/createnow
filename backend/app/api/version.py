@@ -110,3 +110,13 @@ async def trigger_update(background_tasks: BackgroundTasks):
         return {"status": "started", "message": "更新已启动，服务即将自动重启"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"启动更新失败: {str(e)}")
+
+
+@router.get("/config")
+async def get_frontend_config():
+    """返回前端所需的部署配置（无需认证）"""
+    from app.core.config import settings
+    return {
+        "deploy_mode": settings.DEPLOY_MODE,
+    }
+

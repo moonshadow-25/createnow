@@ -14,8 +14,18 @@ import platform
 import time
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
 
 logger = logging.getLogger(__name__)
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
+
 
 # 导出状态存储（内存中，按项目ID）
 _export_status: Dict[str, Dict] = {}
@@ -93,7 +103,7 @@ class JianyingExportService:
         Returns:
             [{"path": "...", "sequence": 1, "duration": 6.0, "storyboard_id": "..."}]
         """
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         storyboards_dir = project_dir / "storyboards"
         videos_dir = project_dir / "videos"
         video_files_dir = videos_dir / "files"
@@ -218,7 +228,7 @@ class JianyingExportService:
     @staticmethod
     def _update_video_local_path(project_id: str, video_id: str, local_path: str):
         """更新视频的本地路径和下载状态"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / "videos" / f"{video_id}.json"
 
         if file_path.exists():
@@ -693,7 +703,7 @@ class JianyingExportService:
             )
 
             # 2. 创建临时目录
-            exports_dir = settings.PROJECTS_DIR / project_id / "exports"
+            exports_dir = _get_projects_dir() / project_id / "exports"
             exports_dir.mkdir(parents=True, exist_ok=True)
             temp_dir = exports_dir / f"tmp_{int(time.time())}"
             project_temp = temp_dir / project_name
@@ -775,12 +785,7 @@ echo 正在复制视频文件...
 xcopy /E /I /Y "videos" "%DEST%\\videos\\" >nul
 
 echo 正在生成项目配置...
-powershell -NoProfile -Command ^
-  "$dest = '%DEST%'.Replace('\\', '\\\\'); ^
-   (Get-Content 'draft_content.json' -Raw).Replace('{{INSTALL_PATH}}', $dest) ^
-   | Set-Content -Path '%DEST%\\draft_content.json' -Encoding UTF8; ^
-   (Get-Content 'draft_meta_info.json' -Raw).Replace('{{INSTALL_PATH}}', $dest) ^
-   | Set-Content -Path '%DEST%\\draft_meta_info.json' -Encoding UTF8"
+powershell -NoProfile -Command "$enc = New-Object System.Text.UTF8Encoding($false); $dest = '%DEST%'.Replace('\\', '\\\\'); [System.IO.File]::WriteAllText('%DEST%\\draft_content.json', (Get-Content 'draft_content.json' -Raw -Encoding UTF8).Replace('{{INSTALL_PATH}}', $dest), $enc); [System.IO.File]::WriteAllText('%DEST%\\draft_meta_info.json', (Get-Content 'draft_meta_info.json' -Raw -Encoding UTF8).Replace('{{INSTALL_PATH}}', $dest), $enc)"
 
 echo.
 echo [完成] 项目 "{project_name}" 已安装！

@@ -68,8 +68,8 @@ class VideoReversePromptRequest(BaseModel):
 
 
 class VideoGenerateRequest(BaseModel):
-    storyboard_id: str
-    episode_id: str
+    storyboard_id: Optional[str] = None
+    episode_id: Optional[str] = None
     image_id: Optional[str] = None  # 单图模式（兼容旧版）
     image_ids: Optional[List[str]] = None  # 多图模式（首尾帧）
     prompt: str
@@ -81,6 +81,8 @@ class VideoGenerateRequest(BaseModel):
     # 2.0 新参数
     use_web_search: bool = False             # 联网搜索增强
     ratio: Optional[str] = None             # 宽高比（含 adaptive）
+    generate_audio: Optional[bool] = None   # 是否生成音频（覆盖项目配置）
+    reference_media: Optional[List[Dict]] = None  # 参考素材元数据（{type,id?,url,name}列表）
 
     @validator('image_ids', pre=True, always=True)
     def validate_images(cls, v, values):

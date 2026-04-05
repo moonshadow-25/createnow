@@ -7,16 +7,27 @@ import asyncio
 import uuid
 import json
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 from app.services import get_ai_service, PromptService, ImageService, AudioService
 from app.core.config import settings
+from app.core.context import get_current_data_root
 from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
 from .template_helpers import get_active_template
 from .utils import check_project_budget
 
 logger = logging.getLogger(__name__)
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
+
 
 router = APIRouter()
 
@@ -184,6 +195,10 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
     video_service = get_ai_service(ai_config, "video", project_id)
 
+    # 允许请求覆盖项目配置中的 generate_audio
+    if request.generate_audio is not None:
+        video_service.generate_audio = request.generate_audio
+
     # 多模态路径（video_urls / audio_urls）：不需要 image_ids
     has_multimodal = bool(request.video_urls or request.audio_urls)
 
@@ -202,7 +217,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                     url = audio.get("audio_path")
                     if not url and audio.get("local_path"):
                         # 转为 base64 data URL
-                        local_file = settings.PROJECTS_DIR / project_id / "audios" / "files" / audio["local_path"]
+                        local_file = _get_projects_dir() / project_id / "audios" / "files" / audio["local_path"]
                         if local_file.exists():
                             import base64
                             ext = audio.get("format", "mp3")
@@ -260,7 +275,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             if not image_url:
                 local_path = image.get("local_path")
                 if local_path:
-                    local_file_path = settings.PROJECTS_DIR / project_id / "images" / "files" / local_path
+                    local_file_path = _get_projects_dir() / project_id / "images" / "files" / local_path
 
                     if local_file_path.exists():
                         try:
@@ -318,6 +333,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 prompt=request.prompt,
                 duration=request.duration,
                 resolution=request.resolution,
+                ratio=request.ratio,
                 use_multipart=use_multipart
             )
         else:
@@ -327,6 +343,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 prompt=request.prompt,
                 duration=request.duration,
                 resolution=request.resolution,
+                ratio=request.ratio,
                 use_multipart=use_multipart
             )
 
@@ -345,6 +362,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "video_path": None,  # 尚未生成完成
             "duration": request.duration,
             "resolution": request.resolution,
+            "ratio": request.ratio,
             "model": ai_config.get("video", {}).get("model", "sora"),
             "created_at": datetime.now().isoformat(),
             "task_id": result.get("task_id", ""),
@@ -352,10 +370,12 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "poll_count": 0,
             "last_poll_time": None,
             "last_poll_response": None,
+            "generate_audio": request.generate_audio,
+            "reference_media": request.reference_media or [],
         }
 
         # 保存视频记录到文件
-        videos_dir = settings.PROJECTS_DIR / project_id / "videos"
+        videos_dir = _get_projects_dir() / project_id / "videos"
         videos_dir.mkdir(exist_ok=True)
         video_file = videos_dir / f"{video_id}.json"
         with open(video_file, "w", encoding="utf-8") as f:
@@ -371,9 +391,9 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
 
 @router.get("/videos")
-async def list_videos(project_id: str, episode_id: str = None):
+async def list_videos(project_id: str, episode_id: str = None, library: bool = False):
     """列出项目的所有视频记录"""
-    videos_dir = settings.PROJECTS_DIR / project_id / "videos"
+    videos_dir = _get_projects_dir() / project_id / "videos"
     if not videos_dir.exists():
         return []
 
@@ -382,9 +402,14 @@ async def list_videos(project_id: str, episode_id: str = None):
         try:
             with open(video_file, "r", encoding="utf-8") as f:
                 video = json.load(f)
-                # 如果指定了 episode_id，则过滤
-                if episode_id and video.get("episode_id") != episode_id:
-                    continue
+                if library:
+                    # 视频库模式：只返回不属于任何分镜的视频
+                    if video.get("storyboard_id") is not None:
+                        continue
+                elif episode_id:
+                    # 按 episode_id 过滤
+                    if video.get("episode_id") != episode_id:
+                        continue
                 videos.append(video)
         except Exception as e:
             logger.error(f"Error reading video file {video_file}: {e}")
@@ -394,10 +419,46 @@ async def list_videos(project_id: str, episode_id: str = None):
     return videos
 
 
+@router.post("/media/upload")
+async def upload_media(request: Request, project_id: str, file: UploadFile = File(...)):
+    """上传参考视频或音频文件，返回可公开访问的 URL"""
+    content_type = file.content_type or ""
+
+    if content_type.startswith("video/"):
+        media_type = "video"
+        allowed_exts = {".mp4", ".mov", ".avi", ".webm"}
+        default_ext = ".mp4"
+    elif content_type.startswith("audio/"):
+        media_type = "audio"
+        allowed_exts = {".mp3", ".wav", ".m4a", ".ogg", ".aac"}
+        default_ext = ".mp3"
+    else:
+        raise HTTPException(status_code=400, detail="仅支持视频（mp4/mov/avi/webm）或音频（mp3/wav/m4a/ogg/aac）文件")
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix and suffix not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式: {suffix}")
+
+    media_id = str(uuid.uuid4())
+    filename = f"{media_id}{suffix or default_ext}"
+
+    media_dir = _get_projects_dir() / project_id / "generate" / "media"
+    media_dir.mkdir(parents=True, exist_ok=True)
+
+    content = await file.read()
+    with open(media_dir / filename, "wb") as f:
+        f.write(content)
+
+    base_url = str(request.base_url).rstrip("/")
+    public_url = f"{base_url}/api/projects/{project_id}/generate/media/files/{filename}"
+
+    return {"media_id": media_id, "media_type": media_type, "url": public_url, "filename": filename}
+
+
 @router.get("/videos/{video_id}")
 async def get_video(project_id: str, video_id: str):
     """获取单个视频记录"""
-    video_file = settings.PROJECTS_DIR / project_id / "videos" / f"{video_id}.json"
+    video_file = _get_projects_dir() / project_id / "videos" / f"{video_id}.json"
     if not video_file.exists():
         raise HTTPException(status_code=404, detail="Video not found")
 
@@ -411,7 +472,7 @@ async def poll_video_status(project_id: str, video_id: str):
     from app.services import ProjectService
 
     # 获取视频记录
-    video_file = settings.PROJECTS_DIR / project_id / "videos" / f"{video_id}.json"
+    video_file = _get_projects_dir() / project_id / "videos" / f"{video_id}.json"
     if not video_file.exists():
         raise HTTPException(status_code=404, detail="Video not found")
 
@@ -486,7 +547,7 @@ async def poll_video_status(project_id: str, video_id: str):
 @router.post("/videos/{video_id}/set-primary")
 async def set_primary_video(project_id: str, video_id: str, storyboard_id: str = Body(..., embed=True)):
     """设置主视频"""
-    videos_dir = settings.PROJECTS_DIR / project_id / "videos"
+    videos_dir = _get_projects_dir() / project_id / "videos"
     if not videos_dir.exists():
         raise HTTPException(status_code=404, detail="No videos found")
 

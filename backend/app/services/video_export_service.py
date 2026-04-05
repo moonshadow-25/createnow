@@ -12,11 +12,20 @@ from typing import Dict, List, Optional
 import aiohttp
 
 from app.core.config import settings
+from app.core.context import get_current_data_root
 
 logger = logging.getLogger(__name__)
 
 # 导出状态存储（内存中，按项目ID）
 _export_status: Dict[str, Dict] = {}
+
+
+def _get_projects_dir():
+    from app.core.config import settings
+    data_root = get_current_data_root()
+    if data_root:
+        return data_root / "projects"
+    return settings.PROJECTS_DIR
 
 
 class VideoExportService:
@@ -67,7 +76,7 @@ class VideoExportService:
     @staticmethod
     def _update_video_local_path(project_id: str, video_id: str, local_path: str):
         """更新视频的本地路径和下载状态"""
-        project_dir = settings.PROJECTS_DIR / project_id
+        project_dir = _get_projects_dir() / project_id
         file_path = project_dir / "videos" / f"{video_id}.json"
 
         if file_path.exists():
@@ -107,9 +116,9 @@ class VideoExportService:
             # 1. 获取该剧集的所有分镜
             VideoExportService._update_status(project_id, current_step="获取分镜列表...")
 
-            storyboards_dir = settings.PROJECTS_DIR / project_id / "storyboards"
-            videos_dir = settings.PROJECTS_DIR / project_id / "videos"
-            export_dir = settings.PROJECTS_DIR / project_id / "exports"
+            storyboards_dir = _get_projects_dir() / project_id / "storyboards"
+            videos_dir = _get_projects_dir() / project_id / "videos"
+            export_dir = _get_projects_dir() / project_id / "exports"
             export_dir.mkdir(exist_ok=True)
 
             if not storyboards_dir.exists():
@@ -211,7 +220,7 @@ class VideoExportService:
 
             video_files = []  # (sequence, local_path, original_name)
             total_videos = len(storyboard_videos)
-            video_files_dir = settings.PROJECTS_DIR / project_id / "videos" / "files"
+            video_files_dir = _get_projects_dir() / project_id / "videos" / "files"
 
             for idx, (sb, video) in enumerate(storyboard_videos):
                 sequence = sb.get('sequence', idx + 1)
@@ -324,7 +333,7 @@ class VideoExportService:
     @staticmethod
     def cleanup_old_exports(project_id: str, max_age_hours: int = 24):
         """清理旧的导出文件"""
-        export_dir = settings.PROJECTS_DIR / project_id / "exports"
+        export_dir = _get_projects_dir() / project_id / "exports"
         if not export_dir.exists():
             return
 

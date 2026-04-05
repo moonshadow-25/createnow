@@ -23,9 +23,8 @@ type AssetTab = 'character' | 'scene' | 'prop';
 
 
 function getAssetThumbnailUrl(asset: any): string | null {
-  if (asset.primary_image_url) return asset.primary_image_url;
-  if (asset.image_url) return asset.image_url;
-  return null;
+  const url = asset.primary_image_url || asset.image_url || null;
+  return url ? url.replace('/images/files/', '/thumbnails/') : null;
 }
 
 interface AssetGridItemProps {

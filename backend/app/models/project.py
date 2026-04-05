@@ -17,8 +17,11 @@ class Project:
         self.updated_at = datetime.now().isoformat()
 
         # 创建项目目录
+        from app.core.context import get_current_data_root
         from app.core.config import settings
-        self.project_dir = settings.PROJECTS_DIR / self.project_id
+        data_root = get_current_data_root()
+        projects_dir = (data_root / "projects") if data_root else settings.PROJECTS_DIR
+        self.project_dir = projects_dir / self.project_id
         self.project_dir.mkdir(parents=True, exist_ok=True)
 
         # 子目录
@@ -93,8 +96,11 @@ class Project:
     @classmethod
     def load(cls, project_id: str):
         """加载现有项目"""
+        from app.core.context import get_current_data_root
         from app.core.config import settings
-        project_dir = settings.PROJECTS_DIR / project_id
+        data_root = get_current_data_root()
+        projects_dir = (data_root / "projects") if data_root else settings.PROJECTS_DIR
+        project_dir = projects_dir / project_id
         metadata_path = project_dir / "metadata.json"
 
         if not metadata_path.exists():

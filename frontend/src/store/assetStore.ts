@@ -10,13 +10,14 @@ interface AssetState {
   storyboards: Storyboard[];
   loading: boolean;
   error: string | null;
+  loadedProjectId: string | null;
   fetchAssets: (projectId: string, assetType: string) => Promise<void>;
   createAsset: (projectId: string, assetType: string, data: any) => Promise<Asset>;
   updateAsset: (projectId: string, assetType: string, assetId: string, data: any) => Promise<void>;
   deleteAsset: (projectId: string, assetType: string, assetId: string) => Promise<void>;
 }
 
-export const useAssetStore = create<AssetState>()((set) => ({
+export const useAssetStore = create<AssetState>()((set, get) => ({
   characters: [],
   scenes: [],
   props: [],
@@ -24,28 +25,37 @@ export const useAssetStore = create<AssetState>()((set) => ({
   storyboards: [],
   loading: false,
   error: null,
+  loadedProjectId: null,
 
   fetchAssets: async (projectId, assetType) => {
-    set({ loading: true, error: null });
+    const state = get();
+    const hasData = (
+      assetType === 'character'  ? state.characters.length > 0 :
+      assetType === 'scene'      ? state.scenes.length > 0 :
+      assetType === 'prop'       ? state.props.length > 0 :
+      assetType === 'episode'    ? state.episodes.length > 0 :
+      assetType === 'storyboard' ? state.storyboards.length > 0 : false
+    );
+    if (!hasData) set({ loading: true, error: null });
     try {
       const response = await assetApi.list(projectId, assetType);
       const assets = response.data;
 
       switch (assetType) {
         case 'character':
-          set({ characters: assets, loading: false });
+          set({ characters: assets, loading: false, loadedProjectId: projectId });
           break;
         case 'scene':
-          set({ scenes: assets, loading: false });
+          set({ scenes: assets, loading: false, loadedProjectId: projectId });
           break;
         case 'prop':
-          set({ props: assets, loading: false });
+          set({ props: assets, loading: false, loadedProjectId: projectId });
           break;
         case 'episode':
-          set({ episodes: assets, loading: false });
+          set({ episodes: assets, loading: false, loadedProjectId: projectId });
           break;
         case 'storyboard':
-          set({ storyboards: assets, loading: false });
+          set({ storyboards: assets, loading: false, loadedProjectId: projectId });
           break;
       }
     } catch (error: any) {

@@ -3,7 +3,7 @@ import { CheckCircle2, AlertCircle, X, Plus, ChevronDown, Eye, EyeOff } from 'lu
 import { v4 as uuidv4 } from 'uuid';
 import { validationApi, authApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
-import type { ApiConfig, ImageSizes, ApiConfigPresetsMap, ApiConfigPreset } from '@/types';
+import type { ApiConfig, ApiConfigPresetsMap, ApiConfigPreset } from '@/types';
 
 interface ApiConfigPanelProps {
   llm: ApiConfig;
@@ -12,8 +12,6 @@ interface ApiConfigPanelProps {
   video: ApiConfig;
   tts: ApiConfig;
   onConfigChange: (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', config: ApiConfig) => void;
-  imageSizes?: ImageSizes;
-  onImageSizesChange?: (sizes: ImageSizes) => void;
   configPresets: ApiConfigPresetsMap;
   onPresetsChange: (presets: ApiConfigPresetsMap) => void;
   onSwitchTag: (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', tagId: string) => void;
@@ -41,15 +39,13 @@ export function ApiConfigPanel({
   video,
   tts,
   onConfigChange,
-  imageSizes,
-  onImageSizesChange,
   configPresets,
   onPresetsChange,
   onSwitchTag,
   activePresetIds
 }: ApiConfigPanelProps) {
   const { toast } = useToast();
-  const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'tts' | 'sizes'>('llm');
+  const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'tts'>('llm');
 
   // API Key 明文显示状态（每个服务类型独立）
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -103,29 +99,6 @@ export function ApiConfigPanel({
     tts: false
   });
 
-  // 默认分辨率配置
-  const defaultImageSizes: ImageSizes = {
-    character: '1x1',
-    scene: '16x9',
-    prop: '1x1',
-    storyboard: '16x9'
-  };
-
-  // 本地分辨率配置状态
-  const [localImageSizes, setLocalImageSizes] = useState<ImageSizes>(
-    imageSizes || defaultImageSizes
-  );
-
-  // 当props变化时更新本地状态
-  useEffect(() => {
-    setLocalImageSizes(imageSizes || defaultImageSizes);
-  }, [imageSizes]);
-
-  const handleImageSizeChange = (assetType: keyof ImageSizes, value: string) => {
-    const newSizes = { ...localImageSizes, [assetType]: value || undefined };
-    setLocalImageSizes(newSizes);
-    onImageSizesChange?.(newSizes);
-  };
   const [validating, setValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<{
     llm?: { valid: boolean; message: string };
@@ -735,7 +708,7 @@ export function ApiConfigPanel({
   return (
     <>
       <div className="flex border-b border-gray-700 overflow-x-auto">
-        {(['llm', 'vlm', 'image', 'video', 'tts', 'sizes'] as const).map((tab) => (
+        {(['llm', 'vlm', 'image', 'video', 'tts'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setApiSubTab(tab)}
@@ -745,7 +718,7 @@ export function ApiConfigPanel({
                 : 'text-gray-400 hover:text-gray-300'
             }`}
           >
-            {tab === 'llm' ? '语言模型' : tab === 'vlm' ? '视觉模型' : tab === 'image' ? '图像生成' : tab === 'video' ? '视频生成' : tab === 'tts' ? '语音合成' : '生图分辨率'}
+            {tab === 'llm' ? '语言模型' : tab === 'vlm' ? '视觉模型' : tab === 'image' ? '图像生成' : tab === 'video' ? '视频生成' : '语音合成'}
           </button>
         ))}
       </div>
@@ -756,64 +729,6 @@ export function ApiConfigPanel({
         {apiSubTab === 'image' && renderApiForm('image', '图像生成 API', localConfig.image)}
         {apiSubTab === 'video' && renderApiForm('video', '视频生成 API', localConfig.video)}
         {apiSubTab === 'tts' && renderApiForm('tts', '语音合成 API (TTS)', localConfig.tts)}
-        {apiSubTab === 'sizes' && (
-          <div className="space-y-4">
-            <h3 className="text-base font-semibold mb-4">生图分辨率设置</h3>
-            <p className="text-sm text-gray-400 mb-4">
-              为不同类型的资产设置图像生成的分辨率。支持比例格式（如 1x1、16x9）或具��像素（如 1024x1024）。
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">角色分辨率</label>
-                <input
-                  type="text"
-                  value={localImageSizes.character || '1x1'}
-                  onChange={(e) => handleImageSizeChange('character', e.target.value)}
-                  placeholder="1x1"
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">默认: 1x1（正方形）</p>
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">场景分辨率</label>
-                <input
-                  type="text"
-                  value={localImageSizes.scene || '16x9'}
-                  onChange={(e) => handleImageSizeChange('scene', e.target.value)}
-                  placeholder="16x9"
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">默认: 16x9（横向）</p>
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">道具分辨率</label>
-                <input
-                  type="text"
-                  value={localImageSizes.prop || '1x1'}
-                  onChange={(e) => handleImageSizeChange('prop', e.target.value)}
-                  placeholder="1x1"
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">默认: 1x1（正方形）</p>
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">分镜分辨率</label>
-                <input
-                  type="text"
-                  value={localImageSizes.storyboard || '16x9'}
-                  onChange={(e) => handleImageSizeChange('storyboard', e.target.value)}
-                  placeholder="16x9"
-                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">默认: 16x9（横向）</p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 保存预设对话框 */}
