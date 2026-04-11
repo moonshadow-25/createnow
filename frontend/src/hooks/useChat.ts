@@ -174,9 +174,14 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                       window.dispatchEvent(new CustomEvent('storyboard:tool-updated', { detail: { storyboard_ids: ids } }));
                     }
                     if (name === 'submit_images_for_review') {
-                      const ids = (chunk.submitted || []).map(s => s.asset_id).filter(Boolean);
-                      pendingReviewAssetIdsRef.current = ids;
-                      startReviewPollingRef.current?.();
+                      const ids = (chunk.submitted || []).map((s: any) => s.asset_id).filter(Boolean);
+                      console.log('[ReviewPolling] submit_images_for_review tool_result:', { submitted: chunk.submitted, ids });
+                      if (ids.length > 0) {
+                        pendingReviewAssetIdsRef.current = ids;
+                        startReviewPollingRef.current?.();
+                      } else {
+                        console.warn('[ReviewPolling] submitted 为空，不触发轮询。chunk:', chunk);
+                      }
                     }
                     break;
                   }
@@ -296,6 +301,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     const poll = async () => {
       attempts++;
       if (attempts > 60) return;
+      console.log(`[ReviewPolling] 第 ${attempts} 次轮询，asset_ids:`, assetIds);
       try {
         const results = await Promise.all(
           assetIds.map(assetId =>
@@ -304,15 +310,18 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
             }).then(r => r.json()).catch(() => ({ status: 'Processing' }))
           )
         );
+        console.log('[ReviewPolling] 轮询结果:', results);
 
         // 通知分镜页面刷新徽章
         window.dispatchEvent(new CustomEvent('storyboard:review-status-updated', { detail: { projectId, episodeId: options?.episodeId } }));
 
         const allActive = results.every((r: any) => r.status === 'Active');
         if (allActive) {
+          console.log('[ReviewPolling] 全部 Active，发送审核完成消息');
           pendingReviewAssetIdsRef.current = [];
           await sendRawMessage('审核已完成，请继续生成视频');
         } else {
+          console.log('[ReviewPolling] 还有未 Active，8 秒后再次轮询');
           setTimeout(poll, 8000);
         }
       } catch {
