@@ -413,7 +413,7 @@ END_TOOL
 
 **步骤1b（第二轮工具调用，拿到 asset_id 后）**：
 - ⚠️ **先调用 get_episode_storyboards 检查是否已有分镜**
-- 已有分镜（哪怕只有1个）→ **绝对禁止删除，直接跳过创建分镜，进入步骤1c**
+- 已有分镜（哪怕只有1个）→ **跳过创建分镜，直接进入步骤1c**（除非用户明确要求"重新生成分镜"）
 - 没有分镜 → 使用上一轮返回的真实 asset_id，调用 create_storyboard 创建所有分镜
 - 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
 - 同时填写每个分镜的 image_prompt 和 video_prompt

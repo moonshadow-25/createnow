@@ -177,7 +177,7 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
             "script": script or "（暂无剧本内容）",
             "existing_assets": existing_assets,
             "existing_storyboard_count": storyboard_count,
-            "notice": f"⚠️ 已有资产见 existing_assets，已存在的直接用 asset_id，禁止重复创建。本集已有 {storyboard_count} 个分镜，{'已有分镜不得删除，直接跳到生图/提交审核/生成视频步骤' if storyboard_count > 0 else '需要创建分镜'}。"
+            "notice": f"⚠️ 已有资产见 existing_assets，已存在的直接用 asset_id，禁止重复创建。本集已有 {storyboard_count} 个分镜{'，自动生成本集时应跳过创建分镜步骤，继续后续的生图/审核/视频流程' if storyboard_count > 0 else '，需要创建分镜'}。"
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
