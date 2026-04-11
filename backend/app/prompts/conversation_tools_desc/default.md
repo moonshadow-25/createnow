@@ -397,12 +397,16 @@ END_TOOL
 
 **步骤1a（第一轮工具调用）**：
 - 若没有剧集，先调用 create_episode 创建剧集
-- 调用 create_character / update_character 创建/更新所有角色（含 image_prompt）
-- 调用 create_scene / update_scene 创建/更新所有场景（含 image_prompt）
+- ⚠️ **必须先调用 get_episode_script 读取剧本，再调用 list_all_assets 查看已有资产**
+- 已存在同名角色/场景 → 只调用 update_character / update_scene 补全 image_prompt（如果已有 image_prompt 则完全跳过）
+- 不存在才调用 create_character / create_scene 创建（含 image_prompt）
+- **绝对不允许对已存在的资产重复调用 create_character / create_scene**
 - ⚠️ **这一轮先停下来**，等待工具结果返回（结果中包含每个资产的 asset_id）
 
 **步骤1b（第二轮工具调用，拿到 asset_id 后）**：
-- 使用上一轮返回的真实 asset_id，调用 create_storyboard 创建所有分镜
+- ⚠️ **先调用 get_episode_storyboards 检查是否已有分镜**
+- 已有分镜且数量合理 → **跳过创建分镜，直接进入步骤1c**
+- 没有分镜 → 使用上一轮返回的真实 asset_id，调用 create_storyboard 创建所有分镜
 - 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
 - 同时填写每个分镜的 image_prompt 和 video_prompt
 
