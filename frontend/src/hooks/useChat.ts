@@ -261,12 +261,14 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     const { token, toolName } = pendingConfirmation;
     setPendingConfirmation(null);
     await sendRawMessage(`__CONFIRM__:${token}`);
+    if (toolName === 'generate_all_asset_images') {
+      // 生图完成 → 触发 AI 继续（AI 会调 submit_images_for_review，需用户再次确认，不会循环）
+      await sendRawMessage('继续执行下一步');
+    }
     if (toolName === 'delete_all_storyboards') {
       // 分镜已清空 → 告知 AI 继续生成新分镜
       await sendRawMessage('分镜已全部删除，请继续生成新分镜');
     }
-    // generate_all_asset_images / submit_images_for_review / generate_all_storyboard_videos
-    // 确认完成后不自动发送下一条消息，由 AI 在下一轮流程中自行判断
   }, [pendingConfirmation, sendRawMessage]);
 
   const cancelPendingAction = useCallback(async () => {
@@ -276,8 +278,14 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     await sendRawMessage(`__CANCEL__:${token}`);
   }, [pendingConfirmation, sendRawMessage]);
 
-  // 审核完成后不再自动发消息给 AI，避免无限循环
-  // 用户手动确认 generate_all_storyboard_videos 即可继续
+  // 审核完成后通知 AI 继续生成视频（AI 会调 generate_all_storyboard_videos，需用户确认，不会循环）
+  const sendRawMessageRef = useRef(sendRawMessage);
+  useEffect(() => { sendRawMessageRef.current = sendRawMessage; }, [sendRawMessage]);
+  useEffect(() => {
+    const handler = () => sendRawMessageRef.current('审核已完成，请继续生成视频');
+    window.addEventListener('storyboard:review-complete', handler);
+    return () => window.removeEventListener('storyboard:review-complete', handler);
+  }, []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
