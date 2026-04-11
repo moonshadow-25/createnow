@@ -563,42 +563,30 @@ export function StoryboardDetail({
   // AI 触发提交审核：监听事件，走和手动按钮完全相同的路径，完成后通知 AI
   const storyboardsRef = useRef(storyboards);
   const imageStatusesRef = useRef(imageStatuses);
-  const charactersRef = useRef(characters);
-  const scenesRef = useRef(scenes);
-  const propsRef = useRef(props);
   useEffect(() => { storyboardsRef.current = storyboards; }, [storyboards]);
   useEffect(() => { imageStatusesRef.current = imageStatuses; }, [imageStatuses]);
-  useEffect(() => { charactersRef.current = characters; }, [characters]);
-  useEffect(() => { scenesRef.current = scenes; }, [scenes]);
-  useEffect(() => { propsRef.current = props; }, [props]);
 
   useEffect(() => {
     const handler = async () => {
+      const sbs = storyboardsRef.current;
       const statuses = imageStatusesRef.current;
       const isActive = (imageId: string) => statuses[imageId]?.status === 'Active';
       const imageIds: string[] = [];
 
-      // 直接从所有资产收集 image_id，不依赖分镜关联关系
-      // 这样即使分镜还没创建，角色/场景图也能被提交
-      for (const char of charactersRef.current) {
-        if (char.image_id && !imageIds.includes(char.image_id) && !isActive(char.image_id)) {
-          imageIds.push(char.image_id);
+      for (const sb of sbs) {
+        if (sb.image_id && !imageIds.includes(sb.image_id) && !isActive(sb.image_id)) imageIds.push(sb.image_id);
+        for (const charId of (sb.character_ids || [])) {
+          const char = characters.find((c: any) => c.asset_id === charId);
+          if (char?.image_id && !imageIds.includes(char.image_id) && !isActive(char.image_id)) imageIds.push(char.image_id);
         }
-      }
-      for (const scene of scenesRef.current) {
-        if (scene.image_id && !imageIds.includes(scene.image_id) && !isActive(scene.image_id)) {
-          imageIds.push(scene.image_id);
+        const sceneIds = sb.scene_ids?.length ? sb.scene_ids : (sb.scene_id ? [sb.scene_id] : []);
+        for (const sceneId of sceneIds) {
+          const scene = scenes.find((s: any) => s.asset_id === sceneId);
+          if (scene?.image_id && !imageIds.includes(scene.image_id) && !isActive(scene.image_id)) imageIds.push(scene.image_id);
         }
-      }
-      for (const prop of propsRef.current) {
-        if (prop.image_id && !imageIds.includes(prop.image_id) && !isActive(prop.image_id)) {
-          imageIds.push(prop.image_id);
-        }
-      }
-      // 分镜图（如果已生成）
-      for (const sb of storyboardsRef.current) {
-        if (sb.image_id && !imageIds.includes(sb.image_id) && !isActive(sb.image_id)) {
-          imageIds.push(sb.image_id);
+        for (const propId of (sb.prop_ids || [])) {
+          const prop = props.find((p: any) => p.asset_id === propId);
+          if (prop?.image_id && !imageIds.includes(prop.image_id) && !isActive(prop.image_id)) imageIds.push(prop.image_id);
         }
       }
 
@@ -636,7 +624,7 @@ export function StoryboardDetail({
 
     window.addEventListener('storyboard:submit-for-review', handler);
     return () => window.removeEventListener('storyboard:submit-for-review', handler);
-  }, [projectId]);
+  }, [projectId, characters, scenes, props]);
 
   // 刷新分镜数据（手动刷新按钮）
   const handleRefreshStoryboards = async () => {
