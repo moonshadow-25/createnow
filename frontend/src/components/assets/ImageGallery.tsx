@@ -241,7 +241,7 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
                       className="w-full h-64 object-cover rounded"
                       loading="lazy"
                     />
-                    <div className="absolute bottom-2 left-2 right-2 bg-black bg-opacity-70 text-white text-xs p-2 rounded">
+                    <div className="absolute bottom-2 left-2 right-2 bg-black bg-opacity-70 text-xs p-2 rounded" style={{color: 'rgba(255,255,255,0.95)'}}>
                       <div className="line-clamp-2">{img.prompt}</div>
                     </div>
                   </div>
@@ -335,8 +335,8 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
 
                 {/* 图片信息 */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
-                  <p className="text-white text-xs line-clamp-2">{img.prompt}</p>
-                  <p className="text-gray-400 text-xs mt-1">
+                  <p className="text-xs line-clamp-2" style={{color: 'rgba(255,255,255,0.95)'}}>{img.prompt}</p>
+                  <p className="text-xs mt-1" style={{color: 'rgba(255,255,255,0.6)'}}>
                     {new Date(img.created_at).toLocaleString()}
                   </p>
                 </div>
@@ -402,9 +402,9 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
                     className="max-w-full max-h-[85vh] object-contain rounded"
                     loading="lazy"
                   />
-                  <div className="mt-4 text-center text-white">
-                    <p className="text-sm">{img.prompt}</p>
-                    <p className="text-xs text-gray-400 mt-2">
+                  <div className="mt-4 text-center">
+                    <p className="text-sm" style={{color: 'rgba(255,255,255,0.95)'}}>{img.prompt}</p>
+                    <p className="text-xs mt-2" style={{color: 'rgba(255,255,255,0.6)'}}>
                       {new Date(img.created_at).toLocaleString()}
                     </p>
                   </div>

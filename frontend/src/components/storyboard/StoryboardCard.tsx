@@ -1,11 +1,12 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Film, Trash2, ZoomIn, Images, Check } from 'lucide-react';
+import { GripVertical, Film, Trash2, ZoomIn, Images, Check, CheckCircle, Loader2 } from 'lucide-react';
 
 // 可排序的分镜卡片组件
 export interface SortableStoryboardCardProps {
   storyboard: any;
   storyboardPrimaryImages: Map<string, string>;
+  imageStatuses?: Record<string, { asset_id: string; status: string }>;
   onEdit: (sb: any) => void;
   onDelete: (id: string) => void;
   onOpenImageGallery?: (sb: any) => void;
@@ -16,12 +17,14 @@ export interface SortableStoryboardCardProps {
 export function SortableStoryboardCard({
   storyboard,
   storyboardPrimaryImages,
+  imageStatuses = {},
   onEdit,
   onDelete,
   onOpenImageGallery,
   isSelected = false,
   onToggleSelect
 }: SortableStoryboardCardProps) {
+  const imageStatus = storyboard.volcengine_asset_status || (storyboard.image_id ? imageStatuses[storyboard.image_id]?.status : undefined);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: storyboard.asset_id,
   });
@@ -73,12 +76,34 @@ export function SortableStoryboardCard({
             loading="lazy"
             onClick={() => onEdit(storyboard)}
           />
+        ) : storyboard.primary_video_thumbnail_url ? (
+          <img
+            src={storyboard.primary_video_thumbnail_url}
+            alt={storyboard.description}
+            className="w-full aspect-video object-cover cursor-pointer hover:opacity-90 transition"
+            loading="lazy"
+            onClick={() => onEdit(storyboard)}
+          />
         ) : (
           <div
             className="w-full aspect-video bg-gray-600 flex items-center justify-center cursor-pointer hover:bg-gray-500 transition"
             onClick={() => onEdit(storyboard)}
           >
             <Film size={32} className="text-gray-500" />
+          </div>
+        )}
+
+        {/* 审核状态角标 - 图片区左下角 */}
+        {imageStatus === 'Active' && (
+          <div className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-70 rounded px-1.5 py-0.5 flex items-center gap-1">
+            <CheckCircle size={12} className="text-green-400" />
+            <span className="text-xs text-green-400">已入库</span>
+          </div>
+        )}
+        {imageStatus === 'Processing' && (
+          <div className="absolute bottom-2 left-2 bg-gray-900 bg-opacity-70 rounded px-1.5 py-0.5 flex items-center gap-1">
+            <Loader2 size={12} className="animate-spin text-yellow-400" />
+            <span className="text-xs text-yellow-400">审核中</span>
           </div>
         )}
 

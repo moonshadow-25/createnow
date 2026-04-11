@@ -28,12 +28,16 @@ export interface Message {
 
 // 流式响应数据块类型
 export interface StreamChunk {
-  type: 'thinking' | 'thinking_end' | 'content' | 'content_end' | 'tool_call' | 'tool_result' | 'done' | 'error';
+  type: 'thinking' | 'thinking_end' | 'content' | 'content_end' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'confirmation_required';
   content?: string;
   tool_call?: ToolCall;
   tool_name?: string;
   result?: string;
+  submitted?: Array<{ image_id: string; asset_id: string; status: string }>;
   conversation_id?: string;
+  // 确认机制字段
+  token?: string;
+  description?: string;
 }
 
 // 基础资产类型

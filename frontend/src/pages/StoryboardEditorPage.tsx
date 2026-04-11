@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Sparkles, Wand2, ImagePlus, Edit3,
   CheckCircle, Loader2, Upload, Download, Film,
-  Video, X, ChevronDown, ChevronRight,
+  Video, X, ChevronDown, ChevronRight, RefreshCcw,
 } from 'lucide-react';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
@@ -16,6 +16,8 @@ import { ImageGallery } from '@/components/assets/ImageGallery';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { getImageUrl, getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { useProjectStore } from '@/store/projectStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +44,12 @@ export default function StoryboardEditorPage() {
   const { toast } = useToast();
   const { startTask, completeTask, failTask, hasRunningTask, getTaskStatus } = useStoryboardGenerationStore();
 
+  // ── VibeDrama ───────────────────────────────────────────────────────────────
+  const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
+  const openVibeDrama = useVibeDramaStore(s => s.open);
+  const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
+  const currentProject = useProjectStore(s => s.currentProject);
+
   // ── Core state ──────────────────────────────────────────────────────────────
   const [storyboard, setStoryboard] = useState<any>(null);
   const [episodeId, setEpisodeId] = useState(searchParams.get('episodeId') || '');
@@ -58,7 +66,7 @@ export default function StoryboardEditorPage() {
   const [assetImageStatuses, setAssetImageStatuses] = useState<Record<string, AssetStatus>>({});
   const [assetSubmitting, setAssetSubmitting] = useState<Record<string, boolean>>({});
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'pending'>('saved');
-  const [contentExpanded, setContentExpanded] = useState(false);
+  const [contentExpanded, setContentExpanded] = useState(true);
   const [showAssetSelector, setShowAssetSelector] = useState(false);
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [galleryState, setGalleryState] = useState<GalleryState>({ show: false, assetId: '', assetType: '', assetName: '', images: [] });
@@ -67,6 +75,7 @@ export default function StoryboardEditorPage() {
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const isInitializedRef = useRef(false);
+  const isReloadingRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assetSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,15 +117,28 @@ export default function StoryboardEditorPage() {
   // ── Image management hook ───────────────────────────────────────────────────
   const reloadStoryboard = useCallback(async () => {
     if (!projectId || !storyboardId) return;
+    isReloadingRef.current = true;
     try {
-      const imgRes = await generationApi.listImages(projectId, storyboardId);
+      const [sbRes, imgRes] = await Promise.all([
+        assetApi.get(projectId, 'storyboard', storyboardId),
+        generationApi.listImages(projectId, storyboardId),
+      ]);
+      const sb = sbRes.data;
+      if (sb) {
+        setStoryboard(sb);
+        setGeneratedPrompt(sb.image_prompt || '');
+        latestTextRef.current = { ...latestTextRef.current, generatedPrompt: sb.image_prompt || '' };
+      }
       const sorted = (imgRes.data || []).sort((a: any, b: any) => {
         if (a.is_primary && !b.is_primary) return -1;
         if (!a.is_primary && b.is_primary) return 1;
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
       setStoryboardImages(sorted);
-    } catch {}
+    } catch {} finally {
+      // 延迟重置，确保 setGeneratedPrompt 触发的 scheduleSave useEffect 已跳过
+      setTimeout(() => { isReloadingRef.current = false; }, 2000);
+    }
   }, [projectId, storyboardId]);
 
   const imageManagement = useStoryboardImageManagement({
@@ -151,6 +173,44 @@ export default function StoryboardEditorPage() {
   useEffect(() => {
     assetStatusesRef.current = assetImageStatuses;
   }, [assetImageStatuses]);
+
+  // ── VibeDrama context + storyboard:tool-updated listener ───────────────────
+  useEffect(() => {
+    if (!storyboard || !projectId) return;
+    setVibeDramaContext({
+      projectId,
+      projectName: currentProject?.name || '',
+      episodeId: storyboard.episode_id || '',
+      tabName: 'storyboard',
+      label: `分镜 #${storyboard.sequence}`,
+    });
+  }, [storyboard?.asset_id, storyboard?.sequence, projectId, currentProject?.name]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.storyboard_ids) return;
+      if (detail.storyboard_ids.length === 0 || detail.storyboard_ids.includes(storyboardId)) {
+        reloadStoryboard();
+      }
+    };
+    window.addEventListener('storyboard:tool-updated', handler);
+    return () => window.removeEventListener('storyboard:tool-updated', handler);
+  }, [storyboardId, reloadStoryboard]);
+
+  // 编辑页卸载时通知分镜列表页刷新数据（审核状态可能已变化）
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('storyboard:editor-closed', { detail: { projectId } }));
+    };
+  }, [projectId]);
+
+  // 编辑页卸载时通知分镜列表页刷新数据
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('storyboard:editor-closed', { detail: { projectId } }));
+    };
+  }, [projectId]);
 
   // ── Initial data load ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -226,17 +286,44 @@ export default function StoryboardEditorPage() {
   const loadAssetImageStatuses = useCallback(async (charIds: string[], sceneIds: string[], propIds: string[]) => {
     const allIds = [...charIds, ...sceneIds, ...propIds];
     if (allIds.length === 0) return;
+
+    // 1. 从已有资产数据中直接提取状态（零请求）
+    const allAssets = [...characters, ...scenes, ...props];
     const updates: Record<string, AssetStatus> = {};
-    await Promise.all(allIds.map(async (assetId) => {
-      try {
-        const res = await generationApi.listImages(projectId, assetId);
-        const imgs: any[] = res.data || [];
-        const primary = imgs.find(i => i.is_primary) || imgs[0];
-        if (primary) updates[assetId] = { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status, image_id: primary.image_id };
-      } catch {}
-    }));
+    const processingIds: string[] = [];
+
+    for (const assetId of allIds) {
+      const asset = allAssets.find(a => a.asset_id === assetId);
+      if (asset) {
+        updates[assetId] = {
+          asset_id: asset.volcengine_asset_id,
+          status: asset.volcengine_asset_status,
+          image_id: asset.image_id,
+        };
+        if (asset.volcengine_asset_status === 'Processing') {
+          processingIds.push(assetId);
+        }
+      }
+    }
     setAssetImageStatuses(prev => ({ ...prev, ...updates }));
-  }, [projectId]);
+
+    // 2. 只对 Processing 状态的资产发请求获取最新状态
+    if (processingIds.length > 0) {
+      await Promise.all(processingIds.map(async (assetId) => {
+        try {
+          const res = await generationApi.listImages(projectId, assetId);
+          const imgs: any[] = res.data || [];
+          const primary = imgs.find(i => i.is_primary) || imgs[0];
+          if (primary) {
+            setAssetImageStatuses(prev => ({
+              ...prev,
+              [assetId]: { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status, image_id: primary.image_id },
+            }));
+          }
+        } catch {}
+      }));
+    }
+  }, [projectId, characters, scenes, props]);
 
   // Load statuses when selected assets change
   useEffect(() => {
@@ -246,7 +333,7 @@ export default function StoryboardEditorPage() {
 
   // ── Auto-save: text fields (debounced 1.5s) ────────────────────────────────
   const scheduleSave = useCallback(() => {
-    if (!isInitializedRef.current || !storyboardId) return;
+    if (!isInitializedRef.current || !storyboardId || isReloadingRef.current) return;
     setSaveStatus('pending');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
@@ -374,36 +461,57 @@ export default function StoryboardEditorPage() {
 
   const handleSubmitAsset = useCallback(async () => {
     const imageIds: string[] = [];
-    if (primaryImage?.image_id) imageIds.push(primaryImage.image_id);
+    // 建立 imageId → localAssetId 映射，用于轮询时写入正确的 key
+    const imageToLocalAsset: Record<string, string> = {};
+    if (primaryImage?.image_id) {
+      imageIds.push(primaryImage.image_id);
+      imageToLocalAsset[primaryImage.image_id] = storyboardId; // 分镜主图用 storyboardId
+    }
     for (const charId of latestAssetsRef.current.selectedCharacters) {
       const imgId = assetStatusesRef.current[charId]?.image_id || characters.find((c: any) => c.asset_id === charId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) imageIds.push(imgId);
+      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = charId; }
     }
     for (const sceneId of latestAssetsRef.current.selectedScenes) {
       const imgId = assetStatusesRef.current[sceneId]?.image_id || scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) imageIds.push(imgId);
+      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = sceneId; }
     }
     for (const propId of latestAssetsRef.current.selectedProps) {
       const imgId = assetStatusesRef.current[propId]?.image_id || props.find((p: any) => p.asset_id === propId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) imageIds.push(imgId);
+      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = propId; }
     }
     if (imageIds.length === 0) { toast('没有可提交的图片', 'error'); return; }
     setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
     try {
       const res = await generationApi.submitAsset(projectId, imageIds);
       const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
-      const pollOne = async (assetId: string, imageId: string) => {
+      const pollOne = async (volcAssetId: string, imageId: string) => {
+        const localId = imageToLocalAsset[imageId] || imageId;
         try {
-          const r = await generationApi.getAssetStatus(projectId, assetId);
-          setAssetImageStatuses(prev => ({ ...prev, [imageId]: { asset_id: assetId, status: r.data.status } }));
-          if (r.data.status === 'Processing') setTimeout(() => pollOne(assetId, imageId), 5000);
+          const r = await generationApi.getAssetStatus(projectId, volcAssetId);
+          // 同时写入 localAssetId 和 imageId 两个 key，确保渲染和 allStatuses 都能读到
+          setAssetImageStatuses(prev => ({
+            ...prev,
+            [localId]: { asset_id: volcAssetId, status: r.data.status, image_id: imageId },
+            [imageId]: { asset_id: volcAssetId, status: r.data.status, image_id: imageId },
+          }));
+          if (r.data.status === 'Processing') setTimeout(() => pollOne(volcAssetId, imageId), 5000);
         } catch {}
       };
+      // 提交后立即将所有已提交项标记为 Processing（即时 UI 反馈）
+      const immediateUpdates: Record<string, AssetStatus> = {};
+      for (const s of submitted) {
+        const localId = imageToLocalAsset[s.image_id] || s.image_id;
+        immediateUpdates[localId] = { asset_id: s.asset_id, status: s.status, image_id: s.image_id };
+        immediateUpdates[s.image_id] = { asset_id: s.asset_id, status: s.status, image_id: s.image_id };
+      }
+      setAssetImageStatuses(prev => ({ ...prev, ...immediateUpdates }));
+
       const processingItems = submitted.filter(s => s.status === 'Processing');
       const refreshAll = async () => {
         await reloadStoryboard();
+        await reloadAssets();
         await videoGen.loadPrimaryImage(storyboard);
-        loadAssetImageStatuses(latestAssetsRef.current.selectedCharacters, latestAssetsRef.current.selectedScenes, latestAssetsRef.current.selectedProps);
+        // 不调 loadAssetImageStatuses：轮询已把正确状态写入，调了反而会用闭包旧数据覆盖
       };
       if (processingItems.length > 0) {
         setTimeout(async () => {
@@ -419,18 +527,75 @@ export default function StoryboardEditorPage() {
     } catch {
       setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
     }
-  }, [projectId, trackingId, primaryImage, storyboard, characters, scenes, props, reloadStoryboard, loadAssetImageStatuses, videoGen, toast]);
+  }, [projectId, trackingId, primaryImage, storyboard, storyboardId, characters, scenes, props, reloadStoryboard, reloadAssets, loadAssetImageStatuses, videoGen, toast]);
+
+  const handleResubmitAsset = useCallback(async () => {
+    const imageIds: string[] = [];
+    const imageToLocalAsset: Record<string, string> = {};
+    if (primaryImage?.image_id) {
+      imageIds.push(primaryImage.image_id);
+      imageToLocalAsset[primaryImage.image_id] = storyboardId;
+    }
+    for (const charId of latestAssetsRef.current.selectedCharacters) {
+      const imgId = assetStatusesRef.current[charId]?.image_id || characters.find((c: any) => c.asset_id === charId)?.image_id;
+      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = charId; }
+    }
+    for (const sceneId of latestAssetsRef.current.selectedScenes) {
+      const imgId = assetStatusesRef.current[sceneId]?.image_id || scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
+      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = sceneId; }
+    }
+    for (const propId of latestAssetsRef.current.selectedProps) {
+      const imgId = assetStatusesRef.current[propId]?.image_id || props.find((p: any) => p.asset_id === propId)?.image_id;
+      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = propId; }
+    }
+    if (imageIds.length === 0) { toast('没有可提交的图片', 'error'); return; }
+    setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
+    try {
+      const res = await generationApi.resubmitAsset(projectId, imageIds);
+      const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+      const pollOne = async (volcAssetId: string, imageId: string) => {
+        const localId = imageToLocalAsset[imageId] || imageId;
+        try {
+          const r = await generationApi.getAssetStatus(projectId, volcAssetId);
+          setAssetImageStatuses(prev => ({
+            ...prev,
+            [localId]: { asset_id: volcAssetId, status: r.data.status, image_id: imageId },
+            [imageId]: { asset_id: volcAssetId, status: r.data.status, image_id: imageId },
+          }));
+          if (r.data.status === 'Processing') setTimeout(() => pollOne(volcAssetId, imageId), 5000);
+        } catch {}
+      };
+      const immediateUpdates: Record<string, AssetStatus> = {};
+      for (const s of submitted) {
+        const localId = imageToLocalAsset[s.image_id] || s.image_id;
+        immediateUpdates[localId] = { asset_id: s.asset_id, status: s.status, image_id: s.image_id };
+        immediateUpdates[s.image_id] = { asset_id: s.asset_id, status: s.status, image_id: s.image_id };
+      }
+      setAssetImageStatuses(prev => ({ ...prev, ...immediateUpdates }));
+      const processingItems = submitted.filter(s => s.status === 'Processing');
+      const refreshAll = async () => {
+        await reloadStoryboard();
+        await reloadAssets();
+        await videoGen.loadPrimaryImage(storyboard);
+      };
+      if (processingItems.length > 0) {
+        setTimeout(async () => {
+          await Promise.all(processingItems.map(s => pollOne(s.asset_id, s.image_id)));
+          setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
+          await refreshAll();
+        }, 3000);
+      } else {
+        setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
+        await refreshAll();
+      }
+      toast('强制重新提交成功', 'success');
+    } catch {
+      setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
+    }
+  }, [projectId, trackingId, primaryImage, storyboard, storyboardId, characters, scenes, props, reloadStoryboard, reloadAssets, videoGen, toast]);
 
   // ── Action handlers ────────────────────────────────────────────────────────
   const handleBack = () => navigate(`/project/${projectId}`, { state: { episodeId } });
-
-  const handleGeneratePrompt = async () => {
-    if (!mergedStoryboard) return;
-    await imageManagement.handleGeneratePrompt(
-      mergedStoryboard, selectedCharacters, selectedScenes, selectedProps,
-      characters, scenes, props, setGeneratedPrompt
-    );
-  };
 
   const handleGenerateImage = async () => {
     if (!mergedStoryboard) return;
@@ -438,11 +603,6 @@ export default function StoryboardEditorPage() {
       mergedStoryboard, generatedPrompt, selectedCharacters, selectedScenes, selectedProps,
       characters, scenes, props, setStoryboardImages
     );
-  };
-
-  const handleAutoMatchAssets = async () => {
-    if (!mergedStoryboard) return;
-    await imageManagement.handleAutoMatchAssets(mergedStoryboard, setSelectedScenes, setSelectedCharacters, setSelectedProps);
   };
 
   const handleOpenAssetGallery = async (asset: any, assetType: string) => {
@@ -606,8 +766,7 @@ export default function StoryboardEditorPage() {
         {/* ── LEFT PANEL: Assets + Content Fields ─────────────────────────── */}
         <div
           ref={leftPanelRef}
-          className="flex-[2] min-w-0 border-r border-gray-700 overflow-y-auto flex flex-col"
-          style={{ background: '#1a1f2e' }}
+          className="flex-[2] min-w-0 border-r border-gray-700 overflow-y-auto flex flex-col bg-gray-900"
         >
           <div className="p-3 space-y-3 flex-1">
             {/* Assets section */}
@@ -616,7 +775,12 @@ export default function StoryboardEditorPage() {
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">已选资产</span>
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={handleAutoMatchAssets}
+                    onClick={() => {
+                      if (!storyboard) return;
+                      setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
+                      openVibeDrama();
+                      setPendingMessage({ key: `${projectId}_${episodeId}`, message: '自动匹配资产' });
+                    }}
                     disabled={getTaskStatus(storyboardId, 'auto_match') === 'generating'}
                     className="text-[11px] text-purple-400 hover:text-purple-300 disabled:text-gray-600 flex items-center gap-0.5"
                     title="AI自动匹配"
@@ -771,7 +935,7 @@ export default function StoryboardEditorPage() {
                       value={editDescription}
                       onChange={e => setEditDescription(e.target.value)}
                       className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
-                      rows={4}
+                      rows={12}
                       placeholder="描述画面..."
                     />
                   </div>
@@ -815,7 +979,7 @@ export default function StoryboardEditorPage() {
                     <div>
                       <label className="block text-[10px] text-gray-500 mb-0.5">分辨率</label>
                       <select value={editResolution} onChange={e => setEditResolution(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
-                        {['1920x1080','1280x720','1080x1920','720x1280'].map(v => <option key={v} value={v}>{v}</option>)}
+                        {['1280x720','21:9-720p','720x1280'].map(v => <option key={v} value={v}>{v}</option>)}
                       </select>
                     </div>
                   </div>
@@ -826,9 +990,9 @@ export default function StoryboardEditorPage() {
         </div>
 
         {/* ── CENTER PANEL: Storyboard Image + Image Prompt ────────────────── */}
-        <div className="flex-[4] min-w-0 overflow-y-auto p-4 space-y-4 border-r border-gray-700">
+        <div className="flex-[4] min-w-0 flex flex-col overflow-hidden p-4 border-r border-gray-700">
           {/* Storyboard image node - connection anchor */}
-          <div ref={storyboardImgRef}>
+          <div className="flex-shrink-0 mb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">分镜图</span>
               <button onClick={handleOpenStoryboardGallery} className="text-[11px] text-green-400 hover:text-green-300 flex items-center gap-1">
@@ -838,13 +1002,14 @@ export default function StoryboardEditorPage() {
 
             {/* Primary image display */}
             <div
+              ref={storyboardImgRef}
               onClick={handleOpenStoryboardGallery}
-              className={`relative cursor-pointer group rounded-lg overflow-hidden bg-gray-800 transition ${
+              className={`relative cursor-pointer group rounded-lg overflow-hidden bg-gray-800 transition mx-auto ${
                 primaryImage
                   ? 'border border-gray-700 hover:border-blue-500'
                   : 'border border-dashed border-gray-600 hover:border-gray-500 opacity-30 hover:opacity-50'
               }`}
-              style={{ aspectRatio: '16/9' }}
+              style={{ aspectRatio: '16/9', maxHeight: '180px', maxWidth: '320px' }}
             >
               {primaryImage ? (
                 <>
@@ -902,12 +1067,17 @@ export default function StoryboardEditorPage() {
           </div>
 
           {/* Image prompt section */}
-          <div className="border-t border-gray-700 pt-3 space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="border-t border-gray-700 pt-3 flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">图片提示词</span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleGeneratePrompt}
+                  onClick={() => {
+                    if (!storyboard) return;
+                    setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
+                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成图片提示词，只更新这一个分镜，不要修改其他分镜。根据以下画面描述生成：\n${editDescription}\n########` });
+                    openVibeDrama();
+                  }}
                   disabled={getTaskStatus(storyboardId, 'prompt') === 'generating'}
                   className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"
                 >
@@ -920,11 +1090,10 @@ export default function StoryboardEditorPage() {
             <textarea
               value={generatedPrompt}
               onChange={e => setGeneratedPrompt(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
-              rows={16}
+              className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
               placeholder="点击上方按钮AI生成提示词，或手动输入..."
             />
-            <div className="flex gap-2">
+            <div className="flex gap-2 mt-2 flex-shrink-0">
               <button
                 onClick={handleGenerateImage}
                 disabled={!generatedPrompt || getTaskStatus(storyboardId, 'image') === 'generating'}
@@ -951,16 +1120,15 @@ export default function StoryboardEditorPage() {
         {/* ── RIGHT PANEL: Videos + Video Prompt ──────────────────────────── */}
         <div
           ref={rightPanelRef}
-          className="flex-[4] min-w-0 overflow-y-auto flex flex-col"
-          style={{ background: '#1a1f2e' }}
+          className="flex-[4] min-w-0 overflow-hidden flex flex-col bg-gray-900"
         >
-          <div className="p-3 space-y-4">
+          <div className="p-3 flex-1 flex flex-col min-h-0">
 
             {/* ── Single segment layout (mirrors center panel) ─────────────── */}
             {!videoSegments && (
-              <>
+              <div className="flex-1 flex flex-col min-h-0">
                 {/* Video header – matches "分镜图" header style */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2 flex-shrink-0">
                   <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">已生成视频</span>
                   <button
                     onClick={() => setShowVideoGallery(true)}
@@ -973,8 +1141,8 @@ export default function StoryboardEditorPage() {
                 {/* Primary video – mirrors primary image display */}
                 <div
                   ref={el => { if (el) videoNodeRefs.current.set('seg_0', el); else videoNodeRefs.current.delete('seg_0'); }}
-                  className="relative rounded-lg overflow-hidden bg-gray-800 border border-gray-700 cursor-pointer"
-                  style={{ aspectRatio: '16/9' }}
+                  className="relative rounded-lg overflow-hidden bg-gray-800 border border-gray-700 cursor-pointer flex-shrink-0"
+                  style={{ aspectRatio: '16/9', maxHeight: '180px' }}
                   onClick={videoGen.videos.length > 0 ? () => setShowVideoGallery(true) : undefined}
                 >
                   {videoGen.videos.length > 0 ? (() => {
@@ -995,7 +1163,7 @@ export default function StoryboardEditorPage() {
 
                 {/* Thumbnail strip – same as center panel */}
                 {otherVideosSingle.length > 0 && (
-                  <div onClick={() => setShowVideoGallery(true)} className="flex gap-1.5 cursor-pointer overflow-x-auto pb-1">
+                  <div onClick={() => setShowVideoGallery(true)} className="flex gap-1.5 cursor-pointer overflow-x-auto pb-1 flex-shrink-0 mt-2">
                     {otherVideosSingle.slice(0, 4).map((v: any) => (
                       <div key={v.video_id} className="w-12 h-12 bg-gray-700 rounded overflow-hidden flex-shrink-0 border-2 border-transparent hover:border-gray-500 transition flex items-center justify-center">
                         {v.status === 'completed' && v.video_path
@@ -1014,11 +1182,16 @@ export default function StoryboardEditorPage() {
                 )}
 
                 {/* Video prompt – mirrors image prompt section */}
-                <div className="border-t border-gray-700 pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="border-t border-gray-700 pt-3 flex-1 flex flex-col min-h-0 mt-2">
+                  <div className="flex items-center justify-between mb-2 flex-shrink-0">
                     <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">视频提示词</span>
                     <button
-                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoPrompt(mergedStoryboard, editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration); }}
+                      onClick={() => {
+                        if (!storyboard) return;
+                        setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
+                        openVibeDrama();
+                        setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成视频提示词，只更新这一个分镜，不要修改其他分镜。根据以下画面描述生成：\n${editDescription}\n########` });
+                      }}
                       disabled={getTaskStatus(storyboardId, 'video_prompt') === 'generating' || !editDescription}
                       className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"
                     >
@@ -1030,11 +1203,10 @@ export default function StoryboardEditorPage() {
                   <textarea
                     value={videoGen.videoPrompt}
                     onChange={e => videoGen.handlePromptChange(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
-                    rows={16}
+                    className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
                     placeholder="输入视频提示词，或点击上方按钮AI生成..."
                   />
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-2 flex-shrink-0">
                     {isSubmitting || anyProcessing ? (
                       <span className="text-xs text-yellow-400 flex items-center gap-1 flex-1"><Loader2 size={12} className="animate-spin" />审核中...</span>
                     ) : allActive ? (
@@ -1048,6 +1220,13 @@ export default function StoryboardEditorPage() {
                       </button>
                     )}
                     <button
+                      onClick={handleResubmitAsset}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700"
+                      title="强制重新提交（清空旧审核状态重新入库）"
+                    >
+                      <RefreshCcw size={12} />重新提交
+                    </button>
+                    <button
                       onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
                       disabled={isGenerating || !videoGen.videoPrompt.trim()}
                       className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium"
@@ -1056,7 +1235,7 @@ export default function StoryboardEditorPage() {
                     </button>
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {/* ── Multi-segment layout: each segment = video + prompt paired ── */}
@@ -1104,7 +1283,7 @@ export default function StoryboardEditorPage() {
                           </button>
                         </div>
                         {/* Video for this segment */}
-                        <div className="relative w-full rounded overflow-hidden bg-gray-700 border border-gray-600" style={{ aspectRatio: '16/9' }}>
+                        <div className="relative w-full rounded overflow-hidden bg-gray-700 border border-gray-600" style={{ aspectRatio: '16/9', maxHeight: '180px' }}>
                           {segVideo ? (
                             segVideo.status === 'completed' && segVideo.video_path
                               ? <video src={getVideoUrl(segVideo, projectId)} className="w-full h-full object-contain" controls />
@@ -1139,6 +1318,13 @@ export default function StoryboardEditorPage() {
                       <Upload size={14} />{anyFailed ? '部分失败，重试提交' : '提交素材'}
                     </button>
                   )}
+                  <button
+                    onClick={handleResubmitAsset}
+                    className="flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded hover:bg-gray-700 border border-gray-700"
+                    title="强制重新提交（清空旧审核状态重新入库）"
+                  >
+                    <RefreshCcw size={12} />强制重新提交
+                  </button>
                   <button
                     onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
                     disabled={isGenerating || !videoGen.videoPrompt.trim()}

@@ -47,6 +47,9 @@ class Project:
         # 项目总预算
         self.budget_total: Optional[float] = None   # None = 无限制
 
+        # 项目级 AI 指令（类 CLAUDE.md），注入 system prompt
+        self.ai_instructions: str = ""
+
         # AI配置
         self.ai_config = {
             "llm": {
@@ -83,6 +86,7 @@ class Project:
             "created_at": self.created_at,
             "updated_at": datetime.now().isoformat(),
             "ai_config": self.ai_config,
+            "ai_instructions": self.ai_instructions,
             "total_episodes": self.total_episodes,
             "minutes_per_episode": self.minutes_per_episode,
             "compute_budget_per_minute": self.compute_budget_per_minute,
@@ -117,6 +121,7 @@ class Project:
         project.updated_at = metadata["updated_at"]
         project.project_dir = project_dir
         project.ai_config = metadata.get("ai_config", {})
+        project.ai_instructions = metadata.get("ai_instructions", "")
         project.total_episodes = metadata.get("total_episodes", 0)
         project.minutes_per_episode = metadata.get("minutes_per_episode", 0.0)
         project.compute_budget_per_minute = metadata.get("compute_budget_per_minute", 0.0)
@@ -146,6 +151,7 @@ class Project:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "ai_config": self.ai_config,
+            "ai_instructions": self.ai_instructions,
             "total_episodes": self.total_episodes,
             "minutes_per_episode": self.minutes_per_episode,
             "compute_budget_per_minute": self.compute_budget_per_minute,

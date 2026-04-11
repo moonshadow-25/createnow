@@ -135,7 +135,7 @@ export function VibeDramaPanel() {
       {/* fixed 定位，始终挂载，isOpen=false 时用 CSS 隐藏，保持流式传输不中断 */}
       <div
         className="fixed bottom-0 right-0 bg-gray-900 border-l border-gray-700 flex flex-col z-40 shadow-2xl"
-        style={{ width: panelWidth, height: 'calc(100vh - 73px)', display: isOpen ? 'flex' : 'none' }}
+        style={{ width: panelWidth, height: '100vh', display: isOpen ? 'flex' : 'none' }}
       >
         {/* 左侧拖拽调宽手柄 */}
         <div

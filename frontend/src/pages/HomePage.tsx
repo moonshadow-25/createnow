@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CREATENOW_ADMIN_URL } from '@/constants/urls';
 import { useProjectStore } from '@/store/projectStore';
 import { useAuthStore } from '@/store/authStore';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
@@ -9,9 +10,11 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
-import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound } from 'lucide-react';
+import { QuickStartSection } from '@/components/project/QuickStartSection';
+import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon } from 'lucide-react';
 import { projectApi, adminAuthApi } from '@/services/api';
 import { Project } from '@/types';
+import { useThemeStore } from '@/store/themeStore';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -21,6 +24,7 @@ export default function HomePage() {
   const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
   const { username: adminUsername, role: adminRole, logout: adminLogout, isAuthenticated } = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
+  const { theme, toggle: toggleTheme } = useThemeStore();
 
   const [showLogin, setShowLogin] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
@@ -65,6 +69,14 @@ export default function HomePage() {
       saasAuth.fetchUser();
       fetchProjects();
     }
+  }, [saasAuth.isAuthenticated]);
+
+  // SaaS 用户：登录后立即获取积分，之后每 60 秒轮询一次
+  useEffect(() => {
+    if (!saasAuth.isAuthenticated) return;
+    saasAuth.fetchCredits();
+    const timer = setInterval(() => saasAuth.fetchCredits(), 60_000);
+    return () => clearInterval(timer);
   }, [saasAuth.isAuthenticated]);
 
   // 登录成功后重新加载项目列表
@@ -162,7 +174,7 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">DreamMaster</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pr-10">
             {isAdmin && !isSaasUser && loggedIn && (
               <a
                 href="http://47.117.182.216:8003/admin/login.html"
@@ -216,12 +228,17 @@ export default function HomePage() {
             {isSaasUser && (
               <>
                 <a
-                  href="http://47.117.182.216:8003/admin/login.html"
+                  href={CREATENOW_ADMIN_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
                 >
                   账户
+                  {saasAuth.user?.credits != null && (
+                    <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-medium">
+                      {saasAuth.user.credits}
+                    </span>
+                  )}
                 </a>
                 <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
                   {saasDisplayName && (
@@ -258,36 +275,51 @@ export default function HomePage() {
                 </button>
               </div>
             )}
+            {/* 主题切换 */}
+            <button
+              onClick={toggleTheme}
+              className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title={theme === 'light' ? '切换暗色主题' : '切换亮色主题'}
+            >
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
           </div>
         </div>
 
         {loading ? (
           <div className="text-center py-12">加载中...</div>
         ) : projects.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <p className="text-xl mb-4">还没有项目</p>
+          <div>
+            <QuickStartSection />
             {isAdmin && (
-              <button
-                onClick={handleCreateProject}
-                className="text-blue-400 hover:text-blue-300 underline"
-              >
-                创建第一个项目
-              </button>
+              <div className="text-center py-4 text-gray-400">
+                <button
+                  onClick={handleCreateProject}
+                  className="text-blue-400 hover:text-blue-300 underline text-sm"
+                >
+                  或者创建空白项目
+                </button>
+              </div>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map((project) => (
-              <ProjectCard
-                key={project.project_id}
-                project={project}
-                stats={projectStats[project.project_id]}
-                isAdmin={isAdmin}
-                onOpen={() => handleOpenProject(project)}
-                onDelete={() => handleDeleteProject(project.project_id)}
-                onEdit={() => setEditingProject(project)}
-              />
-            ))}
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+              {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map((project) => (
+                <ProjectCard
+                  key={project.project_id}
+                  project={project}
+                  stats={projectStats[project.project_id]}
+                  isAdmin={isAdmin}
+                  onOpen={() => handleOpenProject(project)}
+                  onDelete={() => handleDeleteProject(project.project_id)}
+                  onEdit={() => setEditingProject(project)}
+                />
+              ))}
+            </div>
+            <div className="border-t border-gray-700 pt-6">
+              <QuickStartSection />
+            </div>
           </div>
         )}
       </div>

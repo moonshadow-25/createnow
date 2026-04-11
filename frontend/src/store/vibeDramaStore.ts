@@ -17,11 +17,13 @@ interface VibeDramaState {
   activeKey: string | null;
   sessions: SessionEntry[];
   panelWidth: number;
+  pendingMessage: { key: string; message: string } | null;
 
   open: () => void;
   close: () => void;
   toggle: () => void;
   setPanelWidth: (w: number) => void;
+  setPendingMessage: (msg: { key: string; message: string } | null) => void;
   /** 切换上下文：立即创建或更新 session（与原设计一致），hasConversation 默认 false */
   setContext: (ctx: Omit<SessionEntry, 'key' | 'createdAt' | 'hasConversation'>) => void;
   /** 发生实际对话时调用：将当前 activeKey 对应的 session 标记为 hasConversation=true */
@@ -37,8 +39,10 @@ export const useVibeDramaStore = create<VibeDramaState>()(
       activeKey: null,
       sessions: [],
       panelWidth: 384,
+      pendingMessage: null,
 
       open: () => set({ isOpen: true }),
+      setPendingMessage: (msg) => set({ pendingMessage: msg }),
       close: () => set({ isOpen: false }),
       toggle: () => set(s => ({ isOpen: !s.isOpen })),
       setPanelWidth: (w) => set({ panelWidth: w }),

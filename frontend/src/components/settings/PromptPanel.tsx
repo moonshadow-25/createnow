@@ -34,7 +34,7 @@ interface TemplatesResponse {
 // 分类固定显示顺序
 const CATEGORY_ORDER = ['生成模板', '服务提示词', '系统提示词'];
 
-// 工具调用 schema 类模板，不向用户展示（用户覆盖会破坏 AI 工具调用机制）
+// 工具调用 schema 类模板，不向用户展示
 const HIDDEN_KEYS = new Set(['conversation_tools_desc', 'conversation_tools_desc_assets']);
 
 // 生成模板内的 key 显示顺序
@@ -44,6 +44,9 @@ const GENERATION_KEY_ORDER = [
   'triple_grid', 'storyboard_image', 'image_edit', 'video_reverse', 'vlm',
 ];
 
+// 普通模式下默认显示的 key（其余需点"高级"展开）
+const BASIC_KEYS = new Set(['image', 'video', 'storyboard_image_edit', 'character_sheet']);
+
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 
 export function PromptPanel({ projectId }: PromptPanelProps) {
@@ -51,6 +54,7 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
   const [templatesData, setTemplatesData] = useState<TemplatesResponse | null>(null);
   const [promptSaving, setPromptSaving] = useState(false);
   const [editingContent, setEditingContent] = useState<string>('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // 当前选中的分类、提示词 key
   const [activeCategory, setActiveCategory] = useState<string>('');
@@ -67,11 +71,11 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
       const data: TemplatesResponse = response.data;
       setTemplatesData(data);
 
-      // 初始化选中
-      const cats = getCategories(data);
+      // 初始化选中（用当前 showAdvanced 状态过滤）
+      const cats = getCategories(data, showAdvanced);
       if (cats.length > 0) {
         const firstCat = activeCategory && cats.includes(activeCategory) ? activeCategory : cats[0];
-        const keysForCat = getKeysForCategory(data, firstCat);
+        const keysForCat = getKeysForCategory(data, firstCat, showAdvanced);
         const firstKey = activeKey && keysForCat.includes(activeKey) ? activeKey : keysForCat[0] ?? '';
         setActiveCategory(firstCat);
         setActiveKey(firstKey);
@@ -95,11 +99,25 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
     }
   };
 
+  // 切换高级模式
+  const handleToggleAdvanced = () => {
+    if (!templatesData) return;
+    const next = !showAdvanced;
+    setShowAdvanced(next);
+    const cats = getCategories(templatesData, next);
+    const firstCat = cats[0] ?? '';
+    setActiveCategory(firstCat);
+    const keys = getKeysForCategory(templatesData, firstCat, next);
+    const firstKey = keys[0] ?? '';
+    setActiveKey(firstKey);
+    initEditingContent(templatesData, firstKey);
+  };
+
   // 切换分类
   const handleCategoryChange = (cat: string) => {
     if (!templatesData) return;
     setActiveCategory(cat);
-    const keys = getKeysForCategory(templatesData, cat);
+    const keys = getKeysForCategory(templatesData, cat, showAdvanced);
     const first = keys[0] ?? '';
     setActiveKey(first);
     initEditingContent(templatesData, first);
@@ -208,7 +226,7 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
     setPromptSaving(true);
     try {
       await generationApi.updatePromptTemplates(projectId, {
-        [activeKey]: { ...currentType, custom: newCustom, active: 'default' },
+        [activeKey]: { ...currentType, custom: newCustom, active: 'default_ai' },
       });
       await loadPromptTemplates();
       toast('已删除自定义模板', 'success');
@@ -238,10 +256,10 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
     return <div className="flex items-center justify-center h-full"><div className="text-gray-400">加载中...</div></div>;
   }
 
-  const categories = getCategories(templatesData);
-  const keysForCategory = getKeysForCategory(templatesData, activeCategory);
+  const categories = getCategories(templatesData, showAdvanced);
+  const keysForCategory = getKeysForCategory(templatesData, activeCategory, showAdvanced);
   const currentType = activeKey ? (templatesData[activeKey] as PromptTypeData) : null;
-  const activeId = currentType?.active ?? 'default';
+  const activeId = currentType?.active ?? 'default_ai';
   const activeTemplate = currentType?.templates?.[activeId];
   const isPreset = activeTemplate?.is_preset !== false;
 
@@ -262,19 +280,31 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
         </div>
       )}
 
-      {/* 一级 Tab：分类 */}
-      <div className="flex border-b border-gray-700 shrink-0 px-4 pt-2 gap-1">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => handleCategoryChange(cat)}
-            className={`px-3 py-1.5 text-sm rounded-t ${
-              activeCategory === cat ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
+      {/* 一级 Tab：分类 + 高级按钮 */}
+      <div className="flex items-center border-b border-gray-700 shrink-0 px-4 pt-2 gap-1">
+        <div className="flex gap-1 flex-1">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => handleCategoryChange(cat)}
+              className={`px-3 py-1.5 text-sm rounded-t ${
+                activeCategory === cat ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={handleToggleAdvanced}
+          className={`px-2 py-1 text-xs rounded transition mb-0.5 ${
+            showAdvanced
+              ? 'text-purple-400 hover:text-purple-300'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          {showAdvanced ? '收起 ▴' : '高级 ▾'}
+        </button>
       </div>
 
       {/* 二级 Tab：该分类下的提示词 */}
@@ -351,9 +381,9 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
 
         {/* 模板信息 */}
         {currentType && (
-          <div className="mb-3 p-3 bg-gray-800/50 rounded border border-gray-700">
+          <div className="mb-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded border border-gray-300 dark:border-gray-700">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-300">
+              <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200">
                 {activeTemplate?.name || '未知模板'}
                 {isPreset ? (
                   <span className="ml-2 text-xs px-2 py-0.5 bg-blue-600/30 border border-blue-500 rounded">预设</span>
@@ -362,10 +392,10 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
                 )}
               </h3>
               {isPreset && (
-                <span className="text-xs text-yellow-400">只读 - 点击"新建"以创建可编辑版本</span>
+                <span className="text-xs text-orange-600 dark:text-yellow-400">只读 - 点击"新建"以创建可编辑版本</span>
               )}
             </div>
-            <p className="text-xs text-gray-500">{activeTemplate?.description || '暂无描述'}</p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">{activeTemplate?.description || '暂无描述'}</p>
           </div>
         )}
 
@@ -421,7 +451,8 @@ export function PromptPanel({ projectId }: PromptPanelProps) {
 
 // ── 工具函数（模块级，供组件调用）────────────────────────────────────────────
 
-function getCategories(data: TemplatesResponse): string[] {
+function getCategories(data: TemplatesResponse, showAdvanced: boolean): string[] {
+  if (!showAdvanced) return ['生成模板'];
   const found = new Set<string>();
   for (const [key, val] of Object.entries(data)) {
     if (key === 'is_custom' || key === 'is_legacy') continue;
@@ -432,11 +463,13 @@ function getCategories(data: TemplatesResponse): string[] {
   return CATEGORY_ORDER.filter(c => found.has(c));
 }
 
-function getKeysForCategory(data: TemplatesResponse, category: string): string[] {
+function getKeysForCategory(data: TemplatesResponse, category: string, showAdvanced: boolean): string[] {
+  // 非高级模式下，只显示生成模板分类中的 BASIC_KEYS
   const keys = Object.entries(data)
     .filter(([key, val]) => {
       if (key === 'is_custom' || key === 'is_legacy') return false;
       if (HIDDEN_KEYS.has(key)) return false;
+      if (!showAdvanced && category === '生成模板' && !BASIC_KEYS.has(key)) return false;
       return val && typeof val === 'object' && (val as PromptTypeData).category === category;
     })
     .map(([key]) => key);

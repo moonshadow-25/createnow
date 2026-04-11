@@ -201,26 +201,19 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   };
 
   // 从项目资产添加参考图
-  const handleAddAsset = async (asset: any) => {
+  const handleAddAsset = (asset: any) => {
     const imgId = asset.image_id;
     if (!imgId) { toast('该资产暂无主图', 'error'); return; }
     if (selectedMedia.find(m => m.id === imgId)) { toast('已添加过该图片', 'error'); return; }
     if (selectedMedia.filter(m => m.type === 'image').length >= 10) { toast('最多支持10张参考图片', 'error'); return; }
     const newItem: RefMedia = { type: 'image', id: imgId, url: asset.primary_image_url || '', name: asset.name };
     setSelectedMedia(prev => [...prev, newItem]);
-    // 加载审核状态
+    // 直接从 asset 对象读取审核状态（后端已透传主图的 volcengine 字段）
     if (showAssetSubmit) {
-      try {
-        const res = await generationApi.listImages(projectId, imgId);
-        const imgs: any[] = res.data || [];
-        const record = imgs.find((i: any) => i.image_id === imgId) || imgs[0];
-        if (record) {
-          setAssetStatuses(prev => ({
-            ...prev,
-            [imgId]: { assetId: record.volcengine_asset_id, status: record.volcengine_asset_status },
-          }));
-        }
-      } catch { /* ignore */ }
+      setAssetStatuses(prev => ({
+        ...prev,
+        [imgId]: { assetId: asset.volcengine_asset_id, status: asset.volcengine_asset_status },
+      }));
     }
   };
 
@@ -277,13 +270,17 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     try {
       const res = await generationApi.submitAsset(projectId, imageIds);
       const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+      // skipped 可能是字符串（错误跳过）或对象（已提交过）
+      const skippedRaw: any[] = res.data.skipped || [];
+      const skippedWithStatus = skippedRaw.filter(s => typeof s === 'object' && s.image_id && s.asset_id);
 
-      // 更新初始状态
+      // 更新初始状态（submitted + 已提交过的 skipped）
       const initUpdates: Record<string, { assetId?: string; status?: string }> = {};
       submitted.forEach(s => { initUpdates[s.image_id] = { assetId: s.asset_id, status: s.status }; });
+      skippedWithStatus.forEach(s => { initUpdates[s.image_id] = { assetId: s.asset_id, status: s.status }; });
       setAssetStatuses(prev => ({ ...prev, ...initUpdates }));
 
-      // 对 Processing 状态的进行轮询
+      // 对 Processing 或 null 状态的进行轮询
       const pollOne = async (assetId: string, imageId: string) => {
         try {
           const r = await generationApi.getAssetStatus(projectId, assetId);
@@ -291,10 +288,13 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           if (r.data.status === 'Processing') setTimeout(() => pollOne(assetId, imageId), 5000);
         } catch { /* ignore */ }
       };
-      const processing = submitted.filter(s => s.status === 'Processing');
-      if (processing.length > 0) {
+      const needsPoll = [
+        ...submitted.filter(s => s.status === 'Processing'),
+        ...skippedWithStatus.filter(s => !s.status || s.status === 'Processing'),
+      ];
+      if (needsPoll.length > 0) {
         setTimeout(async () => {
-          await Promise.all(processing.map(s => pollOne(s.asset_id, s.image_id)));
+          await Promise.all(needsPoll.map(s => pollOne(s.asset_id, s.image_id)));
           setIsSubmittingAssets(false);
         }, 3000);
       } else {
@@ -485,8 +485,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
           placeholder="输入视频提示词，描述画面内容、动作、氛围..."
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-blue-500 placeholder-gray-500"
-          rows={3}
+          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-500 placeholder-gray-500"
+          rows={5}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
         />
 

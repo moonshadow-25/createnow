@@ -51,6 +51,7 @@ if not exist "%SOURCE_DIR%env\" (
 REM ── Step 2: 复制后端代码 ──────────────────────────────────
 echo [2/5] Copying backend code...
 xcopy /E /I /Y /Q "%SOURCE_DIR%backend\app" "%TEMP_DIR%\backend\app" >nul
+xcopy /E /I /Y /Q "%SOURCE_DIR%backend\bin" "%TEMP_DIR%\backend\bin" >nul
 xcopy /E /I /Y /Q "%SOURCE_DIR%backend\config" "%TEMP_DIR%\backend\config" >nul
 copy /Y "%SOURCE_DIR%backend\requirements.txt" "%TEMP_DIR%\backend\" >nul
 xcopy /E /I /Y /Q "%SOURCE_DIR%env" "%TEMP_DIR%\env" >nul

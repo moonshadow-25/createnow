@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
-import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, Download, GripVertical } from 'lucide-react';
+import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, Download, GripVertical, CheckCircle } from 'lucide-react';
 import { VideoGallery } from './VideoGallery';
+import { EpisodePlayer } from './EpisodePlayer';
 import { ImageGallery } from '@/components/assets/ImageGallery';
 import { useToast } from '@/components/common/Toast';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
@@ -24,7 +25,6 @@ import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } 
 import { CSS } from '@dnd-kit/utilities';
 import { useOneClickGeneration } from './hooks/useOneClickGeneration';
 import { useDialogManager } from './hooks/useDialogManager';
-import { useAssetExtraction } from './hooks/useAssetExtraction';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useJianyingExport } from './hooks/useJianyingExport';
@@ -103,6 +103,7 @@ export function StoryboardDetail({
   const isReorderingEpisodes = useRef(false);
   const [storyboards, setStoryboards] = useState<any[]>([]);
   const [storyboardPrimaryImages, setStoryboardPrimaryImages] = useState<Map<string, string>>(new Map());
+  const [imageStatuses, setImageStatuses] = useState<Record<string, { asset_id: string; status: string }>>({});
 
   // 统一管理所有对话框状态
   const dialogs = useDialogManager({
@@ -116,12 +117,34 @@ export function StoryboardDetail({
     tripleGrid: false
   });
 
+  // 全集预览播放器
+  const [episodePlayerVideos, setEpisodePlayerVideos] = useState<
+    { storyboardId: string; url: string; sequence: number; description?: string }[]
+  >([]);
+  const [showEpisodePlayer, setShowEpisodePlayer] = useState(false);
+
+  const openEpisodePlayer = () => {
+    const videos = storyboards
+      .filter(sb => sb.primary_video_url)
+      .map(sb => ({
+        storyboardId: sb.asset_id,
+        url: sb.primary_video_url,
+        sequence: sb.sequence,
+        description: sb.description,
+      }));
+    if (videos.length === 0) return;
+    setEpisodePlayerVideos(videos);
+    setShowEpisodePlayer(true);
+  };
+
   // 更多菜单
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   // Vibe Drama：设置上下文 + 订阅资产刷新事件
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
+  const openVibeDrama = useVibeDramaStore(s => s.open);
+  const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
   const currentProject = useProjectStore(s => s.currentProject);
   useEffect(() => {
     if (!selectedEpisode || !projectId) return;
@@ -145,6 +168,32 @@ export function StoryboardDetail({
     window.addEventListener('vibe-drama:assets-created', handler);
     return () => window.removeEventListener('vibe-drama:assets-created', handler);
   }, [projectId, selectedEpisode]);
+
+  // 监听审核状态更新事件，重新加载图片状态（更新徽章）
+  // 监听审核状态更新事件，重新加载图片状态（更新徽章）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.projectId === projectId && storyboards.length > 0) {
+        loadImageStatuses(storyboards);
+      }
+    };
+    window.addEventListener('storyboard:review-status-updated', handler);
+    return () => window.removeEventListener('storyboard:review-status-updated', handler);
+  }, [projectId, storyboards]);
+
+  // 编辑页关闭时重新加载分镜数据（审核状态可能已变化）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.projectId === projectId) {
+        loadStoryboards();
+      }
+    };
+    window.addEventListener('storyboard:editor-closed', handler);
+    return () => window.removeEventListener('storyboard:editor-closed', handler);
+  }, [projectId, selectedEpisode]);
+
   useEffect(() => {
     if (!showMoreMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -433,12 +482,77 @@ export function StoryboardDetail({
       }
       setStoryboardPrimaryImages(imageMap);
 
+      // 异步加载所有图片的审核状态
+      loadImageStatuses(sortedData);
+
       return sortedData;  // ✅ 返回最新数据供调用者使用
     } catch (error) {
       console.error('Failed to load storyboards:', error);
       setStoryboards([]);
       setStoryboardPrimaryImages(new Map());
       return [];  // 错误时返回空数组
+    }
+  };
+
+  // 轮询单个素材审核状态，直到不再是 Processing
+  const pollAssetStatus = (assetId: string, imageId: string) => {
+    const poll = async () => {
+      try {
+        const r = await generationApi.getAssetStatus(projectId, assetId);
+        setImageStatuses(prev => ({ ...prev, [imageId]: { asset_id: assetId, status: r.data.status } }));
+        if (r.data.status === 'Processing') setTimeout(poll, 5000);
+      } catch {}
+    };
+    setTimeout(poll, 3000);
+  };
+
+  // 加载所有分镜及关联资产的图片审核状态，并对 Processing 的自动启动轮询
+  const loadImageStatuses = async (sbs: any[]) => {
+    // 先从后端已返回的分镜数据中提取审核状态（无需额外请求）
+    const initialUpdates: Record<string, { asset_id: string; status: string }> = {};
+    const processingAssetIds: string[] = [];
+
+    for (const sb of sbs) {
+      if (sb.volcengine_asset_status && sb.volcengine_asset_id && sb.image_id) {
+        // 用 image_id 作为 key，与 StoryboardCard 的查找方式保持一致
+        initialUpdates[sb.image_id] = {
+          asset_id: sb.volcengine_asset_id,
+          status: sb.volcengine_asset_status,
+        };
+        // 只有 Processing 状态才需要后续轮询
+        if (sb.volcengine_asset_status === 'Processing') {
+          processingAssetIds.push(sb.asset_id);
+        }
+      }
+    }
+
+    // 设置已知状态
+    if (Object.keys(initialUpdates).length > 0) {
+      setImageStatuses(prev => ({ ...prev, ...initialUpdates }));
+    }
+
+    // 只对 Processing 状态的素材发请求获取详细信息并启动轮询
+    if (processingAssetIds.length > 0) {
+      const updates: Record<string, { asset_id: string; status: string }> = {};
+      await Promise.all(processingAssetIds.map(async (assetId) => {
+        try {
+          const res = await generationApi.listImages(projectId, assetId);
+          const imgs: any[] = res.data || [];
+          const primary = imgs.find((i: any) => i.is_primary) || imgs[0];
+          if (primary?.image_id) {
+            updates[primary.image_id] = {
+              asset_id: primary.volcengine_asset_id,
+              status: primary.volcengine_asset_status,
+            };
+          }
+        } catch {}
+      }));
+      setImageStatuses(prev => ({ ...prev, ...updates }));
+      for (const [imageId, info] of Object.entries(updates)) {
+        if (info.status === 'Processing' && info.asset_id) {
+          pollAssetStatus(info.asset_id, imageId);
+        }
+      }
     }
   };
 
@@ -584,80 +698,10 @@ export function StoryboardDetail({
     oneClickPhase,
     oneClickProgress,
     oneClickFailures,
+    getEligibleCount,
     handleOneClickGenerate
   } = oneClickGeneration;
 
-  // 资产提取与匹配 hook
-  const { isExtracting, isMatching, extractAssets, matchAssets } = useAssetExtraction(projectId);
-
-  const handleExtractAssets = async () => {
-    if (!selectedEpisode) return;
-    const result = await extractAssets(selectedEpisode.asset_id);
-    if (result) {
-      const { total_created, skipped_count } = result;
-      toast(
-        total_created > 0
-          ? `已提取 ${total_created} 个新资产${skipped_count > 0 ? `（跳过 ${skipped_count} 个重复）` : ''}`
-          : `未发现需要新增的资产${skipped_count > 0 ? `（跳过 ${skipped_count} 个已有资产）` : ''}`,
-        'success'
-      );
-      onUpdated();
-    } else {
-      toast('资产提取失败，请重试', 'error');
-    }
-  };
-
-  const handleMatchAssets = async () => {
-    if (!selectedEpisode) return;
-    const result = await matchAssets(selectedEpisode.asset_id, false);
-    if (result) {
-      toast(
-        result.updated_count > 0
-          ? `已为 ${result.updated_count} 个分镜完成资产匹配`
-          : '所有分镜已有资产关联，无需更新',
-        'success'
-      );
-      loadStoryboards();
-    } else {
-      toast('资产匹配失败，请重试', 'error');
-    }
-  };
-
-
-  const handleAutoGenerateStoryboards = async () => {
-    if (!selectedEpisode?.script) {
-      toast('该剧集没有剧本内容', 'error');
-      return;
-    }
-
-    // 检查是否已有分镜
-    if (storyboards.length > 0) {
-      const input = prompt(`重新生成分镜警告\n\n该剧集已有 ${storyboards.length} 个分镜，重新生成将覆盖现有分镜！\n\n请输入 'confirm' 确认重新生成：`);
-      if (input !== 'confirm') {
-        if (input !== null) {
-          toast('输入不正确，已取消生成', 'error');
-        }
-        return;
-      }
-    }
-
-    const taskId = `auto_${selectedEpisode.asset_id}`;
-    startTask(taskId, 'auto_generate');
-    try {
-      const response = await storyboardApi.generate(projectId, {
-        episode_id: selectedEpisode.asset_id,
-        script: selectedEpisode.script,
-      });
-
-      toast(`成功生成 ${response.data?.storyboards?.length || 0} 个分镜`, 'success');
-      loadStoryboards();
-      onUpdated();
-      completeTask(taskId, 'auto_generate');
-    } catch (error: any) {
-      toast(`生成失败: ${error.response?.data?.detail || error.message || '未知错误'}`, 'error');
-      failTask(taskId, 'auto_generate', error.message || '未知错误');
-    }
-  };
 
   const handleDeleteEpisode = async () => {
     if (!selectedEpisode) return;
@@ -1009,49 +1053,25 @@ export function StoryboardDetail({
                 <p className="text-sm text-gray-400 mt-1">{selectedEpisode.description || ''}</p>
               </div>
               <div className="flex gap-2 items-center">
-                {/* AI生成分镜 */}
+              {/* 一键生成本集 */}
                 <button
-                  onClick={handleAutoGenerateStoryboards}
-                  className={`flex items-center gap-1 text-sm px-3 py-2 rounded ${hasRunningTask(`auto_${selectedEpisode?.asset_id}`)
-                      ? 'bg-gray-600 cursor-not-allowed opacity-70'
-                      : 'bg-purple-600 hover:bg-purple-700'
-                    }`}
-                  disabled={hasRunningTask(`auto_${selectedEpisode?.asset_id}`)}
+                  onClick={() => {
+                    if (selectedEpisode) {
+                      setVibeDramaContext({
+                        projectId,
+                        projectName: currentProject?.name || '',
+                        episodeId: selectedEpisode.asset_id,
+                        tabName: 'storyboard',
+                        label: `第${selectedEpisode.episode_number}集`,
+                      });
+                      openVibeDrama();
+                      setPendingMessage({ key: `${projectId}_${selectedEpisode.asset_id}`, message: '自动生成本集' });
+                    }
+                  }}
+                  className="flex items-center gap-1 text-sm px-3 py-2 rounded bg-purple-600 hover:bg-purple-700"
                 >
-                  {hasRunningTask(`auto_${selectedEpisode?.asset_id}`) ? (
-                    <>
-                      <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      生成中...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={14} />
-                      AI生成分镜
-                    </>
-                  )}
-                </button>
-
-                {/* 导出到剪映 */}
-                <button
-                  onClick={() => selectedEpisode && handleExportAllToJiayingDownload(selectedEpisode.asset_id)}
-                  disabled={isDownloadExporting || !selectedEpisode}
-                  className={`flex items-center gap-1 text-sm px-3 py-2 rounded ${
-                    isDownloadExporting || !selectedEpisode
-                      ? 'bg-gray-600 cursor-not-allowed opacity-70'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  }`}
-                >
-                  {isDownloadExporting ? (
-                    <>
-                      <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                      {downloadExportProgress > 0 ? `${downloadExportProgress}%` : '导出中...'}
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} />
-                      导出到剪映
-                    </>
-                  )}
+                  <Sparkles size={14} />
+                  一键生成本集
                 </button>
 
                 {/* 视频库 */}
@@ -1061,6 +1081,17 @@ export function StoryboardDetail({
                 >
                   <Play size={14} />
                   视频库
+                </button>
+
+                {/* 预览全集 */}
+                <button
+                  onClick={openEpisodePlayer}
+                  disabled={storyboards.every(sb => !sb.primary_video_url)}
+                  className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="顺序播放本集所有分镜视频"
+                >
+                  <Play size={14} />
+                  预览全集
                 </button>
 
                 {/* 更多菜单 */}
@@ -1073,17 +1104,114 @@ export function StoryboardDetail({
                     <ChevronDown size={14} className={`transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
                   </button>
                   {showMoreMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 py-1">
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 py-1">
                       {/* 一键生成分镜图 */}
                       <button
-                        onClick={() => { handleOneClickGenerate(); setShowMoreMenu(false); }}
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          const n = getEligibleCount();
+                          if (n === 0) { toast('暂无可生成的分镜（请先为分镜添加图片提示词）', 'info'); return; }
+                          if (confirm(`共 ${n} 个分镜有图片提示词，将生成 ${n} 张图，确认？`)) handleOneClickGenerate();
+                        }}
                         disabled={isOneClickGenerating || storyboards.length === 0}
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="自动匹配资产、生成提示词和分镜图"
                       >
                         {isOneClickGenerating ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
                         {isOneClickGenerating ? '一键生成中...' : '一键生成分镜图'}
                       </button>
+                      {/* 一键提交审核 */}
+                      <button
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          const isActive = (imageId: string) => imageStatuses[imageId]?.status === 'Active';
+                          const imageIds: string[] = [];
+                          for (const sb of storyboards) {
+                            if (sb.image_id && !imageIds.includes(sb.image_id) && !isActive(sb.image_id)) imageIds.push(sb.image_id);
+                            for (const charId of (sb.character_ids || [])) {
+                              const char = characters.find((c: any) => c.asset_id === charId);
+                              if (char?.image_id && !imageIds.includes(char.image_id) && !isActive(char.image_id)) imageIds.push(char.image_id);
+                            }
+                            const sceneIds = sb.scene_ids?.length ? sb.scene_ids : (sb.scene_id ? [sb.scene_id] : []);
+                            for (const sceneId of sceneIds) {
+                              const scene = scenes.find((s: any) => s.asset_id === sceneId);
+                              if (scene?.image_id && !imageIds.includes(scene.image_id) && !isActive(scene.image_id)) imageIds.push(scene.image_id);
+                            }
+                            for (const propId of (sb.prop_ids || [])) {
+                              const prop = props.find((p: any) => p.asset_id === propId);
+                              if (prop?.image_id && !imageIds.includes(prop.image_id) && !isActive(prop.image_id)) imageIds.push(prop.image_id);
+                            }
+                          }
+                          if (imageIds.length === 0) { toast('没有可提交的图片', 'info'); return; }
+                          if (!confirm(`将提交 ${imageIds.length} 张图片（分镜图 + 关联资产）审核，继续？`)) return;
+                          (async () => {
+                            try {
+                              const res = await generationApi.submitAsset(projectId, imageIds);
+                              const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+                              toast('素材提交成功', 'success');
+                              submitted.filter(s => s.status === 'Processing').forEach(s => pollAssetStatus(s.asset_id, s.image_id));
+                            } catch { toast('提交审核失败', 'error'); }
+                          })();
+                        }}
+                        disabled={storyboards.length === 0}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Sparkles size={14} />
+                        一键提交审核
+                      </button>
+                      {/* 一键生成视频 */}
+                      <button
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          const eligible = storyboards.filter(sb => !sb.primary_video_url && sb.video_prompt);
+                          if (eligible.length === 0) { toast('暂无可生成的分镜（请先为分镜添加视频提示词）', 'info'); return; }
+                          if (!confirm(`共 ${eligible.length} 个分镜有视频提示词，将生成 ${eligible.length} 个视频，确认？`)) return;
+                          (async () => {
+                            let ok = 0, fail = 0;
+                            const batches = Array.from({ length: Math.ceil(eligible.length / 5) }, (_, i) =>
+                              eligible.slice(i * 5, i * 5 + 5)
+                            );
+                            for (const batch of batches) {
+                              await Promise.allSettled(batch.map(async (sb: any) => {
+                                try {
+                                  await generationApi.generateVideo(projectId, {
+                                    storyboard_id: sb.asset_id,
+                                    episode_id: selectedEpisode!.asset_id,
+                                    prompt: sb.video_prompt,
+                                    duration: sb.duration || 5,
+                                    resolution: sb.resolution || '1920x1080',
+                                  });
+                                  ok++;
+                                } catch { fail++; }
+                              }));
+                            }
+                            toast(fail > 0 ? `视频生成任务已提交: ${ok} 成功, ${fail} 失败` : `已提交 ${ok} 个视频生成任务`, fail > 0 ? 'info' : 'success');
+                          })();
+                        }}
+                        disabled={storyboards.length === 0}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Film size={14} />
+                        一键生成视频
+                      </button>
+                      {/* 导出到剪映 */}
+                      <button
+                        onClick={() => { setShowMoreMenu(false); selectedEpisode && handleExportAllToJiayingDownload(selectedEpisode.asset_id); }}
+                        disabled={isDownloadExporting || !selectedEpisode}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isDownloadExporting ? (
+                          <>
+                            <div className="animate-spin w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" />
+                            {downloadExportProgress > 0 ? `导出中 ${downloadExportProgress}%` : '导出中...'}
+                          </>
+                        ) : (
+                          <>
+                            <Download size={14} />
+                            导出到剪映
+                          </>
+                        )}
+                      </button>
+                      <div className="border-t border-gray-600 my-1" />
                       {/* 添加分镜 */}
                       <button
                         onClick={() => { handleAddStoryboard(); setShowMoreMenu(false); }}
@@ -1185,28 +1313,6 @@ export function StoryboardDetail({
             <div className="mb-4 p-3 bg-gray-700 rounded">
               <div className="flex justify-between items-center mb-2">
                 <h4 className="text-sm font-semibold text-gray-400">使用资产</h4>
-                {storyboards.length > 0 && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleExtractAssets}
-                      disabled={isExtracting || isMatching}
-                      className="flex items-center gap-1 text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-200 rounded transition-colors"
-                      title="从分镜内容中提取重要角色、场景、道具，添加到资产库"
-                    >
-                      {isExtracting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                      {isExtracting ? '提取中...' : '提取资产'}
-                    </button>
-                    <button
-                      onClick={handleMatchAssets}
-                      disabled={isExtracting || isMatching}
-                      className="flex items-center gap-1 text-xs px-2 py-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-200 rounded transition-colors"
-                      title="将资产库中的资产自动关联到对应分镜"
-                    >
-                      {isMatching ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                      {isMatching ? '匹配中...' : '匹配资产'}
-                    </button>
-                  </div>
-                )}
               </div>
               {storyboards.length > 0 ? (
                 <div className="flex flex-wrap gap-3 text-sm">
@@ -1223,11 +1329,16 @@ export function StoryboardDetail({
                       <div>
                         <span className="text-gray-400">角色:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {uniqueCharacters.map((char: any) => (
-                            <span key={char.asset_id} className="bg-blue-900 text-blue-300 px-2 py-1 rounded text-xs">
-                              {char.name}
-                            </span>
-                          ))}
+                          {uniqueCharacters.map((char: any) => {
+                            const status = char.volcengine_asset_status || (char.image_id ? imageStatuses[char.image_id]?.status : undefined);
+                            return (
+                              <span key={char.asset_id} className="bg-blue-900 text-blue-300 px-2 py-1 rounded text-xs flex items-center gap-1">
+                                {char.name}
+                                {status === 'Active' && <CheckCircle size={10} className="text-green-400" />}
+                                {status === 'Processing' && <Loader2 size={10} className="animate-spin text-yellow-400" />}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     ) : null;
@@ -1251,11 +1362,16 @@ export function StoryboardDetail({
                       <div>
                         <span className="text-gray-400">场景:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {uniqueScenes.map((scene: any) => (
-                            <span key={scene.asset_id} className="bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
-                              {scene.name}
-                            </span>
-                          ))}
+                          {uniqueScenes.map((scene: any) => {
+                            const status = scene.volcengine_asset_status || (scene.image_id ? imageStatuses[scene.image_id]?.status : undefined);
+                            return (
+                              <span key={scene.asset_id} className="bg-green-900 text-green-300 px-2 py-1 rounded text-xs flex items-center gap-1">
+                                {scene.name}
+                                {status === 'Active' && <CheckCircle size={10} className="text-green-400" />}
+                                {status === 'Processing' && <Loader2 size={10} className="animate-spin text-yellow-400" />}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     ) : null;
@@ -1274,11 +1390,16 @@ export function StoryboardDetail({
                       <div>
                         <span className="text-gray-400">道具:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {uniqueProps.map((prop: any) => (
-                            <span key={prop.asset_id} className="bg-purple-900 text-purple-300 px-2 py-1 rounded text-xs">
-                              {prop.name}
-                            </span>
-                          ))}
+                          {uniqueProps.map((prop: any) => {
+                            const status = prop.volcengine_asset_status || (prop.image_id ? imageStatuses[prop.image_id]?.status : undefined);
+                            return (
+                              <span key={prop.asset_id} className="bg-purple-900 text-purple-300 px-2 py-1 rounded text-xs flex items-center gap-1">
+                                {prop.name}
+                                {status === 'Active' && <CheckCircle size={10} className="text-green-400" />}
+                                {status === 'Processing' && <Loader2 size={10} className="animate-spin text-yellow-400" />}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     ) : null;
@@ -1299,6 +1420,7 @@ export function StoryboardDetail({
                       key={sb.asset_id}
                       storyboard={sb}
                       storyboardPrimaryImages={storyboardPrimaryImages}
+                      imageStatuses={imageStatuses}
                       onEdit={handleEditStoryboard}
                       onDelete={handleDeleteStoryboard}
                       onOpenImageGallery={handleOpenImageGallery}
@@ -1325,6 +1447,14 @@ export function StoryboardDetail({
         )}
         </div>
       </div>
+
+      {/* 全集预览播放器 */}
+      {showEpisodePlayer && (
+        <EpisodePlayer
+          videos={episodePlayerVideos}
+          onClose={() => setShowEpisodePlayer(false)}
+        />
+      )}
 
       {/* 视频库 */}
       {dialogs.isOpen('videoGallery') && (

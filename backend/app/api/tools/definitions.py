@@ -1,0 +1,465 @@
+"""所有工具的 JSON Schema 定义"""
+
+TOOLS = [
+    {
+        "name": "create_character",
+        "description": "创建角色资产。当用户描述角色或剧本中出现新角色时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "角色名称"},
+                "description": {"type": "string", "description": "角色详细描述"},
+                "gender": {"type": "string", "description": "性别"},
+                "age": {"type": "string", "description": "年龄"},
+                "appearance": {"type": "string", "description": "外貌描述"},
+                "personality": {"type": "string", "description": "性格特点"},
+                "background": {"type": "string", "description": "背景故事"},
+                "image_prompt": {"type": "string", "description": "角色图片生成提示词（中文），包含完整外貌/服装/颜色/风格描述，融入全局图片风格"}
+            },
+            "required": ["name", "description"]
+        }
+    },
+    {
+        "name": "update_character",
+        "description": "更新现有角色的信息。当用户要求修改、完善或补充角色信息时调用。⚠️ 必须先调用 get_asset 读取该角色的当前完整信息，再在原有内容基础上做修改，不得凭空覆盖。需要提供角色名称或asset_id。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "角色名称（用于查找）"},
+                "asset_id": {"type": "string", "description": "资产ID（如果提供则直接使用）"},
+                "description": {"type": "string", "description": "新的角色描述"},
+                "gender": {"type": "string", "description": "性别"},
+                "age": {"type": "string", "description": "年龄"},
+                "appearance": {"type": "string", "description": "外貌描述"},
+                "personality": {"type": "string", "description": "性格特点"},
+                "background": {"type": "string", "description": "背景故事"},
+                "image_prompt": {"type": "string", "description": "角色图片生成提示词（中文），包含完整外貌/服装/颜色/风格描述，融入全局图片风格"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "create_scene",
+        "description": "创建场景资产。当用户描述场景或剧本中出现新场景时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "场景名称"},
+                "description": {"type": "string", "description": "场景详细描述"},
+                "location": {"type": "string", "description": "地点"},
+                "time_of_day": {"type": "string", "description": "时间（日/夜/黄昏/黎明）"},
+                "weather": {"type": "string", "description": "天气"},
+                "mood": {"type": "string", "description": "氛围"},
+                "image_prompt": {"type": "string", "description": "场景图片生成提示词（中文），包含完整环境/光线/氛围/风格描述，融入全局图片风格"}
+            },
+            "required": ["name", "description", "location"]
+        }
+    },
+    {
+        "name": "update_scene",
+        "description": "更新现有场景的信息。当用户要求修改、完善或补充场景信息时调用。⚠️ 必须先调用 get_asset 读取该场景的当前完整信息，再在原有内容基础上做修改，不得凭空覆盖。需要提供场景名称或asset_id。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "场景名称（用于查找）"},
+                "asset_id": {"type": "string", "description": "资产ID（如果提供则直接使用）"},
+                "description": {"type": "string", "description": "新的场景描述"},
+                "location": {"type": "string", "description": "地点"},
+                "time_of_day": {"type": "string", "description": "时间"},
+                "weather": {"type": "string", "description": "天气"},
+                "mood": {"type": "string", "description": "氛围"},
+                "image_prompt": {"type": "string", "description": "场景图片生成提示词（中文），包含完整环境/光线/氛围/风格描述，融入全局图片风格"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "create_prop",
+        "description": "创建道具资产。仅当道具与剧情强烈相关时调用（不要提取无关道具）。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "道具名称"},
+                "description": {"type": "string", "description": "道具详细描述"},
+                "category": {"type": "string", "description": "类别（兵器/装饰/日常用品等）"},
+                "era": {"type": "string", "description": "年代"},
+                "image_prompt": {"type": "string", "description": "道具图片生成提示词（中文），包含完整外观/材质/颜色/风格描述，融入全局图片风格"}
+            },
+            "required": ["name", "description"]
+        }
+    },
+    {
+        "name": "update_prop",
+        "description": "更新现有道具的信息。当用户要求修改、完善或补充道具信息时调用。⚠️ 必须先调用 get_asset 读取该道具的当前完整信息，再在原有内容基础上做修改，不得凭空覆盖。需要提供道具名称或asset_id。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "道具名称（用于查找）"},
+                "asset_id": {"type": "string", "description": "资产ID（如果提供则直接使用）"},
+                "description": {"type": "string", "description": "新的道具描述"},
+                "category": {"type": "string", "description": "类别"},
+                "era": {"type": "string", "description": "年代"},
+                "image_prompt": {"type": "string", "description": "道具图片生成提示词（中文），包含完整外观/材质/颜色/风格描述，融入全局图片风格"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "create_storyboard",
+        "description": "创建单个分镜（视频段落）。每个分镜是一段独立的15秒视频，由video_prompt驱动。需要指定所属的剧集ID。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "所属剧集的ID"},
+                "sequence": {"type": "integer", "description": "分镜序号"},
+                "description": {"type": "string", "description": "分镜简要描述（可选，若提供video_prompt则可省略）"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。@图N编号规则（严格执行）：按character_ids数组顺序依次编为@图1、@图2...，scene_ids紧接所有角色之后继续编号，prop_ids再接其后。"},
+                "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
+                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
+                "scene_id": {"type": "string", "description": "场景ID（兼容旧版，优先使用scene_ids）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表（可选）"},
+                "action": {"type": "string", "description": "动作描述（可选，新版已弃用）"},
+                "dialogue": {"type": "string", "description": "对白（可选，新版已弃用）"},
+                "camera_angle": {"type": "string", "description": "镜头角度（可选，新版已弃用）"},
+                "shot_type": {"type": "string", "description": "镜头类型（可选，新版已弃用）"}
+            },
+            "required": ["episode_id", "sequence"]
+        }
+    },
+    {
+        "name": "update_storyboard",
+        "description": "更新现有分镜的信息。当用户要求修改、完善或补充分镜信息时调用。⚠️ 必须先调用 get_storyboard 读取该分镜的当前完整信息（包括 description、video_prompt、image_prompt），再在原有内容基础上做修改，不得凭空覆盖。必须提供 storyboard_id 或同时提供 episode_id 和 sequence。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "storyboard_id": {"type": "string", "description": "分镜ID（如果提供则直接使用）"},
+                "episode_id": {"type": "string", "description": "所属剧集ID（用于查找）"},
+                "sequence": {"type": "integer", "description": "镜头序号（用于查找）"},
+                "description": {"type": "string", "description": "新的画面描述"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。"},
+                "duration": {"type": "integer", "description": "视频时长（秒）"},
+                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "角色ID列表"},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表"},
+                "scene_id": {"type": "string", "description": "场景ID（兼容旧版）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表"},
+                "action": {"type": "string", "description": "动作描述（可选）"},
+                "dialogue": {"type": "string", "description": "对白（可选）"},
+                "camera_angle": {"type": "string", "description": "镜头角度（可选）"},
+                "shot_type": {"type": "string", "description": "镜头类型（可选）"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "delete_storyboard",
+        "description": "删除指定的分镜。当用户要求删除、移除某个分镜时调用。若分镜已有视频提示词，必须传入confirmed=true才能删除（先告知用户再确认）。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "storyboard_id": {"type": "string", "description": "要删除的分镜ID"},
+                "episode_id": {"type": "string", "description": "所属剧集ID（用于查找）"},
+                "sequence": {"type": "integer", "description": "镜头序号（用于查找）"},
+                "confirmed": {"type": "boolean", "description": "用户是否已确认删除（默认false）。若分镜有内容，必须传true"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "delete_all_storyboards",
+        "description": "删除指定剧集的全部分镜（一次确认，原子操作）。⚠️ 重新生成分镜前必须先调用此工具清空旧分镜，而不是逐个调用 delete_storyboard。需要传入 confirmed=true 才会执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID（UUID格式）"},
+                "confirmed": {"type": "boolean", "description": "用户是否已确认删除全部分镜（默认false）。必须传true才会执行删除"},
+                "description": {"type": "string", "description": "向用户说明此次操作的意义（显示在确认弹窗中），如'清空第1集全部分镜，准备重新生成'"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
+        "name": "insert_storyboard",
+        "description": "在指定位置插入新分镜，自动将该位置及之后的分镜序号依次后移。这是拆分分镜时必须使用的工具。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "所属剧集的asset_id（必须是UUID格式的ID，不要用集数名称如'第2集'）"},
+                "insert_at_sequence": {"type": "integer", "description": "插入位置（在这个序号前插入，插入后的新分镜使用此序号）"},
+                "description": {"type": "string", "description": "分镜画面描述（可选，新版主要使用video_prompt）"},
+                "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。"},
+                "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
+                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
+                "scene_id": {"type": "string", "description": "场景ID（兼容旧版）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "道具ID列表（可选）"},
+                "action": {"type": "string", "description": "动作描述（可选）"},
+                "dialogue": {"type": "string", "description": "对白（可选）"},
+                "camera_angle": {"type": "string", "description": "镜头角度（可选）"},
+                "shot_type": {"type": "string", "description": "镜头类型（可选）"}
+            },
+            "required": ["episode_id", "insert_at_sequence"]
+        }
+    },
+    {
+        "name": "list_all_assets",
+        "description": "获取当前项目所有资产（角色、场景、道具、剧集）的摘要列表。当需要了解项目现有资产时调用。",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "get_episode_storyboards",
+        "description": "获取指定剧集的完整分镜列表，包含每个分镜的描述、提示词、时长、关联资产等信息。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID（UUID格式）"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
+        "name": "list_assets",
+        "description": "列出指定类型的所有资产。当用户询问有哪些角色、场景、道具或剧集时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "asset_type": {"type": "string", "description": "资产类型：character（角色）、scene（场景）、prop（道具）、episode（剧集）"}
+            },
+            "required": ["asset_type"]
+        }
+    },
+    {
+        "name": "get_asset",
+        "description": "获取单个资产的详细信息。当用户询问某个具体资产的详情时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "asset_type": {"type": "string", "description": "资产类型：character、scene、prop、episode"},
+                "asset_id": {"type": "string", "description": "资产ID（优先使用）"},
+                "name": {"type": "string", "description": "资产名称（如果没有ID则用名称查找）"}
+            },
+            "required": ["asset_type"]
+        }
+    },
+    {
+        "name": "list_storyboards",
+        "description": "列出指定剧集的所有分镜。当用户询问某集有多少分镜、分镜列表时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
+        "name": "get_storyboard",
+        "description": "获取单个分镜的详细信息。必须提供 storyboard_id，或同时提供 episode_id + sequence 两个字段才能定位分镜；只传 sequence 无法查询。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "storyboard_id": {"type": "string", "description": "分镜ID（优先使用，有此字段可不填episode_id和sequence）"},
+                "episode_id": {"type": "string", "description": "剧集ID（按序号查找时必填，需配合sequence一起使用）"},
+                "sequence": {"type": "integer", "description": "分镜序号（按序号查找时必填，需配合episode_id一起使用）"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "get_project_config",
+        "description": "读取项目的全局配置，包括视频风格、图片风格、提示词语言等。在修改配置前应先调用此工具了解当前值。",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "get_ai_instructions",
+        "description": "读取当前项目的AI自定义指令（类似CLAUDE.md）。在修改指令前应先调用此工具查看现有内容。",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "get_prompt_template",
+        "description": "读取某个生成模板的当前内容。⚠️ 仅用于修改模板前先读取现有内容（配合 update_prompt_template 使用），生成内容时禁止调用此工具——格式规范已在系统提示词中。返回值包含 content（模板全文）和 variables（变量占位符列表）。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "模板key。中文对照：分镜图生图（图生图）→storyboard_image_edit，分镜图文生图→storyboard_image，分镜视频提示词→video，资产图片提示词（角色/场景/道具）→image",
+                    "enum": ["storyboard_image_edit", "storyboard_image", "video", "image"]
+                }
+            },
+            "required": ["key"]
+        }
+    },
+    {
+        "name": "update_project_config",
+        "description": "修改项目全局配置的指定字段。此操作会持久化，对所有后续操作生效，需要用户确认后才执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "配置路径。修改全局风格（视频+图片同时改）用 global_style；只改视频用 video_style.custom_suffix；只改图片用 image_style.custom_suffix；改提示词语言用 prompt_language",
+                    "enum": ["global_style", "video_style.custom_suffix", "image_style.custom_suffix", "prompt_language"]
+                },
+                "value": {"description": "新值"},
+                "description": {"type": "string", "description": "向用户说明这次修改的意义（将显示在确认弹窗中）"}
+            },
+            "required": ["path", "value", "description"]
+        }
+    },
+    {
+        "name": "update_ai_instructions",
+        "description": "写入或追加项目级AI自定义指令（类似CLAUDE.md，会注入到每次对话的系统提示末尾）。此操作持久化且影响所有后续对话，需要用户确认。⚠️ replace模式前必须先调用 get_ai_instructions 读取现有指令，在原有内容基础上修改，不得凭空覆盖。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Markdown格式的指令内容"},
+                "mode": {"type": "string", "description": "replace（完整替换，默认）或 append（追加到现有指令末尾）"},
+                "description": {"type": "string", "description": "向用户说明这次修改的意义（将显示在确认弹窗中）"}
+            },
+            "required": ["content", "description"]
+        }
+    },
+    {
+        "name": "update_prompt_template",
+        "description": "为某个生成模板创建或更新'AI自定义'可见模板并激活它。必须先调用 get_prompt_template 读取当前激活模板，再修改后调用此工具。⚠️ 修改铁律：原模板的所有章节标题、规则条目、示例、禁止清单必须完整保留，不得删除任何章节，不得合并或精简规则条目，不得用自己的理解替换原文表述。只允许在用户指定的位置插入新内容或修改对应字段，其余内容原样复制。此操作持久化，需要用户确认。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "模板key。中文对照：分镜图生图（图生图）→storyboard_image_edit，分镜图文生图→storyboard_image，分镜视频提示词→video，资产图片提示词（角色/场景/道具）→image",
+                    "enum": ["storyboard_image_edit", "storyboard_image", "video", "image"]
+                },
+                "content": {"type": "string", "description": "完整的模板内容（Markdown格式）。必须包含原模板的所有章节和条目，只在用户要求的地方做改动，其余原文照搬不得精简。"},
+                "description": {"type": "string", "description": "向用户说明这次修改的意义（将显示在确认弹窗中）"}
+            },
+            "required": ["key", "content", "description"]
+        }
+    },
+    {
+        "name": "get_episode_script",
+        "description": "读取当前剧集的完整剧本内容。当用户提到剧本有变化、需要按剧本操作、修改剧本、或任何涉及剧情内容的操作前，必须先调用此工具读取最新剧本，禁止向用户索要剧本内容。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID，使用系统提示中注入的当前 episode_id"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
+        "name": "update_episode_script",
+        "description": "写入或追加剧集的剧本内容。当用户希望AI创作或修改剧本时调用。⚠️ replace模式前必须先调用 get_episode_script 读取现有剧本内容，在原有内容基础上修改，不得凭空覆盖。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集的asset_id（UUID格式）"},
+                "script": {"type": "string", "description": "剧本内容"},
+                "mode": {"type": "string", "description": "replace（完整替换，默认）或 append（追加到现有剧本末尾）"}
+            },
+            "required": ["episode_id", "script"]
+        }
+    },
+    {
+        "name": "generate_asset_image",
+        "description": "为单个角色/场景/道具资产生成图片。资产必须已有 image_prompt。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "asset_type": {"type": "string", "description": "资产类型：character、scene、prop"},
+                "asset_id": {"type": "string", "description": "资产ID"},
+                "description": {"type": "string", "description": "向用户说明此次生图的意义（显示在确认弹窗中）"}
+            },
+            "required": ["asset_type", "asset_id", "description"]
+        }
+    },
+    {
+        "name": "generate_all_asset_images",
+        "description": "批量为所有角色/场景/道具资产生成图片（跳过无 image_prompt 的资产）。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "asset_types": {"type": "array", "items": {"type": "string"}, "description": "要生图的资产类型列表，默认 [\"character\", \"scene\", \"prop\"]"},
+                "description": {"type": "string", "description": "向用户说明此次批量生图的意义（显示在确认弹窗中）"}
+            },
+            "required": ["description"]
+        }
+    },
+    {
+        "name": "generate_storyboard_image",
+        "description": "为单个分镜生成图片（图生图，使用关联角色/场景的主图作为参考）。分镜必须已有 image_prompt 且关联资产有主图。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "storyboard_id": {"type": "string", "description": "分镜ID"},
+                "description": {"type": "string", "description": "向用户说明此次生图的意义（显示在确认弹窗中）"}
+            },
+            "required": ["storyboard_id", "description"]
+        }
+    },
+    {
+        "name": "generate_storyboard_video",
+        "description": "为单个分镜生成视频。分镜必须已有 video_prompt 且关联资产有主图。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "storyboard_id": {"type": "string", "description": "分镜ID"},
+                "episode_id": {"type": "string", "description": "所属剧集ID（可选，优先从分镜数据中读取）"},
+                "description": {"type": "string", "description": "向用户说明此次生视频的意义（显示在确认弹窗中）"}
+            },
+            "required": ["storyboard_id", "description"]
+        }
+    },
+    {
+        "name": "generate_all_storyboard_images",
+        "description": "批量为某集（或全部）分镜生成图片。跳过无 image_prompt 或关联资产无主图的分镜。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID（不传则处理所有集的分镜）"},
+                "description": {"type": "string", "description": "向用户说明此次批量生图的意义（显示在确认弹窗中）"}
+            },
+            "required": ["description"]
+        }
+    },
+    {
+        "name": "generate_all_storyboard_videos",
+        "description": "批量为某集（或全部）分镜生成视频。跳过无 video_prompt 或关联资产无主图的分镜。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID（不传则处理所有集的分镜）"},
+                "description": {"type": "string", "description": "向用户说明此次批量生视频的意义（显示在确认弹窗中）"}
+            },
+            "required": ["description"]
+        }
+    },
+    {
+        "name": "submit_images_for_review",
+        "description": "将分镜图片提交到素材库（Volcengine/CreateNow），用于后续视频生成时使用 asset:// URI。可指定 image_ids 或 episode_id，不传则提交所有分镜主图。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID，只提交该集的分镜主图（与 image_ids 二选一）"},
+                "image_ids": {"type": "array", "items": {"type": "string"}, "description": "指定要提交的图片ID列表（与 episode_id 二选一）"},
+                "description": {"type": "string", "description": "向用户说明此次提交的意义（显示在确认弹窗中）"}
+            },
+            "required": ["description"]
+        }
+    }
+]
+
+# OpenAI Function Calling 格式（全工具集，含分镜工具）
+OPENAI_TOOLS = [
+    {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
+    for t in TOOLS
+]
+
+# 仅资产工具（不含分镜工具），用于资产 tab
+_STORYBOARD_TOOL_NAMES = {
+    "create_storyboard", "update_storyboard", "delete_storyboard",
+    "insert_storyboard", "generate_storyboard", "create_child_asset",
+    "get_episode_storyboards", "delete_all_storyboards",
+}
+ASSET_ONLY_TOOLS = [t for t in OPENAI_TOOLS if t["function"]["name"] not in _STORYBOARD_TOOL_NAMES]

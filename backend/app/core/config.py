@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     DASHSCOPE_TTS_API_URL: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2audio/speech-synthesis"
 
     # CreateNow 官方接口
-    CREATENOW_BASE_URL: str = "http://47.117.182.216:8003/v1"
+    CREATENOW_BASE_URL: str = "https://myapi.firstarpc.com/v1"
     CREATENOW_SECRET_KEY: str = "a8f5e2c9b4d7a1e6f3c8b5d2a9e7f4c1b8d5a2e9f6c3b0d7a4e1f8c5b2d9a6e3"
 
     # 部署模式：selfhosted（默认，现有行为） | saas（Web 公网版）

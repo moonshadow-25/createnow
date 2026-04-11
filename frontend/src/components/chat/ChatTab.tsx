@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useChat } from '@/hooks/useChat';
 import { MessageList } from './MessageList';
 import { ChatInput, UploadedFile } from './ChatInput';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
 interface ChatTabProps {
   projectId: string;
@@ -15,8 +16,19 @@ export function ChatTab({ projectId, episodeId, label, tabName, scriptContent }:
   const [inputMessage, setInputMessage] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
-  const { messages, currentMessage, currentThinking, isStreaming, sendMessage, error, toolCalls, clearMessages } =
+  const { messages, currentMessage, currentThinking, isStreaming, sendMessage, error, toolCalls, clearMessages, pendingConfirmation, confirmPendingAction, cancelPendingAction } =
     useChat(projectId, { episodeId, label, tabName });
+
+  const pendingMessage = useVibeDramaStore(s => s.pendingMessage);
+  const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
+  const myKey = episodeId ? `${projectId}_${episodeId}` : `${projectId}_${tabName || ''}`;
+  useEffect(() => {
+    if (pendingMessage && pendingMessage.key === myKey && !isStreaming) {
+      const msg = pendingMessage.message;
+      setPendingMessage(null);
+      sendMessage(msg);
+    }
+  }, [pendingMessage, isStreaming]);
 
   const handleSendMessage = async (message: string) => {
     if (isStreaming) return;
@@ -44,6 +56,9 @@ export function ChatTab({ projectId, episodeId, label, tabName, scriptContent }:
         error={error}
         onClearMessages={clearMessages}
         scriptContent={scriptContent}
+        pendingConfirmation={pendingConfirmation}
+        onConfirm={confirmPendingAction}
+        onCancel={cancelPendingAction}
       />
 
       <ChatInput

@@ -4,6 +4,7 @@ import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
 interface AssetCardProps {
   projectId: string;
@@ -15,6 +16,9 @@ interface AssetCardProps {
 
 export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets = [] }: AssetCardProps) {
   const { toast } = useToast();
+  const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
+  const openVibeDrama = useVibeDramaStore(s => s.open);
+  const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
   // 使用后端返回的主图URL和图片数量，初始化时直接使用
   const [primaryImage, setPrimaryImage] = useState<string | null>(asset.primary_image_url || null);
   const [imageCount, setImageCount] = useState(asset.image_count || 0);
@@ -27,7 +31,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [editData, setEditData] = useState<any>({});
   const [imagePrompt, setImagePrompt] = useState('');
   const [generating, setGenerating] = useState(false);
-  const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [promptError, setPromptError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [imagePromptSectionExpanded, setImagePromptSectionExpanded] = useState(false);
@@ -54,8 +57,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const voiceUploadRef = useRef<HTMLInputElement>(null);
 
   const isChildCharacter = assetType === 'character' && asset.parent_id;
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // 当 asset 更新时同步主图和数量（父组件刷新时）
   useEffect(() => {
@@ -77,17 +78,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       }
     }
   }, [asset.asset_id, images]);
-
-  // 点击外部关闭下拉菜单
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // 仅在需要时加载完整图片列表（打开图库或编辑弹框时）
   const loadImages = async () => {
@@ -185,37 +175,17 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     }
   };
 
-  const handleGeneratePrompt = async () => {
-    setGeneratingPrompt(true);
-    setPromptError('');
-    try {
-      let enhancedDescription = editData.description || asset.description || '';
-      if (assetType === 'character') {
-        const details = [];
-        if (editData.gender || asset.gender) details.push(`性别: ${editData.gender || asset.gender}`);
-        if (editData.age || asset.age) details.push(`年龄: ${editData.age || asset.age}`);
-        if (details.length > 0) enhancedDescription += `\n${details.join(', ')}`;
-      } else if (assetType === 'scene') {
-        if (editData.location || asset.location) enhancedDescription += `\n地点: ${editData.location || asset.location}`;
-      }
-      const response = await generationApi.generateImagePrompt(projectId, {
-        asset_type: assetType,
-        description: enhancedDescription,
-        asset_id: asset.asset_id,  // 传入 asset_id，后端会自动保存
-      });
-      const newPrompt = response.data.prompt || '';
-      setImagePrompt(newPrompt);
-      setImagePromptSectionExpanded(true);
-      setEditData((prev: any) => ({ ...prev, image_prompt: newPrompt }));
-
-      // 后端已自动保存，直接刷新父组件
-      onDeleted();
-      toast('提示词已生成并保存', 'success');
-    } catch (error: any) {
-      setPromptError(error.response?.data?.detail || '生成提示词失败');
-    } finally {
-      setGeneratingPrompt(false);
-    }
+  const handleGeneratePrompt = () => {
+    const assetTypeLabel: Record<string, string> = { character: '角色', scene: '场景', prop: '道具' };
+    const label = assetTypeLabel[assetType] || assetType;
+    const key = `${projectId}_assets`;
+    setVibeDramaContext({ projectId, projectName: '', tabName: 'assets', label: '资产面板' });
+    openVibeDrama();
+    setPendingMessage({
+      key,
+      message: `为${label}「${asset.name}」（asset_id: ${asset.asset_id}）生成图片提示词，只更新这一个资产，不要修改其他资产`,
+    });
+    setShowEdit(false);
   };
 
   const handleGenerateImage = async () => {
@@ -544,46 +514,17 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
               <Edit3 size={12} />
               编辑
             </button>
-            {/* 下拉按钮（含子角色/删除） */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDropdown(!showDropdown);
-                }}
-                className="flex items-center justify-center text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white px-2 py-1 rounded transition"
-              >
-                <ChevronDown size={12} />
-              </button>
-              {showDropdown && (
-                <div className="absolute right-0 bottom-full mb-1 bg-gray-700 border border-gray-600 rounded shadow-lg z-10 min-w-[80px]">
-                  {!isChildCharacter && assetType === 'character' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDropdown(false);
-                        setShowChildDialog(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-300 hover:bg-gray-600 hover:text-white whitespace-nowrap"
-                    >
-                      <Users size={12} />
-                      子角色
-                    </button>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowDropdown(false);
-                      handleDelete();
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-gray-600 hover:text-red-300 whitespace-nowrap"
-                  >
-                    <Trash2 size={12} />
-                    删除
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* 删除按钮 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete();
+              }}
+              className="flex items-center justify-center text-xs bg-gray-700 hover:bg-red-600 text-gray-400 hover:text-white px-2 py-1 rounded transition"
+              title="删除"
+            >
+              <Trash2 size={12} />
+            </button>
           </div>
         </div>
       </div>
@@ -823,10 +764,10 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       <button
                         onClick={handleGeneratePrompt}
                         className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg"
-                        disabled={generatingPrompt || generating || editingImage || generatingCharacterSheet}
+                        disabled={generating || editingImage || generatingCharacterSheet}
                       >
                         <Wand2 size={16} />
-                        {generatingPrompt ? '生成中...' : imagePrompt ? '重新生成提示词' : 'AI生成提示词'}
+                        {imagePrompt ? '重新生成提示词' : 'AI生成提示词'}
                       </button>
                       <button
                         onClick={handleGenerateImage}

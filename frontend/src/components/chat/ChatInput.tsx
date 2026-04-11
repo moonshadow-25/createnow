@@ -158,7 +158,8 @@ export function ChatInput({
         <div className="flex gap-2 mb-2">
           {[
             { label: '提取资产', text: '提取资产', className: 'bg-emerald-700 hover:bg-emerald-600 text-emerald-100' },
-            { label: '生成视频分镜', text: '生成视频分镜', className: 'bg-blue-700 hover:bg-blue-600 text-blue-100' },
+            { label: '匹配资产', text: '匹配资产', className: 'bg-violet-700 hover:bg-violet-600 text-violet-100' },
+            { label: '重新生成分镜', text: '重新生成分镜', className: 'bg-blue-700 hover:bg-blue-600 text-blue-100' },
           ].map(({ label, text, className }) => (
             <button
               key={label}
@@ -171,23 +172,26 @@ export function ChatInput({
           ))}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="我可以创建、修改分镜、资产中的所有内容，告诉我你的想法，我来实现"
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 resize-none focus:outline-none focus:border-blue-500"
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 resize-y focus:outline-none focus:border-blue-500"
             rows={3}
             disabled={isStreaming}
           />
-          <button
-            onClick={handleSend}
-            disabled={isStreaming || (!value.trim() && uploadedFiles.length === 0)}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 px-6 py-3 rounded-lg transition self-end"
-          >
-            <Send size={20} />
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={handleSend}
+              disabled={isStreaming || (!value.trim() && uploadedFiles.length === 0)}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 px-4 py-1.5 rounded-lg transition flex items-center gap-1.5 text-sm"
+            >
+              <Send size={14} />
+              发送
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from '@/pages/HomePage';
 import ProjectPage from '@/pages/ProjectPage';
@@ -9,12 +9,53 @@ import { SaasLoginModal } from '@/components/auth/SaasLoginModal';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
 import { useSaasAuthStore } from '@/store/saasAuthStore';
 import { VibeDramaPanel } from '@/components/chat/VibeDramaPanel';
+import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { useThemeStore, applyStoredTheme } from '@/store/themeStore';
+
+// 立即同步主题，避免闪白/闪黑
+applyStoredTheme();
 
 const CONFIG_URL = (import.meta.env.DEV ? 'http://localhost:8501' : '') + '/api/config';
 
 function App() {
   const adminAuth = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
+  const { isOpen: vibeDramaOpen, panelWidth: vibeDramaPanelWidth, toggle: toggleVibeDrama } = useVibeDramaStore();
+  const { theme } = useThemeStore();
+
+  // 组件挂载时确保 DOM 属性和 store 同步
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  // 悬浮按钮拖拽状态：存 right/top 距离，天然跟随窗口边缘
+  const [btnPos, setBtnPos] = useState({ right: 12, top: 12 });
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
+  const handleBtnMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    // 记录鼠标相对于按钮右边缘的偏移
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dragOffset.current = {
+      x: window.innerWidth - e.clientX - (window.innerWidth - rect.right),
+      y: e.clientY - rect.top,
+    };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      const newRight = Math.max(0, Math.min(window.innerWidth - 36, window.innerWidth - ev.clientX - dragOffset.current.x));
+      const newTop = Math.max(0, Math.min(window.innerHeight - 36, ev.clientY - dragOffset.current.y));
+      setBtnPos({ right: newRight, top: newTop });
+    };
+    const onUp = () => {
+      dragging.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   const [deployMode, setDeployMode] = useState<'selfhosted' | 'saas' | null>(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -65,15 +106,33 @@ function App() {
           ? <SaasLoginModal />
           : <AdminLoginModal />
       )}
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
-          <Route path="/project/:projectId" element={<ProjectPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+      {/* 全局布局：内容区随侧边栏自动让位 */}
+      <div
+        className="transition-all duration-300"
+        style={{ paddingRight: vibeDramaOpen ? vibeDramaPanelWidth : 0 }}
+      >
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
+            <Route path="/project/:projectId" element={<ProjectPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </div>
       <VibeDramaPanel />
+      {/* 全局悬浮呼出按钮，面板关闭时显示，可拖拽 */}
+      {!vibeDramaOpen && (
+        <button
+          onMouseDown={handleBtnMouseDown}
+          onClick={toggleVibeDrama}
+          className="fixed z-50 w-9 h-9 rounded-full bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-red-500 shadow-lg flex items-center justify-center transition-colors select-none cursor-grab active:cursor-grabbing"
+          style={{ right: btnPos.right, top: btnPos.top }}
+          title="小龙虾 AI 助手"
+        >
+          <span className="text-lg leading-none">🦞</span>
+        </button>
+      )}
     </ToastProvider>
   );
 }

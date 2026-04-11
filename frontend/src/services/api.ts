@@ -212,6 +212,8 @@ export const generationApi = {
   // Volcengine 素材库
   submitAsset: (projectId: string, imageIds: string[]) =>
     api.post(`/projects/${projectId}/generate/assets/submit`, { image_ids: imageIds }),
+  resubmitAsset: (projectId: string, imageIds: string[]) =>
+    api.post(`/projects/${projectId}/generate/assets/resubmit`, { image_ids: imageIds }),
   getAssetStatus: (projectId: string, assetId: string) =>
     api.get(`/projects/${projectId}/generate/assets/${assetId}/status`),
   // 提示词模板管理

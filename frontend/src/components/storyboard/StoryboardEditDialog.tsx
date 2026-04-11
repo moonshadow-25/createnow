@@ -1,3 +1,10 @@
+// @deprecated 此组件已弃用，当前分镜子页使用 StoryboardEditorPage（路由 /project/:projectId/storyboard/:storyboardId/edit）。
+// 保留此文件仅为兼容遗产代码，请勿在新功能中引用。
+/**
+ * @deprecated 此组件已弃用，不再被任何页面引用。
+ * 分镜子页已迁移至 StoryboardEditorPage（路由：/project/:projectId/storyboard/:storyboardId/edit）。
+ * 保留此文件仅为防止遗留引用报错，请勿在新功能中使用。
+ */
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Plus, Wand2, ImagePlus, Edit3, Grid3X3, Scissors, RefreshCcw, CheckCircle, Sparkles, Film, Loader2, Download, Video, Play, Upload } from 'lucide-react';
 import { generationApi } from '@/services/api';
@@ -449,6 +456,7 @@ export function StoryboardEditDialog({
                       >
                         <option value="1920x1080">1920x1080</option>
                         <option value="1280x720">1280x720</option>
+                        <option value="21:9-720p">21:9 超宽 720p</option>
                         <option value="1080x1920">1080x1920</option>
                         <option value="720x1280">720x1280</option>
                       </select>
@@ -953,6 +961,7 @@ function VideoTab({
                 >
                   <option value="1920x1080">1920x1080</option>
                   <option value="1280x720">1280x720</option>
+                  <option value="21:9-720p">21:9 超宽 720p</option>
                   <option value="1080x1920">1080x1920</option>
                   <option value="720x1280">720x1280</option>
                 </select>

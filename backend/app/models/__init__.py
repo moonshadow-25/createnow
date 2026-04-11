@@ -3,11 +3,11 @@ from .project import (
     ImageGeneration, VideoGeneration
 )
 from .conversation import (
-    Message, Conversation, AssetExtractRequest, AssetExtractResponse
+    AssetExtractRequest, AssetExtractResponse
 )
 
 __all__ = [
     "Project", "Asset", "Character", "Scene", "Prop", "Episode", "Storyboard",
     "ImageGeneration", "VideoGeneration",
-    "Message", "Conversation", "AssetExtractRequest", "AssetExtractResponse"
+    "AssetExtractRequest", "AssetExtractResponse"
 ]

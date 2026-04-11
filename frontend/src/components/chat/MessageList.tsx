@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Clapperboard, CheckCircle2 } from 'lucide-react';
 import { ToolCall, Message } from '@/types';
 import { MessageBubble } from './MessageBubble';
+import { PendingConfirmation } from '@/hooks/useChat';
 
 const FUNNY_MESSAGES = [
   '🎬 正在参考张艺谋的构镜手册...',
@@ -41,6 +42,13 @@ const TOOL_LABELS: Record<string, string> = {
   get_project_info: '读取项目信息',
   list_assets: '列出资产',
   generate_storyboard: '生成分镜',
+  get_project_config: '读取项目配置',
+  get_ai_instructions: '读取AI指令',
+  get_prompt_template: '读取模板',
+  update_project_config: '修改项目配置',
+  update_ai_instructions: '更新AI指令',
+  update_prompt_template: '更新提示词模板',
+  update_episode_script: '写入剧本',
 };
 
 interface MessageListProps {
@@ -52,6 +60,9 @@ interface MessageListProps {
   error?: string | null;
   onClearMessages: () => void;
   scriptContent?: string;
+  pendingConfirmation?: PendingConfirmation | null;
+  onConfirm?: () => void;
+  onCancel?: () => void;
 }
 
 export function MessageList({
@@ -62,6 +73,9 @@ export function MessageList({
   error,
   onClearMessages,
   scriptContent,
+  pendingConfirmation,
+  onConfirm,
+  onCancel,
 }: MessageListProps) {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [hasUserScrolled, setHasUserScrolled] = useState(false);
@@ -108,7 +122,7 @@ export function MessageList({
     if (!hasUserScrolled || (isStreaming && isAtBottom())) {
       scrollToBottom(true);
     }
-  }, [messages, isStreaming, toolCalls, hasUserScrolled, isAtBottom, scrollToBottom]);
+  }, [messages, isStreaming, toolCalls, pendingConfirmation, hasUserScrolled, isAtBottom, scrollToBottom]);
 
   return (
     <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6">
@@ -200,6 +214,33 @@ export function MessageList({
                     </div>
                   </details>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* 用户确认卡片 */}
+          {pendingConfirmation && (
+            <div className="flex justify-center">
+              <div className="rounded-xl border border-yellow-500/40 bg-yellow-950/30 p-4 text-sm max-w-sm w-full">
+                <div className="flex items-center gap-2 text-yellow-300 font-semibold mb-2">
+                  <span className="select-none">🦞</span>
+                  小龙虾 请求确认
+                </div>
+                <p className="text-gray-300 mb-3 text-xs leading-relaxed">{pendingConfirmation.description}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={onConfirm}
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs font-medium transition-colors"
+                  >
+                    ✓ 确认执行
+                  </button>
+                  <button
+                    onClick={onCancel}
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium transition-colors"
+                  >
+                    ✗ 取消
+                  </button>
+                </div>
               </div>
             </div>
           )}

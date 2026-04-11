@@ -3,32 +3,190 @@
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.87);
   background-color: #242424;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+#root { min-height: 100vh; }
+.h-full { height: 100%; width: 100%; }
+
+/* ══════════════════════════════════════════════════════════
+   LIGHT THEME  — [data-theme="light"]
+══════════════════════════════════════════════════════════ */
+
+[data-theme="light"] {
+  color-scheme: light;
+  color: #1a1a2e;
+  background-color: #f5f6f8;
 }
 
-#root {
-  min-height: 100vh;
+/* ── 页面/面板背景 ─────────────────────────────────────── */
+[data-theme="light"] .bg-gray-900  { background-color: #f5f6f8 !important; }
+[data-theme="light"] .bg-gray-800  { background-color: #ffffff !important; }
+[data-theme="light"] .bg-gray-750  { background-color: #f8f9fb !important; }
+[data-theme="light"] .bg-gray-700  { background-color: #eff1f5 !important; }
+[data-theme="light"] .bg-gray-600  { background-color: #e4e6ec !important; }
+[data-theme="light"] .bg-gray-500  { background-color: #cdd2dd !important; }
+[data-theme="light"] .bg-gray-400  { background-color: #b0b8ca !important; }
+[data-theme="light"] .bg-gray-850  { background-color: #f8f9fb !important; }
+
+/* hover 背景 */
+[data-theme="light"] .hover\:bg-gray-600:hover { background-color: #e0e3eb !important; }
+[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #e8ebf2 !important; }
+[data-theme="light"] .hover\:bg-gray-800:hover { background-color: #f3f4f8 !important; }
+[data-theme="light"] .hover\:bg-gray-500:hover { background-color: #d2d6e0 !important; }
+
+/* ── 文字 ─────────────────────────────────────────────── */
+[data-theme="light"] .text-white    { color: #2e3045 !important; }
+[data-theme="light"] .text-gray-100 { color: #333549 !important; }
+[data-theme="light"] .text-gray-200 { color: #404460 !important; }
+[data-theme="light"] .text-gray-300 { color: #555a78 !important; }
+[data-theme="light"] .text-gray-400 { color: #707898 !important; }
+[data-theme="light"] .text-gray-500 { color: #9098b2 !important; }
+[data-theme="light"] .text-gray-600 { color: #adb4c8 !important; }
+[data-theme="light"] .hover\:text-white:hover    { color: #1e2038 !important; }
+[data-theme="light"] .hover\:text-gray-300:hover { color: #404460 !important; }
+
+/* ── 边框 ─────────────────────────────────────────────── */
+[data-theme="light"] .border-gray-700 { border-color: #e2e5ee !important; }
+[data-theme="light"] .border-gray-600 { border-color: #d6dae6 !important; }
+[data-theme="light"] .border-gray-500 { border-color: #c4c9d8 !important; }
+[data-theme="light"] .divide-gray-700 > * + * { border-color: #e2e5ee !important; }
+
+/* ── 输入框 ─────────────────────────────────────────────*/
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  color: #1a1a2e !important;
+  background-color: #f8f9fb !important;
+  border-color: #d6dae6 !important;
+}
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder { color: #b0b8ca !important; }
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus { border-color: #6fa3f7 !important; outline: none; }
+[data-theme="light"] option { background: #ffffff !important; color: #1a1a2e !important; }
+
+/* ══════════════════════════════════════════════════════════
+   彩色按钮 — 使用 300 级别背景（清晰可辨），深色系文字
+   原则：bg-xxx-600 (dark) → bg-xxx-200 (light) + text-xxx-800
+══════════════════════════════════════════════════════════ */
+
+/* Blue ─────────────────────────────────────────────────── */
+[data-theme="light"] .bg-blue-600             { background-color: #c5d9f8 !important; color: #1e3a8a !important; }
+[data-theme="light"] .bg-blue-700             { background-color: #a8c8f5 !important; color: #1e3a8a !important; }
+[data-theme="light"] .hover\:bg-blue-700:hover { background-color: #a8c8f5 !important; }
+[data-theme="light"] .bg-blue-500             { background-color: #93bdf0 !important; }
+[data-theme="light"] .bg-blue-900             { background-color: #c5d9f8 !important; color: #1e3a8a !important; }
+[data-theme="light"] .bg-blue-600 *,
+[data-theme="light"] .bg-blue-900 *           { color: inherit !important; }
+[data-theme="light"] .text-blue-400  { color: #2563eb !important; }
+[data-theme="light"] .text-blue-300  { color: #1d4ed8 !important; }
+[data-theme="light"] .hover\:text-blue-300:hover { color: #1d4ed8 !important; }
+[data-theme="light"] .border-blue-500 { border-color: #93c5fd !important; }
+[data-theme="light"] .hover\:border-blue-500:hover { border-color: #93c5fd !important; }
+[data-theme="light"] .focus\:border-blue-500:focus { border-color: #6fa3f7 !important; }
+
+/* Purple ───────────────────────────────────────────────── */
+[data-theme="light"] .bg-purple-600              { background-color: #d8cdf9 !important; color: #4c1d95 !important; }
+[data-theme="light"] .bg-purple-700              { background-color: #c4b5f5 !important; color: #4c1d95 !important; }
+[data-theme="light"] .hover\:bg-purple-700:hover  { background-color: #c4b5f5 !important; }
+[data-theme="light"] .bg-purple-900              { background-color: #d8cdf9 !important; color: #4c1d95 !important; }
+[data-theme="light"] .bg-purple-600 *,
+[data-theme="light"] .bg-purple-900 *            { color: inherit !important; }
+[data-theme="light"] .text-purple-400 { color: #7c3aed !important; }
+[data-theme="light"] .text-purple-300 { color: #6d28d9 !important; }
+[data-theme="light"] .hover\:text-purple-300:hover { color: #6d28d9 !important; }
+
+/* Indigo ───────────────────────────────────────────────── */
+[data-theme="light"] .bg-indigo-600              { background-color: #c7d0f5 !important; color: #312e81 !important; }
+[data-theme="light"] .bg-indigo-600 *            { color: inherit !important; }
+[data-theme="light"] .text-indigo-300 { color: #4338ca !important; }
+[data-theme="light"] .text-indigo-400 { color: #4f46e5 !important; }
+[data-theme="light"] .bg-gray-700\/60 { background-color: rgba(239,241,245,0.95) !important; }
+
+/* Green ────────────────────────────────────────────────── */
+[data-theme="light"] .bg-green-600              { background-color: #b0edc8 !important; color: #14532d !important; }
+[data-theme="light"] .bg-green-700              { background-color: #86dfab !important; color: #14532d !important; }
+[data-theme="light"] .hover\:bg-green-700:hover  { background-color: #86dfab !important; }
+[data-theme="light"] .hover\:bg-green-800:hover  { background-color: #6dd49a !important; }
+[data-theme="light"] .bg-green-500              { background-color: #6bcf93 !important; }
+[data-theme="light"] .bg-green-900              { background-color: #b0edc8 !important; color: #14532d !important; }
+[data-theme="light"] .bg-green-600 *,
+[data-theme="light"] .bg-green-900 *            { color: inherit !important; }
+[data-theme="light"] .text-green-400 { color: #16a34a !important; }
+[data-theme="light"] .text-green-300 { color: #15803d !important; }
+[data-theme="light"] .hover\:text-green-300:hover { color: #15803d !important; }
+
+/* Red ──────────────────────────────────────────────────── */
+[data-theme="light"] .bg-red-600              { background-color: #f8c3c3 !important; color: #7f1d1d !important; }
+[data-theme="light"] .bg-red-700              { background-color: #f5a8a8 !important; color: #7f1d1d !important; }
+[data-theme="light"] .hover\:bg-red-600:hover  { background-color: #f5a8a8 !important; }
+[data-theme="light"] .hover\:bg-red-700:hover  { background-color: #f08080 !important; }
+[data-theme="light"] .bg-red-500              { background-color: #f0a0a0 !important; }
+[data-theme="light"] .bg-red-600 *            { color: inherit !important; }
+[data-theme="light"] .text-red-400  { color: #dc2626 !important; }
+[data-theme="light"] .text-red-300  { color: #b91c1c !important; }
+[data-theme="light"] .hover\:text-red-400:hover { color: #dc2626 !important; }
+[data-theme="light"] .hover\:border-red-500:hover { border-color: #fca5a5 !important; }
+
+/* Orange ───────────────────────────────────────────────── */
+[data-theme="light"] .bg-orange-600              { background-color: #f8d5b0 !important; color: #7c2d12 !important; }
+[data-theme="light"] .bg-orange-700              { background-color: #f5c090 !important; color: #7c2d12 !important; }
+[data-theme="light"] .hover\:bg-orange-700:hover  { background-color: #f5c090 !important; }
+[data-theme="light"] .bg-orange-600 *            { color: inherit !important; }
+[data-theme="light"] .text-orange-600 { color: #ea580c !important; }
+
+/* Yellow ───────────────────────────────────────────────── */
+[data-theme="light"] .text-yellow-400 { color: #b45309 !important; }
+[data-theme="light"] .bg-yellow-600   { background-color: #fde8a0 !important; color: #713f12 !important; }
+[data-theme="light"] .bg-yellow-500   { background-color: #f5d87a !important; }
+
+/* ── 顶栏 ─────────────────────────────────────────────── */
+[data-theme="light"] .bg-gray-800.border-b {
+  background-color: #ffffff !important;
+  border-color: #e8eaf0 !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important;
 }
 
-/* 自定义 h-full 类，同时设置高度和宽度为100% */
-.h-full {
-  height: 100%;
-  width: 100%;
+/* ── 分镜卡片阴影 ──────────────────────────────────────── */
+[data-theme="light"] .bg-gray-700.rounded.overflow-hidden {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07), 0 4px 14px rgba(0,0,0,0.05) !important;
 }
+
+/* ── 弹窗/下拉容器微阴影 ───────────────────────────────── */
+[data-theme="light"] .bg-gray-700.border.border-gray-600.rounded-lg,
+[data-theme="light"] .bg-gray-800.rounded-lg,
+[data-theme="light"] .bg-gray-800.rounded-xl,
+[data-theme="light"] .bg-gray-900.rounded-xl {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.04) !important;
+}
+
+/* ── 弹框遮罩保持暗色 (bg-black 不覆盖) ──────────────── */
+[data-theme="light"] .bg-black\/60 { background-color: rgba(0,0,0,0.45) !important; }
+[data-theme="light"] .bg-black\/50 { background-color: rgba(0,0,0,0.35) !important; }
+[data-theme="light"] .bg-black\/40 { background-color: rgba(0,0,0,0.28) !important; }
+
+/* ── disabled ─────────────────────────────────────────── */
+[data-theme="light"] .disabled\:bg-gray-700:disabled { background-color: #e8eaf0 !important; }
+[data-theme="light"] .disabled\:text-gray-500:disabled { color: #b0b8ca !important; }
+
+/* ── 滚动条 ───────────────────────────────────────────── */
+[data-theme="light"] ::-webkit-scrollbar { width: 5px; height: 5px; }
+[data-theme="light"] ::-webkit-scrollbar-track { background: transparent; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d0d4de; border-radius: 3px; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #b0b6c4; }
+
+/* ── pre / code ───────────────────────────────────────── */
+[data-theme="light"] pre { background-color: #f0f1f5 !important; color: #2c3048 !important; }
+

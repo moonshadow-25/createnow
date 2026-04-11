@@ -6,6 +6,7 @@ interface SaasUser {
   user_id: string;
   display_name: string;
   email: string;
+  credits: number | null;
 }
 
 interface SaasAuthState {
@@ -14,6 +15,7 @@ interface SaasAuthState {
   token: string | null;
   loginWithPoll: (sessionId: string) => Promise<{ registered: boolean }>;
   fetchUser: () => Promise<void>;
+  fetchCredits: () => Promise<void>;
   logout: () => Promise<void>;
   restoreFromStorage: () => void;
 }
@@ -67,6 +69,24 @@ export const useSaasAuthStore = create<SaasAuthState>((set, get) => ({
       }
     } catch {
       // 忽略错误，用户信息可选
+    }
+  },
+
+  fetchCredits: async () => {
+    const token = get().token;
+    if (!token) return;
+    try {
+      const res = await fetch(`${baseUrl}/user/credits`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set(state => ({
+          user: state.user ? { ...state.user, credits: data.credits ?? null } : state.user,
+        }));
+      }
+    } catch {
+      // 忽略错误
     }
   },
 

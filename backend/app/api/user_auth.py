@@ -22,7 +22,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.services.auth_service import get_saas_login_url, check_saas_status
+from app.services.auth_service import get_saas_login_url, check_saas_status, fetch_saas_credits
 from app.services import user_saas_service
 from app.core.saas_security import create_saas_token
 
@@ -59,7 +59,7 @@ async def poll_and_login(body: PollRequest):
     用 session_id 轮询 CreateNow 平台登录状态。
     若已激活，在 Redis 创建/更新用户，返回内部 JWT。
     """
-    registered, api_key, email, display_name = await check_saas_status(body.session_id)
+    registered, api_key, email, display_name, credits = await check_saas_status(body.session_id)
     if not registered or not api_key:
         return {"registered": False}
 
@@ -86,6 +86,7 @@ async def poll_and_login(body: PollRequest):
             "user_id": user["user_id"],
             "display_name": user.get("display_name", ""),
             "email": user.get("email", ""),
+            "credits": credits,
         }
     }
 
@@ -106,6 +107,19 @@ async def get_me(request: Request):
         "created_at": user.get("created_at", ""),
         "last_login_at": user.get("last_login_at", ""),
     }
+
+
+@router.get("/credits")
+async def get_credits(request: Request):
+    """查询当前用户积分（实时从 CreateNow 平台获取）"""
+    user = getattr(request.state, "saas_user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    api_key = user.get("api_key", "")
+    if not api_key:
+        return {"credits": None}
+    credits = await fetch_saas_credits(api_key)
+    return {"credits": credits}
 
 
 # ============================================================

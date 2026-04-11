@@ -141,7 +141,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     try {
       await Promise.all([
         generationApi.updateGlobalStyleConfig(projectId, config),
-        updateProject(projectId, { ai_config: { ...(currentProject?.ai_config as any), image_sizes: imageSizes } }),
+        updateProject(projectId, { ai_config: { image_sizes: imageSizes } }),
       ]);
       setGlobalStyleConfig({
         global_resolution: config.global_resolution || '1280x720',
@@ -351,26 +351,12 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
           onChange={e => setConfig({ ...config, global_resolution: e.target.value })}
           className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
         >
-          <option value="1920x1080">1920x1080（横屏 FHD）</option>
           <option value="1280x720">1280x720（横屏 HD）</option>
-          <option value="1080x1920">1080x1920（竖屏 FHD）</option>
+          <option value="21:9-720p">21:9 超宽 720p</option>
           <option value="720x1280">720x1280（竖屏 HD）</option>
         </select>
       </div>
 
-      {/* Nine-grid mode */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm text-gray-300 whitespace-nowrap">九宫格模式</label>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.nine_grid_mode || false}
-            onChange={e => setConfig({ ...config, nine_grid_mode: e.target.checked })}
-            className="w-3.5 h-3.5 accent-purple-500"
-          />
-          <span className="text-xs text-gray-400">启用后调整提示词面板标签名称</span>
-        </label>
-      </div>
 
       {/* Two-column layout */}
       <div className="grid grid-cols-2 gap-4">

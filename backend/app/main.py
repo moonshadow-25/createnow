@@ -570,6 +570,27 @@ async def get_local_video(request: Request, project_id: str, filename: str):
     )
 
 
+@app.get("/api/projects/{project_id}/videos/thumbnails/{filename}")
+async def get_video_thumbnail(request: Request, project_id: str, filename: str):
+    """获取视频首帧缩略图"""
+    project_dir = _get_project_dir(request, project_id)
+    thumb_path = project_dir / "videos" / "thumbnails" / filename
+    if not thumb_path.exists() and settings.DEPLOY_MODE == "saas":
+        project_dir = await _get_project_dir_saas(project_id)
+        thumb_path = project_dir / "videos" / "thumbnails" / filename
+
+    if not thumb_path.exists():
+        raise HTTPException(status_code=404, detail="Video thumbnail not found")
+
+    return FileResponse(
+        thumb_path,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "public, max-age=31536000",
+        }
+    )
+
+
 @app.get("/api/projects/{project_id}/generate/media/files/{filename}")
 async def get_local_media(request: Request, project_id: str, filename: str):
     """获取上传的参考视频/音频文件"""

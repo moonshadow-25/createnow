@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Film, FileText, Settings, Palette, ChevronDown, RefreshCw, Video } from 'lucide-react';
+import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
@@ -8,13 +8,12 @@ import { adminApi } from '@/services/api';
 import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
 import { StoryboardTab } from '@/components/storyboard/StoryboardTab';
-import { ScriptTab } from '@/components/script/ScriptTab';
-import { CanvasTab } from '@/components/canvas/CanvasTab';
 import { GenerateTab } from '@/components/generate/GenerateTab';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { useThemeStore } from '@/store/themeStore';
 
-type TabType = 'chat' | 'assets' | 'script' | 'storyboard' | 'canvas' | 'generate';
+type TabType = 'chat' | 'assets' | 'storyboard' | 'generate';
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -23,9 +22,7 @@ export default function ProjectPage() {
   const { characters, scenes, props, episodes, fetchAssets, loadedProjectId } = useAssetStore();
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
-  const vibeDramaOpen = useVibeDramaStore(s => s.isOpen);
-  const vibeDramaPanelWidth = useVibeDramaStore(s => s.panelWidth);
-  const toggleVibeDrama = useVibeDramaStore(s => s.toggle);
+  const { theme, toggle: toggleTheme } = useThemeStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
@@ -38,7 +35,7 @@ export default function ProjectPage() {
 
   // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
   const TAB_LABELS: Record<string, string> = {
-    assets: '资产面板', script: '剧本', canvas: '画布', chat: '项目对话', generate: '视频生成',
+    assets: '资产面板', chat: '项目对话', generate: '视频生成',
   };
   useEffect(() => {
     if (!projectId || activeTab === 'storyboard') return;
@@ -151,7 +148,7 @@ export default function ProjectPage() {
             </button>
             <h1 className="text-2xl font-bold inline">{currentProject.name}</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 pr-10">
             <button
               onClick={() => setActiveTab('storyboard')}
               className={`px-4 py-2 rounded-lg transition ${
@@ -175,7 +172,7 @@ export default function ProjectPage() {
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
                 className={`px-4 py-2 rounded-lg transition flex items-center gap-1 ${
-                  ['generate', 'script', 'canvas', 'chat'].includes(activeTab)
+                  ['generate', 'chat'].includes(activeTab)
                     ? 'bg-blue-600'
                     : 'bg-gray-700 hover:bg-gray-600'
                 }`}
@@ -191,20 +188,6 @@ export default function ProjectPage() {
                   >
                     <Video size={16} />
                     广场
-                  </button>
-                  <button
-                    onClick={() => { setActiveTab('script'); setShowMoreMenu(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 ${activeTab === 'script' ? 'text-blue-400' : 'text-gray-200'}`}
-                  >
-                    <FileText size={16} />
-                    剧本
-                  </button>
-                  <button
-                    onClick={() => { setActiveTab('canvas'); setShowMoreMenu(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 ${activeTab === 'canvas' ? 'text-blue-400' : 'text-gray-200'}`}
-                  >
-                    <Palette size={16} />
-                    画布
                   </button>
                   <div className="border-t border-gray-600 my-1" />
                   <button
@@ -226,26 +209,20 @@ export default function ProjectPage() {
               <Settings size={18} />
               设置
             </button>
-            {/* 小龙虾入口按钮 */}
             <button
-              onClick={toggleVibeDrama}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition border-2 ${
-                vibeDramaOpen
-                  ? 'bg-gray-700 border-red-500 text-red-300'
-                  : 'bg-gray-700 hover:bg-gray-600 border-transparent text-gray-200'
-              }`}
-              title="小龙虾 AI 助手"
+              onClick={toggleTheme}
+              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-gray-200 transition-colors"
+              title={theme === 'light' ? '切换暗色主题' : '切换亮色主题'}
             >
-              <span className="text-lg leading-none select-none">🦞</span>
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* 主体：内容区，面板打开时右侧让位 */}
+      {/* 主体：内容区 */}
       <div
-        className="overflow-hidden h-[calc(100vh-73px)] transition-all duration-300"
-        style={{ paddingRight: vibeDramaOpen ? vibeDramaPanelWidth : 0 }}
+        className="overflow-hidden h-[calc(100vh-73px)]"
       >
         {/* 主内容区 */}
         <div className="h-full overflow-hidden">
@@ -264,12 +241,6 @@ export default function ProjectPage() {
                 props={props}
                 onRefresh={handleRefreshAssets}
               />
-            </div>
-          )}
-
-          {activeTab === 'script' && (
-            <div className="flex h-full">
-              <ScriptTab projectId={projectId!} />
             </div>
           )}
 
@@ -296,12 +267,6 @@ export default function ProjectPage() {
                   showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
                 />
               </div>
-            </div>
-          )}
-
-          {activeTab === 'canvas' && (
-            <div className="flex h-full">
-              <CanvasTab projectId={projectId!} />
             </div>
           )}
         </div>

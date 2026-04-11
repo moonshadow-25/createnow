@@ -2,9 +2,9 @@
 全局默认提示词服务
 
 JSON 是唯一数据源，无硬编码内容常量。
-添加/删除/修改提示词只需编辑 backend/config/default_prompt_templates.json。
+添加/删除/修改提示词只需编辑 backend/app/prompts/{key}/{preset}.md。
 
-出厂默认（用于全局重置）：backend/app/default_prompt_templates.json
+出厂默认（用于全局重置）：backend/app/default_prompt_templates.json + backend/app/prompts/
 用户工作副本（可编辑）：backend/config/default_prompt_templates.json
 """
 import json
@@ -19,9 +19,21 @@ _BACKEND_DIR = Path(__file__).parent.parent.parent
 # 出厂默认 JSON（随代码发布，跟踪于 git，仅用于 reset_to_defaults）
 _BUILTIN_JSON_PATH = Path(__file__).parent.parent / "default_prompt_templates.json"
 
+# 提示词内容文件目录（.md 文件）
+_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
 
 def _get_json_path() -> Path:
     return _BACKEND_DIR / "config" / "default_prompt_templates.json"
+
+
+def _resolve_content_files(data: Dict[str, Any]) -> None:
+    """就地解析所有 content_file 引用，将内容读入 preset["content"]"""
+    for key, entry in data.items():
+        for preset_name, preset in entry.get("presets", {}).items():
+            if isinstance(preset, dict) and "content_file" in preset and "content" not in preset:
+                fpath = _PROMPTS_DIR / preset["content_file"]
+                preset["content"] = fpath.read_text(encoding="utf-8") if fpath.exists() else ""
 
 
 def load_prompts() -> Dict[str, Any]:
@@ -38,6 +50,7 @@ def load_prompts() -> Dict[str, Any]:
             _cache = json.load(f)
     else:
         _cache = {}
+    _resolve_content_files(_cache)
     return _cache
 
 
@@ -62,6 +75,8 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
 
     优先级：项目级自定义 > 项目级激活预设 > 全局 JSON default 预设
 
+    若项目覆盖中存在 custom_suffix，则在基础内容末尾追加自定义指令段。
+
     Args:
         key: 提示词 key（如 "image", "character_analysis"）
         ai_config: 项目 AI 配置，含 prompt_overrides。为 None 时仅返回全局默认。
@@ -69,6 +84,8 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
     prompts = load_prompts()
     if key not in prompts:
         return ""
+
+    base_content = ""
 
     # 检查项目级覆盖
     if ai_config:
@@ -78,11 +95,24 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
             active = override.get("active", "default")
             custom = override.get("custom", {})
             if active in custom:
-                return custom[active].get("content", "")
-            # 激活的是某个全局 preset
-            presets = prompts[key].get("presets", {})
-            if active in presets:
-                return presets[active].get("content", "")
+                base_content = custom[active].get("content", "")
+            else:
+                # 激活的是某个全局 preset
+                presets = prompts[key].get("presets", {})
+                if active in presets:
+                    base_content = presets[active].get("content", "")
+
+            # 追加 custom_suffix（若存在）
+            custom_suffix = override.get("custom_suffix", "").strip()
+            if custom_suffix:
+                if not base_content:
+                    # 若尚未从 custom 或 preset 取到内容，回退到全局默认
+                    presets = prompts[key].get("presets", {})
+                    base_content = presets.get("default", {}).get("content", "")
+                return base_content + "\n\n---\n[项目自定义附加指令（最高优先级，严格遵守）]\n" + custom_suffix
+
+            if base_content:
+                return base_content
 
     # 全局默认（default preset）
     presets = prompts[key].get("presets", {})
@@ -96,6 +126,7 @@ def reset_to_defaults() -> Dict[str, Any]:
         return load_prompts()
     with open(_BUILTIN_JSON_PATH, "r", encoding="utf-8") as f:
         defaults = json.load(f)
+    _resolve_content_files(defaults)
     save_prompts(defaults)
     return defaults
 
@@ -154,11 +185,18 @@ def save_global_prompts(data: Dict[str, Any]) -> None:
         if key in prompts:
             prompts[key]["presets"] = presets
     # 合并 group_b_service（单字符串 → default preset content）
+    # 同样跳过有 content_file 的 preset，防止固化已解析内容
     for key, content in data.get("group_b_service", {}).items():
         if key in prompts and isinstance(content, str):
-            prompts[key]["presets"]["default"]["content"] = content
+            default_preset = prompts[key]["presets"].get("default", {})
+            if "content_file" not in default_preset:
+                default_preset["content"] = content
     # 合并 group_c_inline
+    # 注意：如果 preset 有 content_file，则 .md 文件是权威来源，不写 inline content，
+    # 防止每次保存把已解析的内容固化为 JSON 字段，永久屏蔽 .md 文件的更新。
     for key, content in data.get("group_c_inline", {}).items():
         if key in prompts and isinstance(content, str):
-            prompts[key]["presets"]["default"]["content"] = content
+            default_preset = prompts[key]["presets"].get("default", {})
+            if "content_file" not in default_preset:
+                default_preset["content"] = content
     save_prompts(prompts)

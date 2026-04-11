@@ -3,6 +3,7 @@ import { CheckCircle2, AlertCircle, X, Plus, ChevronDown, Eye, EyeOff } from 'lu
 import { v4 as uuidv4 } from 'uuid';
 import { validationApi, authApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
+import { CREATENOW_API_URL } from '@/constants/urls';
 import type { ApiConfig, ApiConfigPresetsMap, ApiConfigPreset } from '@/types';
 
 interface ApiConfigPanelProps {
@@ -167,7 +168,7 @@ export function ApiConfigPanel({
       tts: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2audio/speech-synthesis'
     };
 
-    const createnowUrl = 'http://47.117.182.216:8003/v1';
+    const createnowUrl = CREATENOW_API_URL;
 
     const newConfig: ApiConfig = {
       ...config,

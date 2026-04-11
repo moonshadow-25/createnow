@@ -154,11 +154,11 @@ def get_saas_login_url(session_id: str) -> str:
     return f"{base}/register.html?session_id={session_id}"
 
 
-async def check_saas_status(session_id: str) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+async def check_saas_status(session_id: str) -> Tuple[bool, Optional[str], Optional[str], Optional[str], Optional[int]]:
     """SaaS 模式：用 session_id 查询 CreateNow 登录状态
 
     Returns:
-        (registered: bool, api_key: str | None, email: str | None, display_name: str | None)
+        (registered, api_key, email, display_name, credits)
     """
     base = _get_base_url()
     url = f"{base}/api/status"
@@ -177,15 +177,30 @@ async def check_saas_status(session_id: str) -> Tuple[bool, Optional[str], Optio
                 data.get("api_key"),
                 data.get("user_name", ""),
                 data.get("user_name", ""),
+                data.get("credits"),
             )
         elif status == "pending":
-            return False, None, None, None
+            return False, None, None, None, None
         else:
             logger.warning(f"[Auth][SaaS] Unexpected status from server: {data}")
-            return False, None, None, None
+            return False, None, None, None, None
     except Exception as e:
         logger.error(f"[Auth][SaaS] check_saas_status error: {e}")
         raise
+
+
+async def fetch_saas_credits(api_key: str) -> Optional[int]:
+    """使用 API Key 查询 CreateNow 账户当前积分"""
+    base = _get_base_url()
+    url = f"{base}/api/status"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params={"api_key": api_key})
+            data = resp.json()
+        return data.get("credits")
+    except Exception as e:
+        logger.error(f"[Auth][SaaS] fetch_saas_credits error: {e}")
+        return None
 
 
 # ============================================================
