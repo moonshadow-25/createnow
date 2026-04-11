@@ -144,7 +144,7 @@ async def handle_get_episode_storyboards(project_id: str, parameters: Dict) -> D
 
 
 async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
-    """读取当前剧集的完整剧本内容"""
+    """读取当前剧集的完整剧本内容，同时返回项目已有资产列表"""
     episode_id = parameters.get("episode_id")
     if not episode_id:
         return {"success": False, "error": "缺少必需字段: episode_id"}
@@ -153,6 +153,20 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         if not episode:
             return {"success": False, "error": "剧集不存在"}
         script = episode.get("script", "")
-        return {"success": True, "episode_id": episode_id, "script": script or "（暂无剧本内容）"}
+        # 同时返回项目已有资产，避免重复创建
+        existing_assets = {}
+        for asset_type in ["character", "scene", "prop"]:
+            assets = AssetService.list_assets(project_id, asset_type) or []
+            existing_assets[asset_type] = [
+                {"asset_id": a.get("asset_id"), "name": a.get("name"), "has_image_prompt": bool(a.get("image_prompt"))}
+                for a in assets
+            ]
+        return {
+            "success": True,
+            "episode_id": episode_id,
+            "script": script or "（暂无剧本内容）",
+            "existing_assets": existing_assets,
+            "notice": "⚠️ 以上 existing_assets 是项目中已有的全部资产。创建资产前必须与此列表比对，已存在的资产直接使用其 asset_id，禁止重复创建。"
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}

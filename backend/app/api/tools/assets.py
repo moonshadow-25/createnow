@@ -16,12 +16,11 @@ async def handle_create_character(project_id: str, parameters: Dict) -> Dict:
     existing_names = [c.get("name") for c in all_chars if c.get("name")]
     if existing:
         return {"success": True, "asset_id": existing["asset_id"], "name": existing["name"], "already_exists": True,
-                "warning": f"⚠️ 该角色已存在，无需重复创建。当前已有角色({len(all_chars)}个)：{existing_names}"}
+                "warning": f"⚠️ 角色「{existing['name']}」已存在，已返回现有资产ID，无需重复创建。当前已有角色({len(all_chars)}个)：{existing_names}"}
     result = AssetService.save_asset(project_id, "character", parameters)
     all_chars_after = AssetService.list_assets(project_id, "character") or []
-    all_names_after = [c.get("name") for c in all_chars_after if c.get("name")]
     return {"success": True, "asset_id": result["asset_id"], "name": result["name"], "already_exists": False,
-            "reminder": f"📋 当前项目已有角色({len(all_chars_after)}个)：{all_names_after}。⚠️ 只为剧本主要角色（有姓名、有台词、有特写）建档，路人/龙套/无名角色不要创建资产。"}
+            "current_characters": [{"name": c.get("name"), "asset_id": c.get("asset_id")} for c in all_chars_after]}
 
 
 async def handle_create_scene(project_id: str, parameters: Dict) -> Dict:
@@ -36,12 +35,11 @@ async def handle_create_scene(project_id: str, parameters: Dict) -> Dict:
     existing_names = [s.get("name") for s in all_scenes if s.get("name")]
     if existing:
         return {"success": True, "asset_id": existing["asset_id"], "name": existing["name"], "already_exists": True,
-                "warning": f"⚠️ 该场景已存在，无需重复创建。当前已有场景({len(all_scenes)}个)：{existing_names}"}
+                "warning": f"⚠️ 场景「{existing['name']}」已存在，已返回现有资产ID，无需重复创建。当前已有场景({len(all_scenes)}个)：{existing_names}"}
     result = AssetService.save_asset(project_id, "scene", parameters)
     all_scenes_after = AssetService.list_assets(project_id, "scene") or []
-    all_names_after = [s.get("name") for s in all_scenes_after if s.get("name")]
     return {"success": True, "asset_id": result["asset_id"], "name": result["name"], "already_exists": False,
-            "reminder": f"📋 当前项目已有场景({len(all_scenes_after)}个)：{all_names_after}。⚠️ 只为剧本主要场景建档，背景路过场景不要创建资产。"}
+            "current_scenes": [{"name": s.get("name"), "asset_id": s.get("asset_id")} for s in all_scenes_after]}
 
 
 async def handle_create_prop(project_id: str, parameters: Dict) -> Dict:

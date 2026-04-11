@@ -47,6 +47,8 @@ TOOL: create_character
 }
 END_TOOL
 
+⚠️ **创建前必须比对 `get_episode_script` 返回的 `existing_assets`**：该工具返回值中包含项目所有已有角色/场景/道具，创建任何资产前必须先检查此列表，已存在的直接使用其 `asset_id`，禁止重复创建。
+
 TOOL: update_character
 {
   "name": "要修改的角色名（用于查找）",
