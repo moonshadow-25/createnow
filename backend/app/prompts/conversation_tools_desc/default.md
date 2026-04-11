@@ -419,6 +419,8 @@ END_TOOL
 - 同时填写每个分镜的 image_prompt 和 video_prompt
 
 **步骤1c（生成资产图）**：调用 generate_all_asset_images（需用户确认）
+- 用户确认后系统开始生图，生图完成后请主动提示用户："图片已生成完毕，请点击确认提交审核"
+- 然后调用 submit_images_for_review（需用户确认）
 
 **步骤2**（收到"继续执行下一步"后）：调用 submit_images_for_review（**需用户确认**）
 - 用户确认后系统会自动提交审核并轮询状态，完成后 AI 会收到通知

@@ -261,15 +261,12 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     const { token, toolName } = pendingConfirmation;
     setPendingConfirmation(null);
     await sendRawMessage(`__CONFIRM__:${token}`);
-    if (toolName === 'generate_all_asset_images') {
-      // 生图完成 → 触发 AI 继续执行下一步（提交审核，无需确认）
-      await sendRawMessage('继续执行下一步');
-    }
     if (toolName === 'delete_all_storyboards') {
       // 分镜已清空 → 告知 AI 继续生成新分镜
       await sendRawMessage('分镜已全部删除，请继续生成新分镜');
     }
-    // generate_all_storyboard_videos 确认完成后流程结束，不做任何事
+    // generate_all_asset_images / submit_images_for_review / generate_all_storyboard_videos
+    // 确认完成后不自动发送下一条消息，由 AI 在下一轮流程中自行判断
   }, [pendingConfirmation, sendRawMessage]);
 
   const cancelPendingAction = useCallback(async () => {
