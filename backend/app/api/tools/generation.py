@@ -31,23 +31,36 @@ async def handle_generate_all_asset_images(project_id: str, parameters: Dict, ai
         from app.api.generation.image import generate_image_core
         from app.api.generation.utils import check_project_budget
         from app.services import ProjectService
+        import asyncio
         asset_types = parameters.get("asset_types", ["character", "scene", "prop"])
         proj = ProjectService.get_project(project_id)
         check_project_budget(proj)
-        results, skipped = [], []
+
+        tasks = []
         for atype in asset_types:
             for asset in (AssetService.list_assets(project_id, atype) or []):
-                aid = asset.get("asset_id")
-                image_prompt = asset.get("image_prompt", "")
-                if not image_prompt:
-                    skipped.append(asset.get("name", aid))
-                    continue
-                try:
-                    saved = await generate_image_core(project_id=project_id, asset_id=aid, asset_type=atype, prompt=image_prompt, ai_config=ai_config)
-                    results.append({"name": asset.get("name", aid), "image_id": saved["image_id"]})
-                except Exception as e:
-                    skipped.append(f"{asset.get('name', aid)}(错误: {str(e)})")
-        return {"success": True, "generated": len(results), "skipped": len(skipped), "details": results, "skipped_names": skipped}
+                if asset.get("image_prompt"):
+                    tasks.append((asset, atype))
+
+        if not tasks:
+            return {"success": True, "generated": 0, "skipped": 0, "details": [], "skipped_names": []}
+
+        async def gen_one(asset, atype):
+            aid = asset.get("asset_id")
+            try:
+                saved = await generate_image_core(project_id=project_id, asset_id=aid, asset_type=atype, prompt=asset["image_prompt"], ai_config=ai_config)
+                return {"ok": True, "name": asset.get("name", aid), "image_id": saved["image_id"]}
+            except Exception as e:
+                return {"ok": False, "name": f"{asset.get('name', aid)}(错误: {str(e)})"}
+
+        # 收集无提示词的资产
+        skipped_names = [asset.get("name", asset.get("asset_id")) for atype in asset_types for asset in (AssetService.list_assets(project_id, atype) or []) if not asset.get("image_prompt")]
+
+        outcomes = await asyncio.gather(*[gen_one(asset, atype) for asset, atype in tasks])
+        results = [o for o in outcomes if o["ok"]]
+        skipped_names += [o["name"] for o in outcomes if not o["ok"]]
+
+        return {"success": True, "generated": len(results), "skipped": len(skipped_names), "details": results, "skipped_names": skipped_names}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
