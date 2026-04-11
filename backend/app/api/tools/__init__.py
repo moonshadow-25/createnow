@@ -46,6 +46,7 @@ CONFIRMATION_REQUIRED_TOOLS = {
     "generate_all_storyboard_images",
     "generate_all_storyboard_videos",
     "delete_all_storyboards",
+    "submit_images_for_review",
 }
 
 # 工具名 → handler 映射（不需要 ai_config 的工具）
