@@ -166,12 +166,18 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
                 }
                 for a in assets
             ]
+        # 同时返回已有分镜数量
+        all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
+        episode_storyboards = [sb for sb in all_storyboards if sb.get("episode_id") == episode_id]
+        storyboard_count = len(episode_storyboards)
+
         return {
             "success": True,
             "episode_id": episode_id,
             "script": script or "（暂无剧本内容）",
             "existing_assets": existing_assets,
-            "notice": "⚠️ 以上 existing_assets 是项目中已有的全部资产。创建资产前必须与此列表比对，已存在的资产直接使用其 asset_id，禁止重复创建。"
+            "existing_storyboard_count": storyboard_count,
+            "notice": f"⚠️ 已有资产见 existing_assets，已存在的直接用 asset_id，禁止重复创建。本集已有 {storyboard_count} 个分镜，{'已有分镜不得删除，直接跳到生图/提交审核/生成视频步骤' if storyboard_count > 0 else '需要创建分镜'}。"
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
