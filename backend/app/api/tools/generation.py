@@ -208,20 +208,14 @@ async def handle_generate_all_storyboard_videos(project_id: str, parameters: Dic
 
 async def handle_submit_images_for_review(project_id: str, parameters: Dict) -> Dict:
     try:
-        from app.api.generation.assets import submit_assets_core, collect_submit_image_ids
+        from app.api.generation.assets import collect_submit_image_ids
         episode_id = parameters.get("episode_id")
         image_ids = parameters.get("image_ids")
         if not image_ids:
             image_ids = collect_submit_image_ids(project_id, episode_id)
         if not image_ids:
-            return {"success": False, "error": "没有找到可提交的图片，请先为分镜生成图片"}
-        result = await submit_assets_core(project_id, image_ids)
-        submitted = result.get("submitted", [])
-        skipped = result.get("skipped", [])
-        if not submitted and skipped:
-            # 全部已提交过，把已有的 asset_id 放入 submitted 供前端轮询状态
-            already_submitted = [s for s in skipped if isinstance(s, dict) and s.get("asset_id")]
-            return {"success": True, "message": f"所有图片已在审核队列中（{len(skipped)} 张），无需重复提交，请等待审核完成", "submitted_count": 0, "already_in_review": len(skipped), "submitted": already_submitted}
-        return {"success": True, "submitted_count": len(submitted), "skipped_count": len(skipped), "submitted": submitted}
+            return {"success": False, "error": "没有找到可提交的图片，请先为资产生成图片"}
+        # 只返回 image_ids，实际提交由前端完成（走和"一键提交审核"完全相同的路径）
+        return {"success": True, "image_ids": image_ids, "count": len(image_ids)}
     except Exception as e:
         return {"success": False, "error": str(e)}

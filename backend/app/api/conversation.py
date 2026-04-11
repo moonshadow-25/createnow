@@ -141,10 +141,7 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
             if result.get("success"):
                 yield f"data: {json.dumps({'type': 'content', 'content': f'✓ 已执行：{desc}'})}\n\n"
                 # 发送 tool_result 事件（供前端流水线逻辑使用）
-                extra = {}
-                if pending["tool_name"] == "submit_images_for_review" and "submitted" in result:
-                    extra["submitted"] = result["submitted"]
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': pending['tool_name'], 'result': f'✓ 已执行：{desc}', **extra})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': pending['tool_name'], 'result': f'✓ 已执行：{desc}'})}\n\n"
             else:
                 _err_msg = result.get("error", "未知错误")
                 yield f"data: {json.dumps({'type': 'content', 'content': f'❌ 执行失败：{_err_msg}'})}\n\n"
@@ -390,8 +387,6 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
                         success_msg = f'✅ {tool_name} 操作成功'
                     # submit_images_for_review 额外携带 submitted 列表，供前端轮询审核状态
                     extra = {}
-                    if tool_name == "submit_images_for_review" and "submitted" in result:
-                        extra["submitted"] = result["submitted"]
                     yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': success_msg, **extra})}\n\n"
                     tool_results_lines.append(f"{tool_name} → {success_msg}")
                 else:

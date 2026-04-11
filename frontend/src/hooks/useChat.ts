@@ -28,11 +28,6 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // 审核轮询：存储待轮询的 asset_id 列表
-  const pendingReviewAssetIdsRef = useRef<string[]>([]);
-  // 用 ref 持有 startReviewPolling，供 _fetchStream 内部调用（避免循环依赖）
-  const startReviewPollingRef = useRef<(() => void) | null>(null);
-
   const storageKey = options?.episodeId
     ? `conversation_${projectId}_${options.episodeId}`
     : `conversation_${projectId}_${options?.tabName || ''}`;
@@ -174,14 +169,10 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                       window.dispatchEvent(new CustomEvent('storyboard:tool-updated', { detail: { storyboard_ids: ids } }));
                     }
                     if (name === 'submit_images_for_review') {
-                      const ids = (chunk.submitted || []).map((s: any) => s.asset_id).filter(Boolean);
-                      console.log('[ReviewPolling] submit_images_for_review tool_result:', { submitted: chunk.submitted, ids });
-                      if (ids.length > 0) {
-                        pendingReviewAssetIdsRef.current = ids;
-                        startReviewPollingRef.current?.();
-                      } else {
-                        console.warn('[ReviewPolling] submitted 为空，不触发轮询。chunk:', chunk);
-                      }
+                      // 通知 StoryboardDetail 执行实际提交（走和手动按钮完全相同的路径）
+                      window.dispatchEvent(new CustomEvent('storyboard:submit-for-review', {
+                        detail: { projectId, episodeId: options?.episodeId }
+                      }));
                     }
                     break;
                   }
@@ -288,51 +279,12 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     await sendRawMessage(`__CANCEL__:${token}`);
   }, [pendingConfirmation, sendRawMessage]);
 
-  const startReviewPolling = useCallback(() => {
-    const assetIds = pendingReviewAssetIdsRef.current;
-    if (!assetIds || assetIds.length === 0) {
-      sendRawMessage('审核已完成，请继续生成视频');
-      return;
-    }
-
-    const _token = localStorage.getItem('saas_token') || localStorage.getItem('admin_token');
-    let attempts = 0;
-
-    const poll = async () => {
-      attempts++;
-      if (attempts > 60) return;
-      console.log(`[ReviewPolling] 第 ${attempts} 次轮询，asset_ids:`, assetIds);
-      try {
-        const results = await Promise.all(
-          assetIds.map(assetId =>
-            fetch(`/api/projects/${projectId}/generate/assets/${assetId}/status`, {
-              headers: _token ? { Authorization: `Bearer ${_token}` } : {},
-            }).then(r => r.json()).catch(() => ({ status: 'Processing' }))
-          )
-        );
-        console.log('[ReviewPolling] 轮询结果:', results);
-
-        // 通知分镜页面刷新徽章
-        window.dispatchEvent(new CustomEvent('storyboard:review-status-updated', { detail: { projectId, episodeId: options?.episodeId } }));
-
-        const allActive = results.every((r: any) => r.status === 'Active');
-        if (allActive) {
-          console.log('[ReviewPolling] 全部 Active，发送审核完成消息');
-          pendingReviewAssetIdsRef.current = [];
-          await sendRawMessage('审核已完成，请继续生成视频');
-        } else {
-          console.log('[ReviewPolling] 还有未 Active，8 秒后再次轮询');
-          setTimeout(poll, 8000);
-        }
-      } catch {
-        setTimeout(poll, 8000);
-      }
-    };
-    setTimeout(poll, 5000);
-  }, [projectId, options?.episodeId, sendRawMessage]);
-
-  // 同步 ref，供 _fetchStream 内部调用
-  useEffect(() => { startReviewPollingRef.current = startReviewPolling; }, [startReviewPolling]);
+  // 监听 StoryboardDetail 发来的审核完成事件，通知 AI 继续
+  useEffect(() => {
+    const handler = () => sendRawMessage('审核已完成，请继续生成视频');
+    window.addEventListener('storyboard:review-complete', handler);
+    return () => window.removeEventListener('storyboard:review-complete', handler);
+  }, [sendRawMessage]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);

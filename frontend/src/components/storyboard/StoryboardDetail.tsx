@@ -495,12 +495,16 @@ export function StoryboardDetail({
   };
 
   // 轮询单个素材审核状态，直到不再是 Processing
-  const pollAssetStatus = (assetId: string, imageId: string) => {
+  const pollAssetStatus = (assetId: string, imageId: string, onComplete?: () => void) => {
     const poll = async () => {
       try {
         const r = await generationApi.getAssetStatus(projectId, assetId);
         setImageStatuses(prev => ({ ...prev, [imageId]: { asset_id: assetId, status: r.data.status } }));
-        if (r.data.status === 'Processing') setTimeout(poll, 5000);
+        if (r.data.status === 'Processing') {
+          setTimeout(poll, 5000);
+        } else {
+          onComplete?.();
+        }
       } catch {}
     };
     setTimeout(poll, 3000);
@@ -555,6 +559,72 @@ export function StoryboardDetail({
       }
     }
   };
+
+  // AI 触发提交审核：监听事件，走和手动按钮完全相同的路径，完成后通知 AI
+  const storyboardsRef = useRef(storyboards);
+  const imageStatusesRef = useRef(imageStatuses);
+  useEffect(() => { storyboardsRef.current = storyboards; }, [storyboards]);
+  useEffect(() => { imageStatusesRef.current = imageStatuses; }, [imageStatuses]);
+
+  useEffect(() => {
+    const handler = async () => {
+      const sbs = storyboardsRef.current;
+      const statuses = imageStatusesRef.current;
+      const isActive = (imageId: string) => statuses[imageId]?.status === 'Active';
+      const imageIds: string[] = [];
+
+      for (const sb of sbs) {
+        if (sb.image_id && !imageIds.includes(sb.image_id) && !isActive(sb.image_id)) imageIds.push(sb.image_id);
+        for (const charId of (sb.character_ids || [])) {
+          const char = characters.find((c: any) => c.asset_id === charId);
+          if (char?.image_id && !imageIds.includes(char.image_id) && !isActive(char.image_id)) imageIds.push(char.image_id);
+        }
+        const sceneIds = sb.scene_ids?.length ? sb.scene_ids : (sb.scene_id ? [sb.scene_id] : []);
+        for (const sceneId of sceneIds) {
+          const scene = scenes.find((s: any) => s.asset_id === sceneId);
+          if (scene?.image_id && !imageIds.includes(scene.image_id) && !isActive(scene.image_id)) imageIds.push(scene.image_id);
+        }
+        for (const propId of (sb.prop_ids || [])) {
+          const prop = props.find((p: any) => p.asset_id === propId);
+          if (prop?.image_id && !imageIds.includes(prop.image_id) && !isActive(prop.image_id)) imageIds.push(prop.image_id);
+        }
+      }
+
+      if (imageIds.length === 0) {
+        // 所有图片已是 Active，直接通知 AI 完成
+        window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+        return;
+      }
+
+      try {
+        const res = await generationApi.submitAsset(projectId, imageIds);
+        const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+
+        // 对每个 Processing 的素材启动轮询，全部完成后通知 AI
+        const processingItems = submitted.filter(s => s.status === 'Processing');
+        if (processingItems.length === 0) {
+          window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+          return;
+        }
+
+        let remaining = processingItems.length;
+        processingItems.forEach(s => {
+          pollAssetStatus(s.asset_id, s.image_id, () => {
+            remaining--;
+            if (remaining === 0) {
+              window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+            }
+          });
+        });
+      } catch {
+        // 提交失败，也通知 AI（让 AI 自行处理错误）
+        window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+      }
+    };
+
+    window.addEventListener('storyboard:submit-for-review', handler);
+    return () => window.removeEventListener('storyboard:submit-for-review', handler);
+  }, [projectId, characters, scenes, props]);
 
   // 刷新分镜数据（手动刷新按钮）
   const handleRefreshStoryboards = async () => {
