@@ -276,12 +276,8 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     await sendRawMessage(`__CANCEL__:${token}`);
   }, [pendingConfirmation, sendRawMessage]);
 
-  // 监听 StoryboardDetail 发来的审核完成事件，通知 AI 继续
-  useEffect(() => {
-    const handler = () => sendRawMessage('审核已完成，请继续生成视频');
-    window.addEventListener('storyboard:review-complete', handler);
-    return () => window.removeEventListener('storyboard:review-complete', handler);
-  }, [sendRawMessage]);
+  // 审核完成后不再自动发消息给 AI，避免无限循环
+  // 用户手动确认 generate_all_storyboard_videos 即可继续
 
   const clearMessages = useCallback(() => {
     setMessages([]);
