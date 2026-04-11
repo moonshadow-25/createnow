@@ -74,8 +74,19 @@ async def list_assets(project_id: str, asset_type: str, include_children: bool =
                 asset["primary_image_url"] = f"/api/projects/{project_id}/images/files/{primary_image['local_path']}"
             else:
                 asset["primary_image_url"] = primary_image.get("image_path")
+            # 优先从 asset.image_id 对应的图片读取审核状态，避免与 is_primary 图片不一致
+            asset_image_id = asset.get("image_id")
+            ref_image = primary_image
+            if asset_image_id:
+                matched = next((img for img in info.get("images", []) if img.get("image_id") == asset_image_id), None)
+                if matched:
+                    ref_image = matched
+            asset["volcengine_asset_id"] = ref_image.get("volcengine_asset_id")
+            asset["volcengine_asset_status"] = ref_image.get("volcengine_asset_status")
         else:
             asset["primary_image_url"] = None
+            asset["volcengine_asset_id"] = None
+            asset["volcengine_asset_status"] = None
         asset["image_count"] = info.get("image_count", 0)
 
     print(
@@ -153,6 +164,14 @@ async def delete_asset(project_id: str, asset_type: str, asset_id: str):
                 changed = True
             if changed:
                 AssetService.save_asset(project_id, "storyboard", sb)
+
+    # 删除集后自动重排剩余集的 episode_number
+    if asset_type == "episode":
+        remaining = AssetService.list_assets(project_id, "episode")
+        remaining.sort(key=lambda e: e.get("episode_number", 0))
+        for index, ep in enumerate(remaining):
+            ep["episode_number"] = index + 1
+            AssetService.save_asset(project_id, "episode", ep)
 
     return {"success": True}
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from typing import List, Optional, Union
 from pydantic import BaseModel
 from datetime import datetime
@@ -198,6 +199,14 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
     primary_images = ImageService.get_primary_images_batch(project_id, asset_ids)
     t1 = time.perf_counter()
 
+    # 对没有主图的分镜，批量查询主视频用于生成缩略图 URL
+    no_image_ids = [
+        sb["asset_id"] for sb in episode_storyboards
+        if not primary_images.get(sb["asset_id"])
+    ]
+    videos_dir = str(_get_projects_dir() / project_id / "videos")
+    primary_videos = VideoService.get_primary_videos_batch(project_id, no_image_ids, videos_dir=videos_dir) if no_image_ids else {}
+
     for sb in episode_storyboards:
         primary_image = primary_images.get(sb["asset_id"])
         if primary_image:
@@ -205,8 +214,46 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
                 sb["primary_image_url"] = f"/api/projects/{project_id}/images/files/{primary_image['local_path']}"
             else:
                 sb["primary_image_url"] = primary_image.get("image_path")
+            # 注入主图 image_id（分镜 JSON 可能未存储），前端用于状态查找
+            if not sb.get("image_id") and primary_image.get("image_id"):
+                sb["image_id"] = primary_image["image_id"]
+            # 注入主图审核状态，前端据此决定是否需要轮询
+            sb["volcengine_asset_id"] = primary_image.get("volcengine_asset_id")
+            sb["volcengine_asset_status"] = primary_image.get("volcengine_asset_status")
+            # 确保 image_id 存在（分镜 JSON 可能未存储）
+            if not sb.get("image_id") and primary_image.get("image_id"):
+                sb["image_id"] = primary_image["image_id"]
         else:
             sb["primary_image_url"] = None
+            sb["volcengine_asset_id"] = None
+            sb["volcengine_asset_status"] = None
+
+        # 注入主视频 URL 及缩略图 URL（前端用于无主图时渲染首帧预览）
+        primary_video = primary_videos.get(sb["asset_id"])
+        if primary_video:
+            if primary_video.get("local_path"):
+                sb["primary_video_url"] = f"/api/projects/{project_id}/videos/files/{primary_video['local_path']}"
+                # 懒生成视频首帧缩略图
+                video_file_path = os.path.join(
+                    str(_get_projects_dir()), project_id, "videos", "files", primary_video["local_path"]
+                )
+                thumb_filename = os.path.splitext(primary_video["local_path"])[0] + "_thumb.jpg"
+                thumb_path = os.path.join(str(_get_projects_dir()), project_id, "videos", "thumbnails", thumb_filename)
+                if not os.path.exists(thumb_path):
+                    VideoService.extract_first_frame(video_file_path, thumb_path)
+                if os.path.exists(thumb_path):
+                    sb["primary_video_thumbnail_url"] = f"/api/projects/{project_id}/videos/thumbnails/{thumb_filename}"
+                else:
+                    sb["primary_video_thumbnail_url"] = None
+            elif primary_video.get("video_path"):
+                sb["primary_video_url"] = primary_video["video_path"]
+                sb["primary_video_thumbnail_url"] = None
+            else:
+                sb["primary_video_url"] = None
+                sb["primary_video_thumbnail_url"] = None
+        else:
+            sb["primary_video_url"] = None
+            sb["primary_video_thumbnail_url"] = None
 
     episode_storyboards.sort(key=lambda x: x.get("sequence", 0))
 
@@ -290,6 +337,38 @@ async def reorder_storyboard(project_id: str, request: StoryboardReorderRequest)
                 AssetService.save_asset(project_id, "storyboard", sb)
 
     return {"success": True, "message": f"已将第{request.old_sequence}镜移动到第{request.new_sequence}镜"}
+
+
+@router.get("/{storyboard_id}/video-thumbnail")
+async def get_video_thumbnail(project_id: str, storyboard_id: str):
+    """
+    返回分镜主视频的第一帧缩略图（JPEG）。
+
+    首次请求时用 FFmpeg 提取并缓存到 videos/thumbnails/{video_id}.jpg，
+    后续直接返回缓存文件。
+    """
+    projects_dir = _get_projects_dir()
+    videos_dir = str(projects_dir / project_id / "videos")
+
+    primary_video = VideoService.get_primary_video(project_id, storyboard_id, videos_dir=videos_dir)
+    if not primary_video or not primary_video.get("local_path"):
+        raise HTTPException(status_code=404, detail="No completed video for this storyboard")
+
+    video_id = primary_video["video_id"]
+
+    thumbnail_path = os.path.join(
+        str(projects_dir), project_id, "videos", "thumbnails", f"{video_id}.jpg"
+    )
+
+    if not os.path.exists(thumbnail_path):
+        video_path = os.path.join(
+            str(projects_dir), project_id, "videos", "files", primary_video["local_path"]
+        )
+        success = VideoService.extract_first_frame(video_path, thumbnail_path)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to extract video thumbnail")
+
+    return FileResponse(thumbnail_path, media_type="image/jpeg")
 
 
 @router.post("/{storyboard_id}/create-end-frame")

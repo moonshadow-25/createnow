@@ -13,8 +13,18 @@ from app.services.ai.adapters.base import VideoAdapter
 
 logger = logging.getLogger(__name__)
 
+# 分辨率配置：key 为前端值，value 为 (API resolution 参数, ratio 参数)
+# 新增分辨率只需在此处添加一行
+RESOLUTION_CONFIG = {
+    "1280x720":  ("720p", "16:9"),
+    "21:9-720p": ("720p", "21:9"),
+    "720x1280":  ("720p", "9:16"),
+}
+
 # Seedance 2.0 模型集合（不支持 1080p / service_tier / draft / frames / camera_fixed）
 SEEDANCE_2_0_MODELS = {
+    "doubao-seedance-2-0",
+    "doubao-seedance-2-0-fast",
     "doubao-seedance-2-0-260128",
     "doubao-seedance-2-0-fast-260128",
 }
@@ -221,21 +231,11 @@ class ByteSeedVideoAdapter(VideoAdapter):
         model = kwargs.get("model") or self.model
         is_2_0 = model in SEEDANCE_2_0_MODELS
 
-        # 将前端分辨率字符串映射为 API 的 resolution 参数
-        resolution_str = kwargs.get("resolution", "1920x1080")
-        resolution_map = {
-            "1920x1080": "1080p",
-            "1280x720":  "720p",
-            "854x480":   "480p",
-            "1080x1920": "1080p",
-            "720x1280":  "720p",
-            "480x854":   "480p",
-        }
-        resolution_param = resolution_map.get(resolution_str, "1080p")
-        # 2.0 不支持 1080p，自动降级
-        if is_2_0 and resolution_param == "1080p":
-            resolution_param = "720p"
+        # 将前端分辨率字符串映射为 API 的 resolution / ratio 参数（统一维护 RESOLUTION_CONFIG）
+        resolution_str = kwargs.get("resolution", "1280x720")
+        resolution_param, _ = RESOLUTION_CONFIG.get(resolution_str, ("720p", "16:9"))
 
+        # r2v 模式（content 中含任意图片）下，2.0 不支持 1080p，已在上方降级处理
         payload: Dict[str, Any] = {
             "model": model,
             "content": content,
@@ -531,17 +531,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
         Returns:
             比例字符串（如 "16:9"）
         """
-        ratio_map = {
-            "1920x1080": "16:9",
-            "1080x1920": "9:16",
-            "1280x720": "16:9",
-            "720x1280": "9:16",
-            "1024x1024": "1:1",
-            "1440x1080": "4:3",
-            "1080x1440": "3:4",
-            "2560x1080": "21:9",
-        }
-        return ratio_map.get(resolution, "16:9")
+        _, ratio = RESOLUTION_CONFIG.get(resolution, ("720p", "16:9"))
+        return ratio
 
     def _map_status(self, seed_status: str) -> str:
         """状态映射

@@ -186,7 +186,7 @@ async def get_project_stats(project_id: str):
     storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
 
     videos_dir = project_dir / "videos"
-    primary_storyboard_ids: set = set()
+    completed_storyboard_ids: set = set()
     total_video_seconds = 0.0
     storyboard_video_seconds = 0.0
     if videos_dir.exists():
@@ -198,8 +198,7 @@ async def get_project_stats(project_id: str):
                 total_video_seconds += duration
                 if v.get("storyboard_id"):
                     storyboard_video_seconds += duration
-            if v.get("is_primary") and v.get("storyboard_id"):
-                primary_storyboard_ids.add(v["storyboard_id"])
+                    completed_storyboard_ids.add(v["storyboard_id"])
 
     images_dir = project_dir / "images"
     total_images = len(list(images_dir.glob("*.json"))) if images_dir.exists() else 0
@@ -209,7 +208,7 @@ async def get_project_stats(project_id: str):
         "episode_count": len(episodes),
         "total_storyboards": total_storyboards,
         "storyboards_with_image": storyboards_with_image,
-        "storyboards_with_video": len(primary_storyboard_ids),
+        "storyboards_with_video": len(completed_storyboard_ids),
         "total_images": total_images,
         "total_video_seconds": total_video_seconds,
         "storyboard_video_seconds": storyboard_video_seconds,

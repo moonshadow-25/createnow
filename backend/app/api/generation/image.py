@@ -63,10 +63,13 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
     style_suffix = ""
     if image_style.get("enabled", True):
         preset_id = image_style.get("preset_id", "none")
+        custom = image_style.get("custom_suffix", "")
         if preset_id == "custom":
-            style_suffix = image_style.get("custom_suffix", "")
+            style_suffix = custom
         elif preset_id != "none":
             style_suffix = get_image_style_suffix(preset_id, language)
+            if custom:
+                style_suffix = style_suffix + "，" + custom if style_suffix else custom
 
     # 记录请求日志
     template_used = "image_prompt_template"
@@ -141,6 +144,91 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def generate_image_core(project_id: str, asset_id: str, asset_type: str, prompt: str,
+                              negative_prompt: str = "", size: str = None, ai_config: dict = None) -> dict:
+    """可复用的生图核心逻辑（供 HTTP handler 和对话工具共同调用）
+
+    返回第一张保存的图片记录 dict，失败时抛出异常。
+    """
+    from app.services import ProjectService
+
+    if ai_config is None:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise ValueError("Project not found")
+        ai_config = project.get("ai_config", {})
+        check_project_budget(project)
+
+    default_sizes = {"character": "1x1", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
+    configured_sizes = ai_config.get("image_sizes", {})
+    size_str = size or configured_sizes.get(asset_type) or default_sizes.get(asset_type, "1x1")
+    width, height = parse_size(size_str)
+
+    image_service = get_ai_service(ai_config, "image", project_id)
+    try:
+        result = await image_service.generate(
+            prompt=prompt, negative_prompt=negative_prompt,
+            width=width, height=height, size_str=size_str
+        )
+        await image_service.close()
+    except Exception:
+        await image_service.close()
+        raise
+
+    if not result.get("success"):
+        raise ValueError(result.get("error", "生图失败"))
+
+    from app.services.image_download_service import ImageDownloadService
+
+    images_data = result.get("images")
+    if images_data:
+        saved_images = []
+        for i, img_data in enumerate(images_data):
+            record = {
+                "asset_id": asset_id, "asset_type": asset_type,
+                "prompt": prompt, "negative_prompt": negative_prompt,
+                "width": width, "height": height, "image_path": img_data["url"],
+                "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                "created_at": datetime.now().isoformat()
+            }
+            saved = ImageService.save_generation_record(project_id, record)
+            saved_images.append(saved)
+            if i == 0:
+                ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
+                AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+            if img_data["url"].startswith(("http://", "https://")):
+                try:
+                    await ImageDownloadService.download_and_save_image(
+                        project_id=project_id, image_id=saved["image_id"],
+                        url=img_data["url"], asset_type=asset_type)
+                except Exception as e:
+                    logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+        logger.info(f"[多图生成] 成功生成并保存 {len(saved_images)} 张图片")
+        return saved_images[0]
+    else:
+        image_url = result.get("image_url")
+        record = {
+            "asset_id": asset_id, "asset_type": asset_type,
+            "prompt": prompt, "negative_prompt": negative_prompt,
+            "width": width, "height": height, "image_path": image_url,
+            "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+            "created_at": datetime.now().isoformat()
+        }
+        saved = ImageService.save_generation_record(project_id, record)
+        images = ImageService.list_images(project_id, asset_id)
+        if len(images) == 1:
+            ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
+            AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+        if image_url and image_url.startswith(("http://", "https://")):
+            try:
+                await ImageDownloadService.download_and_save_image(
+                    project_id=project_id, image_id=saved["image_id"],
+                    url=image_url, asset_type=asset_type)
+            except Exception as e:
+                logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+        return saved
+
+
 @router.post("/image")
 async def generate_image(project_id: str, request: ImageGenerateRequest):
     """生成图片"""
@@ -150,128 +238,23 @@ async def generate_image(project_id: str, request: ImageGenerateRequest):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    check_project_budget(project)
     ai_config = project.get("ai_config", {})
 
-    # 检查项目预算
-    check_project_budget(project)
-
-    # 获取配置的分辨率，支持 "1x1"、"16x9" 等格式
-    default_sizes = {
-        "character": "1x1",
-        "scene": "16x9",
-        "prop": "1x1",
-        "storyboard": "16x9"
-    }
-    configured_sizes = ai_config.get("image_sizes", {})
-    size_str = request.size or configured_sizes.get(request.asset_type) or default_sizes.get(request.asset_type, "1x1")
-
-    # 转换尺寸格式：支持 "1024x1024" 或 "1x1" 等格式
-    width, height = parse_size(size_str)
-
-    image_service = get_ai_service(ai_config, "image", project_id)
-
     try:
-        result = await image_service.generate(
+        saved = await generate_image_core(
+            project_id=project_id,
+            asset_id=request.asset_id,
+            asset_type=request.asset_type,
             prompt=request.prompt,
             negative_prompt=request.negative_prompt,
-            width=width,
-            height=height,
-            size_str=size_str  # 传递原始比例字符串给OpenAI API
+            size=request.size,
+            ai_config=ai_config,
         )
-
-        await image_service.close()
-
-        if not result.get("success"):
-            raise HTTPException(status_code=500, detail=result.get("error"))
-
-        # 【多图支持】检测是否有多图
-        images_data = result.get("images")
-
-        if images_data:
-            # 多图模式：循环保存所有图片
-            saved_images = []
-            for i, img_data in enumerate(images_data):
-                record = {
-                    "asset_id": request.asset_id,
-                    "asset_type": request.asset_type,
-                    "prompt": request.prompt,
-                    "negative_prompt": request.negative_prompt,
-                    "width": width,
-                    "height": height,
-                    "image_path": img_data["url"],
-                    "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-                    "created_at": datetime.now().isoformat()
-                }
-                saved = ImageService.save_generation_record(project_id, record)
-                saved_images.append(saved)
-
-                # 第一张设置为主图
-                if i == 0:
-                    ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
-                    AssetService.update_asset_image(
-                        project_id, request.asset_type, request.asset_id, saved["image_id"]
-                    )
-
-                # 自动下载
-                if img_data["url"].startswith(("http://", "https://")):
-                    try:
-                        from app.services.image_download_service import ImageDownloadService
-                        await ImageDownloadService.download_and_save_image(
-                            project_id=project_id,
-                            image_id=saved["image_id"],
-                            url=img_data["url"],
-                            asset_type=request.asset_type
-                        )
-                    except Exception as e:
-                        logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
-
-            logger.info(f"[多图生成] 成功生成并保存 {len(saved_images)} 张图片")
-            # 返回第一张图片记录（向后兼容前端）
-            return saved_images[0]
-        else:
-            # 单图模式：现有逻辑
-            record = {
-                "asset_id": request.asset_id,
-                "asset_type": request.asset_type,
-                "prompt": request.prompt,
-                "negative_prompt": request.negative_prompt,
-                "width": width,
-                "height": height,
-                "image_path": result.get("image_url"),
-                "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-                "created_at": datetime.now().isoformat()
-            }
-
-            saved = ImageService.save_generation_record(project_id, record)
-
-            # 更新资产的主图（如果是第一张）
-            images = ImageService.list_images(project_id, request.asset_id)
-            if len(images) == 1:
-                ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
-                AssetService.update_asset_image(
-                    project_id, request.asset_type, request.asset_id, saved["image_id"]
-                )
-
-            # 【自动下载】生成成功后自动下载图片到本地
-            from app.services.image_download_service import ImageDownloadService
-            image_url = result.get("image_url")
-            if image_url and image_url.startswith(("http://", "https://")):
-                try:
-                    await ImageDownloadService.download_and_save_image(
-                        project_id=project_id,
-                        image_id=saved["image_id"],
-                        url=image_url,
-                        asset_type=request.asset_type
-                    )
-                except Exception as e:
-                    logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
-
-            return saved
-
+        return saved
     except HTTPException:
         raise
     except Exception as e:
-        await image_service.close()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -313,6 +296,101 @@ async def generate_image_edit_prompt(project_id: str, request: ImageEditPromptRe
     except Exception as e:
         await llm.close()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def edit_image_core(project_id: str, asset_id: str, asset_type: str, prompt: str,
+                          reference_image_paths: list, size: str = None, ai_config: dict = None) -> dict:
+    """可复用的图生图核心逻辑（供 HTTP handler 和对话工具共同调用）
+
+    reference_image_paths: 已解析好的图片路径列表（base64 data URL 或 http URL）
+    返回第一张保存的图片记录 dict，失败时抛出异常。
+    """
+    from app.services import ProjectService
+
+    if ai_config is None:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            raise ValueError("Project not found")
+        ai_config = project.get("ai_config", {})
+        check_project_budget(project)
+
+    if not reference_image_paths:
+        raise ValueError("至少需要一张参考图片")
+
+    default_sizes = {"character": "1x1", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
+    configured_sizes = ai_config.get("image_sizes", {})
+    size_str = size or configured_sizes.get(asset_type) or default_sizes.get(asset_type, "1x1")
+    width, height = parse_size(size_str)
+
+    image_config = ai_config.get("image", {})
+    model = image_config.get("image_edit_model") or image_config.get("model", "")
+
+    image_service = get_ai_service(ai_config, "image", project_id)
+    try:
+        result = await image_service.edit(
+            image_path=reference_image_paths[0],
+            prompt=prompt,
+            size=size_str,
+            width=width,
+            height=height,
+            model=model,
+            reference_images=reference_image_paths[1:] or None
+        )
+        await image_service.close()
+    except Exception:
+        await image_service.close()
+        raise
+
+    if not result.get("success"):
+        raise ValueError(result.get("error", "图生图失败"))
+
+    from app.services.image_download_service import ImageDownloadService
+
+    images_data = result.get("images")
+    if images_data:
+        saved_images = []
+        for i, img_data in enumerate(images_data):
+            record = {
+                "asset_id": asset_id, "asset_type": asset_type,
+                "prompt": prompt, "negative_prompt": "",
+                "width": width, "height": height, "image_path": img_data["url"],
+                "model": model, "created_at": datetime.now().isoformat()
+            }
+            saved = ImageService.save_generation_record(project_id, record)
+            saved_images.append(saved)
+            if i == 0:
+                ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
+                AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+            if img_data["url"].startswith(("http://", "https://")):
+                try:
+                    await ImageDownloadService.download_and_save_image(
+                        project_id=project_id, image_id=saved["image_id"],
+                        url=img_data["url"], asset_type=asset_type)
+                except Exception as e:
+                    logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+        logger.info(f"[图生图] 成功生成并保存 {len(saved_images)} 张图片")
+        return saved_images[0]
+    else:
+        image_url = result.get("image_url")
+        record = {
+            "asset_id": asset_id, "asset_type": asset_type,
+            "prompt": prompt, "negative_prompt": "",
+            "width": width, "height": height, "image_path": image_url,
+            "model": model, "created_at": datetime.now().isoformat()
+        }
+        saved = ImageService.save_generation_record(project_id, record)
+        images = ImageService.list_images(project_id, asset_id)
+        if len(images) == 1:
+            ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
+            AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+        if image_url and image_url.startswith(("http://", "https://")):
+            try:
+                await ImageDownloadService.download_and_save_image(
+                    project_id=project_id, image_id=saved["image_id"],
+                    url=image_url, asset_type=asset_type)
+            except Exception as e:
+                logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+        return saved
 
 
 @router.post("/image-edit")
@@ -397,146 +475,20 @@ async def edit_image(project_id: str, request: ImageEditRequest):
         logger.error(f"[图生图] 验证失败 - reference_image_ids: {request.reference_image_ids}, reference_image_urls: {request.reference_image_urls}")
         raise HTTPException(status_code=400, detail="At least one reference image is required")
 
-    # 获取配置的分辨率，支持 "1x1"、"16x9" 等格式
-    default_sizes = {
-        "character": "1x1",
-        "scene": "16x9",
-        "prop": "1x1",
-        "storyboard": "16x9"
-    }
-    configured_sizes = ai_config.get("image_sizes", {})
-    size_str = request.size or configured_sizes.get(request.asset_type) or default_sizes.get(request.asset_type, "1x1")
-
-    # 转换为 API 需要的格式 (如 "1024x1024")
-    width, height = parse_size(size_str)
-    size_for_api = f"{width}x{height}"
-
-    image_service = get_ai_service(ai_config, "image", project_id)
-
-    # 基本请求日志
-    request_log = {
-        "asset_id": request.asset_id,
-        "asset_type": request.asset_type,
-        "reference_image_ids": request.reference_image_ids,
-        "prompt": request.prompt[:500] + "..." if len(request.prompt) > 500 else request.prompt,
-        "size_config": size_str,
-        "size_api": size_for_api,
-    }
-
     try:
-        image_config = ai_config.get("image", {})
-        model = image_config.get("image_edit_model") or image_config.get("model", "wan2.6-image")
-
-        primary_image = reference_image_paths[0]
-        extra_images = reference_image_paths[1:] if len(reference_image_paths) > 1 else None
-
-        # 添加实际发送的图片URL到请求日志中（用于调试）
-        request_log["primary_image_url"] = primary_image[:200] + "..." if len(primary_image) > 200 else primary_image
-        if extra_images:
-            request_log["extra_image_urls"] = [img[:200] + "..." if len(img) > 200 else img for img in extra_images]
-
-        result = await image_service.edit(
-            image_path=primary_image,
+        saved = await edit_image_core(
+            project_id=project_id,
+            asset_id=request.asset_id,
+            asset_type=request.asset_type,
             prompt=request.prompt,
-            size=size_str,      # 比例格式 "16x9" - 用于 OpenAI
-            width=width,        # 像素值 2048 - 用于 DashScope
-            height=height,      # 像素值 1152 - 用于 DashScope
-            model=model,
-            reference_images=extra_images
+            reference_image_paths=reference_image_paths,
+            size=request.size,
+            ai_config=ai_config,
         )
-
-        await image_service.close()
-
-        if not result.get("success"):
-            raise HTTPException(status_code=500, detail=result.get("error"))
-
-        # 【多图支持】检测是否有多图
-        images_data = result.get("images")
-
-        if images_data:
-            # 多图模式：循环保存所有图片
-            saved_images = []
-            for i, img_data in enumerate(images_data):
-                record = {
-                    "asset_id": request.asset_id,
-                    "asset_type": request.asset_type,
-                    "prompt": request.prompt,
-                    "negative_prompt": "",
-                    "width": width,
-                    "height": height,
-                    "image_path": img_data["url"],
-                    "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-                    "created_at": datetime.now().isoformat()
-                }
-                saved = ImageService.save_generation_record(project_id, record)
-                saved_images.append(saved)
-
-                # 第一张设置为主图
-                if i == 0:
-                    ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
-                    AssetService.update_asset_image(
-                        project_id, request.asset_type, request.asset_id, saved["image_id"]
-                    )
-
-                # 自动下载
-                if img_data["url"].startswith(("http://", "https://")):
-                    try:
-                        from app.services.image_download_service import ImageDownloadService
-                        await ImageDownloadService.download_and_save_image(
-                            project_id=project_id,
-                            image_id=saved["image_id"],
-                            url=img_data["url"],
-                            asset_type=request.asset_type
-                        )
-                    except Exception as e:
-                        logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
-
-            logger.info(f"[多图生成] 图生图成功生成并保存 {len(saved_images)} 张图片")
-            # 返回第一张图片记录（向后兼容前端）
-            return saved_images[0]
-        else:
-            # 单图模式：现有逻辑
-            record = {
-                "asset_id": request.asset_id,
-                "asset_type": request.asset_type,
-                "prompt": request.prompt,
-                "negative_prompt": "",
-                "width": width,
-                "height": height,
-                "image_path": result.get("image_url"),
-                "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-                "created_at": datetime.now().isoformat()
-            }
-
-            saved = ImageService.save_generation_record(project_id, record)
-
-            images = ImageService.list_images(project_id, request.asset_id)
-            if len(images) == 1:
-                ImageService.set_primary_image(project_id, request.asset_id, saved["image_id"])
-                AssetService.update_asset_image(
-                    project_id, request.asset_type, request.asset_id, saved["image_id"]
-                )
-
-            # 【自动下载】生成成功后自动下载图片到本地
-            from app.services.image_download_service import ImageDownloadService
-            image_url = result.get("image_url")
-            if image_url and image_url.startswith(("http://", "https://")):
-                try:
-                    await ImageDownloadService.download_and_save_image(
-                        project_id=project_id,
-                        image_id=saved["image_id"],
-                        url=image_url,
-                        asset_type=request.asset_type
-                    )
-                except Exception as e:
-                    logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
-
-            return saved
-
-    except HTTPException:
-        raise
+        return saved
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        await image_service.close()
         raise HTTPException(status_code=500, detail=str(e))
 
 

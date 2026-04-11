@@ -1,17 +1,22 @@
 import os
 import json
 import subprocess
-from typing import Optional
+from pathlib import Path
+from typing import Optional, List
 from uuid import uuid4
 from datetime import datetime
 from ..core.config import settings
+
+# 优先使用项目内置的 ffmpeg，其次 fallback 到系统 PATH
+_BUNDLED_FFMPEG = Path(__file__).parent.parent.parent / "bin" / "ffmpeg.exe"
+FFMPEG_BIN = str(_BUNDLED_FFMPEG) if _BUNDLED_FFMPEG.exists() else "ffmpeg"
 
 
 class VideoService:
     """视频处理服务"""
 
     @staticmethod
-    def get_primary_video(project_id: str, storyboard_id: str) -> Optional[dict]:
+    def get_primary_video(project_id: str, storyboard_id: str, *, videos_dir: str = None) -> Optional[dict]:
         """
         获取分镜的视频（用于提取帧）
 
@@ -19,7 +24,8 @@ class VideoService:
         1. 优先返回主视频（is_primary=true）且有 local_path
         2. 如果没有主视频，返回最新的有 local_path 的视频
         """
-        videos_dir = os.path.join(settings.DATA_DIR, "projects", project_id, "videos")
+        if videos_dir is None:
+            videos_dir = os.path.join(settings.DATA_DIR, "projects", project_id, "videos")
 
         if not os.path.exists(videos_dir):
             return None
@@ -66,7 +72,7 @@ class VideoService:
         """检查 FFmpeg 是否已安装"""
         try:
             result = subprocess.run(
-                ['ffmpeg', '-version'],
+                [FFMPEG_BIN, '-version'],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -123,7 +129,7 @@ class VideoService:
         # -q:v 1: 高质量输出
         try:
             command = [
-                'ffmpeg',
+                FFMPEG_BIN,
                 '-sseof', '-1',           # 从视频结尾前1秒开始
                 '-i', video_path,         # 输入文件
                 '-update', '1',           # 只输出一帧
@@ -167,6 +173,85 @@ class VideoService:
                 except:
                     pass
             raise RuntimeError(f"Failed to extract last frame: {str(e)}")
+
+    @staticmethod
+    def extract_first_frame(video_path: str, thumbnail_path: str) -> bool:
+        """
+        使用 FFmpeg 提取视频第一帧，保存到指定路径（懒加载缓存由调用方管理）
+
+        Args:
+            video_path: 视频文件完整路径
+            thumbnail_path: 缩略图输出完整路径（JPEG）
+
+        Returns:
+            bool: 是否成功
+        """
+        if not VideoService.check_ffmpeg_installed():
+            return False
+        if not os.path.exists(video_path):
+            return False
+
+        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
+
+        try:
+            command = [
+                FFMPEG_BIN,
+                '-ss', '0',              # 从第0秒开始
+                '-i', video_path,
+                '-frames:v', '1',        # 只提取1帧
+                '-q:v', '3',             # JPEG质量（1-31，越小越好）
+                '-y',
+                thumbnail_path
+            ]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            return result.returncode == 0 and os.path.exists(thumbnail_path)
+        except Exception:
+            if os.path.exists(thumbnail_path):
+                try:
+                    os.remove(thumbnail_path)
+                except Exception:
+                    pass
+            return False
+
+    @staticmethod
+    def get_primary_videos_batch(project_id: str, storyboard_ids: List[str], *, videos_dir: str = None) -> dict:
+        """
+        批量获取多个分镜的主视频（一次遍历，效率等同 ImageService.get_primary_images_batch）
+
+        Returns:
+            dict: {storyboard_id: video_data}，只包含有 local_path 的视频
+        """
+        if not storyboard_ids:
+            return {}
+
+        if videos_dir is None:
+            videos_dir = os.path.join(settings.DATA_DIR, "projects", project_id, "videos")
+        if not os.path.exists(videos_dir):
+            return {}
+
+        id_set = set(storyboard_ids)
+        primary: dict = {}   # storyboard_id -> is_primary video
+        latest: dict = {}    # storyboard_id -> latest video (fallback)
+
+        for filename in os.listdir(videos_dir):
+            if not filename.endswith('.json'):
+                continue
+            try:
+                with open(os.path.join(videos_dir, filename), 'r', encoding='utf-8') as f:
+                    video = json.load(f)
+            except Exception:
+                continue
+
+            sb_id = video.get("storyboard_id")
+            if sb_id not in id_set or not video.get("local_path"):
+                continue
+
+            if video.get("is_primary"):
+                primary[sb_id] = video
+            elif sb_id not in latest or video.get("created_at", "") > latest[sb_id].get("created_at", ""):
+                latest[sb_id] = video
+
+        return {**latest, **primary}
 
     @staticmethod
     def get_video_info(video_path: str) -> dict:

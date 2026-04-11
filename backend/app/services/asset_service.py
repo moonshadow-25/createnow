@@ -552,7 +552,8 @@ class ImageService:
                 primary = images[0]
             result[asset_id] = {
                 "primary_image": primary,
-                "image_count": len(images)
+                "image_count": len(images),
+                "images": images,
             }
 
         return result

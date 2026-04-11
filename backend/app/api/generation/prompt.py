@@ -81,6 +81,11 @@ async def get_prompt_templates(project_id: str):
             type_data = legacy_templates[key]
             custom = type_data.get("custom", {})
             active = type_data.get("active", "default")
+
+        # 兜底：若 active 指向的 preset/custom 不存在，改用 default_ai（若存在）
+        all_available = {**presets, **custom}
+        if active not in all_available and "default_ai" in presets:
+            active = "default_ai"
         elif is_old_format:
             # 旧格式：查找对应旧 key
             old_key = None
@@ -104,6 +109,13 @@ async def get_prompt_templates(project_id: str):
             all_templates[pid] = {**pdata, "is_preset": True}
         for cid, cdata in custom.items():
             all_templates[cid] = {**cdata, "is_preset": False}
+
+        # 兜底：active 指向不存在的 preset/custom 时，优先用 default_ai，再用 default
+        if active not in all_templates:
+            if "default_ai" in all_templates:
+                active = "default_ai"
+            elif "default" in all_templates:
+                active = "default"
 
         result[key] = {
             "label": prompt_data.get("label", key),
