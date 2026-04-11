@@ -419,9 +419,11 @@ END_TOOL
 - 同时填写每个分镜的 image_prompt 和 video_prompt
 - ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**
 
-**步骤1c（生成资产图）**：调用 generate_all_asset_images（需用户确认）
-- 用户确认后系统开始生图，生图完成后请主动提示用户："图片已生成完毕，请点击确认提交审核"
-- 然后调用 submit_images_for_review（需用户确认）
+**步骤1c（生成资产图）**：
+- 先检查步骤0中 `existing_assets` 里各资产的 `has_image_prompt` 和是否已有图片（`image_id` 非空）
+- 所有主要角色、场景已有图片（image_id 非空）→ **跳过生图，直接进入提交审核**
+- 有资产尚无图片 → 调用 generate_all_asset_images（需用户确认）
+- 生图确认完成后，调用 submit_images_for_review（需用户确认）
 
 **步骤2**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
 

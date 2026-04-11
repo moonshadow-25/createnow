@@ -158,7 +158,12 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         for asset_type in ["character", "scene", "prop"]:
             assets = AssetService.list_assets(project_id, asset_type) or []
             existing_assets[asset_type] = [
-                {"asset_id": a.get("asset_id"), "name": a.get("name"), "has_image_prompt": bool(a.get("image_prompt"))}
+                {
+                    "asset_id": a.get("asset_id"),
+                    "name": a.get("name"),
+                    "has_image_prompt": bool(a.get("image_prompt")),
+                    "has_image": bool(a.get("image_id")),  # 已生成图片
+                }
                 for a in assets
             ]
         return {
