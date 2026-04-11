@@ -413,20 +413,17 @@ END_TOOL
 
 **步骤1b（第二轮工具调用，拿到 asset_id 后）**：
 - ⚠️ **先调用 get_episode_storyboards 检查是否已有分镜**
-- 已有分镜且数量合理 → **跳过创建分镜，直接进入步骤1c**
+- 已有分镜（哪怕只有1个）→ **绝对禁止删除，直接跳过创建分镜，进入步骤1c**
 - 没有分镜 → 使用上一轮返回的真实 asset_id，调用 create_storyboard 创建所有分镜
 - 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
 - 同时填写每个分镜的 image_prompt 和 video_prompt
+- ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**
 
 **步骤1c（生成资产图）**：调用 generate_all_asset_images（需用户确认）
 - 用户确认后系统开始生图，生图完成后请主动提示用户："图片已生成完毕，请点击确认提交审核"
 - 然后调用 submit_images_for_review（需用户确认）
 
-**步骤2**（收到"继续执行下一步"后）：调用 submit_images_for_review（**需用户确认**）
-- 用户确认后系统会自动提交审核并轮询状态，完成后 AI 会收到通知
-- **不要**让用户手动发送任何消息，系统会自动检测审核状态并继续后续步骤
-
-**步骤3**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
+**步骤2**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
 
 ⚠️ **关键**：create_character/create_scene 和 create_storyboard 必须分开两轮调用，不能在同一轮回复中混合，否则 create_storyboard 无法获取真实 asset_id
 ⚠️ 每个步骤独立，不要在一次回复中连续调用多个需要确认的工具
