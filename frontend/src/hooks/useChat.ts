@@ -280,11 +280,13 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
   }, [pendingConfirmation, sendRawMessage]);
 
   // 监听 StoryboardDetail 发来的审核完成事件，通知 AI 继续
+  const sendRawMessageRef = useRef(sendRawMessage);
+  useEffect(() => { sendRawMessageRef.current = sendRawMessage; }, [sendRawMessage]);
   useEffect(() => {
-    const handler = () => sendRawMessage('审核已完成，请继续生成视频');
+    const handler = () => sendRawMessageRef.current('审核已完成，请继续生成视频');
     window.addEventListener('storyboard:review-complete', handler);
     return () => window.removeEventListener('storyboard:review-complete', handler);
-  }, [sendRawMessage]);
+  }, []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
