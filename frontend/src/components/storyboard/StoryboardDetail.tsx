@@ -563,8 +563,10 @@ export function StoryboardDetail({
   // AI 触发提交审核：监听事件，走和手动按钮完全相同的路径，完成后通知 AI
   const storyboardsRef = useRef(storyboards);
   const imageStatusesRef = useRef(imageStatuses);
+  const onUpdatedRef = useRef(onUpdated);
   useEffect(() => { storyboardsRef.current = storyboards; }, [storyboards]);
   useEffect(() => { imageStatusesRef.current = imageStatuses; }, [imageStatuses]);
+  useEffect(() => { onUpdatedRef.current = onUpdated; }, [onUpdated]);
 
   useEffect(() => {
     const handler = async (e: Event) => {
@@ -622,6 +624,9 @@ export function StoryboardDetail({
       try {
         const res = await generationApi.submitAsset(projectId, imageIds);
         const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+
+        // 刷新前端资产 state，让分镜页面显示最新的图片和审核状态
+        onUpdatedRef.current();
 
         const processingItems = submitted.filter(s => s.status === 'Processing');
         if (processingItems.length === 0) {
