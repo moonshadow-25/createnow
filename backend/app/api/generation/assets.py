@@ -39,15 +39,21 @@ def _get_asset_service(project_id: str, project: dict):
     api_type = video_config.get("api_type", "openai")
 
     if api_type == "createnow":
-        from app.services.auth_service import get_auth_state
         from app.core.config import settings as _s
-        auth = get_auth_state()
+        # 优先从项目配置读 api_key（SaaS 模式下 key 存在项目里）
+        api_key = video_config.get("api_key", "")
+        api_url = video_config.get("api_url", "") or _s.CREATENOW_BASE_URL
+        # 回退到全局 auth_state（selfhosted 模式兼容）
+        if not api_key:
+            from app.services.auth_service import get_auth_state
+            auth = get_auth_state()
+            api_key = auth.get("api_key", "")
         return AssetService(
             api_type="createnow",
-            api_url=_s.CREATENOW_BASE_URL,
-            api_key=auth.get("api_key", ""),
-            volcengine_ak=auth.get("volcengine_ak", ""),
-            volcengine_sk=auth.get("volcengine_sk", ""),
+            api_url=api_url,
+            api_key=api_key,
+            volcengine_ak="",
+            volcengine_sk="",
             project_id=project_id,
         )
     else:
