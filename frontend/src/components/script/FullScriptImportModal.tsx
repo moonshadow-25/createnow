@@ -6,6 +6,8 @@ import { useToast } from '@/components/common/Toast';
 interface FullScriptImportModalProps {
   projectId: string;
   visible: boolean;
+  /** 项目无分集且无资产时为 true，只显示"分集并提取"按钮作为新手引导 */
+  isEmptyProject?: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -32,6 +34,7 @@ interface ExtractResult {
 export function FullScriptImportModal({
   projectId,
   visible,
+  isEmptyProject = false,
   onClose,
   onSuccess,
 }: FullScriptImportModalProps) {
@@ -328,22 +331,26 @@ export function FullScriptImportModal({
             关闭
           </button>
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleSplitEpisodes}
-              disabled={!hasContent || isProcessing}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-blue-500 text-blue-400 hover:bg-blue-900 hover:bg-opacity-30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              <Wand2 size={15} />
-              {processing === 'splitting' ? '分集中...' : '一键分集'}
-            </button>
-            <button
-              onClick={handleExtractAssets}
-              disabled={!hasContent || isProcessing}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-green-500 text-green-400 hover:bg-green-900 hover:bg-opacity-30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              <Sparkles size={15} />
-              {processing === 'extracting' ? '提取中...' : '提取全部资产'}
-            </button>
+            {!isEmptyProject && (
+              <button
+                onClick={handleSplitEpisodes}
+                disabled={!hasContent || isProcessing}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-blue-500 text-blue-400 hover:bg-blue-900 hover:bg-opacity-30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <Wand2 size={15} />
+                {processing === 'splitting' ? '分集中...' : '一键分集'}
+              </button>
+            )}
+            {!isEmptyProject && (
+              <button
+                onClick={handleExtractAssets}
+                disabled={!hasContent || isProcessing}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-green-500 text-green-400 hover:bg-green-900 hover:bg-opacity-30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <Sparkles size={15} />
+                {processing === 'extracting' ? '提取中...' : '提取全部资产'}
+              </button>
+            )}
             <button
               onClick={handleSplitAndExtract}
               disabled={!hasContent || isProcessing}

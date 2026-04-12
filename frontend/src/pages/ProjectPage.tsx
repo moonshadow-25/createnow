@@ -306,6 +306,7 @@ export default function ProjectPage() {
         <FullScriptImportModal
           projectId={projectId}
           visible={showFullScriptImport}
+          isEmptyProject={episodes.length === 0 && characters.length === 0 && scenes.length === 0 && props.length === 0}
           onClose={() => setShowFullScriptImport(false)}
           onSuccess={() => {
             handleRefreshAssets();
