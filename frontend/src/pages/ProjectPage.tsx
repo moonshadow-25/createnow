@@ -183,7 +183,7 @@ export default function ProjectPage() {
                 <ChevronDown size={16} />
               </button>
               {showMoreMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 min-w-[120px]">
+                <div className="absolute right-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 min-w-[140px]">
                   <button
                     onClick={() => { setActiveTab('generate'); setShowMoreMenu(false); }}
                     className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg hover:bg-gray-600 ${activeTab === 'generate' ? 'text-blue-400' : 'text-gray-200'}`}
@@ -194,7 +194,7 @@ export default function ProjectPage() {
                   <div className="border-t border-gray-600 my-1" />
                   <button
                     onClick={() => { setShowFullScriptImport(true); setShowMoreMenu(false); }}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 text-gray-200"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 text-gray-200 whitespace-nowrap"
                   >
                     <FileText size={16} />
                     导入全剧本
