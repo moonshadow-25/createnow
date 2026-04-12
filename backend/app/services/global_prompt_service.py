@@ -28,10 +28,14 @@ def _get_json_path() -> Path:
 
 
 def _resolve_content_files(data: Dict[str, Any]) -> None:
-    """就地解析所有 content_file 引用，将内容读入 preset["content"]"""
+    """就地解析所有 content_file 引用，将内容读入 preset["content"]
+
+    content_file 存在时始终从 .md 文件读取，忽略 JSON 中的 inline content。
+    这确保 .md 文件是唯一内容源，避免 JSON inline 与 .md 不同步的问题。
+    """
     for key, entry in data.items():
         for preset_name, preset in entry.get("presets", {}).items():
-            if isinstance(preset, dict) and "content_file" in preset and "content" not in preset:
+            if isinstance(preset, dict) and "content_file" in preset:
                 fpath = _PROMPTS_DIR / preset["content_file"]
                 preset["content"] = fpath.read_text(encoding="utf-8") if fpath.exists() else ""
 
