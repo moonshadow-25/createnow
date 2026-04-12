@@ -64,9 +64,12 @@ export function SaasLoginModal() {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999]">
       <div className="bg-gray-800 rounded-xl w-full max-w-sm p-8 shadow-2xl">
-        <h2 className="text-xl font-semibold mb-1 text-white">登录 CreateNow</h2>
+        <h2 className="text-xl font-semibold mb-1 text-white flex items-baseline gap-2">
+          登录 ViPro
+          <span className="text-sm font-medium text-gray-400 border border-gray-400 px-2 py-0.5 rounded-md">满血API</span>
+        </h2>
         <p className="text-sm text-gray-400 mb-6">
-          使用您的 CreateNow 账号登录，AI 调用将使用您账号内的额度。
+          使用您的 ViPro 账号登录，AI 调用将使用您账号内的额度。
         </p>
 
         {step === 'idle' && (
@@ -75,7 +78,7 @@ export function SaasLoginModal() {
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 py-2.5 rounded-lg font-medium text-sm transition"
           >
             <ExternalLink size={16} />
-            前往 CreateNow 登录
+            前往 ViPro 登录
           </button>
         )}
 
