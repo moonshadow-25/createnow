@@ -175,7 +175,7 @@ export default function HomePage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">ViPro</span>
-            <span className="text-base font-medium text-gray-400">满血API</span>
+            <span className="text-xs font-medium text-gray-400 bg-gray-700 px-2 py-0.5 rounded-md">满血API</span>
           </h1>
           <div className="flex items-center gap-3 pr-10">
             {isAdmin && !isSaasUser && loggedIn && (
