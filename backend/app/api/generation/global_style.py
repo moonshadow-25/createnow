@@ -28,7 +28,7 @@ async def get_global_style_config(project_id: str) -> Dict[str, Any]:
     global_style_config = ai_config.get("global_style_config", {
         "prompt_language": "zh",
         "image_style": {"preset_id": "cinematic_realistic", "custom_suffix": "", "enabled": True},
-        "video_style": {"preset_id": "none", "custom_suffix": "", "enabled": True},
+        "video_style": {"preset_id": "cinematic_realistic", "custom_suffix": "", "enabled": True},
         "global_resolution": "1280x720",
         "nine_grid_mode": False,
     })
@@ -52,7 +52,7 @@ async def update_global_style_config(
     current_config = ai_config.get("global_style_config", {
         "prompt_language": "zh",
         "image_style": {"preset_id": "cinematic_realistic", "custom_suffix": "", "enabled": True},
-        "video_style": {"preset_id": "none", "custom_suffix": "", "enabled": True},
+        "video_style": {"preset_id": "cinematic_realistic", "custom_suffix": "", "enabled": True},
         "global_resolution": "1280x720",
         "nine_grid_mode": False,
     })
