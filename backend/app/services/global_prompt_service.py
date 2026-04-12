@@ -1,11 +1,16 @@
 """
 全局默认提示词服务
 
-JSON 是唯一数据源，无硬编码内容常量。
+.md 文件是唯一内容数据源，JSON 仅作为注册表（记录 key、label、category、content_file 路径）。
 添加/删除/修改提示词只需编辑 backend/app/prompts/{key}/{preset}.md。
 
-出厂默认（用于全局重置）：backend/app/default_prompt_templates.json + backend/app/prompts/
-用户工作副本（可编辑）：backend/config/default_prompt_templates.json
+注册表（JSON）：backend/app/default_prompt_templates.json
+内容文件（.md）：backend/app/prompts/{key}/{preset}.md
+
+⚠️ 已废弃：backend/config/default_prompt_templates.json
+   该文件曾作为"用户工作副本"，会烘焙 .md 内容为 inline content 导致 .md 编辑不生效。
+   现在即使该文件存在，_resolve_content_files 也会用 .md 覆盖 inline content。
+   不要再使用或创建该文件。
 """
 import json
 from typing import Dict, Any, Optional
