@@ -1,6 +1,6 @@
 """查询工具执行逻辑"""
 from typing import Dict
-from app.services import AssetService
+from app.services import AssetService, ImageService
 from .helpers import check_asset_exists, KEY_ALIASES
 
 
@@ -157,15 +157,30 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         existing_assets = {}
         for asset_type in ["character", "scene", "prop"]:
             assets = AssetService.list_assets(project_id, asset_type) or []
-            existing_assets[asset_type] = [
-                {
-                    "asset_id": a.get("asset_id"),
+            asset_ids = [a.get("asset_id") for a in assets if a.get("asset_id")]
+            image_info = ImageService.get_primary_images_with_count_batch(project_id, asset_ids) if asset_ids else {}
+            items = []
+            for a in assets:
+                aid = a.get("asset_id")
+                info = image_info.get(aid, {})
+                primary = info.get("primary_image")
+                # 取审核状态：优先从 asset.image_id 对应的图片取
+                review_status = None
+                if primary:
+                    ref = primary
+                    if a.get("image_id"):
+                        matched = next((img for img in info.get("images", []) if img.get("image_id") == a["image_id"]), None)
+                        if matched:
+                            ref = matched
+                    review_status = ref.get("volcengine_asset_status")  # "Active" / "Processing" / None
+                items.append({
+                    "asset_id": aid,
                     "name": a.get("name"),
                     "has_image_prompt": bool(a.get("image_prompt")),
-                    "has_image": bool(a.get("image_id")),  # 已生成图片
-                }
-                for a in assets
-            ]
+                    "has_image": bool(a.get("image_id")),
+                    "review_status": review_status,  # Active=审核通过, Processing=审核中, None=未提交
+                })
+            existing_assets[asset_type] = items
         # 同时返回已有分镜数量
         all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
         episode_storyboards = [sb for sb in all_storyboards if sb.get("episode_id") == episode_id]

@@ -420,10 +420,12 @@ END_TOOL
 - ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**
 
 **步骤1c（生成资产图）**：
-- 先检查步骤0中 `existing_assets` 里各资产的 `has_image_prompt` 和是否已有图片（`image_id` 非空）
-- 所有主要角色、场景已有图片（image_id 非空）→ **跳过生图，直接进入提交审核**
-- 有资产尚无图片 → 调用 generate_all_asset_images（需用户确认）
+- 先检查步骤0中 `existing_assets` 里各资产的状态：
+  - `has_image=false`：需要生图 → 调用 generate_all_asset_images（需用户确认）
+  - `has_image=true` 但 `review_status` 不是 `"Active"`：需要提交审核 → 调用 submit_images_for_review（需用户确认）
+  - `has_image=true` 且 `review_status="Active"`：已审核通过 → **跳过，直接进入步骤2生成视频**
 - 生图确认完成后，调用 submit_images_for_review（需用户确认）
+- ⚠️ **只有所有资产的 review_status 都是 "Active" 时，才能进入步骤2生成视频**
 
 **步骤2**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
 
