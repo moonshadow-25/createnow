@@ -302,12 +302,14 @@ END_TOOL
 25. generate_storyboard_video - 为单个分镜生成视频（需用户确认，会产生费用）
     ⚠️ 需要分镜已有 video_prompt，且关联角色/场景已有主图
     ⚠️ 仅用于单个分镜。批量生视频请用 generate_all_storyboard_videos
+    ⚠️ **调用前必须先调用 `get_episode_script` 检查资产状态**，所有资产 review_status="Active" 才可调用，否则先生图/提交审核
     调用：TOOL: generate_storyboard_video
 {"storyboard_id": "UUID", "episode_id": "UUID", "description": "为第N镜生成视频"}
 END_TOOL
 
 25b. generate_all_storyboard_videos - 批量为所有分镜生成视频（一次调用，自动遍历，需用户确认，会产生费用）
     ⚠️ 用户说"生成所有视频"/"批量生成视频"时，必须用此工具
+    ⚠️ **调用前必须先调用 `get_episode_script` 检查资产状态**，所有资产 review_status="Active" 才可调用，否则先生图/提交审核
     调用：TOOL: generate_all_storyboard_videos
 {"episode_id": "UUID或留空表示全部", "description": "批量生成所有分镜视频"}
 END_TOOL
