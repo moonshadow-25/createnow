@@ -63,15 +63,17 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     }
   }, [conversationId, messages, storageKey, options?.label]);
 
-  // 并发锁：防止多个 _fetchStream 同时执行
+  // 消息队列：防止并发调用丢失消息
+  const pendingQueueRef = useRef<Array<{ content: string; addToHistory: boolean }>>([]);
   const streamingLockRef = useRef(false);
 
   // 内部通用 fetch 方法（sendMessage 和 rawMessage 共用）
   const _fetchStream = useCallback(
     async (content: string, addToHistory: boolean) => {
-      // 如果已有流在进行中，跳过
+      // 如果已有流在进行中，排队等待
       if (streamingLockRef.current) {
-        console.warn(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 🔒 BLOCKED concurrent _fetchStream:`, content.slice(0, 50));
+        console.log(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 📋 QUEUED:`, content.slice(0, 50));
+        pendingQueueRef.current.push({ content, addToHistory });
         return;
       }
       streamingLockRef.current = true;
@@ -246,6 +248,14 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
         setCurrentMessage('');
         setCurrentThinking('');
         setToolCalls([]);
+
+        // 处理排队中的下一条消息
+        const next = pendingQueueRef.current.shift();
+        if (next) {
+          console.log(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 📤 DEQUEUE:`, next.content.slice(0, 50));
+          // 用 setTimeout 避免递归调用栈溢出
+          setTimeout(() => _fetchStream(next.content, next.addToHistory), 0);
+        }
       }
     },
     [projectId, conversationId, options?.episodeId, options?.label]

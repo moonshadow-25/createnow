@@ -569,6 +569,8 @@ export function StoryboardDetail({
   useEffect(() => {
     const handler = async (e: Event) => {
       const eventDetail = (e as CustomEvent).detail;
+      const epId = eventDetail?.episodeId || selectedEpisode?.asset_id;
+      console.log(`[StoryboardDetail v2] submit-for-review handler: epId=${epId?.slice(0,8)}, selectedEp=${selectedEpisode?.asset_id?.slice(0,8)}`);
       // 只处理匹配当前剧集的事件
       if (eventDetail?.episodeId && selectedEpisode?.asset_id && eventDetail.episodeId !== selectedEpisode.asset_id) return;
 
@@ -594,8 +596,7 @@ export function StoryboardDetail({
         }
       }
 
-      const epId = selectedEpisode?.asset_id;
-      console.log(`[StoryboardDetail v2] submit-for-review handler: imageIds=${imageIds.length}, epId=${epId?.slice(0,8)}`);
+      console.log(`[StoryboardDetail v2] submit-for-review: imageIds=${imageIds.length}, epId=${epId?.slice(0,8)}`);
 
       if (imageIds.length === 0) {
         console.log(`[StoryboardDetail v2] → all Active, dispatching review-complete`);
