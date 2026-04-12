@@ -567,7 +567,11 @@ export function StoryboardDetail({
   useEffect(() => { imageStatusesRef.current = imageStatuses; }, [imageStatuses]);
 
   useEffect(() => {
-    const handler = async () => {
+    const handler = async (e: Event) => {
+      const eventDetail = (e as CustomEvent).detail;
+      // 只处理匹配当前剧集的事件
+      if (eventDetail?.episodeId && selectedEpisode?.asset_id && eventDetail.episodeId !== selectedEpisode.asset_id) return;
+
       const sbs = storyboardsRef.current;
       const statuses = imageStatusesRef.current;
       const isActive = (imageId: string) => statuses[imageId]?.status === 'Active';
@@ -590,9 +594,10 @@ export function StoryboardDetail({
         }
       }
 
+      const epId = selectedEpisode?.asset_id;
+
       if (imageIds.length === 0) {
-        // 所有图片已是 Active，直接通知 AI 完成
-        window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+        window.dispatchEvent(new CustomEvent('storyboard:review-complete', { detail: { episodeId: epId } }));
         return;
       }
 
@@ -600,10 +605,9 @@ export function StoryboardDetail({
         const res = await generationApi.submitAsset(projectId, imageIds);
         const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
 
-        // 对每个 Processing 的素材启动轮询，全部完成后通知 AI
         const processingItems = submitted.filter(s => s.status === 'Processing');
         if (processingItems.length === 0) {
-          window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+          window.dispatchEvent(new CustomEvent('storyboard:review-complete', { detail: { episodeId: epId } }));
           return;
         }
 
@@ -612,19 +616,18 @@ export function StoryboardDetail({
           pollAssetStatus(s.asset_id, s.image_id, () => {
             remaining--;
             if (remaining === 0) {
-              window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+              window.dispatchEvent(new CustomEvent('storyboard:review-complete', { detail: { episodeId: epId } }));
             }
           });
         });
       } catch {
-        // 提交失败，也通知 AI（让 AI 自行处理错误）
-        window.dispatchEvent(new CustomEvent('storyboard:review-complete'));
+        window.dispatchEvent(new CustomEvent('storyboard:review-complete', { detail: { episodeId: epId } }));
       }
     };
 
     window.addEventListener('storyboard:submit-for-review', handler);
     return () => window.removeEventListener('storyboard:submit-for-review', handler);
-  }, [projectId, characters, scenes, props]);
+  }, [projectId, selectedEpisode?.asset_id, characters, scenes, props]);
 
   // 刷新分镜数据（手动刷新按钮）
   const handleRefreshStoryboards = async () => {

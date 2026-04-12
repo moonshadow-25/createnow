@@ -86,6 +86,8 @@ _HANDLERS = {
     "add_script_character": handle_add_script_character,
     "add_script_scene": handle_add_script_scene,
     "submit_images_for_review": handle_submit_images_for_review,
+    "generate_storyboard_video": handle_generate_storyboard_video,
+    "generate_all_storyboard_videos": handle_generate_all_storyboard_videos,
 }
 
 # 需要 ai_config 的工具（生成类）
@@ -93,8 +95,6 @@ _AI_CONFIG_HANDLERS = {
     "generate_storyboard": handle_generate_storyboard,
     "generate_asset_image": handle_generate_asset_image,
     "generate_all_asset_images": handle_generate_all_asset_images,
-    "generate_storyboard_video": handle_generate_storyboard_video,
-    "generate_all_storyboard_videos": handle_generate_all_storyboard_videos,
 }
 
 

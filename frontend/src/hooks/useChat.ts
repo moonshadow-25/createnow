@@ -63,9 +63,18 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     }
   }, [conversationId, messages, storageKey, options?.label]);
 
+  // 并发锁：防止多个 _fetchStream 同时执行
+  const streamingLockRef = useRef(false);
+
   // 内部通用 fetch 方法（sendMessage 和 rawMessage 共用）
   const _fetchStream = useCallback(
     async (content: string, addToHistory: boolean) => {
+      // 如果已有流在进行中，跳过
+      if (streamingLockRef.current) {
+        console.warn('[useChat] skipped concurrent _fetchStream:', content.slice(0, 40));
+        return;
+      }
+      streamingLockRef.current = true;
       setIsStreaming(true);
       setError(null);
       setCurrentMessage('');
@@ -230,6 +239,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
           setError(err.message);
         }
       } finally {
+        streamingLockRef.current = false;
         setIsStreaming(false);
         setCurrentMessage('');
         setCurrentThinking('');
@@ -278,11 +288,19 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     await sendRawMessage(`__CANCEL__:${token}`);
   }, [pendingConfirmation, sendRawMessage]);
 
-  // 审核完成后通知 AI 继续生成视频（AI 会调 generate_all_storyboard_videos，需用户确认，不会循环）
+  // 审核完成后通知 AI 继续生成视频
+  // 用 ref 避免 useEffect 反复重注册；用 episodeId 过滤避免多实例重复响应
   const sendRawMessageRef = useRef(sendRawMessage);
   useEffect(() => { sendRawMessageRef.current = sendRawMessage; }, [sendRawMessage]);
+  const episodeIdRef = useRef(options?.episodeId);
+  useEffect(() => { episodeIdRef.current = options?.episodeId; }, [options?.episodeId]);
   useEffect(() => {
-    const handler = () => sendRawMessageRef.current('审核已完成，请继续生成视频');
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      // 只处理匹配当前 session 的事件
+      if (detail?.episodeId && episodeIdRef.current && detail.episodeId !== episodeIdRef.current) return;
+      sendRawMessageRef.current('审核已完成，请继续生成视频');
+    };
     window.addEventListener('storyboard:review-complete', handler);
     return () => window.removeEventListener('storyboard:review-complete', handler);
   }, []);
