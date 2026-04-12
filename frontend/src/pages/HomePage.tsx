@@ -173,7 +173,10 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">DreamMaster</h1>
+          <h1 className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold">ViPro</span>
+            <span className="text-base font-medium text-gray-400">满血API</span>
+          </h1>
           <div className="flex items-center gap-3 pr-10">
             {isAdmin && !isSaasUser && loggedIn && (
               <a
