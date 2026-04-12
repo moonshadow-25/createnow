@@ -595,8 +595,10 @@ export function StoryboardDetail({
       }
 
       const epId = selectedEpisode?.asset_id;
+      console.log(`[StoryboardDetail v2] submit-for-review handler: imageIds=${imageIds.length}, epId=${epId?.slice(0,8)}`);
 
       if (imageIds.length === 0) {
+        console.log(`[StoryboardDetail v2] → all Active, dispatching review-complete`);
         window.dispatchEvent(new CustomEvent('storyboard:review-complete', { detail: { episodeId: epId } }));
         return;
       }

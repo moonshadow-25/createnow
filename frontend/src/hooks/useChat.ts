@@ -71,10 +71,11 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     async (content: string, addToHistory: boolean) => {
       // 如果已有流在进行中，跳过
       if (streamingLockRef.current) {
-        console.warn('[useChat] skipped concurrent _fetchStream:', content.slice(0, 40));
+        console.warn(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 🔒 BLOCKED concurrent _fetchStream:`, content.slice(0, 50));
         return;
       }
       streamingLockRef.current = true;
+      console.log(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 🚀 _fetchStream START:`, content.slice(0, 50));
       setIsStreaming(true);
       setError(null);
       setCurrentMessage('');
@@ -240,6 +241,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
         }
       } finally {
         streamingLockRef.current = false;
+        console.log(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 🏁 _fetchStream END`);
         setIsStreaming(false);
         setCurrentMessage('');
         setCurrentThinking('');
@@ -269,14 +271,15 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
   const confirmPendingAction = useCallback(async () => {
     if (!pendingConfirmation) return;
     const { token, toolName } = pendingConfirmation;
+    console.log(`[useChat v2][${options?.episodeId?.slice(0,8) || 'no-ep'}] 🔧 confirmPendingAction: ${toolName}`);
     setPendingConfirmation(null);
     await sendRawMessage(`__CONFIRM__:${token}`);
     if (toolName === 'generate_all_asset_images') {
-      // 生图完成 → 触发 AI 继续（AI 会调 submit_images_for_review，需用户再次确认，不会循环）
+      console.log(`[useChat v2] → auto-sending "继续执行下一步"`);
       await sendRawMessage('继续执行下一步');
     }
     if (toolName === 'delete_all_storyboards') {
-      // 分镜已清空 → 告知 AI 继续生成新分镜
+      console.log(`[useChat v2] → auto-sending "分镜已全部删除"`);
       await sendRawMessage('分镜已全部删除，请继续生成新分镜');
     }
   }, [pendingConfirmation, sendRawMessage]);
@@ -297,8 +300,19 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
+      const myEp = episodeIdRef.current;
+      const eventEp = detail?.episodeId;
+      console.log(`[useChat v2][${myEp?.slice(0,8) || 'no-ep'}] 📩 review-complete received, eventEp=${eventEp?.slice(0,8) || 'none'}`);
       // 只处理匹配当前 session 的事件
-      if (detail?.episodeId && episodeIdRef.current && detail.episodeId !== episodeIdRef.current) return;
+      if (eventEp && myEp && eventEp !== myEp) {
+        console.log(`[useChat v2][${myEp?.slice(0,8) || 'no-ep'}] ⏭️ SKIPPED (episodeId mismatch)`);
+        return;
+      }
+      if (!myEp) {
+        console.log(`[useChat v2][no-ep] ⏭️ SKIPPED (no episodeId on this instance)`);
+        return;
+      }
+      console.log(`[useChat v2][${myEp?.slice(0,8)}] ✅ SENDING "审核已完成，请继续生成视频"`);
       sendRawMessageRef.current('审核已完成，请继续生成视频');
     };
     window.addEventListener('storyboard:review-complete', handler);
