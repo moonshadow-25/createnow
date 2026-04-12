@@ -48,6 +48,7 @@ from app.api.version import router as version_router
 from app.api.auth import router as auth_router
 from app.api.admin_auth import router as admin_auth_router
 from app.api.user_auth import router as user_auth_router
+from app.api.full_script import router as full_script_router
 
 def _ensure_ssl_cert():
     """启动时自动生成自签名证书（若不存在），有效期 10 年"""
@@ -654,6 +655,7 @@ app.include_router(version_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_auth_router, prefix="/api")
 app.include_router(user_auth_router, prefix="/api")
+app.include_router(full_script_router, prefix="/api")
 
 
 # ==================== 前端静态文件服务 ====================

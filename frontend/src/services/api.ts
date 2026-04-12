@@ -526,6 +526,16 @@ export const scriptApi = {
     api.delete(`/projects/${projectId}/scripts/${scriptId}/lines/${lineId}`),
 };
 
+// 全剧本导入API
+export const fullScriptApi = {
+  splitEpisodes: (projectId: string, content: string) =>
+    api.post(`/projects/${projectId}/full-script/split-episodes`, { content }),
+  extractAssets: (projectId: string, content: string) =>
+    api.post(`/projects/${projectId}/full-script/extract-assets`, { content }),
+  splitAndExtract: (projectId: string, content: string) =>
+    api.post(`/projects/${projectId}/full-script/split-and-extract`, { content }),
+};
+
 // 画布相关API
 export const canvasApi = {
   list: (projectId: string) =>

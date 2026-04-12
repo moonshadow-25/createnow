@@ -332,5 +332,28 @@
         "content_file": "conversation_tools_desc_assets/default.md"
       }
     }
+  },
+  "full_script_split": {
+    "label": "全剧本分集",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "将完整剧本自动分集，保留原始文本",
+        "content_file": "full_script_split/default.md"
+      }
+    }
+  },
+  "full_script_extract": {
+    "label": "全剧本资产提取",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "从全剧本文本提取角色/场景/道具",
+        "variables": ["{existing_assets_summary}"],
+        "content_file": "full_script_extract/default.md"
+      }
+    }
   }
 }

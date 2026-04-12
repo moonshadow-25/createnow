@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon } from 'lucide-react';
+import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
@@ -12,6 +12,7 @@ import { GenerateTab } from '@/components/generate/GenerateTab';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useThemeStore } from '@/store/themeStore';
+import { FullScriptImportModal } from '@/components/script/FullScriptImportModal';
 
 type TabType = 'chat' | 'assets' | 'storyboard' | 'generate';
 
@@ -28,6 +29,7 @@ export default function ProjectPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
+  const [showFullScriptImport, setShowFullScriptImport] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   // 生成 tab 首次访问后保持挂载，避免切换时状态丢失
   const [generateMounted, setGenerateMounted] = useState(false);
@@ -191,6 +193,14 @@ export default function ProjectPage() {
                   </button>
                   <div className="border-t border-gray-600 my-1" />
                   <button
+                    onClick={() => { setShowFullScriptImport(true); setShowMoreMenu(false); }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 text-gray-200"
+                  >
+                    <FileText size={16} />
+                    导入全剧本
+                  </button>
+                  <div className="border-t border-gray-600 my-1" />
+                  <button
                     onClick={() => { handleClearCache(); setShowMoreMenu(false); }}
                     disabled={isClearingCache}
                     className="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-b-lg hover:bg-gray-600 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -275,6 +285,17 @@ export default function ProjectPage() {
       {/* 设置弹框 */}
       {showSettings && projectId && (
         <SettingsModal projectId={projectId} onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* 全剧本导入弹框 */}
+      {showFullScriptImport && projectId && (
+        <FullScriptImportModal
+          projectId={projectId}
+          onClose={() => setShowFullScriptImport(false)}
+          onSuccess={() => {
+            handleRefreshAssets();
+          }}
+        />
       )}
     </div>
   );
