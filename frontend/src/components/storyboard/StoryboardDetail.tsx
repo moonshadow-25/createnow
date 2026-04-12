@@ -639,6 +639,8 @@ export function StoryboardDetail({
           pollAssetStatus(s.asset_id, s.image_id, () => {
             remaining--;
             if (remaining === 0) {
+              // 全部审核完成，刷新前端 state 让打勾状态正确显示
+              onUpdatedRef.current();
               window.dispatchEvent(new CustomEvent('storyboard:review-complete', { detail: { episodeId: epId } }));
             }
           });
