@@ -570,30 +570,45 @@ export function StoryboardDetail({
     const handler = async (e: Event) => {
       const eventDetail = (e as CustomEvent).detail;
       const epId = eventDetail?.episodeId || selectedEpisode?.asset_id;
-      console.log(`[StoryboardDetail v2] submit-for-review handler: epId=${epId?.slice(0,8)}, selectedEp=${selectedEpisode?.asset_id?.slice(0,8)}`);
-      // 只处理匹配当前剧集的事件
+      console.log(`[StoryboardDetail v2] submit-for-review handler: epId=${epId?.slice(0,8)}`);
       if (eventDetail?.episodeId && selectedEpisode?.asset_id && eventDetail.episodeId !== selectedEpisode.asset_id) return;
+
+      // 从 API 拉取最新资产数据（不依赖可能过期的 state）
+      console.log(`[StoryboardDetail v2] fetching fresh asset data from API...`);
+      let freshChars: any[] = [];
+      let freshScenes: any[] = [];
+      let freshProps: any[] = [];
+      try {
+        const [charRes, sceneRes, propRes] = await Promise.all([
+          assetApi.list(projectId, 'character'),
+          assetApi.list(projectId, 'scene'),
+          assetApi.list(projectId, 'prop'),
+        ]);
+        freshChars = charRes.data || [];
+        freshScenes = sceneRes.data || [];
+        freshProps = propRes.data || [];
+      } catch (err) {
+        console.error('[StoryboardDetail v2] failed to fetch fresh assets:', err);
+      }
 
       const sbs = storyboardsRef.current;
       const statuses = imageStatusesRef.current;
       const isActive = (imageId: string) => statuses[imageId]?.status === 'Active';
       const imageIds: string[] = [];
 
+      // 从所有资产直接收集 image_id（不经过分镜关联）
+      for (const char of freshChars) {
+        if (char.image_id && !imageIds.includes(char.image_id) && !isActive(char.image_id)) imageIds.push(char.image_id);
+      }
+      for (const scene of freshScenes) {
+        if (scene.image_id && !imageIds.includes(scene.image_id) && !isActive(scene.image_id)) imageIds.push(scene.image_id);
+      }
+      for (const prop of freshProps) {
+        if (prop.image_id && !imageIds.includes(prop.image_id) && !isActive(prop.image_id)) imageIds.push(prop.image_id);
+      }
+      // 分镜图（如果有）
       for (const sb of sbs) {
         if (sb.image_id && !imageIds.includes(sb.image_id) && !isActive(sb.image_id)) imageIds.push(sb.image_id);
-        for (const charId of (sb.character_ids || [])) {
-          const char = characters.find((c: any) => c.asset_id === charId);
-          if (char?.image_id && !imageIds.includes(char.image_id) && !isActive(char.image_id)) imageIds.push(char.image_id);
-        }
-        const sceneIds = sb.scene_ids?.length ? sb.scene_ids : (sb.scene_id ? [sb.scene_id] : []);
-        for (const sceneId of sceneIds) {
-          const scene = scenes.find((s: any) => s.asset_id === sceneId);
-          if (scene?.image_id && !imageIds.includes(scene.image_id) && !isActive(scene.image_id)) imageIds.push(scene.image_id);
-        }
-        for (const propId of (sb.prop_ids || [])) {
-          const prop = props.find((p: any) => p.asset_id === propId);
-          if (prop?.image_id && !imageIds.includes(prop.image_id) && !isActive(prop.image_id)) imageIds.push(prop.image_id);
-        }
       }
 
       console.log(`[StoryboardDetail v2] submit-for-review: imageIds=${imageIds.length}, epId=${epId?.slice(0,8)}`);
@@ -630,7 +645,7 @@ export function StoryboardDetail({
 
     window.addEventListener('storyboard:submit-for-review', handler);
     return () => window.removeEventListener('storyboard:submit-for-review', handler);
-  }, [projectId, selectedEpisode?.asset_id, characters, scenes, props]);
+  }, [projectId, selectedEpisode?.asset_id]);
 
   // 刷新分镜数据（手动刷新按钮）
   const handleRefreshStoryboards = async () => {
