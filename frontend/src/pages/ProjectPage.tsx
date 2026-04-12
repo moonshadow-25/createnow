@@ -30,14 +30,15 @@ export default function ProjectPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [showFullScriptImport, setShowFullScriptImport] = useState(false);
-  // 项目没有分集时自动弹出导入弹框（仅在资产加载完成后判断一次）
+  // 项目没有分集时自动弹出导入弹框
   const autoImportTriggered = useRef(false);
+  const [episodesInitLoaded, setEpisodesInitLoaded] = useState(false);
   useEffect(() => {
-    if (loadedProjectId === projectId && episodes.length === 0 && !autoImportTriggered.current) {
+    if (episodesInitLoaded && episodes.length === 0 && !autoImportTriggered.current) {
       autoImportTriggered.current = true;
       setShowFullScriptImport(true);
     }
-  }, [loadedProjectId, projectId, episodes.length]);
+  }, [episodesInitLoaded, episodes.length]);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   // 生成 tab 首次访问后保持挂载，避免切换时状态丢失
   const [generateMounted, setGenerateMounted] = useState(false);
@@ -116,11 +117,16 @@ export default function ProjectPage() {
     }
     // 已有该项目缓存时跳过，避免从子页面返回时重复请求
     // storyboard 由 StoryboardDetail.loadStoryboards() 独立管理，无需此处拉取
-    if (loadedProjectId === projectId) return;
+    if (loadedProjectId === projectId) {
+      setEpisodesInitLoaded(true);
+      return;
+    }
+    setEpisodesInitLoaded(false);
+    autoImportTriggered.current = false;
     fetchAssets(projectId, 'character');
     fetchAssets(projectId, 'scene');
     fetchAssets(projectId, 'prop');
-    fetchAssets(projectId, 'episode');
+    fetchAssets(projectId, 'episode').then(() => setEpisodesInitLoaded(true));
     fetchAssets(projectId, 'storyboard');
   }, [projectId]);
 
