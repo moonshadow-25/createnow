@@ -137,9 +137,9 @@ async def split_into_episodes(project_id: str, content: str, ai_config: Dict) ->
         ep_content = ep_data.get("content", "")
 
         if ep_number in existing_by_number:
-            # 更新现有集的 script_content
+            # 更新现有集的 script（剧本内容）
             existing_ep = existing_by_number[ep_number]
-            existing_ep["script_content"] = ep_content
+            existing_ep["script"] = ep_content
             if ep_title:
                 existing_ep["name"] = ep_title
             AssetService.save_asset(project_id, "episode", existing_ep)
@@ -155,7 +155,7 @@ async def split_into_episodes(project_id: str, content: str, ai_config: Dict) ->
                 "asset_id": str(uuid.uuid4()),
                 "name": ep_title,
                 "episode_number": ep_number,
-                "script_content": ep_content,
+                "script": ep_content,
                 "created_at": now,
             }
             AssetService.save_asset(project_id, "episode", new_episode)
