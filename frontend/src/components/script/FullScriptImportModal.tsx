@@ -5,6 +5,7 @@ import { useToast } from '@/components/common/Toast';
 
 interface FullScriptImportModalProps {
   projectId: string;
+  visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -30,6 +31,7 @@ interface ExtractResult {
 
 export function FullScriptImportModal({
   projectId,
+  visible,
   onClose,
   onSuccess,
 }: FullScriptImportModalProps) {
@@ -151,7 +153,7 @@ export function FullScriptImportModal({
 
   // ── 渲染 ──────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${visible ? '' : 'hidden'}`}>
       <div className="bg-gray-800 rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
         {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
@@ -161,8 +163,7 @@ export function FullScriptImportModal({
           </div>
           <button
             onClick={onClose}
-            disabled={isProcessing}
-            className="text-gray-400 hover:text-white disabled:opacity-50 transition-colors"
+            className="text-gray-400 hover:text-white transition-colors"
           >
             <X size={20} />
           </button>
@@ -322,8 +323,7 @@ export function FullScriptImportModal({
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
           <button
             onClick={onClose}
-            disabled={isProcessing}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
           >
             关闭
           </button>

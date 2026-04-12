@@ -287,10 +287,11 @@ export default function ProjectPage() {
         <SettingsModal projectId={projectId} onClose={() => setShowSettings(false)} />
       )}
 
-      {/* 全剧本导入弹框 */}
-      {showFullScriptImport && projectId && (
+      {/* 全剧本导入弹框（始终挂载，关闭只是隐藏，保留状态） */}
+      {projectId && (
         <FullScriptImportModal
           projectId={projectId}
+          visible={showFullScriptImport}
           onClose={() => setShowFullScriptImport(false)}
           onSuccess={() => {
             handleRefreshAssets();
