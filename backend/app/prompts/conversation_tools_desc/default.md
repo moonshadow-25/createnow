@@ -47,8 +47,6 @@ TOOL: create_character
 }
 END_TOOL
 
-⚠️ **创建前必须比对 `get_episode_script` 返回的 `existing_assets`**：该工具返回值中包含项目所有已有角色/场景/道具，创建任何资产前必须先检查此列表，已存在的直接使用其 `asset_id`，禁止重复创建。
-
 TOOL: update_character
 {
   "name": "要修改的角色名（用于查找）",
@@ -58,8 +56,6 @@ TOOL: update_character
   "image_prompt": "生图提示词（可选）"
 }
 END_TOOL
-
-⚠️ **update_character 必须先读后改**：调用前必须先执行 `get_asset`（asset_type=character）读取当前完整信息，再在原有内容基础上修改。
 
 TOOL: create_scene
 {
@@ -79,8 +75,6 @@ TOOL: update_scene
 }
 END_TOOL
 
-⚠️ **update_scene 必须先读后改**：调用前必须先执行 `get_asset`（asset_type=scene）读取当前完整信息，再在原有内容基础上修改。
-
 TOOL: create_prop
 {
   "name": "道具名",
@@ -96,8 +90,6 @@ TOOL: update_prop
   "image_prompt": "生图提示词（可选）"
 }
 END_TOOL
-
-⚠️ **update_prop 必须先读后改**：调用前必须先执行 `get_asset`（asset_type=prop）读取当前完整信息，再在原有内容基础上修改。
 
 TOOL: create_episode
 {
@@ -129,8 +121,6 @@ TOOL: update_storyboard
   "scene_ids": ["场景asset_id"]
 }
 END_TOOL
-
-⚠️ **update_storyboard 必须先读后改**：调用前必须先执行 `get_storyboard`（传入 episode_id + sequence）读取该分镜的完整信息（包括 description、video_prompt、image_prompt），再在原有内容基础上修改。
 
 ⚠️ **生图提示词 vs 视频提示词字段区分**：
 - 用户说"生成分镜X的**生图提示词**" / "给分镜X生成图像提示词" → 更新 `image_prompt` 字段
@@ -212,56 +202,11 @@ END_TOOL
 - ✅ 对话：使用"角色名（语气）：台词"或"角色名（OS）：台词"
   - 冒号前不要有空格，冒号后要有空格
 
-## 示例1：创建空白剧本
+## 示例：创建剧本
 
 TOOL: create_script
 {
   "title": "小阁老"
-}
-END_TOOL
-
-## 示例2：根据小说内容直接创建完整剧本
-
-TOOL: create_script
-{
-  "title": "小阁老",
-  "content": "《小阁老》\\n人物表：\\n马湘兰：秦淮八艳之一。\\n赵昊：15岁，穿越者，现代是明史专业教师。\\n赵守正：赵昊之父，中年男子。\\n\\n第1集\\n一、金陵秦淮河 日 外\\n△ 【视觉开场】：镜头由远及近，俯瞰大明留都南京的繁华。秦淮河两岸金粉楼台，画舫穿梭。\\n△ 画舫之上，马湘兰正执扇清唱昆曲《北西厢》，曲声悠扬。\\n出片名：小阁老\\n\\n二、赵府内院大厅 日 内\\n△ 延续马湘兰的昆曲，丝竹之声绕梁。\\n（画外音OS）：大明嘉靖四十四年，南京正三品大员的五进大宅里，十五岁少年公子赵昊正被婢女环绕，尽享家世显赫、吃喝不愁的衙内生活。\\n△ 赵昊用绣着金线的锦巾蒙住双眼，正张开双臂，嬉皮笑脸地在一群俏丽婢女中穿梭。\\n赵昊（大喊）：一、二、三，摸瞎鱼！小宝贝们，谁也别想跑！"
-}
-END_TOOL
-
-## 示例3：先创建剧本，再导入内容
-
-TOOL: create_script
-{
-  "title": "新剧本"
-}
-END_TOOL
-
-TOOL: import_script_content
-{
-  "script_id": "刚才创建的剧本的script_id",
-  "content": "《新剧本》\\n人物表：\\n主角：20岁，男\\n\\n第1集\\n一、场景名 日 外\\n△ 视觉描述\\n角色名：台词"
-}
-END_TOOL
-
-TOOL: add_script_character
-{
-  "script_id": "剧本ID",
-  "name": "赵昊",
-  "age": "15岁",
-  "gender": "男",
-  "description": "穿越者"
-}
-END_TOOL
-
-TOOL: add_script_scene
-{
-  "script_id": "剧本ID",
-  "episode_number": 1,
-  "location": "金陵秦淮河",
-  "time_of_day": "日",
-  "interior_exterior": "外",
-  "content": "△ 【视觉开场】：镜头由远及近，俯瞰大明留都南京的繁华。"
 }
 END_TOOL
 
@@ -319,11 +264,7 @@ END_TOOL
     ⚠️ **必须先调用 get_prompt_template 读取当前激活模板，再基于它修改后调用**
     ⚠️ **修改铁律：原模板的所有章节标题、规则条目、示例、禁止清单必须完整保留，不得删除任何章节，不得合并或精简规则条目，不得用自己的理解替换原文表述。只在用户指定的位置插入新内容或修改对应字段，其余内容原样复制。**
     ⚠️ content 必须是完整可用的模板全文，不能只写修改部分或附加说明
-    **关键词 → key 对照（必须按此匹配，不得自行推断）：**
-      "分镜编辑" / "图生图" / "分镜图生图"（图生图模式）  → storyboard_image_edit
-      "分镜图" / "分镜生图" / "文生图分镜"（文生图模式）  → storyboard_image
-      "分镜视频" / "video_prompt" / "视频提示词"          → video
-      "资产图片" / "角色图片" / "场景图片" / "道具图片"    → image
+    ⚠️ 关键词→key 对照同上 get_prompt_template
     **正确流程**：
     步骤1 - 先读取当前模板：TOOL: get_prompt_template
 {"key": "storyboard_image_edit"}
@@ -390,9 +331,6 @@ END_TOOL
 - 用户说"修改AI的行为/规则"→ 用 update_ai_instructions
 - 禁止：用户没有要求修改风格时，不得主动调用 update_project_config
 - 禁止：不得根据剧本内容自行推断并修改任何配置
-- 用户说"生成所有资产图片"/"为所有角色/场景/道具生图"/"批量生图" → 必须用 generate_all_asset_images，禁止用 generate_asset_image
-- 用户说"生成所有分镜图"/"批量生成分镜图" → 必须用 generate_all_storyboard_images，禁止用 generate_storyboard_image
-- 用户说"生成所有视频"/"批量生成视频" → 必须用 generate_all_storyboard_videos，禁止用 generate_storyboard_video
 
 ## 自动生成本集工作流（重要！）
 
