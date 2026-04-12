@@ -30,6 +30,14 @@ export default function ProjectPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [showFullScriptImport, setShowFullScriptImport] = useState(false);
+  // 项目没有分集时自动弹出导入弹框（仅在资产加载完成后判断一次）
+  const autoImportTriggered = useRef(false);
+  useEffect(() => {
+    if (loadedProjectId === projectId && episodes.length === 0 && !autoImportTriggered.current) {
+      autoImportTriggered.current = true;
+      setShowFullScriptImport(true);
+    }
+  }, [loadedProjectId, projectId, episodes.length]);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   // 生成 tab 首次访问后保持挂载，避免切换时状态丢失
   const [generateMounted, setGenerateMounted] = useState(false);
