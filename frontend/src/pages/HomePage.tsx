@@ -218,6 +218,15 @@ export default function HomePage() {
               </button>
             )}
 
+            <a
+              href="https://docs.qq.com/aio/DSU5pZWRzdGFGQ1JH?p=Tti5hvBIeVGT1KIpGtCcOC&client_hint=0&client_hint=0&client_hint=0"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+            >
+              使用教程
+            </a>
+
             {isAdmin && (
               <button
                 onClick={handleCreateProject}
