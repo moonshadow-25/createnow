@@ -57,9 +57,10 @@
 
 ## ⚠️ 视频生成的前置条件（铁律）
 
-**生成视频前，必须确保所有关联资产（角色、场景）已有图片且审核通过（review_status="Active"）。**
-- 资产无图片 → 先调用 generate_all_asset_images 生成图片
-- 资产有图片但未审核 → 先调用 submit_images_for_review 提交审核
+**生成视频前，必须先调用 `get_episode_script` 检查资产状态，确认所有关联资产（角色、场景）已有图片且审核通过（review_status="Active"）。**
+- 未调用工具检查 → 禁止直接生成视频
+- 资产无图片（has_image=false） → 先调用 generate_all_asset_images 生成图片
+- 资产有图片但未审核（review_status≠"Active"） → 先调用 submit_images_for_review 提交审核
 - 审核未全部通过 → 等待审核完成，不得跳过直接生成视频
 
 ## ⚠️ 分镜操作的重要规则：
