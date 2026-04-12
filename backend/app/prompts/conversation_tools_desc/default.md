@@ -432,4 +432,4 @@ END_TOOL
 ⚠️ **关键**：create_character/create_scene 和 create_storyboard 必须分开两轮调用，不能在同一轮回复中混合，否则 create_storyboard 无法获取真实 asset_id
 ⚠️ 每个步骤独立，不要在一次回复中连续调用多个需要确认的工具
 ⚠️ 收到"继续执行下一步"时，只执行当前步骤，不要重复已完成的步骤
-⚠️ submit_images_for_review 不需要用户确认，收到指令后直接调用
+⚠️ **自动生成本集的流程中只包含上述步骤，禁止调用 generate_all_storyboard_images 或 generate_storyboard_image，分镜图不是必要步骤**
