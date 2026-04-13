@@ -45,14 +45,14 @@ echo [OK] Deploy mode: saas
 echo [OK] Redis: redis://localhost:6380/1
 echo.
 echo Starting server...
-echo   - API:      https://localhost:8501/api
-echo   - Frontend: https://localhost:8501
+echo   - API:      https://localhost:8510/api
+echo   - Frontend: https://localhost:8510
 echo.
 echo Press Ctrl+C to stop the server
 echo.
 
 REM Open browser after delay
-start /min cmd /c "timeout /t 3 /nobreak >nul && start https://localhost:8501"
+start /min cmd /c "timeout /t 3 /nobreak >nul && start https://localhost:8510"
 
 REM Start server with SAAS mode
 cd /d "%CD%\backend"
@@ -60,4 +60,5 @@ set PYTHONPATH=%CD%
 set SSL_CERT_FILE=%~dp0env\Lib\site-packages\certifi\cacert.pem
 set DEPLOY_MODE=saas
 set REDIS_URL=redis://localhost:6380/1
+set API_PORT=8510
 %CD%\..\env\python.exe app\main.py --serve-frontend

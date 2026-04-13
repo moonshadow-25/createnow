@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # API Settings
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8501
-    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8501"]
+    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000", "http://localhost:8501", "https://localhost:8501", "https://localhost:8510"]
 
     # Storage Paths
     BASE_DIR: Path = Path(__file__).parent.parent.parent.parent
