@@ -323,6 +323,7 @@ export default function HomePage() {
                   project={project}
                   stats={projectStats[project.project_id]}
                   isAdmin={isAdmin}
+                  hideCost={isSaasUser}
                   onOpen={() => handleOpenProject(project)}
                   onDelete={() => handleDeleteProject(project.project_id)}
                   onEdit={() => setEditingProject(project)}

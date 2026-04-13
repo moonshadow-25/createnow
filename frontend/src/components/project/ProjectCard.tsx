@@ -15,6 +15,7 @@ interface Props {
   project: Project;
   stats: ProjectStats | null | undefined;
   isAdmin: boolean;
+  hideCost?: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onEdit: () => void;
@@ -110,7 +111,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
   };
 }
 
-export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit }: Props) {
+export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen, onDelete, onEdit }: Props) {
   const configured = (project.total_episodes ?? 0) > 0;
 
   return (
@@ -119,7 +120,7 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit 
       <div className="flex justify-between items-start">
         <h3 className="text-xl font-semibold flex-1 mr-2 truncate">{project.name}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {project.budget_total != null && stats &&
+          {!hideCost && project.budget_total != null && stats &&
             (0.4 * stats.total_images + 1.0 * stats.total_video_seconds) >= project.budget_total && (
             <span title="预算已超出，API已锁定" className="text-red-400">
               <Lock size={14} />
@@ -156,14 +157,14 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit 
         ) : stats === null ? (
           <p className="text-xs text-red-400">统计加载失败</p>
         ) : (
-          <StatsSection project={project} stats={stats} />
+          <StatsSection project={project} stats={stats} hideCost={hideCost} />
         )
       ) : (
         <>
           {stats === undefined ? (
             <div className="h-3 bg-gray-700 rounded animate-pulse w-1/2" />
           ) : stats ? (
-            <CostOnlySection project={project} stats={stats} />
+            <CostOnlySection project={project} stats={stats} hideCost={hideCost} />
           ) : null}
           <span className="text-xs text-gray-500 italic">未配置项目参数</span>
         </>
@@ -186,18 +187,27 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit 
   );
 }
 
-function CostOnlySection({ project, stats }: { project: Project; stats: ProjectStats }) {
+function CostOnlySection({ project, stats, hideCost }: { project: Project; stats: ProjectStats; hideCost?: boolean }) {
   const image_cost = 0.4 * stats.total_images;
   const video_cost = 1 * stats.total_video_seconds;
   const total_cost = image_cost + video_cost;
   return (
     <div className="space-y-1 text-xs">
       <div className="flex justify-between text-gray-500">
-        <span>图片 {stats.total_images}张: {Math.round(image_cost)}元</span>
-        <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}元</span>
-        <span className="font-mono">共 {total_cost.toFixed(2)}元</span>
+        {hideCost ? (
+          <>
+            <span>图片 {stats.total_images}张</span>
+            <span>视频 {Math.round(stats.total_video_seconds)}秒</span>
+          </>
+        ) : (
+          <>
+            <span>图片 {stats.total_images}张: {Math.round(image_cost)}元</span>
+            <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}元</span>
+            <span className="font-mono">共 {total_cost.toFixed(2)}元</span>
+          </>
+        )}
       </div>
-      {project.budget_total != null && (() => {
+      {!hideCost && project.budget_total != null && (() => {
         const spent = total_cost;
         const total = project.budget_total;
         const pct = Math.min(spent / total, 1);
@@ -223,7 +233,7 @@ function CostOnlySection({ project, stats }: { project: Project; stats: ProjectS
     </div>
   );
 }
-function StatsSection({ project, stats }: { project: Project; stats: ProjectStats }) {
+function StatsSection({ project, stats, hideCost }: { project: Project; stats: ProjectStats; hideCost?: boolean }) {
   const m = computeMetrics(project, stats);
 
   return (
@@ -255,17 +265,24 @@ function StatsSection({ project, stats }: { project: Project; stats: ProjectStat
         </div>
       </div>
 
-      {/* Cost */}
-      <div className="flex justify-between text-gray-500">
-        <span>图片 {m.total_images}张: {Math.round(m.image_cost)}元</span>
-        <span>视频 {Math.round(m.total_video_seconds)}秒: {Math.round(m.video_cost)}元</span>
-        <span className={`font-mono ${m.costColor}`}>
-          {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}元/分钟` : '—'}
-        </span>
-      </div>
+      {/* Cost / counts */}
+      {hideCost ? (
+        <div className="flex justify-between text-gray-500">
+          <span>图片 {m.total_images}张</span>
+          <span>视频 {Math.round(m.total_video_seconds)}秒</span>
+        </div>
+      ) : (
+        <div className="flex justify-between text-gray-500">
+          <span>图片 {m.total_images}张: {Math.round(m.image_cost)}元</span>
+          <span>视频 {Math.round(m.total_video_seconds)}秒: {Math.round(m.video_cost)}元</span>
+          <span className={`font-mono ${m.costColor}`}>
+            {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}元/分钟` : '—'}
+          </span>
+        </div>
+      )}
 
       {/* Budget */}
-      {project.budget_total != null && (() => {
+      {!hideCost && project.budget_total != null && (() => {
         const spent = m.image_cost + m.video_cost;
         const total = project.budget_total;
         const pct = Math.min(spent / total, 1);
