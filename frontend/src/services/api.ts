@@ -617,9 +617,9 @@ export const adminAuthApi = {
 // 管理员用户管理 API
 export const adminUserApi = {
   list: () => api.get('/admin/users'),
-  create: (data: { username: string; password: string; display_name?: string; assigned_project_ids?: string[] }) =>
+  create: (data: { username: string; password: string; display_name?: string; assigned_project_ids?: string[]; readonly?: boolean }) =>
     api.post('/admin/users', data),
-  update: (userId: string, data: { display_name?: string; password?: string; assigned_project_ids?: string[] }) =>
+  update: (userId: string, data: { display_name?: string; password?: string; assigned_project_ids?: string[]; readonly?: boolean }) =>
     api.put(`/admin/users/${userId}`, data),
   delete: (userId: string) => api.delete(`/admin/users/${userId}`),
 };
