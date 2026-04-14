@@ -29,7 +29,7 @@ interface ProjectCost {
 interface UserCost {
   username: string;
   display_name?: string;
-  total_cost: number;
+  estimated_cost: number;
   project_count: number;
 }
 
@@ -82,23 +82,31 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
     pieData.push({ name: '其他', value: parseFloat(otherCost.toFixed(2)) });
   }
 
-  // 按用户汇总
+  // 按用户汇总：每个项目费用 ÷ 该项目的参与用户数，取平均分摊
+  const projectUserCount: Record<string, number> = {};
+  users.forEach(u => {
+    (u.assigned_project_ids || []).forEach((id: string) => {
+      projectUserCount[id] = (projectUserCount[id] || 0) + 1;
+    });
+  });
+
   const userCosts: UserCost[] = users
     .filter(u => u.assigned_project_ids?.length)
     .map(u => {
       const ids: string[] = u.assigned_project_ids || [];
-      const cost = ids.reduce((s, id) => {
+      const estimated_cost = ids.reduce((s, id) => {
         const { total_cost } = calcCost(projectStats[id] ?? null);
-        return s + total_cost;
+        const participants = projectUserCount[id] || 1;
+        return s + total_cost / participants;
       }, 0);
       return {
         username: u.username,
         display_name: u.display_name,
-        total_cost: cost,
+        estimated_cost,
         project_count: ids.length,
       };
     })
-    .sort((a, b) => b.total_cost - a.total_cost);
+    .sort((a, b) => b.estimated_cost - a.estimated_cost);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -136,18 +144,22 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
               {/* 饼图 */}
               <div>
                 <h3 className="text-sm font-medium text-gray-300 mb-3">各项目消耗占比</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
+                <ResponsiveContainer width="100%" height={360}>
+                  <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                     <Pie
                       data={pieData}
                       cx="50%"
                       cy="50%"
-                      outerRadius={110}
+                      outerRadius={100}
                       dataKey="value"
-                      label={({ name, percent }) =>
-                        (percent ?? 0) > 0.03 ? `${name} ${((percent ?? 0) * 100).toFixed(1)}%` : ''
-                      }
-                      labelLine={false}
+                      label={({ name, percent, x, y, textAnchor }) => (
+                        (percent ?? 0) > 0.03 ? (
+                          <text x={x} y={y} textAnchor={textAnchor} fill="#d1d5db" fontSize={11}>
+                            {name} {((percent ?? 0) * 100).toFixed(1)}%
+                          </text>
+                        ) : null
+                      )}
+                      labelLine={{ stroke: '#6b7280', strokeWidth: 1 }}
                     >
                       {pieData.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -203,14 +215,14 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
               {/* 用户汇总（仅管理员） */}
               {isAdmin && userCosts.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-300 mb-3">按用户汇总</h3>
+                  <h3 className="text-sm font-medium text-gray-300 mb-3">按用户汇总（基于平均值估计）</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
                           <th className="text-left py-2 pr-4">用户名</th>
                           <th className="text-right py-2 pr-4">项目数</th>
-                          <th className="text-right py-2">总消耗</th>
+                          <th className="text-right py-2">估算消耗</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -220,13 +232,13 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                               {u.display_name ? `${u.display_name} (${u.username})` : u.username}
                             </td>
                             <td className="text-right py-2 pr-4 text-gray-400">{u.project_count}</td>
-                            <td className="text-right py-2 font-medium">¥{fmt(u.total_cost)}</td>
+                            <td className="text-right py-2 font-medium">¥{fmt(u.estimated_cost)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">* 基于当前项目分配关系统计，仅供参考</p>
+                  <p className="text-xs text-gray-500 mt-2">* 多人共享项目按参与人数平均分摊，仅供参考</p>
                 </div>
               )}
             </>
