@@ -9,6 +9,7 @@ interface User {
   display_name: string;
   last_login_at: string | null;
   assigned_project_ids: string[];
+  readonly?: boolean;
 }
 
 interface Project {
@@ -21,6 +22,7 @@ interface FormState {
   display_name: string;
   password: string;
   assigned_project_ids: string[];
+  readonly: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -28,6 +30,7 @@ const EMPTY_FORM: FormState = {
   display_name: '',
   password: '',
   assigned_project_ids: [],
+  readonly: false,
 };
 
 interface Props {
@@ -71,6 +74,7 @@ export function AdminUserPanel({ onClose }: Props) {
       display_name: user.display_name || '',
       password: '',
       assigned_project_ids: user.assigned_project_ids || [],
+      readonly: user.readonly ?? false,
     });
     setError('');
     setShowForm(true);
@@ -92,6 +96,7 @@ export function AdminUserPanel({ onClose }: Props) {
           display_name: form.display_name || undefined,
           password: form.password || undefined,
           assigned_project_ids: form.assigned_project_ids,
+          readonly: form.readonly,
         });
       } else {
         if (!form.username.trim() || !form.password.trim()) {
@@ -103,6 +108,7 @@ export function AdminUserPanel({ onClose }: Props) {
           password: form.password,
           display_name: form.display_name,
           assigned_project_ids: form.assigned_project_ids,
+          readonly: form.readonly,
         });
       }
       setShowForm(false);
@@ -212,6 +218,16 @@ export function AdminUserPanel({ onClose }: Props) {
                 </div>
               )}
 
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={form.readonly}
+                  onChange={(e) => setForm((f) => ({ ...f, readonly: e.target.checked }))}
+                  className="accent-blue-500"
+                />
+                只读账号（只能查看，不能编辑或生成）
+              </label>
+
               {error && <p className="text-red-400 text-xs">{error}</p>}
 
               <div className="flex justify-end gap-2">
@@ -265,7 +281,7 @@ export function AdminUserPanel({ onClose }: Props) {
                       <td className="px-4 py-2.5">{user.display_name || '—'}</td>
                       <td className="px-4 py-2.5">
                         <span className={`px-2 py-0.5 rounded text-xs ${user.role === 'admin' ? 'bg-purple-900/50 text-purple-300' : 'bg-gray-700 text-gray-400'}`}>
-                          {user.role === 'admin' ? '管理员' : '子账号'}
+                          {user.role === 'admin' ? '管理员' : user.readonly ? '只读子账号' : '子账号'}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{formatDate(user.last_login_at)}</td>

@@ -73,7 +73,7 @@ def list_users() -> list:
     return result
 
 
-def create_user(username: str, password: str, display_name: str = "", assigned_project_ids: list = None) -> dict:
+def create_user(username: str, password: str, display_name: str = "", assigned_project_ids: list = None, readonly: bool = False) -> dict:
     """创建子账号（role=user）"""
     data = _read_users()
     # 检查用户名是否已存在
@@ -91,13 +91,14 @@ def create_user(username: str, password: str, display_name: str = "", assigned_p
         "last_login_at": None,
         "is_active": True,
         "assigned_project_ids": assigned_project_ids or [],
+        "readonly": readonly,
     }
     data.setdefault("users", []).append(new_user)
     _write_users(data)
     return {k: v for k, v in new_user.items() if k != "hashed_password"}
 
 
-def update_user(user_id: str, *, display_name: str = None, password: str = None, assigned_project_ids: list = None) -> Optional[dict]:
+def update_user(user_id: str, *, display_name: str = None, password: str = None, assigned_project_ids: list = None, readonly: bool = None) -> Optional[dict]:
     """更新子账号信息，超级管理员密码不可修改"""
     data = _read_users()
     for user in data.get("users", []):
@@ -111,6 +112,8 @@ def update_user(user_id: str, *, display_name: str = None, password: str = None,
                 user["hashed_password"] = hash_password(password)
             if assigned_project_ids is not None:
                 user["assigned_project_ids"] = assigned_project_ids
+            if readonly is not None:
+                user["readonly"] = readonly
             _write_users(data)
             return {k: v for k, v in user.items() if k != "hashed_password"}
     return None

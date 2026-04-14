@@ -56,12 +56,13 @@ def verify_password(plain: str, hashed: str) -> bool:
 # JWT
 # ============================================================
 
-def create_access_token(username: str, role: str) -> str:
+def create_access_token(username: str, role: str, readonly: bool = False) -> str:
     secret = _get_jwt_secret()
     expire = datetime.now(timezone.utc) + timedelta(days=_JWT_EXPIRE_DAYS)
     payload = {
         "sub": username,
         "role": role,
+        "readonly": readonly,
         "exp": expire,
     }
     return jwt.encode(payload, secret, algorithm=_JWT_ALGORITHM)

@@ -57,12 +57,14 @@ class UserCreate(BaseModel):
     password: str
     display_name: str = ""
     assigned_project_ids: list[str] = []
+    readonly: bool = False
 
 
 class UserUpdate(BaseModel):
     display_name: Optional[str] = None
     password: Optional[str] = None
     assigned_project_ids: Optional[list[str]] = None
+    readonly: Optional[bool] = None
 
 
 class PasswordChange(BaseModel):
@@ -84,7 +86,7 @@ async def admin_login(form: OAuth2PasswordRequestForm = Depends()):
             headers={"WWW-Authenticate": "Bearer"},
         )
     update_last_login(user["id"])
-    token = create_access_token(user["username"], user["role"])
+    token = create_access_token(user["username"], user["role"], readonly=bool(user.get("readonly")))
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -128,7 +130,7 @@ async def admin_list_users(_admin: dict = Depends(_require_admin)):
 @router.post("/users", status_code=201)
 async def admin_create_user(body: UserCreate, _admin: dict = Depends(_require_admin)):
     try:
-        return create_user(body.username, body.password, body.display_name, body.assigned_project_ids)
+        return create_user(body.username, body.password, body.display_name, body.assigned_project_ids, body.readonly)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -141,6 +143,7 @@ async def admin_update_user(user_id: str, body: UserUpdate, _admin: dict = Depen
             display_name=body.display_name,
             password=body.password,
             assigned_project_ids=body.assigned_project_ids,
+            readonly=body.readonly,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

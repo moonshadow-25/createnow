@@ -256,6 +256,22 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                         content={"detail": "无权访问该项目"},
                     )
 
+        # 只读账号：拦截所有写操作
+        if payload.get("role") == "user" and payload.get("readonly"):
+            if method not in ("GET", "HEAD", "OPTIONS"):
+                _SEGS = (
+                    "/storyboards", "/assets", "/generate/",
+                    "/scripts", "/episodes", "/canvas",
+                    "/conversations", "/full-script",
+                )
+                for seg in _SEGS:
+                    if seg in path:
+                        from starlette.responses import JSONResponse
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "只读账号不能执行写操作"},
+                        )
+
         request.state.admin_user = payload  # {"sub": "username", "role": "admin"}
         return await call_next(request)
 
