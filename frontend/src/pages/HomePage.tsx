@@ -11,10 +11,11 @@ import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
-import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon } from 'lucide-react';
+import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2 } from 'lucide-react';
 import { projectApi, adminAuthApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
+import { CostDashboard } from '@/components/dashboard/CostDashboard';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -33,6 +34,7 @@ export default function HomePage() {
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
 
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
@@ -218,6 +220,17 @@ export default function HomePage() {
               </button>
             )}
 
+            {isAdmin && !isSaasUser && (
+              <button
+                onClick={() => setShowDashboard(true)}
+                className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
+                title="消耗看板"
+              >
+                <BarChart2 size={16} />
+                消耗看板
+              </button>
+            )}
+
             <a
               href="https://docs.qq.com/aio/DSU5pZWRzdGFGQ1JH?p=Tti5hvBIeVGT1KIpGtCcOC&client_hint=0&client_hint=0&client_hint=0"
               target="_blank"
@@ -338,6 +351,14 @@ export default function HomePage() {
       </div>
 
       <LoginModal open={showLogin} onClose={() => setShowLogin(false)} />
+      {showDashboard && (
+        <CostDashboard
+          projects={projects}
+          projectStats={projectStats}
+          isAdmin={isAdmin}
+          onClose={() => setShowDashboard(false)}
+        />
+      )}
       {showUserPanel && <AdminUserPanel onClose={() => setShowUserPanel(false)} />}
       {editingProject && (
         <ProjectEditModal
