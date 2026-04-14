@@ -36,8 +36,8 @@ REM Parse port parameter (optional)
 setlocal enabledelayedexpansion
 set API_PORT=%1
 if "%API_PORT%"=="" (
-    for /f "delims=" %%P in ('powershell -NoProfile -Command "try { (Get-Content '%~dp0data\config\global.json' -Raw | ConvertFrom-Json).port } catch { 8501 }"') do set API_PORT=%%P
-    if "!API_PORT!"=="" set API_PORT=8501
+    for /f "delims=" %%P in ('powershell -NoProfile -Command "try { (Get-Content '%~dp0data\config\global.json' -Raw | ConvertFrom-Json).port } catch { 8508 }"') do set API_PORT=%%P
+    if "!API_PORT!"=="" set API_PORT=8508
 )
 
 echo [OK] Using Python: %CD%\env\python.exe
@@ -57,4 +57,6 @@ REM Start server in current window
 cd /d "%CD%\backend"
 set PYTHONPATH=%CD%
 set SSL_CERT_FILE=%~dp0env\Lib\site-packages\certifi\cacert.pem
+set DEPLOY_MODE=local
+set PORT=8508
 %CD%\..\env\python.exe app\main.py --serve-frontend
