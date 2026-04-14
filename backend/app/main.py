@@ -262,7 +262,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                 _SEGS = (
                     "/storyboards", "/assets", "/generate/",
                     "/scripts", "/episodes", "/canvas",
-                    "/conversations", "/full-script",
+                    "/conversations", "/full-script", "/chat",
                 )
                 for seg in _SEGS:
                     if seg in path:
