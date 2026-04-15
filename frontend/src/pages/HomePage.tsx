@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CREATENOW_ADMIN_URL } from '@/constants/urls';
 import { useProjectStore } from '@/store/projectStore';
@@ -35,6 +35,7 @@ export default function HomePage() {
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const prevProjectIdsRef = useRef<string>('');
 
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
@@ -51,6 +52,9 @@ export default function HomePage() {
 
   const loadStats = useCallback(async (list: Project[]) => {
     if (!list?.length) return;
+    const ids = list.map(p => p.project_id).sort().join(',');
+    if (ids === prevProjectIdsRef.current) return;
+    prevProjectIdsRef.current = ids;
     const results = await Promise.allSettled(list.map(p => projectApi.getStats(p.project_id)));
     const statsMap: Record<string, any> = {};
     results.forEach((r, i) => {

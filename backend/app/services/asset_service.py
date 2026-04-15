@@ -25,6 +25,9 @@ def _get_projects_dir() -> Path:
 # key: project_id -> List[Dict]
 _images_cache: Dict[str, List[Dict]] = {}
 
+# key: project_id -> List[Dict]
+_videos_cache: Dict[str, List[Dict]] = {}
+
 # key: project_id -> asset_type -> List[Dict]
 _assets_cache: Dict[str, Dict[str, List[Dict]]] = {}
 
@@ -328,6 +331,7 @@ class ProjectService:
         # 清理该项目的缓存
         _images_cache.pop(project_id, None)
         _assets_cache.pop(project_id, None)
+        _videos_cache.pop(project_id, None)
 
         return True
 
@@ -557,3 +561,60 @@ class ImageService:
             }
 
         return result
+
+
+class VideoService:
+    """视频记录缓存服务（进程级内存缓存，增删改同步更新）"""
+
+    @staticmethod
+    def _get_cache(project_id: str) -> List[Dict]:
+        """返回项目视频缓存列表，首次访问时从磁盘加载"""
+        if project_id not in _videos_cache:
+            project_dir = _get_projects_dir() / project_id
+            videos_dir = project_dir / "videos"
+            videos: List[Dict] = []
+            if videos_dir.exists():
+                t0 = time.perf_counter()
+                files = list(videos_dir.glob("*.json"))
+                for fp in files:
+                    try:
+                        with open(fp, "r", encoding="utf-8") as f:
+                            videos.append(json.load(f))
+                    except Exception:
+                        pass
+                t1 = time.perf_counter()
+                print(
+                    f"[CACHE MISS] VideoService | project={project_id[:8]} | "
+                    f"files={len(files)} | load={1000*(t1-t0):.1f}ms"
+                )
+            _videos_cache[project_id] = videos
+        return _videos_cache[project_id]
+
+    @staticmethod
+    def list_videos(project_id: str) -> List[Dict]:
+        """列出项目所有视频记录（走内存缓存）"""
+        return list(VideoService._get_cache(project_id))
+
+    @staticmethod
+    def save_video(project_id: str, record: Dict) -> None:
+        """新增或更新视频记录到缓存（调用方负责写磁盘）"""
+        cache = VideoService._get_cache(project_id)
+        video_id = record.get("video_id")
+        for i, v in enumerate(cache):
+            if v.get("video_id") == video_id:
+                cache[i] = record
+                return
+        cache.append(record)
+
+    @staticmethod
+    def delete_video(project_id: str, video_id: str) -> None:
+        """从缓存中移除视频记录（调用方负责删磁盘文件）"""
+        if project_id in _videos_cache:
+            _videos_cache[project_id] = [
+                v for v in _videos_cache[project_id] if v.get("video_id") != video_id
+            ]
+
+    @staticmethod
+    def invalidate(project_id: str) -> None:
+        """清除项目视频缓存（项目删除时调用）"""
+        _videos_cache.pop(project_id, None)

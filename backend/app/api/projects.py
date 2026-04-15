@@ -6,7 +6,7 @@ import json as _json
 from datetime import datetime
 
 from app.services import ProjectService
-from app.services.asset_service import AssetService
+from app.services.asset_service import AssetService, ImageService, VideoService
 from app.services.auth_service import get_auth_state
 from app.services.user_service import get_user_by_username
 from app.core.config import settings
@@ -185,23 +185,22 @@ async def get_project_stats(project_id: str):
     total_storyboards = len(storyboards)
     storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
 
-    videos_dir = project_dir / "videos"
+    # 走内存缓存，不再遍历磁盘
+    videos = VideoService.list_videos(project_id)
     completed_storyboard_ids: set = set()
     total_video_seconds = 0.0
     storyboard_video_seconds = 0.0
-    if videos_dir.exists():
-        for vf in videos_dir.glob("*.json"):
-            with open(vf, encoding="utf-8") as f:
-                v = _json.load(f)
-            if v.get("status") == "completed":
-                duration = float(v.get("duration") or 0)
-                total_video_seconds += duration
-                if v.get("storyboard_id"):
-                    storyboard_video_seconds += duration
-                    completed_storyboard_ids.add(v["storyboard_id"])
+    for v in videos:
+        if v.get("status") == "completed":
+            duration = float(v.get("duration") or 0)
+            total_video_seconds += duration
+            if v.get("storyboard_id"):
+                storyboard_video_seconds += duration
+                completed_storyboard_ids.add(v["storyboard_id"])
 
-    images_dir = project_dir / "images"
-    total_images = len(list(images_dir.glob("*.json"))) if images_dir.exists() else 0
+    # 走内存缓存，不再 glob
+    total_images = len(ImageService.list_images(project_id))
+
     episodes = AssetService.list_assets(project_id, "episode")
 
     return {

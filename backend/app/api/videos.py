@@ -4,6 +4,7 @@ from typing import List, Optional
 from pathlib import Path
 
 from app.services import AssetService
+from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
 
@@ -120,6 +121,7 @@ async def delete_video(project_id: str, video_id: str):
 
         # 删除JSON元数据文件
         video_json_path.unlink()
+        VideoService.delete_video(project_id, video_id)
 
         # 尝试删除视频文件
         video_path = video_data.get("video_path")

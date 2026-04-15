@@ -249,6 +249,7 @@ class VideoDownloadService:
     @staticmethod
     def _update_video_metadata(project_id: str, video_id: str, local_path: str):
         """更新视频元数据，添加本地路径"""
+        from app.services.asset_service import VideoService
         project_dir = _get_projects_dir() / project_id
         file_path = project_dir / "videos" / f"{video_id}.json"
 
@@ -262,6 +263,7 @@ class VideoDownloadService:
 
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            VideoService.save_video(project_id, data)
 
     @staticmethod
     def get_download_statistics(project_id: str, episode_id: Optional[str] = None) -> Dict:

@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 from app.services import get_ai_service, PromptService, ImageService, AudioService
+from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
 from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
@@ -383,6 +384,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         video_file = videos_dir / f"{video_id}.json"
         with open(video_file, "w", encoding="utf-8") as f:
             json.dump(record, f, ensure_ascii=False, indent=2)
+        VideoService.save_video(project_id, record)
 
         return record
 
@@ -538,6 +540,7 @@ async def poll_video_status(project_id: str, video_id: str):
         # 保存更新后的记录
         with open(video_file, "w", encoding="utf-8") as f:
             json.dump(video_record, f, ensure_ascii=False, indent=2)
+        VideoService.save_video(project_id, video_record)
 
         return video_record
 
@@ -576,6 +579,7 @@ async def set_primary_video(project_id: str, video_id: str, storyboard_id: str =
                 video["is_primary"] = False
                 with open(video_file, "w", encoding="utf-8") as f:
                     json.dump(video, f, ensure_ascii=False, indent=2)
+                VideoService.save_video(project_id, video)
         except Exception as e:
             logger.error(f"Error updating video file {video_file}: {e}")
 
@@ -583,6 +587,7 @@ async def set_primary_video(project_id: str, video_id: str, storyboard_id: str =
     target_video["is_primary"] = True
     with open(target_video_file, "w", encoding="utf-8") as f:
         json.dump(target_video, f, ensure_ascii=False, indent=2)
+    VideoService.save_video(project_id, target_video)
 
     return {"success": True, "video": target_video}
 
