@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { Project } from '@/types';
 import { projectApi } from '@/services/api';
 
+let fetchProjectsInFlight: Promise<void> | null = null;
+
 interface ProjectState {
   projects: Project[];
   currentProject: Project | null;
@@ -22,13 +24,21 @@ export const useProjectStore = create<ProjectState>()((set) => ({
   error: null,
 
   fetchProjects: async () => {
-    set({ loading: true, error: null });
-    try {
-      const response = await projectApi.list(true);
-      set({ projects: response.data, loading: false });
-    } catch (error: any) {
-      set({ error: error.message, loading: false });
-    }
+    if (fetchProjectsInFlight) return fetchProjectsInFlight;
+
+    fetchProjectsInFlight = (async () => {
+      set({ loading: true, error: null });
+      try {
+        const response = await projectApi.list(true);
+        set({ projects: response.data, loading: false });
+      } catch (error: any) {
+        set({ error: error.message, loading: false });
+      } finally {
+        fetchProjectsInFlight = null;
+      }
+    })();
+
+    return fetchProjectsInFlight;
   },
 
   setCurrentProject: (project) => {

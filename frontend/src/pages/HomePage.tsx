@@ -48,15 +48,13 @@ export default function HomePage() {
   })();
 
   useEffect(() => {
-    fetchProjects();
     fetchAuthInfo();
-  }, [fetchProjects, fetchAuthInfo]);
+  }, [fetchAuthInfo]);
 
-  // SaaS 登录后获取用户信息 + 项目列表
+  // SaaS 登录后获取用户信息
   useEffect(() => {
     if (saasAuth.isAuthenticated) {
       saasAuth.fetchUser();
-      fetchProjects();
     }
   }, [saasAuth.isAuthenticated]);
 
@@ -68,10 +66,12 @@ export default function HomePage() {
     return () => clearInterval(timer);
   }, [saasAuth.isAuthenticated]);
 
-  // 登录成功后重新加载项目列表
+  // 认证状态就绪后统一加载项目列表（避免多处重复触发）
   useEffect(() => {
-    if (isAuthenticated) fetchProjects();
-  }, [isAuthenticated, fetchProjects]);
+    if (saasAuth.isAuthenticated || isAuthenticated) {
+      fetchProjects();
+    }
+  }, [saasAuth.isAuthenticated, isAuthenticated, fetchProjects]);
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
