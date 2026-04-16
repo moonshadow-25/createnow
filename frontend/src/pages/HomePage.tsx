@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CREATENOW_ADMIN_URL } from '@/constants/urls';
 import { useProjectStore } from '@/store/projectStore';
@@ -12,7 +12,7 @@ import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
 import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2 } from 'lucide-react';
-import { projectApi, adminAuthApi } from '@/services/api';
+import { adminAuthApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
 import { CostDashboard } from '@/components/dashboard/CostDashboard';
@@ -29,14 +29,11 @@ export default function HomePage() {
 
   const [showLogin, setShowLogin] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
-  const [projectStats, setProjectStats] = useState<Record<string, any>>({});
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
-  const prevProjectIdsRef = useRef<string>('');
-
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -49,20 +46,6 @@ export default function HomePage() {
       return payload.display_name || payload.email || payload.sub || '';
     } catch { return ''; }
   })();
-
-  const loadStats = useCallback(async (list: Project[]) => {
-    if (!list?.length) return;
-    const ids = list.map(p => p.project_id).sort().join(',');
-    if (ids === prevProjectIdsRef.current) return;
-    prevProjectIdsRef.current = ids;
-    const results = await Promise.allSettled(list.map(p => projectApi.getStats(p.project_id)));
-    const statsMap: Record<string, any> = {};
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') statsMap[list[i].project_id] = r.value.data;
-      else statsMap[list[i].project_id] = null;
-    });
-    setProjectStats(statsMap);
-  }, []);
 
   useEffect(() => {
     fetchProjects();
@@ -89,11 +72,6 @@ export default function HomePage() {
   useEffect(() => {
     if (isAuthenticated) fetchProjects();
   }, [isAuthenticated, fetchProjects]);
-
-  // Load stats whenever projects list changes
-  useEffect(() => {
-    if (projects.length > 0) loadStats(projects);
-  }, [projects, loadStats]);
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -338,7 +316,7 @@ export default function HomePage() {
                 <ProjectCard
                   key={project.project_id}
                   project={project}
-                  stats={projectStats[project.project_id]}
+                  stats={project.stats}
                   isAdmin={isAdmin}
                   hideCost={isSaasUser}
                   onOpen={() => handleOpenProject(project)}
@@ -358,7 +336,7 @@ export default function HomePage() {
       {showDashboard && (
         <CostDashboard
           projects={projects}
-          projectStats={projectStats}
+          projectStats={Object.fromEntries(projects.map(p => [p.project_id, p.stats ?? null]))}
           isAdmin={isAdmin}
           onClose={() => setShowDashboard(false)}
         />
@@ -367,7 +345,7 @@ export default function HomePage() {
       {editingProject && (
         <ProjectEditModal
           project={editingProject}
-          stats={projectStats[editingProject.project_id]}
+          stats={editingProject.stats}
           onClose={() => setEditingProject(null)}
           onSaved={handleEditSaved}
         />

@@ -153,6 +153,16 @@ export interface ApiConfigPresetsMap {
   tts: ApiConfigPreset[];
 }
 
+export interface ProjectStats {
+  episode_count: number;
+  total_storyboards: number;
+  storyboards_with_image: number;
+  storyboards_with_video: number;
+  total_images: number;
+  total_video_seconds: number;
+  storyboard_video_seconds: number;
+}
+
 // 项目类型
 export interface Project {
   project_id: string;
@@ -160,6 +170,7 @@ export interface Project {
   description?: string;
   created_at: string;
   updated_at: string;
+  stats?: ProjectStats;
   ai_config?: {
     llm: ApiConfig;
     vlm?: ApiConfig;

@@ -59,7 +59,7 @@ export async function downloadWithAuth(url: string, filename?: string): Promise<
 
 // 项目相关API
 export const projectApi = {
-  list: () => api.get('/projects'),
+  list: (includeStats: boolean = false) => api.get('/projects', { params: includeStats ? { include_stats: true } : {} }),
   get: (id: string) => api.get(`/projects/${id}`),
   create: (data: { name: string; description?: string }) =>
     api.post('/projects', data),

@@ -1,8 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from typing import List, Optional
 from pydantic import BaseModel
 import uuid
-import json as _json
 from datetime import datetime
 
 from app.services import ProjectService
@@ -21,6 +20,38 @@ def _get_projects_dir():
     if data_root:
         return data_root / "projects"
     return settings.PROJECTS_DIR
+
+
+def _build_project_stats(project_id: str) -> dict:
+    """构建项目统计数据（复用缓存，避免磁盘遍历）"""
+    storyboards = AssetService.list_assets(project_id, "storyboard")
+    total_storyboards = len(storyboards)
+    storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
+
+    videos = VideoService.list_videos(project_id)
+    completed_storyboard_ids: set = set()
+    total_video_seconds = 0.0
+    storyboard_video_seconds = 0.0
+    for v in videos:
+        if v.get("status") == "completed":
+            duration = float(v.get("duration") or 0)
+            total_video_seconds += duration
+            if v.get("storyboard_id"):
+                storyboard_video_seconds += duration
+                completed_storyboard_ids.add(v["storyboard_id"])
+
+    total_images = len(ImageService.list_images(project_id))
+    episodes = AssetService.list_assets(project_id, "episode")
+
+    return {
+        "episode_count": len(episodes),
+        "total_storyboards": total_storyboards,
+        "storyboards_with_image": storyboards_with_image,
+        "storyboards_with_video": len(completed_storyboard_ids),
+        "total_images": total_images,
+        "total_video_seconds": total_video_seconds,
+        "storyboard_video_seconds": storyboard_video_seconds,
+    }
 
 
 class ProjectCreate(BaseModel):
@@ -123,7 +154,7 @@ async def create_project(request: Request, project: ProjectCreate):
 
 
 @router.get("", response_model=List[dict])
-async def list_projects(request: Request):
+async def list_projects(request: Request, include_stats: bool = Query(False)):
     """列出所有项目"""
     # SaaS 模式：只列出当前用户的项目
     if settings.DEPLOY_MODE == "saas":
@@ -132,7 +163,11 @@ async def list_projects(request: Request):
             from app.services.user_saas_service import get_user_project_ids
             project_ids = await get_user_project_ids(saas_user["user_id"])
             all_projects = ProjectService.list_projects()
-            return [p for p in all_projects if p.get("project_id") in set(project_ids)]
+            projects = [p for p in all_projects if p.get("project_id") in set(project_ids)]
+            if include_stats:
+                for p in projects:
+                    p["stats"] = _build_project_stats(p["project_id"])
+            return projects
         return []
 
     projects = ProjectService.list_projects()
@@ -141,6 +176,11 @@ async def list_projects(request: Request):
         user = get_user_by_username(admin_user["sub"])
         allowed = set(user.get("assigned_project_ids") or []) if user else set()
         projects = [p for p in projects if p.get("project_id") in allowed]
+
+    if include_stats:
+        for p in projects:
+            p["stats"] = _build_project_stats(p["project_id"])
+
     return projects
 
 
@@ -180,38 +220,7 @@ async def get_project_stats(project_id: str):
     project_dir = _get_projects_dir() / project_id
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
-
-    storyboards = AssetService.list_assets(project_id, "storyboard")
-    total_storyboards = len(storyboards)
-    storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
-
-    # 走内存缓存，不再遍历磁盘
-    videos = VideoService.list_videos(project_id)
-    completed_storyboard_ids: set = set()
-    total_video_seconds = 0.0
-    storyboard_video_seconds = 0.0
-    for v in videos:
-        if v.get("status") == "completed":
-            duration = float(v.get("duration") or 0)
-            total_video_seconds += duration
-            if v.get("storyboard_id"):
-                storyboard_video_seconds += duration
-                completed_storyboard_ids.add(v["storyboard_id"])
-
-    # 走内存缓存，不再 glob
-    total_images = len(ImageService.list_images(project_id))
-
-    episodes = AssetService.list_assets(project_id, "episode")
-
-    return {
-        "episode_count": len(episodes),
-        "total_storyboards": total_storyboards,
-        "storyboards_with_image": storyboards_with_image,
-        "storyboards_with_video": len(completed_storyboard_ids),
-        "total_images": total_images,
-        "total_video_seconds": total_video_seconds,
-        "storyboard_video_seconds": storyboard_video_seconds,
-    }
+    return _build_project_stats(project_id)
 
 
 @router.delete("/{project_id}")
