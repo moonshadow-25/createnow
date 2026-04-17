@@ -435,8 +435,8 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   };
 
   const getAudioUrl = (v: any): string | null => {
-    if (v.audio_path) return v.audio_path;
     if (v.local_path) return `/api/projects/${projectId}/generate/audios/${v.audio_id}/file`;
+    if (v.audio_path) return v.audio_path;
     return null;
   };
 
