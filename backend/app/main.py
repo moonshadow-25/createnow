@@ -320,6 +320,22 @@ class SaasAuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
         for substr in self._WHITELIST_CONTAINS:
             if substr in path:
+                # 白名单媒体请求也要尽量注入 saas_data_root，供后续 context 使用
+                project_match = re.match(r"^/api/projects/([^/]+)(?:/|$)", path)
+                if project_match:
+                    project_id = project_match.group(1)
+                    from app.core.redis_client import get_redis
+                    r = await get_redis()
+                    owner_user_id = await r.get(f"project_owner:{project_id}")
+                    if owner_user_id:
+                        request.state.saas_data_root = settings.USERS_DIR / owner_user_id
+                    elif settings.USERS_DIR.exists():
+                        for user_dir in settings.USERS_DIR.iterdir():
+                            candidate = user_dir / "projects" / project_id
+                            if candidate.exists():
+                                request.state.saas_data_root = settings.USERS_DIR / user_dir.name
+                                await r.set(f"project_owner:{project_id}", user_dir.name)
+                                break
                 return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")

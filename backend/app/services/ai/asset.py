@@ -46,9 +46,15 @@ class AssetService(AIService):
     #  CreateNow 方法
     # ------------------------------------------------------------------ #
 
+    def _cn_endpoint(self, path: str) -> str:
+        base = self.api_url.rstrip("/")
+        if base.endswith("/v1"):
+            return f"{base}{path}"
+        return f"{base}/v1{path}"
+
     async def cn_submit_asset(self, image_datauri: str) -> str:
         """提交图片到 CreateNow 素材库，返回 asset_id"""
-        url = f"{self.api_url}/assets"
+        url = self._cn_endpoint("/assets")
         payload = {"image": image_datauri}
         start = time.time()
         try:
@@ -86,9 +92,65 @@ class AssetService(AIService):
             )
             raise
 
+    async def cn_submit_video(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        content_type: str,
+        project_name: Optional[str] = None,
+    ) -> str:
+        """提交视频到 CreateNow 素材库，返回 asset_id"""
+        url = self._cn_endpoint("/assets/video")
+        data = {"project_name": (project_name or "default")}
+        files = {
+            "file": (filename, file_bytes, content_type or "video/mp4")
+        }
+        start = time.time()
+        req_log = {
+            "filename": filename,
+            "content_type": content_type,
+            "size": len(file_bytes),
+            "project_name": data["project_name"],
+        }
+        try:
+            resp = await self.client.post(
+                url,
+                headers=self._get_headers(exclude_content_type=True),
+                data=data,
+                files=files,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            asset_id = payload.get("asset_id") or payload.get("id")
+            if not asset_id:
+                raise ValueError(f"无法从响应中获取 asset_id: {payload}")
+            self._log_interaction(
+                AILogService.TYPE_ASSET,
+                "cn_submit_video",
+                url,
+                "POST",
+                request_payload=req_log,
+                response_data=payload,
+                duration_ms=(time.time() - start) * 1000,
+                status_code=resp.status_code,
+            )
+            logger.info(f"[AssetService] CreateNow 提交视频素材成功: {asset_id}")
+            return asset_id
+        except Exception as e:
+            self._log_interaction(
+                AILogService.TYPE_ASSET,
+                "cn_submit_video",
+                url,
+                "POST",
+                request_payload=req_log,
+                error=str(e),
+                duration_ms=(time.time() - start) * 1000,
+            )
+            raise
+
     async def cn_get_asset_status(self, asset_id: str) -> Dict[str, Any]:
         """查询 CreateNow 素材状态，返回 {"status": ..., "url": ...}"""
-        url = f"{self.api_url}/assets/{asset_id}"
+        url = self._cn_endpoint(f"/assets/{asset_id}")
         start = time.time()
         try:
             resp = await self.client.get(

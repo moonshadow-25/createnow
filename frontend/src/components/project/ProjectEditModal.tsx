@@ -7,6 +7,8 @@ import { useAdminAuthStore } from '@/store/adminAuthStore';
 interface ProjectStats {
   total_images: number;
   total_video_seconds: number;
+  total_video_compute_units?: number;
+  total_compute_spent?: number;
 }
 
 interface Props {
@@ -32,7 +34,7 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
   const [error, setError] = useState('');
 
   const actualSpent = stats != null
-    ? 0.4 * stats.total_images + 1.0 * stats.total_video_seconds
+    ? (stats.total_compute_spent ?? (0.4 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
     : null;
 
   const handleSave = async () => {

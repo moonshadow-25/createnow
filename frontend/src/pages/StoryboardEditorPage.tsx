@@ -96,10 +96,10 @@ export default function StoryboardEditorPage() {
     editDescription, setEditDescription,
     editDialogue, setEditDialogue,
     editAction, setEditAction,
-    editShotType, setEditShotType,
-    editCameraAngle, setEditCameraAngle,
+    editShotType,
+    editCameraAngle,
     editDuration, setEditDuration,
-    editResolution, setEditResolution,
+    editResolution,
     resetEditState,
   } = contentEdit;
 
@@ -959,29 +959,16 @@ export default function StoryboardEditorPage() {
                       placeholder="描述动作..."
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">景别</label>
-                      <select value={editShotType} onChange={e => setEditShotType(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
-                        {['特写','近景','中景','全景','远景'].map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">角度</label>
-                      <select value={editCameraAngle} onChange={e => setEditCameraAngle(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
-                        {['平视','仰视','俯视','鸟瞰'].map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">时长(秒)</label>
-                      <input type="number" value={editDuration} min={1} max={60} onChange={e => setEditDuration(Math.max(1, parseInt(e.target.value) || 6))} className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">分辨率</label>
-                      <select value={editResolution} onChange={e => setEditResolution(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
-                        {['1280x720','21:9-720p','720x1280'].map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">时长(秒)</label>
+                    <input
+                      type="number"
+                      value={editDuration}
+                      min={1}
+                      max={60}
+                      onChange={e => setEditDuration(Math.max(1, parseInt(e.target.value) || 6))}
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
                   </div>
                 </div>
               )}

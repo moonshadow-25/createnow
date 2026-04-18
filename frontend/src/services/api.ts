@@ -209,9 +209,14 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/videos/${videoId}/set-primary`, {
       storyboard_id: storyboardId,
     }),
-  // Volcengine 素材库
-  submitAsset: (projectId: string, imageIds: string[]) =>
-    api.post(`/projects/${projectId}/generate/assets/submit`, { image_ids: imageIds }),
+  // Volcengine/CreateNow 素材库
+  submitAsset: (
+    projectId: string,
+    payload: string[] | { image_ids?: string[]; video_urls?: string[]; project_name?: string }
+  ) => {
+    const body = Array.isArray(payload) ? { image_ids: payload } : payload;
+    return api.post(`/projects/${projectId}/generate/assets/submit`, body);
+  },
   resubmitAsset: (projectId: string, imageIds: string[]) =>
     api.post(`/projects/${projectId}/generate/assets/resubmit`, { image_ids: imageIds }),
   getAssetStatus: (projectId: string, assetId: string) =>

@@ -417,20 +417,52 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
 
   const togglePlayAudio = (audioId: string, audioSrc: string) => {
     const current = audioRefs.current[audioId];
+    const voice = voices.find(v => v.audio_id === audioId);
+    const fallbackUrl = voice?.audio_path;
+
+    const bindAudioEvents = (el: HTMLAudioElement, isFallback = false) => {
+      el.onended = () => setPlayingAudioId(null);
+      el.onerror = () => {
+        if (!isFallback && fallbackUrl && el.src !== fallbackUrl) {
+          const fallbackEl = new Audio(fallbackUrl);
+          audioRefs.current[audioId] = fallbackEl;
+          bindAudioEvents(fallbackEl, true);
+          fallbackEl.play().then(() => {
+            setPlayingAudioId(audioId);
+            toast('本地音频不可用，已切换到远程音频播放', 'error');
+          }).catch(() => {
+            setPlayingAudioId(null);
+            toast('音频播放失败', 'error');
+          });
+          return;
+        }
+        setPlayingAudioId(null);
+        toast('音频播放失败', 'error');
+      };
+    };
+
     if (!current) {
       const el = new Audio(audioSrc);
       audioRefs.current[audioId] = el;
-      el.onended = () => setPlayingAudioId(null);
-      el.play();
-      setPlayingAudioId(audioId);
+      bindAudioEvents(el);
+      el.play().then(() => {
+        setPlayingAudioId(audioId);
+      }).catch(() => {
+        setPlayingAudioId(null);
+        toast('音频播放失败', 'error');
+      });
     } else if (playingAudioId === audioId) {
       current.pause();
       setPlayingAudioId(null);
     } else {
       Object.values(audioRefs.current).forEach(a => a.pause());
       current.currentTime = 0;
-      current.play();
-      setPlayingAudioId(audioId);
+      current.play().then(() => {
+        setPlayingAudioId(audioId);
+      }).catch(() => {
+        setPlayingAudioId(null);
+        toast('音频播放失败', 'error');
+      });
     }
   };
 

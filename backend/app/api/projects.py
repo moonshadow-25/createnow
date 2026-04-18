@@ -10,6 +10,7 @@ from app.services.auth_service import get_auth_state
 from app.services.user_service import get_user_by_username
 from app.core.config import settings
 from app.core.context import get_current_data_root
+from app.api.generation.utils import calc_video_compute_units
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -32,16 +33,22 @@ def _build_project_stats(project_id: str) -> dict:
     completed_storyboard_ids: set = set()
     total_video_seconds = 0.0
     storyboard_video_seconds = 0.0
+    total_video_compute_units = 0.0
+    storyboard_video_compute_units = 0.0
     for v in videos:
         if v.get("status") == "completed":
             duration = float(v.get("duration") or 0)
+            compute_units = calc_video_compute_units(duration, v.get("resolution"))
             total_video_seconds += duration
+            total_video_compute_units += compute_units
             if v.get("storyboard_id"):
                 storyboard_video_seconds += duration
+                storyboard_video_compute_units += compute_units
                 completed_storyboard_ids.add(v["storyboard_id"])
 
     total_images = len(ImageService.list_images(project_id))
     episodes = AssetService.list_assets(project_id, "episode")
+    total_compute_spent = round(0.4 * total_images + total_video_compute_units, 2)
 
     return {
         "episode_count": len(episodes),
@@ -51,6 +58,9 @@ def _build_project_stats(project_id: str) -> dict:
         "total_images": total_images,
         "total_video_seconds": total_video_seconds,
         "storyboard_video_seconds": storyboard_video_seconds,
+        "total_video_compute_units": total_video_compute_units,
+        "storyboard_video_compute_units": storyboard_video_compute_units,
+        "total_compute_spent": total_compute_spent,
     }
 
 

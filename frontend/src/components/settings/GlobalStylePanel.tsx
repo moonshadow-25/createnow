@@ -27,6 +27,44 @@ interface GlobalStyleConfig {
   nine_grid_mode?: boolean;
 }
 
+const RATIO_OPTIONS = [
+  { label: '16:9 横版', value: '16:9' },
+  { label: '9:16 竖版', value: '9:16' },
+  { label: '21:9 超宽', value: '21:9' },
+] as const;
+
+const RESOLUTION_OPTIONS = [
+  { label: '480p', value: '480p' },
+  { label: '720p', value: '720p' },
+  { label: '1080p', value: '1080p' },
+] as const;
+
+function parseGlobalResolution(raw?: string): { ratio: string; resolution: string } {
+  if (!raw) return { ratio: '16:9', resolution: '720p' };
+
+  if (raw === '1280x720') return { ratio: '16:9', resolution: '720p' };
+  if (raw === '720x1280') return { ratio: '9:16', resolution: '720p' };
+  if (raw === '21:9-720p') return { ratio: '21:9', resolution: '720p' };
+
+  const matched = raw.match(/^(16:9|9:16|21:9)-(480p|720p|1080p)$/);
+  if (matched) {
+    return { ratio: matched[1], resolution: matched[2] };
+  }
+
+  if (RESOLUTION_OPTIONS.some(item => item.value === raw)) {
+    return { ratio: '16:9', resolution: raw };
+  }
+
+  return { ratio: '16:9', resolution: '720p' };
+}
+
+function encodeGlobalResolution(ratio: string, resolution: string): string {
+  if (ratio === '16:9' && resolution === '720p') return '1280x720';
+  if (ratio === '9:16' && resolution === '720p') return '720x1280';
+  if (ratio === '21:9' && resolution === '720p') return '21:9-720p';
+  return `${ratio}-${resolution}`;
+}
+
 interface StylePreset {
   id: string;
   name: string;
@@ -68,6 +106,8 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
   const [saving, setSaving] = useState(false);
   const [imageDetail, setImageDetail] = useState<StylePresetDetail | null>(null);
   const [videoDetail, setVideoDetail] = useState<StylePresetDetail | null>(null);
+  const [globalRatio, setGlobalRatio] = useState('16:9');
+  const [globalResolution, setGlobalResolution] = useState('720p');
 
   const defaultImageSizes: ImageSizes = { character: '1x1', scene: '16x9', prop: '1x1', storyboard: '16x9' };
   const [imageSizes, setImageSizes] = useState<ImageSizes>(defaultImageSizes);
@@ -116,6 +156,9 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
         image_style: migrateStyle(data.image_style),
         video_style: migrateStyle(data.video_style),
       });
+      const parsedGlobalResolution = parseGlobalResolution(data.global_resolution);
+      setGlobalRatio(parsedGlobalResolution.ratio);
+      setGlobalResolution(parsedGlobalResolution.resolution);
       setGlobalStyleConfig({
         global_resolution: data.global_resolution || '1280x720',
         nine_grid_mode: data.nine_grid_mode || false,
@@ -139,13 +182,19 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     if (!config) return;
     setSaving(true);
     try {
+      const encodedGlobalResolution = encodeGlobalResolution(globalRatio, globalResolution);
+      const configToSave = {
+        ...config,
+        global_resolution: encodedGlobalResolution,
+      };
       await Promise.all([
-        generationApi.updateGlobalStyleConfig(projectId, config),
+        generationApi.updateGlobalStyleConfig(projectId, configToSave),
         updateProject(projectId, { ai_config: { image_sizes: imageSizes } }),
       ]);
+      setConfig(configToSave);
       setGlobalStyleConfig({
-        global_resolution: config.global_resolution || '1280x720',
-        nine_grid_mode: config.nine_grid_mode || false,
+        global_resolution: configToSave.global_resolution || '1280x720',
+        nine_grid_mode: configToSave.nine_grid_mode || false,
       });
       toast('全局风格配置已保存', 'success');
     } catch (e) {
@@ -346,15 +395,26 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
       {/* Global resolution */}
       <div className="flex items-center gap-3">
         <label className="text-sm text-gray-300 whitespace-nowrap">全局分辨率</label>
-        <select
-          value={config.global_resolution || '1280x720'}
-          onChange={e => setConfig({ ...config, global_resolution: e.target.value })}
-          className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
-        >
-          <option value="1280x720">1280x720（横屏 HD）</option>
-          <option value="21:9-720p">21:9 超宽 720p</option>
-          <option value="720x1280">720x1280（竖屏 HD）</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={globalRatio}
+            onChange={e => setGlobalRatio(e.target.value)}
+            className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+          >
+            {RATIO_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select
+            value={globalResolution}
+            onChange={e => setGlobalResolution(e.target.value)}
+            className="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+          >
+            {RESOLUTION_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
 

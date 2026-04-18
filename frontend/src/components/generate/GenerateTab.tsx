@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';import {
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';import {
   Upload, X, Film, Plus, ChevronDown, Loader2, Play,
   Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music
 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
-  id?: string;      // 图片专用：image_id
+  id?: string;      // image_id 或 media_id
   url: string;      // 图片展示 URL 或视频/音频公网 URL
   name: string;
   volcengineAssetId?: string;
@@ -26,6 +26,7 @@ interface VideoRecord {
   duration: number;
   resolution: string;
   ratio?: string;
+  estimated_cost?: number;
   model: string;
   status: string;
   created_at: string;
@@ -38,11 +39,38 @@ interface GenerateTabProps {
   showAssetSubmit?: boolean;
 }
 
-const RESOLUTION_OPTIONS = [
-  { label: '16:9 横版 720p', value: '1280x720',   resolution: '1280x720', ratio: undefined },
-  { label: '21:9 超宽 720p', value: '21:9-720p',  resolution: '1280x720', ratio: '21:9'   },
-  { label: '9:16 竖版 720p', value: '720x1280',   resolution: '720x1280', ratio: undefined },
+const HISTORY_PAGE_SIZE = 60;
+
+const RATIO_OPTIONS = [
+  { label: '16:9 横版', value: '16:9' },
+  { label: '9:16 竖版', value: '9:16' },
+  { label: '21:9 超宽', value: '21:9' },
 ];
+
+const RESOLUTION_OPTIONS = [
+  { label: '480p', value: '480p' },
+  { label: '720p', value: '720p' },
+  { label: '1080p', value: '1080p' },
+];
+
+const LEGACY_RESOLUTION_MAP: Record<string, string> = {
+  '1280x720': '720p',
+  '720x1280': '720p',
+  '21:9-720p': '720p',
+};
+
+function normalizeResolutionValue(resolution?: string): string {
+  if (!resolution) return '720p';
+  if (RESOLUTION_OPTIONS.some(r => r.value === resolution)) return resolution;
+  return LEGACY_RESOLUTION_MAP[resolution] || '720p';
+}
+
+function inferRatioFromVideo(video: Pick<VideoRecord, 'ratio' | 'resolution'>): string {
+  if (video.ratio && RATIO_OPTIONS.some(r => r.value === video.ratio)) return video.ratio;
+  if (video.resolution === '720x1280') return '9:16';
+  if (video.resolution === '21:9-720p') return '21:9';
+  return '16:9';
+}
 
 function VideoStatusIcon({ status }: { status: string }) {
   if (status === 'completed') return <CheckCircle size={14} className="text-green-400" />;
@@ -57,20 +85,35 @@ function VideoStatusText({ status }: { status: string }) {
   return <span className="text-yellow-400">等待中...</span>;
 }
 
+function getAssetStatusKey(item: Pick<RefMedia, 'type' | 'id' | 'url'>): string | null {
+  if (item.type === 'image') return item.id ? `image:${item.id}` : null;
+  if (item.type === 'video') return item.id ? `video:${item.id}` : (item.url ? `video:${item.url}` : null);
+  return null;
+}
+
+function getThumbnailUrl(url?: string): string {
+  if (!url) return '';
+  return url.replace('/images/files/', '/thumbnails/');
+}
+
 export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabProps) {
   const { toast } = useToast();
   const { characters, scenes, props } = useAssetStore();
 
   const [prompt, setPrompt] = useState('');
   const [duration, setDuration] = useState(6);
-  const [resolution, setResolution] = useState('1280x720');
-  const [ratio, setRatio] = useState<string | undefined>(undefined);
+  const [resolution, setResolution] = useState('720p');
+  const [ratio, setRatio] = useState('16:9');
   const [generateAudio, setGenerateAudio] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<RefMedia[]>([]);
   const [videos, setVideos] = useState<VideoRecord[]>([]);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [assetPickerTab, setAssetPickerTab] = useState<'character' | 'scene' | 'prop'>('character');
+  const [showRatioMenu, setShowRatioMenu] = useState(false);
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
@@ -84,6 +127,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const pollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const assetPickerRef = useRef<HTMLDivElement>(null);
   const videoListRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
 
   // 滚动到底部
   const scrollToBottom = useCallback(() => {
@@ -96,14 +140,61 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const loadLibraryVideos = useCallback(async () => {
     try {
       const res = await generationApi.listLibraryVideos(projectId);
-      setVideos(res.data || []);
+      const list: VideoRecord[] = res.data || [];
+      // 保持时间顺序：旧 -> 新（最新在底部）
+      const asc = [...list].reverse();
+      setVideos(asc);
+      const initialCount = Math.min(HISTORY_PAGE_SIZE, asc.length);
+      setVisibleCount(initialCount);
+      setHasMoreHistory(asc.length > initialCount);
+      shouldStickToBottomRef.current = true;
     } catch { /* ignore */ }
   }, [projectId]);
 
+  const visibleVideos = useMemo(() => {
+    if (visibleCount <= 0) return [];
+    return videos.slice(-visibleCount);
+  }, [videos, visibleCount]);
+
+  const loadMoreHistory = useCallback(() => {
+    if (!hasMoreHistory || isLoadingHistory) return;
+    const container = videoListRef.current;
+    const prevHeight = container?.scrollHeight || 0;
+    setIsLoadingHistory(true);
+    setVisibleCount(prev => {
+      const next = Math.min(videos.length, prev + HISTORY_PAGE_SIZE);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      if (container) {
+        const nextHeight = container.scrollHeight;
+        container.scrollTop = nextHeight - prevHeight + container.scrollTop;
+      }
+      setIsLoadingHistory(false);
+    });
+  }, [hasMoreHistory, isLoadingHistory, videos.length]);
+
   useEffect(() => { loadLibraryVideos(); }, [loadLibraryVideos]);
 
-  // 视频加载/新增后滚动到底部
-  useEffect(() => { setTimeout(scrollToBottom, 50); }, [videos.length, scrollToBottom]);
+  useEffect(() => {
+    setHasMoreHistory(videos.length > visibleCount);
+  }, [videos.length, visibleCount]);
+
+  // 视频加载/新增后滚动到底部（仅在用户停留底部时）
+  useEffect(() => {
+    if (!shouldStickToBottomRef.current) return;
+    setTimeout(scrollToBottom, 50);
+  }, [visibleVideos.length, scrollToBottom]);
+
+  const handleVideoListScroll = useCallback(() => {
+    const el = videoListRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    shouldStickToBottomRef.current = nearBottom;
+    if (el.scrollTop < 80 && hasMoreHistory && !isLoadingHistory) {
+      loadMoreHistory();
+    }
+  }, [hasMoreHistory, isLoadingHistory, loadMoreHistory]);
 
   // 点击外部关闭弹窗
   useEffect(() => {
@@ -157,6 +248,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     const imageItems = selectedMedia.filter(m => m.type === 'image' && m.id);
     const videoItems = selectedMedia.filter(m => m.type === 'video');
     const audioItems = selectedMedia.filter(m => m.type === 'audio');
+    const resolvedVideoUrls = videoItems.map(m => {
+      const key = getAssetStatusKey(m);
+      const audit = key ? assetStatuses[key] : undefined;
+      if (audit?.assetId && audit.status === 'Active') {
+        return `asset://${audit.assetId}`;
+      }
+      return m.url;
+    });
 
     setIsGenerating(true);
     try {
@@ -164,19 +263,27 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         storyboard_id: null,
         episode_id: null,
         image_ids: imageItems.map(m => m.id!),
-        video_urls: videoItems.length > 0 ? videoItems.map(m => m.url) : undefined,
+        video_urls: resolvedVideoUrls.length > 0 ? resolvedVideoUrls : undefined,
         audio_urls: audioItems.length > 0 ? audioItems.map(m => m.url) : undefined,
         prompt: prompt.trim(),
         duration,
-        resolution: RESOLUTION_OPTIONS.find(r => r.value === resolution)?.resolution ?? resolution,
+        resolution,
         ratio,
         generate_audio: generateAudio,
         reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
       });
       const newVideo: VideoRecord = res.data;
-      setVideos(prev => [newVideo, ...prev]);
+      setVideos(prev => [...prev, newVideo]);
+      setVisibleCount(prev => {
+        const base = prev > 0 ? prev : Math.min(HISTORY_PAGE_SIZE, videos.length + 1);
+        return Math.min(videos.length + 1, base + 1);
+      });
+      shouldStickToBottomRef.current = true;
       startPolling(newVideo.video_id);
-      toast(`视频生成任务已提交（预计消耗 ${newVideo.duration} 元）`, 'success');
+      const estimatedCost = typeof newVideo.estimated_cost === 'number'
+        ? newVideo.estimated_cost
+        : newVideo.duration;
+      toast(`视频生成任务已提交（预计消耗 ${estimatedCost} 元）`, 'success');
     } catch (e: any) {
       toast(e?.response?.data?.detail || '生成失败，请检查配置', 'error');
     } finally {
@@ -188,10 +295,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const handleRegenerate = (video: VideoRecord) => {
     setPrompt(video.prompt);
     setDuration(video.duration);
-    // 恢复 resolution 下拉：若 ratio 是 21:9，选中 '21:9-720p'，否则用 resolution 值
-    const resValue = video.ratio === '21:9' ? '21:9-720p' : video.resolution;
-    setResolution(resValue);
-    setRatio(video.ratio);
+    setResolution(normalizeResolutionValue(video.resolution));
+    setRatio(inferRatioFromVideo(video));
     if (video.generate_audio != null) setGenerateAudio(video.generate_audio);
     if (video.reference_media && video.reference_media.length > 0) {
       setSelectedMedia(video.reference_media);
@@ -210,10 +315,13 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     setSelectedMedia(prev => [...prev, newItem]);
     // 直接从 asset 对象读取审核状态（后端已透传主图的 volcengine 字段）
     if (showAssetSubmit) {
-      setAssetStatuses(prev => ({
-        ...prev,
-        [imgId]: { assetId: asset.volcengine_asset_id, status: asset.volcengine_asset_status },
-      }));
+      const statusKey = getAssetStatusKey(newItem);
+      if (statusKey) {
+        setAssetStatuses(prev => ({
+          ...prev,
+          [statusKey]: { assetId: asset.volcengine_asset_id, status: asset.volcengine_asset_status },
+        }));
+      }
     }
   };
 
@@ -238,10 +346,13 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         const newItem: RefMedia = { type: 'image', id: record.image_id, url: localUrl, name: file.name };
         setSelectedMedia(prev => [...prev, newItem]);
         if (showAssetSubmit) {
-          setAssetStatuses(prev => ({
-            ...prev,
-            [record.image_id]: { assetId: record.volcengine_asset_id, status: record.volcengine_asset_status },
-          }));
+          const statusKey = getAssetStatusKey(newItem);
+          if (statusKey) {
+            setAssetStatuses(prev => ({
+              ...prev,
+              [statusKey]: { assetId: record.volcengine_asset_id, status: record.volcengine_asset_status },
+            }));
+          }
         }
       } catch { toast('图片上传失败', 'error'); } finally { setIsUploading(false); }
     } else if (fileType.startsWith('video/') || fileType.startsWith('audio/')) {
@@ -251,6 +362,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         const record = res.data;
         const newItem: RefMedia = {
           type: record.media_type as 'video' | 'audio',
+          id: record.media_id,
           url: record.url,
           name: file.name,
         };
@@ -265,27 +377,63 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   // 提交素材审核
   const handleSubmitAssets = async () => {
     const imageIds = selectedMedia.filter(m => m.type === 'image' && m.id).map(m => m.id!);
-    if (imageIds.length === 0) return;
+    const videoItems = selectedMedia.filter(m => m.type === 'video' && m.url);
+    const videoUrls = videoItems.map(m => m.url);
+    if (imageIds.length === 0 && videoUrls.length === 0) return;
     setIsSubmittingAssets(true);
     try {
-      const res = await generationApi.submitAsset(projectId, imageIds);
-      const submitted: { image_id: string; asset_id: string; status: string }[] = res.data.submitted || [];
+      const res = await generationApi.submitAsset(projectId, {
+        image_ids: imageIds,
+        video_urls: videoUrls,
+        project_name: 'default',
+      });
+      const submitted: any[] = res.data.submitted || [];
       // skipped 可能是字符串（错误跳过）或对象（已提交过）
       const skippedRaw: any[] = res.data.skipped || [];
-      const skippedWithStatus = skippedRaw.filter(s => typeof s === 'object' && s.image_id && s.asset_id);
+      const skippedWithStatus = skippedRaw.filter(s => typeof s === 'object' && s.asset_id && (s.image_id || s.video_url));
+
+      const getRefKey = (s: any): string | null => {
+        if (s.ref_type === 'video' || s.video_url) {
+          const media = selectedMedia.find(m => m.type === 'video' && m.url === s.video_url);
+          if (media?.id) return `video:${media.id}`;
+          return s.video_url ? `video:${s.video_url}` : null;
+        }
+        if (s.image_id) return `image:${s.image_id}`;
+        return null;
+      };
 
       // 更新初始状态（submitted + 已提交过的 skipped）
       const initUpdates: Record<string, { assetId?: string; status?: string }> = {};
-      submitted.forEach(s => { initUpdates[s.image_id] = { assetId: s.asset_id, status: s.status }; });
-      skippedWithStatus.forEach(s => { initUpdates[s.image_id] = { assetId: s.asset_id, status: s.status }; });
+      submitted.forEach(s => {
+        const key = getRefKey(s);
+        if (key) initUpdates[key] = { assetId: s.asset_id, status: s.status };
+      });
+      skippedWithStatus.forEach(s => {
+        const key = getRefKey(s);
+        if (key) initUpdates[key] = { assetId: s.asset_id, status: s.status };
+      });
       setAssetStatuses(prev => ({ ...prev, ...initUpdates }));
 
-      // 对 Processing 或 null 状态的进行轮询
-      const pollOne = async (assetId: string, imageId: string) => {
+      // 对 Processing 或空状态的进行轮询
+      const pollOne = async (assetId: string, statusKey: string) => {
         try {
           const r = await generationApi.getAssetStatus(projectId, assetId);
-          setAssetStatuses(prev => ({ ...prev, [imageId]: { assetId, status: r.data.status } }));
-          if (r.data.status === 'Processing') setTimeout(() => pollOne(assetId, imageId), 5000);
+          const status = r.data.status;
+          const refType = r.data.ref_type as string | undefined;
+          const imageId = r.data.image_id as string | null | undefined;
+
+          setAssetStatuses(prev => {
+            let nextKey = statusKey;
+            if (refType === 'image' && imageId) {
+              nextKey = `image:${imageId}`;
+            } else if (refType === 'video') {
+              const existing = Object.entries(prev).find(([, v]) => v.assetId === assetId)?.[0];
+              if (existing) nextKey = existing;
+            }
+            return { ...prev, [nextKey]: { assetId, status } };
+          });
+
+          if (status === 'Processing') setTimeout(() => pollOne(assetId, statusKey), 5000);
         } catch { /* ignore */ }
       };
       const needsPoll = [
@@ -294,7 +442,10 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
       ];
       if (needsPoll.length > 0) {
         setTimeout(async () => {
-          await Promise.all(needsPoll.map(s => pollOne(s.asset_id, s.image_id)));
+          await Promise.all(needsPoll.map(s => {
+            const key = getRefKey(s);
+            return key ? pollOne(s.asset_id, key) : Promise.resolve();
+          }));
           setIsSubmittingAssets(false);
         }, 3000);
       } else {
@@ -306,23 +457,27 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     }
   };
 
-  // 计算审核状态（仅针对图片类型）
-  const imageItems = selectedMedia.filter(m => m.type === 'image' && m.id);
-  const allStatuses = imageItems.map(m => assetStatuses[m.id!]?.status);
+  // 计算审核状态（图片+视频，音频不参与）
+  const reviewItems = selectedMedia.filter(m => m.type === 'image' || m.type === 'video');
+  const allStatuses = reviewItems
+    .map(m => getAssetStatusKey(m))
+    .filter((k): k is string => !!k)
+    .map(k => assetStatuses[k]?.status);
   const anyProcessing = allStatuses.some(s => s === 'Processing');
   const anyFailed = allStatuses.some(s => s === 'Failed');
-  const allActive = imageItems.length > 0 && allStatuses.every(s => s === 'Active');
-  const hasUnreviewed = imageItems.length > 0 && allStatuses.some(s => !s || s === 'Failed');
-  const showSubmitButton = showAssetSubmit && imageItems.length > 0;
+  const allActive = reviewItems.length > 0 && allStatuses.length > 0 && allStatuses.every(s => s === 'Active');
+  const hasUnreviewed = reviewItems.length > 0 && (allStatuses.length < reviewItems.length || allStatuses.some(s => !s || s === 'Failed'));
+  const showSubmitButton = showAssetSubmit && reviewItems.length > 0;
 
   const allAssets = assetPickerTab === 'character' ? characters
     : assetPickerTab === 'scene' ? scenes : props;
 
+  const ratioLabel = RATIO_OPTIONS.find(r => r.value === ratio)?.label || ratio;
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
   return (
     <div className="flex flex-col h-full bg-gray-900 text-white">
       {/* 视频库（正序：最旧在上，最新在下，默认滚到底部） */}
-      <div ref={videoListRef} className="flex-1 overflow-y-auto p-4">
+      <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
         {videos.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
             <Film size={48} className="opacity-30" />
@@ -331,7 +486,12 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           </div>
         ) : (
           <div className="space-y-3">
-            {[...videos].reverse().map(video => (
+            {hasMoreHistory && (
+              <div className="flex justify-center py-1">
+                <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
+              </div>
+            )}
+            {visibleVideos.map(video => (
               <VideoItem
                 key={video.video_id}
                 video={video}
@@ -351,7 +511,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         {/* 参考素材区 */}
         <div className="flex flex-wrap gap-2 items-center min-h-[44px]">
           {selectedMedia.map((item, idx) => {
-            const volStatus = item.type === 'image' && item.id ? assetStatuses[item.id]?.status : undefined;
+            const statusKey = getAssetStatusKey(item);
+            const volStatus = statusKey ? assetStatuses[statusKey]?.status : undefined;
             return (
               <div key={`${item.type}-${idx}`} className="relative group flex-shrink-0">
                 {item.type === 'image' ? (
@@ -371,9 +532,15 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                     )}
                   </div>
                 ) : item.type === 'video' ? (
-                  <div className="flex items-center gap-1 h-10 px-2 bg-gray-700 rounded border border-gray-600 max-w-[120px]" title={item.name}>
-                    <Film size={14} className="text-blue-400 flex-shrink-0" />
-                    <span className="text-xs text-gray-300 truncate">{item.name}</span>
+                  <div className="w-10 h-10 relative">
+                    <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                      <Film size={16} className="text-blue-400" />
+                    </div>
+                    {showAssetSubmit && volStatus && (
+                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center
+                        ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-1 h-10 px-2 bg-gray-700 rounded border border-gray-600 max-w-[120px]" title={item.name}>
@@ -517,6 +684,31 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
             )}
           </div>
 
+          {/* 比例 */}
+          <div className="relative">
+            <button
+              onClick={() => setShowRatioMenu(!showRatioMenu)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+            >
+              <Film size={14} />
+              {ratioLabel}
+              <ChevronDown size={12} />
+            </button>
+            {showRatioMenu && (
+              <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                {RATIO_OPTIONS.map(r => (
+                  <button
+                    key={r.value}
+                    onClick={() => { setRatio(r.value); setShowRatioMenu(false); }}
+                    className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === ratio ? 'text-blue-400' : ''}`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* 分辨率 */}
           <div className="relative">
             <button
@@ -532,7 +724,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                 {RESOLUTION_OPTIONS.map(r => (
                   <button
                     key={r.value}
-                    onClick={() => { setResolution(r.value); setRatio(r.ratio); setShowResolutionMenu(false); }}
+                    onClick={() => { setResolution(r.value); setShowResolutionMenu(false); }}
                     className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === resolution ? 'text-blue-400' : ''}`}
                   >
                     {r.label}
@@ -581,14 +773,14 @@ interface VideoItemProps {
 
 function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerate }: VideoItemProps) {
   const videoUrl = getVideoUrl(video, projectId);
-  const resLabel = video.ratio === '21:9' ? '21:9 720p'
-    : video.resolution === '1280x720' ? '16:9 720p'
-    : video.resolution === '720x1280' ? '9:16'
-    : video.resolution;
-  // 根据已知分辨率固定预览尺寸，不依赖视频元数据加载
-  const isPortrait = video.resolution === '720x1280';
-  const previewH = isPortrait ? 480 : 270;
-  const previewW = isPortrait ? 270 : 480;
+  const displayRatio = inferRatioFromVideo(video);
+  const resLabel = `${displayRatio} ${normalizeResolutionValue(video.resolution)}`;
+  const normRes = normalizeResolutionValue(video.resolution);
+  const isPortrait = displayRatio === '9:16';
+  const isUltraWide = displayRatio === '21:9';
+  const baseHeight = normRes === '1080p' ? 270 : normRes === '480p' ? 150 : 210;
+  const previewH = isPortrait ? (normRes === '1080p' ? 400 : normRes === '480p' ? 220 : 300) : baseHeight;
+  const previewW = isPortrait ? Math.round(previewH * 9 / 16) : isUltraWide ? Math.round(previewH * 21 / 9) : Math.round(previewH * 16 / 9);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   // 用 ref 命令式控制播放，避免 autoPlay 声明式失效
@@ -616,7 +808,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
             <div className="flex items-center gap-1 flex-shrink-0">
               {video.reference_media.slice(0, 4).map((m, i) => (
                 m.type === 'image' && m.url ? (
-                  <img key={i} src={m.url} alt={m.name} className="w-7 h-7 rounded object-cover border border-gray-600 flex-shrink-0" />
+                  <img key={i} src={getThumbnailUrl(m.url)} alt={m.name} className="w-7 h-7 rounded object-cover border border-gray-600 flex-shrink-0" />
                 ) : m.type === 'video' ? (
                   <div key={i} className="w-7 h-7 rounded bg-gray-700 border border-gray-600 flex items-center justify-center flex-shrink-0">
                     <Film size={12} className="text-blue-400" />

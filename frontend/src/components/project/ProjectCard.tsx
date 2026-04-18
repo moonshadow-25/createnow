@@ -9,6 +9,9 @@ interface ProjectStats {
   total_images: number;
   total_video_seconds: number;
   storyboard_video_seconds: number;
+  total_video_compute_units?: number;
+  storyboard_video_compute_units?: number;
+  total_compute_spent?: number;
 }
 
 interface Props {
@@ -52,14 +55,14 @@ function computeMetrics(project: Project, stats: ProjectStats) {
 
   // Cost — completed_episodes 基于"已创建集数×完工率"，而非总集数
   const image_cost = 0.4 * total_images;
-  const video_cost = 1 * total_video_seconds;
+  const video_cost = (stats.total_video_compute_units ?? (1 * total_video_seconds));
   const completed_episodes = greenPct * episode_count;
   // 绿条宽度相对于 total_episodes，确保 greenBar ≤ yellowBar
   const greenBarPct = total_episodes > 0 ? completed_episodes / total_episodes : 0;
   // cost_per_minute 只统计分镜正片视频，排除广场实验性生成
   let cost_per_minute: number | null = null;
   if (completed_episodes > 0 && minutes_per_episode > 0) {
-    const storyboard_video_cost = 1 * storyboard_video_seconds;
+    const storyboard_video_cost = (stats.storyboard_video_compute_units ?? (1 * storyboard_video_seconds));
     cost_per_minute = (image_cost + storyboard_video_cost) / (completed_episodes * minutes_per_episode);
   }
 
@@ -121,7 +124,7 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen,
         <h3 className="text-xl font-semibold flex-1 mr-2 truncate">{project.name}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
           {!hideCost && project.budget_total != null && stats &&
-            (0.4 * stats.total_images + 1.0 * stats.total_video_seconds) >= project.budget_total && (
+            ((stats.total_compute_spent ?? (0.4 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds)))) >= project.budget_total) && (
             <span title="预算已超出，API已锁定" className="text-red-400">
               <Lock size={14} />
             </span>
@@ -189,8 +192,8 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen,
 
 function CostOnlySection({ project, stats, hideCost }: { project: Project; stats: ProjectStats; hideCost?: boolean }) {
   const image_cost = 0.4 * stats.total_images;
-  const video_cost = 1 * stats.total_video_seconds;
-  const total_cost = image_cost + video_cost;
+  const video_cost = stats.total_video_compute_units ?? (1 * stats.total_video_seconds);
+  const total_cost = stats.total_compute_spent ?? (image_cost + video_cost);
   return (
     <div className="space-y-1 text-xs">
       <div className="flex justify-between text-gray-500">

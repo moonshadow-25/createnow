@@ -9,6 +9,8 @@ import { Project } from '@/types';
 interface ProjectStats {
   total_images: number;
   total_video_seconds: number;
+  total_video_compute_units?: number;
+  total_compute_spent?: number;
 }
 
 interface CostDashboardProps {
@@ -42,8 +44,9 @@ const COLORS = [
 function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost: number; total_cost: number } {
   if (!stats) return { image_cost: 0, video_cost: 0, total_cost: 0 };
   const image_cost = 0.4 * (stats.total_images || 0);
-  const video_cost = 1.0 * (stats.total_video_seconds || 0);
-  return { image_cost, video_cost, total_cost: image_cost + video_cost };
+  const video_cost = stats.total_video_compute_units ?? (1.0 * (stats.total_video_seconds || 0));
+  const total_cost = stats.total_compute_spent ?? (image_cost + video_cost);
+  return { image_cost, video_cost, total_cost };
 }
 
 const fmt = (n: number) => n.toFixed(2);

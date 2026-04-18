@@ -7,6 +7,9 @@ Volcengine Asset 管理 API 端点
 """
 
 import logging
+import mimetypes
+from urllib.parse import unquote, urlparse
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -27,7 +30,9 @@ def _get_projects_dir():
 
 
 class SubmitAssetRequest(BaseModel):
-    image_ids: list[str]
+    image_ids: list[str] = []
+    video_urls: list[str] = []
+    project_name: str = "default"
 
 
 def _get_asset_service(project_id: str, project: dict):
@@ -65,6 +70,32 @@ def _get_asset_service(project_id: str, project: dict):
             volcengine_sk=video_config.get("volcengine_sk", ""),
             project_id=project_id,
         )
+
+
+def _resolve_local_media_path(project_id: str, media_url: str):
+    """将 /api/projects/{project_id}/generate/media/files/{filename} 解析为本地绝对路径"""
+    if not media_url:
+        return None, None, None
+
+    parsed = urlparse(media_url)
+    path = parsed.path or media_url
+    marker = f"/api/projects/{project_id}/generate/media/files/"
+    if marker not in path:
+        return None, None, None
+
+    filename = unquote(path.split(marker, 1)[1]).strip()
+    if not filename or "/" in filename or "\\" in filename:
+        return None, None, None
+
+    media_dir = _get_projects_dir() / project_id / "generate" / "media"
+    abs_path = (media_dir / filename).resolve()
+    if abs_path.parent != media_dir.resolve():
+        return None, None, None
+    if not abs_path.exists() or not abs_path.is_file():
+        return None, None, None
+
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return str(abs_path), filename, content_type
 
 
 def collect_submit_image_ids(project_id: str, episode_id: str = None) -> list[str]:
@@ -113,7 +144,7 @@ async def submit_assets_core(project_id: str, image_ids: list[str]) -> dict:
     if not project:
         raise ValueError("Project not found")
 
-    req = SubmitAssetRequest(image_ids=image_ids)
+    req = SubmitAssetRequest(image_ids=image_ids, video_urls=[])
     # 复用 HTTP handler 的完整逻辑，通过内部调用
     return await _submit_asset_impl(project_id, project, req)
 
@@ -126,7 +157,7 @@ async def resubmit_assets_core(project_id: str, image_ids: list[str]) -> dict:
     if not project:
         raise ValueError("Project not found")
 
-    req = SubmitAssetRequest(image_ids=image_ids)
+    req = SubmitAssetRequest(image_ids=image_ids, video_urls=[])
     return await _submit_asset_impl(project_id, project, req, force=True)
 
 
@@ -135,6 +166,9 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
     force=True 时忽略已有 asset_id 的守卫，清空旧状态后强制重新提交。
     """
     from app.services import ProjectService
+
+    if not request.image_ids and not request.video_urls:
+        raise ValueError("image_ids 和 video_urls 不能同时为空")
 
     ai_config = project.get("ai_config", {})
     video_config = ai_config.get("video", {})
@@ -150,6 +184,7 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
 
         submitted = []
         skipped = []
+
         for image_id in request.image_ids:
             image = ImageService.get_image(project_id, image_id)
             if not image:
@@ -158,7 +193,12 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
             existing_asset_id = image.get("volcengine_asset_id")
             existing_status = image.get("volcengine_asset_status")
             if existing_asset_id and existing_status != "Failed" and not force:
-                skipped.append({"image_id": image_id, "asset_id": existing_asset_id, "status": existing_status})
+                skipped.append({
+                    "ref_type": "image",
+                    "image_id": image_id,
+                    "asset_id": existing_asset_id,
+                    "status": existing_status,
+                })
                 continue
             if force and existing_asset_id:
                 image.pop("volcengine_asset_id", None)
@@ -182,10 +222,45 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
                 image["volcengine_asset_id"] = asset_id
                 image["volcengine_asset_status"] = "Processing"
                 ImageService.save_generation_record(project_id, image)
-                submitted.append({"image_id": image_id, "asset_id": asset_id, "status": "Processing"})
+                submitted.append({
+                    "ref_type": "image",
+                    "image_id": image_id,
+                    "asset_id": asset_id,
+                    "status": "Processing",
+                })
             except Exception as e:
                 logger.error(f"[Asset] CreateNow 提交单张图片失败 {image_id}: {e}")
                 skipped.append(image_id)
+
+        for video_url in request.video_urls:
+            abs_path, filename, content_type = _resolve_local_media_path(project_id, video_url)
+            if not abs_path or not filename:
+                logger.warning(f"[Asset] 无法解析本地视频路径，跳过: {video_url}")
+                skipped.append({"ref_type": "video", "video_url": video_url})
+                continue
+            if not (content_type or "").startswith("video/"):
+                logger.warning(f"[Asset] 非视频文件，跳过: {video_url}")
+                skipped.append({"ref_type": "video", "video_url": video_url})
+                continue
+            try:
+                with open(abs_path, "rb") as f:
+                    file_bytes = f.read()
+                asset_id = await svc.cn_submit_video(
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    content_type=content_type,
+                    project_name=request.project_name,
+                )
+                submitted.append({
+                    "ref_type": "video",
+                    "video_url": video_url,
+                    "asset_id": asset_id,
+                    "status": "Processing",
+                })
+            except Exception as e:
+                logger.error(f"[Asset] CreateNow 提交视频失败 {video_url}: {e}")
+                skipped.append({"ref_type": "video", "video_url": video_url})
+
         return {"submitted": submitted, "skipped": skipped}
 
     # Volcengine 路径
@@ -201,6 +276,8 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
 
     submitted = []
     skipped = []
+    for video_url in request.video_urls:
+        skipped.append({"ref_type": "video", "video_url": video_url, "reason": "volcengine_not_supported"})
 
     for image_id in request.image_ids:
         image = ImageService.get_image(project_id, image_id)
@@ -304,15 +381,22 @@ async def get_asset_status_endpoint(project_id: str, asset_id: str):
             result = await svc.cn_get_asset_status(asset_id)
             status = result["status"]
             image_id = None
+            ref_type = "video"
             all_images = ImageService.list_images(project_id)
             for img in all_images:
                 if img.get("volcengine_asset_id") == asset_id:
                     image_id = img["image_id"]
+                    ref_type = "image"
                     if img.get("volcengine_asset_status") != status:
                         img["volcengine_asset_status"] = status
                         ImageService.save_generation_record(project_id, img)
                     break
-            return {"status": status, "image_id": image_id}
+            return {
+                "status": status,
+                "asset_id": asset_id,
+                "ref_type": ref_type,
+                "image_id": image_id,
+            }
         except Exception as e:
             logger.error(f"[Asset] CreateNow 查询素材状态失败: {e}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -335,7 +419,12 @@ async def get_asset_status_endpoint(project_id: str, asset_id: str):
                     ImageService.save_generation_record(project_id, img)
                 break
 
-        return {"status": status, "image_id": image_id}
+        return {
+            "status": status,
+            "asset_id": asset_id,
+            "ref_type": "image" if image_id else "video",
+            "image_id": image_id,
+        }
 
     except Exception as e:
         logger.error(f"[Asset] 查询素材状态失败: {e}")

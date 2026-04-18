@@ -14,12 +14,41 @@ from app.services.ai.adapters.base import VideoAdapter
 logger = logging.getLogger(__name__)
 
 # 分辨率配置：key 为前端值，value 为 (API resolution 参数, ratio 参数)
-# 新增分辨率只需在此处添加一行
+# 主路径只使用新格式（480p/720p/1080p），保留少量老值用于历史记录兼容
 RESOLUTION_CONFIG = {
+    "480p":      ("480p", "16:9"),
+    "720p":      ("720p", "16:9"),
+    "1080p":     ("1080p", "16:9"),
     "1280x720":  ("720p", "16:9"),
     "21:9-720p": ("720p", "21:9"),
     "720x1280":  ("720p", "9:16"),
 }
+
+
+def _resolve_resolution_and_ratio(resolution: Optional[str], ratio: Optional[str]) -> tuple[str, str]:
+    normalized_ratio = (ratio or "").strip()
+    value = (resolution or "").strip()
+
+    if value in RESOLUTION_CONFIG:
+        mapped_resolution, mapped_ratio = RESOLUTION_CONFIG[value]
+        if normalized_ratio in {"16:9", "9:16", "21:9", "adaptive"}:
+            return mapped_resolution, normalized_ratio
+        return mapped_resolution, mapped_ratio
+
+    if value in {"480p", "720p", "1080p"}:
+        if normalized_ratio in {"16:9", "9:16", "21:9", "adaptive"}:
+            return value, normalized_ratio
+        return value, "16:9"
+
+    if "-" in value:
+        candidate_ratio, candidate_resolution = value.split("-", 1)
+        if candidate_resolution in {"480p", "720p", "1080p"} and candidate_ratio in {"16:9", "9:16", "21:9", "adaptive"}:
+            return candidate_resolution, (normalized_ratio or candidate_ratio)
+
+    logger.warning(f"[ByteSeed] 未识别分辨率格式: {value!r}，回退 720p")
+    if normalized_ratio in {"16:9", "9:16", "21:9", "adaptive"}:
+        return "720p", normalized_ratio
+    return "720p", "16:9"
 
 # Seedance 2.0 模型集合（不支持 1080p / service_tier / draft / frames / camera_fixed）
 SEEDANCE_2_0_MODELS = {
@@ -95,7 +124,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
             }
         ]
 
-        ratio = kwargs.pop('ratio', None) or self._map_resolution_to_ratio(resolution)
+        ratio = _resolve_resolution_and_ratio(resolution, kwargs.pop('ratio', None))[1]
         return await self._create_task(content, duration, ratio, resolution=resolution, **kwargs)
 
     async def generate_multi_image(
@@ -139,7 +168,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "image_url": {"url": image_urls[1]},
                 "role": "last_frame"
             })
-            ratio = override_ratio or self._map_resolution_to_ratio(resolution)
+            ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1]
         else:
             # 参考图模式（3张及以上）
             for img_url in image_urls:
@@ -198,7 +227,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "role": "reference_audio"
             })
 
-        effective_ratio = ratio or self._map_resolution_to_ratio(resolution) or "adaptive"
+        effective_ratio = _resolve_resolution_and_ratio(resolution, ratio)[1]
         return await self._create_task(
             content, duration, effective_ratio,
             use_web_search=use_web_search,
@@ -233,13 +262,13 @@ class ByteSeedVideoAdapter(VideoAdapter):
 
         # 将前端分辨率字符串映射为 API 的 resolution / ratio 参数（统一维护 RESOLUTION_CONFIG）
         resolution_str = kwargs.get("resolution", "1280x720")
-        resolution_param, _ = RESOLUTION_CONFIG.get(resolution_str, ("720p", "16:9"))
+        resolution_param, ratio_from_resolution = _resolve_resolution_and_ratio(resolution_str, ratio)
 
         # r2v 模式（content 中含任意图片）下，2.0 不支持 1080p，已在上方降级处理
         payload: Dict[str, Any] = {
             "model": model,
             "content": content,
-            "ratio": ratio,
+            "ratio": ratio_from_resolution,
             "resolution": resolution_param,
             "duration": duration,
             "watermark": self.watermark,

@@ -8,6 +8,7 @@ import uuid
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
@@ -17,7 +18,7 @@ from app.core.config import settings
 from app.core.context import get_current_data_root
 from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
 from .template_helpers import get_active_template
-from .utils import check_project_budget
+from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,61 @@ def _get_projects_dir():
 
 
 router = APIRouter()
+
+
+SUPPORTED_RATIOS = {"16:9", "9:16", "21:9", "adaptive"}
+
+
+def _parse_ratio_resolution(raw_resolution: Optional[str], raw_ratio: Optional[str]) -> Tuple[str, Optional[str]]:
+    ratio = (raw_ratio or "").strip()
+    if ratio not in SUPPORTED_RATIOS:
+        ratio = ""
+
+    value = (raw_resolution or "").strip()
+    if not value:
+        return "720p", ratio or None
+
+    if value in {"1280x720", "720x1280", "21:9-720p"}:
+        mapped_ratio = {"1280x720": "16:9", "720x1280": "9:16", "21:9-720p": "21:9"}[value]
+        return "720p", ratio or mapped_ratio
+
+    if value == "1920x1080":
+        return "1080p", ratio or "16:9"
+
+    matched = value.split("-", 1)
+    if len(matched) == 2:
+        candidate_ratio, candidate_resolution = matched
+        normalized_resolution = normalize_video_resolution(candidate_resolution)
+        if candidate_ratio in SUPPORTED_RATIOS:
+            return normalized_resolution, ratio or candidate_ratio
+
+    normalized_resolution = normalize_video_resolution(value)
+    return normalized_resolution, ratio or None
+
+
+def _resolve_video_params(project: dict, request: VideoGenerateRequest) -> Tuple[str, str]:
+    global_resolution_raw = (
+        project.get("ai_config", {})
+        .get("global_style_config", {})
+        .get("global_resolution", "1280x720")
+    )
+    global_resolution, global_ratio = _parse_ratio_resolution(global_resolution_raw, None)
+
+    # 分镜链路优先使用全局设置；其他入口沿用请求参数
+    if request.storyboard_id:
+        resolution_source = global_resolution
+        ratio_source = global_ratio
+    else:
+        resolution_source = request.resolution
+        ratio_source = request.ratio
+
+    resolved_resolution, resolved_ratio = _parse_ratio_resolution(resolution_source, ratio_source)
+
+    # 非分镜入口：若请求显式传了 ratio，允许覆盖
+    if not request.storyboard_id and request.ratio in SUPPORTED_RATIOS:
+        resolved_ratio = request.ratio
+
+    return resolved_resolution, (resolved_ratio or "16:9")
 
 
 @router.post("/video-prompt")
@@ -249,6 +305,12 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
     multimodal_reference = ai_config.get("video", {}).get("multimodal_reference", False)
 
+    resolved_resolution, resolved_ratio = _resolve_video_params(project, request)
+    request = request.model_copy(update={
+        "resolution": resolved_resolution,
+        "ratio": resolved_ratio,
+    })
+
     # 记录请求日志
     request_log = {
         "storyboard_id": request.storyboard_id,
@@ -257,6 +319,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         "prompt": request.prompt[:500] + "..." if len(request.prompt) > 500 else request.prompt,
         "duration": request.duration,
         "resolution": request.resolution,
+        "ratio": request.ratio,
     }
 
     try:
@@ -367,6 +430,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "duration": request.duration,
             "resolution": request.resolution,
             "ratio": request.ratio,
+            "estimated_cost": round(calc_video_compute_units(request.duration, request.resolution), 2),
             "model": ai_config.get("video", {}).get("model", "sora"),
             "created_at": datetime.now().isoformat(),
             "task_id": result.get("task_id", ""),

@@ -161,6 +161,9 @@ export interface ProjectStats {
   total_images: number;
   total_video_seconds: number;
   storyboard_video_seconds: number;
+  total_video_compute_units?: number;
+  storyboard_video_compute_units?: number;
+  total_compute_spent?: number;
 }
 
 // 项目类型

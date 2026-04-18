@@ -92,9 +92,11 @@ if %errorlevel% equ 0 (
     goto service_ready
 )
 
-REM 独立窗口启动 SaaS 模式
+REM 独立窗口启动 SaaS 模式（环境变量在 start 前设置，子进程自动继承）
 set SSL_CERT_FILE=%SCRIPT_DIR%env\Lib\site-packages\certifi\cacert.pem
-start "CreateNow SaaS Server" cmd /k "cd /d "%SCRIPT_DIR%backend" && set PYTHONPATH=%SCRIPT_DIR%backend && set SSL_CERT_FILE=%SSL_CERT_FILE% && set DEPLOY_MODE=saas && set REDIS_URL=redis://localhost:6380/1 && "%SCRIPT_DIR%env\python.exe" app\main.py --serve-frontend"
+set DEPLOY_MODE=saas
+set REDIS_URL=redis://localhost:6380/1
+start "CreateNow SaaS Server" cmd /k "cd /d "%SCRIPT_DIR%backend" && set PYTHONPATH=%SCRIPT_DIR%backend && "%SCRIPT_DIR%env\python.exe" app\main.py --serve-frontend"
 
 echo   [OK] SaaS 服务启动中，日志显示在独立窗口
 echo   等待服务就绪...

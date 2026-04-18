@@ -1,6 +1,29 @@
 """生成工具执行逻辑"""
-from typing import Dict
+from typing import Dict, Optional, Tuple
 from app.services import AssetService
+
+
+def _parse_global_video_resolution(raw_resolution: str | None) -> Tuple[str, Optional[str]]:
+    """兼容旧值与新值，返回 (resolution, ratio)。"""
+    value = raw_resolution or "1280x720"
+
+    if value == "21:9-720p":
+        return "1280x720", "21:9"
+    if value == "1280x720":
+        return "1280x720", None
+    if value == "720x1280":
+        return "720x1280", None
+
+    matched = value.split("-", 1)
+    if len(matched) == 2:
+        ratio, resolution = matched
+        if ratio in {"16:9", "9:16", "21:9"} and resolution in {"480p", "720p", "1080p"}:
+            return resolution, ratio
+
+    if value in {"480p", "720p", "1080p"}:
+        return value, None
+
+    return value, None
 
 
 async def handle_generate_asset_image(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
@@ -111,11 +134,9 @@ async def handle_generate_storyboard_video(project_id: str, parameters: Dict) ->
         ep_id = parameters.get("episode_id") or storyboard.get("episode_id", "")
         proj = ProjectService.get_project(project_id)
         global_style_config = proj.get("ai_config", {}).get("global_style_config", {})
-        global_resolution = global_style_config.get("global_resolution", "1280x720")
-        global_ratio = None
-        if global_resolution == "21:9-720p":
-            global_resolution = "1280x720"
-            global_ratio = "21:9"
+        global_resolution, global_ratio = _parse_global_video_resolution(
+            global_style_config.get("global_resolution", "1280x720")
+        )
         resolution = storyboard.get("resolution") or global_resolution
         image_ids = []
         for char_id in storyboard.get("character_ids", []):
@@ -182,11 +203,9 @@ async def handle_generate_all_storyboard_videos(project_id: str, parameters: Dic
         if episode_id:
             storyboards = [s for s in storyboards if s.get("episode_id") == episode_id]
         proj = ProjectService.get_project(project_id)
-        global_resolution = proj.get("ai_config", {}).get("global_style_config", {}).get("global_resolution", "1280x720")
-        global_ratio = None
-        if global_resolution == "21:9-720p":
-            global_resolution = "1280x720"
-            global_ratio = "21:9"
+        global_resolution, global_ratio = _parse_global_video_resolution(
+            proj.get("ai_config", {}).get("global_style_config", {}).get("global_resolution", "1280x720")
+        )
         results, skipped = [], []
         for sb in storyboards:
             sid = sb.get("asset_id")

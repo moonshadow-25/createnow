@@ -179,6 +179,27 @@ async def get_audio_file(project_id: str, audio_id: str):
         raise HTTPException(status_code=404, detail="No local file for this audio")
 
     file_path = _get_projects_dir() / project_id / "audios" / "files" / local_path
+
+    # SaaS 白名单媒体请求可能缺少 context data_root，回退按 project_owner 反查真实用户目录
+    if not file_path.exists() and settings.DEPLOY_MODE == "saas":
+        from app.core.redis_client import get_redis
+
+        r = await get_redis()
+        owner_user_id = await r.get(f"project_owner:{project_id}")
+        if owner_user_id:
+            alt_path = settings.USERS_DIR / owner_user_id / "projects" / project_id / "audios" / "files" / local_path
+            if alt_path.exists():
+                file_path = alt_path
+
+        # 兜底：遍历 users 目录（兼容历史项目）
+        if not file_path.exists() and settings.USERS_DIR.exists():
+            for user_dir in settings.USERS_DIR.iterdir():
+                alt_path = user_dir / "projects" / project_id / "audios" / "files" / local_path
+                if alt_path.exists():
+                    file_path = alt_path
+                    await r.set(f"project_owner:{project_id}", user_dir.name)
+                    break
+
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found on disk")
 

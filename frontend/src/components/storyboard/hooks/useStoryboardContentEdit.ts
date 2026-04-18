@@ -1,6 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
 
+function normalizeStoryboardResolution(globalResolution?: string): string {
+  if (!globalResolution) return '1280x720';
+  if (globalResolution === '1280x720' || globalResolution === '720x1280' || globalResolution === '21:9-720p') {
+    return globalResolution;
+  }
+
+  if (globalResolution === '16:9-720p') return '1280x720';
+  if (globalResolution === '9:16-720p') return '720x1280';
+
+  if (globalResolution.endsWith('-480p')) return globalResolution.replace(/-480p$/, '-720p');
+  if (globalResolution.endsWith('-1080p')) return globalResolution.replace(/-1080p$/, '-720p');
+
+  return globalResolution;
+}
+
 export interface StoryboardContentEditState {
   contentExpanded: boolean;
   setContentExpanded: (v: boolean) => void;
@@ -34,7 +49,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
 
   // 全局分辨率变化时同步更新
   useEffect(() => {
-    setEditResolution(global_resolution || '1280x720');
+    setEditResolution(normalizeStoryboardResolution(global_resolution));
   }, [global_resolution]);
 
   const resetEditState = (storyboard?: any) => {
@@ -45,7 +60,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditShotType(storyboard.shot_type || '中景');
       setEditCameraAngle(storyboard.camera_angle || '平视');
       setEditDuration(storyboard.duration || 6);
-      setEditResolution(global_resolution || '1280x720');
+      setEditResolution(normalizeStoryboardResolution(global_resolution));
     } else {
       setEditDescription('');
       setEditDialogue('');
@@ -53,7 +68,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditShotType('中景');
       setEditCameraAngle('平视');
       setEditDuration(6);
-      setEditResolution(global_resolution || '1280x720');
+      setEditResolution(normalizeStoryboardResolution(global_resolution));
     }
   };
 
