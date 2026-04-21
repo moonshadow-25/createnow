@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from .models import GlobalStyleConfig, GlobalStyleConfigUpdate
 from .style_presets import get_all_image_presets, get_all_video_presets, IMAGE_STYLE_PRESETS, VIDEO_STYLE_PRESETS
+from app.models.project import normalize_global_style_config
 
 router = APIRouter()
 
@@ -25,15 +26,15 @@ async def get_global_style_config(project_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
-    global_style_config = ai_config.get("global_style_config", {
-        "prompt_language": "zh",
-        "image_style": {"preset_id": "cinematic_realistic", "custom_suffix": "", "enabled": True},
-        "video_style": {"preset_id": "cinematic_realistic_video", "custom_suffix": "", "enabled": True},
-        "global_resolution": "1280x720",
-        "nine_grid_mode": False,
-    })
+    current = ai_config.get("global_style_config")
+    normalized = normalize_global_style_config(current)
 
-    return global_style_config
+    # 兜底时立即回写，确保后续 tools/conversation 与此接口一致
+    if current != normalized:
+        ai_config["global_style_config"] = normalized
+        ProjectService.update_project(project_id, ai_config=ai_config)
+
+    return normalized
 
 
 @router.put("/global-style-config")
@@ -49,13 +50,7 @@ async def update_global_style_config(
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
-    current_config = ai_config.get("global_style_config", {
-        "prompt_language": "zh",
-        "image_style": {"preset_id": "cinematic_realistic", "custom_suffix": "", "enabled": True},
-        "video_style": {"preset_id": "cinematic_realistic_video", "custom_suffix": "", "enabled": True},
-        "global_resolution": "1280x720",
-        "nine_grid_mode": False,
-    })
+    current_config = normalize_global_style_config(ai_config.get("global_style_config"))
 
     # 更新配置（只更新提供的字段）
     update_data = config.model_dump(exclude_unset=True)

@@ -190,6 +190,14 @@ class VideoAdapter(ABC):
         """
         pass
 
+    async def erase_subtitle(self, video_url: str, model: Optional[str] = None) -> Dict[str, Any]:
+        """创建字幕擦除任务（默认不支持）"""
+        raise NotImplementedError("Current adapter does not support subtitle removal")
+
+    async def poll_subtitle_task(self, task_id: str) -> Dict[str, Any]:
+        """轮询字幕擦除任务（默认不支持）"""
+        raise NotImplementedError("Current adapter does not support subtitle removal")
+
     def _log(
         self,
         operation: str,

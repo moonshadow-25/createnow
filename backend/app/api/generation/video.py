@@ -9,6 +9,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
@@ -16,9 +17,10 @@ from app.services import get_ai_service, PromptService, ImageService, AudioServi
 from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
-from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest
+from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest
 from .template_helpers import get_active_template
 from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units
+from app.models.project import normalize_global_style_config
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +67,8 @@ def _parse_ratio_resolution(raw_resolution: Optional[str], raw_ratio: Optional[s
 
 
 def _resolve_video_params(project: dict, request: VideoGenerateRequest) -> Tuple[str, str]:
-    global_resolution_raw = (
-        project.get("ai_config", {})
-        .get("global_style_config", {})
-        .get("global_resolution", "1280x720")
-    )
+    global_style_config = normalize_global_style_config(project.get("ai_config", {}).get("global_style_config"))
+    global_resolution_raw = global_style_config.get("global_resolution", "1280x720")
     global_resolution, global_ratio = _parse_ratio_resolution(global_resolution_raw, None)
 
     # 分镜链路优先使用全局设置；其他入口沿用请求参数
@@ -89,6 +88,29 @@ def _resolve_video_params(project: dict, request: VideoGenerateRequest) -> Tuple
     return resolved_resolution, (resolved_ratio or "16:9")
 
 
+def _is_remote_url(url: str) -> bool:
+    return isinstance(url, str) and url.startswith(("http://", "https://"))
+
+
+def _is_local_video_api_url(url: str, project_id: str) -> bool:
+    marker = f"/api/projects/{project_id}/videos/files/"
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    return marker in path or marker in url
+
+
+def _get_createnow_api_key(project: dict) -> str:
+    ai_config = project.get("ai_config", {})
+    video_config = ai_config.get("video", {})
+    api_key = video_config.get("api_key", "")
+    if api_key:
+        return api_key
+
+    from app.services.auth_service import get_auth_state
+    auth = get_auth_state()
+    return auth.get("api_key", "")
+
+
 @router.post("/video-prompt")
 async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
     """生成视频提示词"""
@@ -106,7 +128,7 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
     custom_template = get_active_template(ai_config, "video")
 
     # 读取全局风格配置
-    global_style_config = ai_config.get("global_style_config", {})
+    global_style_config = normalize_global_style_config(ai_config.get("global_style_config"))
     language = global_style_config.get("prompt_language", "zh")
 
     # 获取视频风格后缀
@@ -459,6 +481,77 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/video-subtitle-removal")
+async def create_video_subtitle_removal_task(project_id: str, request: VideoSubtitleRemovalRequest):
+    """创建视频字幕擦除任务（生成新视频记录，不覆盖旧视频）"""
+    from app.services import ProjectService
+
+    source_video_url = (request.source_video_url or "").strip()
+    if not _is_remote_url(source_video_url):
+        raise HTTPException(status_code=400, detail="source_video_url 必须是远程 http(s) URL")
+
+    if _is_local_video_api_url(source_video_url, project_id):
+        raise HTTPException(status_code=400, detail="字幕擦除仅支持原始远程 URL，不支持本地视频 URL")
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ai_config = project.get("ai_config", {})
+    video_config = ai_config.get("video", {})
+    if video_config.get("api_type") != "createnow":
+        raise HTTPException(status_code=400, detail="字幕擦除仅在 CreateNow 官方接口配置下可用")
+
+    api_key = _get_createnow_api_key(project)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="未配置 CreateNow API Key")
+
+    video_service = get_ai_service(ai_config, "video", project_id)
+    try:
+        submit_result = await video_service.erase_subtitle(
+            video_url=source_video_url,
+            model=settings.CREATENOW_SUBTITLE_MODEL_ID,
+        )
+    finally:
+        await video_service.close()
+
+    if not submit_result.get("success"):
+        raise HTTPException(status_code=502, detail=submit_result.get("error") or "字幕擦除任务提交失败")
+
+    video_id = str(uuid.uuid4())
+    record = {
+        "video_id": video_id,
+        "storyboard_id": request.storyboard_id,
+        "episode_id": request.episode_id,
+        "prompt": request.prompt or "去除字幕",
+        "video_path": None,
+        "duration": 0,
+        "resolution": "",
+        "ratio": "",
+        "estimated_cost": 0,
+        "model": settings.CREATENOW_SUBTITLE_MODEL_ID,
+        "created_at": datetime.now().isoformat(),
+        "task_id": submit_result.get("task_id", ""),
+        "status": "pending",
+        "poll_count": 0,
+        "last_poll_time": None,
+        "last_poll_response": submit_result,
+        "operation_type": "subtitle_removal",
+        "source_video_id": request.source_video_id,
+        "source_video_url": source_video_url,
+        "error": None,
+    }
+
+    videos_dir = _get_projects_dir() / project_id / "videos"
+    videos_dir.mkdir(exist_ok=True)
+    video_file = videos_dir / f"{video_id}.json"
+    with open(video_file, "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False, indent=2)
+    VideoService.save_video(project_id, record)
+
+    return record
+
+
 @router.get("/videos")
 async def list_videos(project_id: str, episode_id: str = None, library: bool = False):
     """列出项目的所有视频记录"""
@@ -548,8 +641,8 @@ async def poll_video_status(project_id: str, video_id: str):
     with open(video_file, "r", encoding="utf-8") as f:
         video_record = json.load(f)
 
-    # 如果已经完成或失败，直接返回
-    if video_record.get("status") in ("completed", "failed"):
+    # 仅 completed 作为不可恢复终态
+    if video_record.get("status") == "completed":
         return video_record
 
     task_id = video_record.get("task_id")
@@ -562,22 +655,45 @@ async def poll_video_status(project_id: str, video_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
 
     ai_config = project.get("ai_config", {})
-    video_service = get_ai_service(ai_config, "video", project_id)
+    operation_type = video_record.get("operation_type")
 
     try:
-        # 调用轮询接口
-        poll_result = await video_service.poll_video_task(task_id)
-        await video_service.close()
+        if operation_type == "subtitle_removal":
+            video_service = get_ai_service(ai_config, "video", project_id)
+            try:
+                poll_result = await video_service.poll_subtitle_task(task_id)
+            finally:
+                await video_service.close()
+        else:
+            video_service = get_ai_service(ai_config, "video", project_id)
+            try:
+                raw_result = await video_service.poll_video_task(task_id)
+            finally:
+                await video_service.close()
+
+            # 统一将临时轮询错误映射为 poll_failed，避免一次失败永久报废
+            raw_status = raw_result.get("status")
+            if not raw_result.get("success") and raw_status == "failed":
+                poll_result = {
+                    "success": False,
+                    "status": "poll_failed",
+                    "error": raw_result.get("error") or "轮询失败",
+                    "raw_poll_response": raw_result.get("raw_poll_response"),
+                }
+            else:
+                poll_result = raw_result
 
         # 更新视频记录
         video_record["poll_count"] = video_record.get("poll_count", 0) + 1
         video_record["last_poll_time"] = datetime.now().isoformat()
         video_record["last_poll_response"] = poll_result.get("raw_poll_response")
 
-        if poll_result.get("status") == "completed":
+        status = poll_result.get("status")
+        if status == "completed":
             video_record["status"] = "completed"
             video_record["video_path"] = poll_result.get("video_url")
             video_record["enhanced_prompt"] = poll_result.get("enhanced_prompt", "")
+            video_record["error"] = None
 
             # 【自动下载】视频生成完成后自动下载到本地
             from app.services.video_download_service import VideoDownloadService
@@ -594,12 +710,12 @@ async def poll_video_status(project_id: str, video_id: str):
                     )
                 except Exception as e:
                     logger.warning(f"启动视频自动下载失败 (video_id: {video_id}): {e}")
-        elif poll_result.get("status") == "failed":
-            video_record["status"] = "failed"
+        elif status in ("poll_failed", "failed"):
+            video_record["status"] = "poll_failed"
             video_record["error"] = poll_result.get("error")
         else:
-            # 仍在 pending
-            video_record["status"] = poll_result.get("status", "pending")
+            # pending/in_progress/queued
+            video_record["status"] = status or "pending"
 
         # 保存更新后的记录
         with open(video_file, "w", encoding="utf-8") as f:
@@ -608,8 +724,9 @@ async def poll_video_status(project_id: str, video_id: str):
 
         return video_record
 
+    except HTTPException:
+        raise
     except Exception as e:
-        await video_service.close()
         logger.error(f"Error polling video {video_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

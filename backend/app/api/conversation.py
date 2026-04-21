@@ -10,6 +10,7 @@ from datetime import datetime
 
 from app.services import get_ai_service, AssetService, ScriptService, ScriptParser
 from app.api.tools import OPENAI_TOOLS, ASSET_ONLY_TOOLS, CONFIRMATION_REQUIRED_TOOLS, execute_tool_call
+from app.models.project import normalize_global_style_config
 
 router = APIRouter(prefix="/projects/{project_id}/chat", tags=["conversation"])
 
@@ -82,7 +83,7 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
 
     # 注入全局风格（让 AI 写提示词时融入风格，与生成侧逻辑保持一致）
     from app.api.generation.style_presets import get_video_style_suffix, get_image_style_suffix
-    global_style_cfg = ai_config.get("global_style_config", {})
+    global_style_cfg = normalize_global_style_config(ai_config.get("global_style_config"))
     language = global_style_cfg.get("prompt_language", "zh")
 
     def _build_style_text(style_cfg: dict, get_suffix_fn) -> str:

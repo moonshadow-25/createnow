@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Clapperboard, CheckCircle2 } from 'lucide-react';
-import { ToolCall, Message } from '@/types';
+import { ToolCall, Message, ToolResult } from '@/types';
 import { MessageBubble } from './MessageBubble';
 import { PendingConfirmation } from '@/hooks/useChat';
 
@@ -166,6 +166,7 @@ export function MessageList({
                 role={msg.role as 'user' | 'assistant'}
                 content={msg.content}
                 toolCalls={msg.tool_calls}
+                toolResults={msg.tool_results as ToolResult[] | undefined}
                 thinking={msg.thinking}
               />
             ))}

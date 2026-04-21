@@ -6,7 +6,7 @@ from .script_service import (
     ScriptService, ScriptCharacterService, ScriptEpisodeService,
     ScriptSceneService, ScriptLineService, ScriptParser
 )
-from .ai_script_service import parse_script_with_ai
+from .ai_script_service import parse_script_with_ai, stream_script_import_rounds
 from .audio_service import AudioService
 from .tts_service import TTSService, get_tts_service
 
@@ -17,6 +17,6 @@ __all__ = [
     "PromptService",
     "ScriptService", "ScriptCharacterService", "ScriptEpisodeService",
     "ScriptSceneService", "ScriptLineService", "ScriptParser",
-    "parse_script_with_ai",
+    "parse_script_with_ai", "stream_script_import_rounds",
     "AudioService", "TTSService", "get_tts_service"
 ]

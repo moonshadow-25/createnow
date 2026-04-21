@@ -933,6 +933,164 @@ class ScriptParser:
         return base_line
 
     @staticmethod
+    def _normalize_name(name: str) -> str:
+        return (name or "").strip().lower().replace(" ", "")
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return re.sub(r"\s+", "", (value or "").strip().lower())
+
+    @staticmethod
+    def _scene_fingerprint(episode_number: int, scene: Dict) -> str:
+        location = ScriptParser._normalize_text(scene.get("location", ""))
+        tod = ScriptParser._normalize_text(scene.get("time_of_day", ""))
+        interior = ScriptParser._normalize_text(scene.get("interior_exterior", ""))
+        first_line = ""
+        lines = scene.get("lines", []) or []
+        if lines:
+            first_line = ScriptParser._normalize_text(lines[0].get("content", ""))[:80]
+        return f"{episode_number}|{location}|{tod}|{interior}|{first_line}"
+
+    @staticmethod
+    def _line_fingerprint(scene_id: str, line: Dict) -> str:
+        content = ScriptParser._normalize_text(line.get("content", ""))
+        line_type = ScriptParser._normalize_text(line.get("line_type", ""))
+        character = ScriptParser._normalize_text(line.get("character", ""))
+        dialogue = ScriptParser._normalize_text(line.get("dialogue", ""))
+        visual = ScriptParser._normalize_text(line.get("visual_description", ""))
+        return f"{scene_id}|{line_type}|{character}|{dialogue}|{visual}|{content}"
+
+    @staticmethod
+    def import_partial_to_project(project_id: str, script_id: str, partial: Dict, session_state: Dict) -> Dict:
+        """导入单轮增量结果（多轮AI导入专用）。"""
+        existing_characters = ScriptCharacterService.list_characters(project_id, script_id)
+        existing_char_map = {
+            ScriptParser._normalize_name(c.get("name", "")): c
+            for c in existing_characters
+            if c.get("name")
+        }
+
+        existing_episodes = ScriptEpisodeService.list_episodes(project_id, script_id)
+        episode_map = {int(e.get("episode_number", 0)): e for e in existing_episodes if e.get("episode_number") is not None}
+
+        scene_fingerprints = set(session_state.get("scene_fingerprints", []))
+        line_fingerprints = set(session_state.get("line_fingerprints", []))
+
+        created_characters = 0
+        skipped_characters = 0
+        created_episodes = 0
+        created_scenes = 0
+        created_lines = 0
+        skipped_scenes = 0
+        skipped_lines = 0
+
+        if partial.get("title"):
+            ScriptService.update_script(project_id, script_id, title=partial.get("title"))
+
+        for char in partial.get("characters", []) or []:
+            name = (char.get("name") or "").strip()
+            if not name:
+                continue
+            key = ScriptParser._normalize_name(name)
+            if key in existing_char_map:
+                skipped_characters += 1
+                continue
+            ScriptCharacterService.add_character(project_id, script_id, {
+                "name": name,
+                "age": char.get("age"),
+                "gender": char.get("gender"),
+                "description": char.get("description", ""),
+                "notes": char.get("notes", ""),
+            })
+            created_characters += 1
+            existing_char_map[key] = {"name": name}
+
+        for ep_data in partial.get("episodes", []) or []:
+            try:
+                episode_number = int(ep_data.get("episode_number", 0))
+            except Exception:
+                continue
+            if episode_number <= 0:
+                continue
+
+            episode = episode_map.get(episode_number)
+            if not episode:
+                episode = ScriptEpisodeService.add_episode(
+                    project_id,
+                    script_id,
+                    episode_number=episode_number,
+                    title=ep_data.get("title", "")
+                )
+                episode_map[episode_number] = episode
+                created_episodes += 1
+
+            existing_scenes = ScriptSceneService.list_scenes_by_episode(project_id, episode["episode_id"])
+            next_scene_seq = (max([s.get("sequence", 0) for s in existing_scenes], default=0) + 1)
+
+            for scene_data in ep_data.get("scenes", []) or []:
+                scene_fp = ScriptParser._scene_fingerprint(episode_number, scene_data)
+                if scene_fp in scene_fingerprints:
+                    skipped_scenes += 1
+                    continue
+
+                new_scene = ScriptSceneService.add_scene(
+                    project_id,
+                    script_id,
+                    episode["episode_id"],
+                    {
+                        "sequence": next_scene_seq,
+                        "location": scene_data.get("location", ""),
+                        "time_of_day": scene_data.get("time_of_day", "日"),
+                        "interior_exterior": scene_data.get("interior_exterior", "外"),
+                        "content": scene_data.get("content", ""),
+                        "time_start": scene_data.get("time_start"),
+                        "time_end": scene_data.get("time_end"),
+                        "act_title": scene_data.get("act_title"),
+                    }
+                )
+                next_scene_seq += 1
+                created_scenes += 1
+                scene_fingerprints.add(scene_fp)
+
+                line_seq = 0
+                for line_data in scene_data.get("lines", []) or []:
+                    line_obj = {
+                        "line_type": line_data.get("line_type", "action"),
+                        "sequence": line_seq,
+                        "content": line_data.get("content", ""),
+                        "character": line_data.get("character"),
+                        "parenthetical": line_data.get("parenthetical"),
+                        "dialogue": line_data.get("dialogue"),
+                        "visual_type": line_data.get("visual_type"),
+                        "visual_description": line_data.get("visual_description"),
+                    }
+                    line_fp = ScriptParser._line_fingerprint(new_scene["scene_id"], line_obj)
+                    if line_fp in line_fingerprints:
+                        skipped_lines += 1
+                        continue
+                    ScriptLineService.add_line(project_id, script_id, new_scene["scene_id"], line_obj)
+                    created_lines += 1
+                    line_seq += 1
+                    line_fingerprints.add(line_fp)
+
+        session_state["scene_fingerprints"] = list(scene_fingerprints)
+        session_state["line_fingerprints"] = list(line_fingerprints)
+
+        return {
+            "created": {
+                "characters": created_characters,
+                "episodes": created_episodes,
+                "scenes": created_scenes,
+                "lines": created_lines,
+            },
+            "skipped": {
+                "characters": skipped_characters,
+                "scenes": skipped_scenes,
+                "lines": skipped_lines,
+            },
+        }
+
+    @staticmethod
     def import_script_to_project(project_id: str, script_id: str, text: str) -> Dict:
         """将解析后的剧本导入到项目，返回详细结果和警告信息"""
         parsed = ScriptParser.parse_script_text(text)

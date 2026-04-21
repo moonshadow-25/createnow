@@ -1,6 +1,8 @@
 """全剧本导入API — 分集 / 资产提取 / 分集并提取"""
+import json
 import logging
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.services.asset_service import ProjectService
@@ -8,6 +10,7 @@ from app.services.full_script_service import (
     split_into_episodes,
     extract_all_assets,
     split_and_extract,
+    stream_split_and_extract,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +60,7 @@ async def api_extract_assets(project_id: str, request: FullScriptRequest):
 
 @router.post("/split-and-extract")
 async def api_split_and_extract(project_id: str, request: FullScriptRequest):
-    """AI 分集并提取：同时进行分集和资产提取"""
+    """AI 分集并提取：保持旧非流式行为（兼容）"""
     if not request.content.strip():
         raise HTTPException(status_code=422, detail="剧本内容不能为空")
 
@@ -70,4 +73,26 @@ async def api_split_and_extract(project_id: str, request: FullScriptRequest):
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"[FullScript] split-and-extract failed: {e}")
+        raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")
+
+
+@router.post("/split-and-extract-stream")
+async def api_split_and_extract_stream(project_id: str, request: FullScriptRequest):
+    """AI 分集并提取：流式进度接口（SSE）"""
+    if not request.content.strip():
+        raise HTTPException(status_code=422, detail="剧本内容不能为空")
+
+    try:
+        project = ProjectService.get_project(project_id)
+        ai_config = project.get("ai_config", {}) if project else {}
+
+        async def _event_stream():
+            async for event in stream_split_and_extract(project_id, request.content, ai_config):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(_event_stream(), media_type="text/event-stream")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FullScript] split-and-extract-stream failed: {e}")
         raise HTTPException(status_code=500, detail=f"处理失败: {str(e)}")

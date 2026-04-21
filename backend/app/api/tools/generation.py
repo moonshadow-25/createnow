@@ -1,6 +1,7 @@
 """生成工具执行逻辑"""
 from typing import Dict, Optional, Tuple
 from app.services import AssetService
+from app.models.project import normalize_global_style_config
 
 
 def _parse_global_video_resolution(raw_resolution: str | None) -> Tuple[str, Optional[str]]:
@@ -133,7 +134,7 @@ async def handle_generate_storyboard_video(project_id: str, parameters: Dict) ->
             return {"success": False, "error": f"分镜 {storyboard.get('sequence', storyboard_id)} 尚未设置 video_prompt"}
         ep_id = parameters.get("episode_id") or storyboard.get("episode_id", "")
         proj = ProjectService.get_project(project_id)
-        global_style_config = proj.get("ai_config", {}).get("global_style_config", {})
+        global_style_config = normalize_global_style_config(proj.get("ai_config", {}).get("global_style_config"))
         global_resolution, global_ratio = _parse_global_video_resolution(
             global_style_config.get("global_resolution", "1280x720")
         )
@@ -203,8 +204,9 @@ async def handle_generate_all_storyboard_videos(project_id: str, parameters: Dic
         if episode_id:
             storyboards = [s for s in storyboards if s.get("episode_id") == episode_id]
         proj = ProjectService.get_project(project_id)
+        global_style_config = normalize_global_style_config(proj.get("ai_config", {}).get("global_style_config"))
         global_resolution, global_ratio = _parse_global_video_resolution(
-            proj.get("ai_config", {}).get("global_style_config", {}).get("global_resolution", "1280x720")
+            global_style_config.get("global_resolution", "1280x720")
         )
         results, skipped = [], []
         for sb in storyboards:

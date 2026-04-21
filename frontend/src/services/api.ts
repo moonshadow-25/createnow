@@ -205,6 +205,14 @@ export const generationApi = {
     api.get(`/projects/${projectId}/generate/videos/${videoId}`),
   pollVideo: (projectId: string, videoId: string) =>
     api.post(`/projects/${projectId}/generate/videos/${videoId}/poll`),
+  removeVideoSubtitle: (projectId: string, data: {
+    source_video_url: string;
+    source_video_id?: string;
+    storyboard_id?: string;
+    episode_id?: string;
+    prompt?: string;
+  }) =>
+    api.post(`/projects/${projectId}/generate/video-subtitle-removal`, data),
   setPrimaryVideo: (projectId: string, videoId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/generate/videos/${videoId}/set-primary`, {
       storyboard_id: storyboardId,
@@ -454,6 +462,16 @@ export const scriptApi = {
   },
   import: (projectId: string, scriptId: string, content: string, useAi: boolean = true) =>
     api.post(`/projects/${projectId}/scripts/${scriptId}/import`, { content, use_ai: useAi }),
+  importStream: (projectId: string, scriptId: string, content: string, useAi: boolean = true) => {
+    const token = localStorage.getItem('saas_token') || localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return {
+      url: `${API_BASE_URL}/projects/${projectId}/scripts/${scriptId}/import-stream`,
+      body: JSON.stringify({ content, use_ai: useAi }),
+      headers,
+    };
+  },
   // 人物管理
   listCharacters: (projectId: string, scriptId: string) =>
     api.get(`/projects/${projectId}/scripts/${scriptId}/characters`),
@@ -539,6 +557,16 @@ export const fullScriptApi = {
     api.post(`/projects/${projectId}/full-script/extract-assets`, { content }),
   splitAndExtract: (projectId: string, content: string) =>
     api.post(`/projects/${projectId}/full-script/split-and-extract`, { content }),
+  splitAndExtractStream: (projectId: string, content: string) => {
+    const token = localStorage.getItem('saas_token') || localStorage.getItem('admin_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return {
+      url: `${API_BASE_URL}/projects/${projectId}/full-script/split-and-extract-stream`,
+      body: JSON.stringify({ content }),
+      headers,
+    };
+  },
 };
 
 // 画布相关API

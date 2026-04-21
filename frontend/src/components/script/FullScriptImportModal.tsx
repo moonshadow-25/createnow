@@ -14,6 +14,8 @@ interface FullScriptImportModalProps {
 
 type ProcessingState = 'idle' | 'splitting' | 'extracting' | 'both';
 
+type StreamStage = 'prepare' | 'split' | 'extract';
+
 interface SplitResult {
   episodes_created: number;
   episodes_updated: number;
@@ -45,6 +47,8 @@ export function FullScriptImportModal({
   const [splitResult, setSplitResult] = useState<SplitResult | null>(null);
   const [extractResult, setExtractResult] = useState<ExtractResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState('');
+  const [streamStage, setStreamStage] = useState<StreamStage>('prepare');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isProcessing = processing !== 'idle';
@@ -135,16 +139,75 @@ export function FullScriptImportModal({
     setError(null);
     setSplitResult(null);
     setExtractResult(null);
+    setStreamStage('prepare');
+    setStreamStatus('已提交请求，等待服务端响应...');
     try {
-      const res = await fullScriptApi.splitAndExtract(projectId, scriptContent);
-      const data = res.data as { split: SplitResult; extract: ExtractResult };
-      setSplitResult(data.split);
-      setExtractResult(data.extract);
-      toast(
-        `处理完成！分集 ${data.split.total_episodes} 集，新增资产 ${data.extract.total_created} 项`,
-        'success'
-      );
-      onSuccess();
+      const req = fullScriptApi.splitAndExtractStream(projectId, scriptContent);
+      const response = await fetch(req.url, {
+        method: 'POST',
+        headers: req.headers,
+        body: req.body,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (!payload) continue;
+
+          let evt: any = null;
+          try {
+            evt = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+
+          if (evt.type === 'status') {
+            if (evt.stage) setStreamStage(evt.stage as StreamStage);
+            setStreamStatus(evt.content || '处理中...');
+          } else if (evt.type === 'split_done') {
+            setSplitResult(evt.split as SplitResult);
+            setStreamStage('extract');
+            setStreamStatus('分集完成，开始提取资产...');
+          } else if (evt.type === 'extract_done') {
+            setExtractResult(evt.extract as ExtractResult);
+            setStreamStatus('资产提取完成，正在收尾...');
+          } else if (evt.type === 'error') {
+            throw new Error(evt.content || '处理失败');
+          } else if (evt.type === 'done') {
+            const split = (evt.split || splitResult) as SplitResult;
+            const extract = (evt.extract || extractResult) as ExtractResult;
+            if (split) setSplitResult(split);
+            if (extract) setExtractResult(extract);
+            setStreamStatus('处理完成');
+            toast(
+              `处理完成！分集 ${split?.total_episodes || 0} 集，新增资产 ${extract?.total_created || 0} 项`,
+              'success'
+            );
+            onSuccess();
+            return;
+          }
+        }
+      }
+
+      if (!splitResult && !extractResult) {
+        throw new Error('流式处理已结束，但未收到完成事件');
+      }
     } catch (e: any) {
       const msg = e.response?.data?.detail || e.message || '处理失败';
       setError(msg);
@@ -252,8 +315,13 @@ export function FullScriptImportModal({
               <span className="text-sm text-blue-300">
                 {processing === 'splitting' && 'AI 正在分析剧本结构，进行分集...'}
                 {processing === 'extracting' && 'AI 正在提取角色、场景、道具...'}
-                {processing === 'both' && 'AI 正在同时进行分集和资产提取...'}
+                {processing === 'both' && (streamStatus || 'AI 正在分步处理全剧本，请稍候...')}
               </span>
+              {processing === 'both' && (
+                <span className="text-xs text-blue-200 ml-2">
+                  阶段：{streamStage === 'prepare' ? '准备中' : streamStage === 'split' ? '分集' : '资产提取'}
+                </span>
+              )}
             </div>
           )}
 

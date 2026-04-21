@@ -5,8 +5,10 @@ CreateNow API 与字节 Seed 完全兼容，直接继承 ByteSeedVideoAdapter
 """
 
 import logging
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Dict, Any
 
+from app.core.config import settings
 from app.services.ai.adapters.byteseed import ByteSeedVideoAdapter
 
 logger = logging.getLogger(__name__)
@@ -58,3 +60,233 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
             watermark=watermark,
             **kwargs
         )
+
+    async def erase_subtitle(self, video_url: str, model: Optional[str] = None) -> Dict[str, Any]:
+        """创建字幕擦除任务（CreateNow 官方接口）"""
+        url = f"https://{settings.CREATENOW_OFFICIAL_HOST}{settings.CREATENOW_SUBTITLE_SUBMIT_PATH}"
+        selected_model = (model or "").strip() or settings.CREATENOW_SUBTITLE_MODEL_ID
+
+        start_time = datetime.now()
+        payload = {"video_url": video_url, "model": selected_model}
+
+        try:
+            response = await self.client.post(
+                url,
+                headers=self._get_headers(),
+                json=payload,
+                timeout=60.0,
+            )
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+
+            if response.status_code != 200:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                self._log(
+                    operation="video_subtitle_erase_submit",
+                    url=url,
+                    method="POST",
+                    request_payload=payload,
+                    error=error_msg,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                )
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": error_msg,
+                }
+
+            data = response.json()
+            if not data.get("success"):
+                err = data.get("error") or {}
+                error_msg = err.get("message") or "CreateNow subtitle erase submit failed"
+                self._log(
+                    operation="video_subtitle_erase_submit",
+                    url=url,
+                    method="POST",
+                    request_payload=payload,
+                    response_data=data,
+                    error=error_msg,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                )
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": error_msg,
+                }
+
+            task_id = data.get("task_id") or data.get("id")
+            if not task_id:
+                error_msg = "CreateNow subtitle erase submit succeeded but task_id is missing"
+                self._log(
+                    operation="video_subtitle_erase_submit",
+                    url=url,
+                    method="POST",
+                    request_payload=payload,
+                    response_data=data,
+                    error=error_msg,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                )
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": error_msg,
+                }
+
+            self._log(
+                operation="video_subtitle_erase_submit",
+                url=url,
+                method="POST",
+                request_payload=payload,
+                response_data=data,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": "pending",
+                "raw_create_response": data,
+            }
+
+        except Exception as e:
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            error_msg = f"CreateNow subtitle erase submit error: {str(e)}"
+            self._log(
+                operation="video_subtitle_erase_submit",
+                url=url,
+                method="POST",
+                request_payload=payload,
+                error=error_msg,
+                duration_ms=duration_ms,
+            )
+            return {
+                "success": False,
+                "status": "failed",
+                "error": error_msg,
+            }
+
+    async def poll_subtitle_task(self, task_id: str) -> Dict[str, Any]:
+        """轮询字幕擦除任务状态（CreateNow 官方接口）"""
+        path = settings.CREATENOW_SUBTITLE_POLL_PATH.format(task_id=task_id)
+        url = f"https://{settings.CREATENOW_OFFICIAL_HOST}{path}"
+
+        start_time = datetime.now()
+
+        try:
+            response = await self.client.get(
+                url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=30.0,
+            )
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+
+            if response.status_code != 200:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                self._log(
+                    operation="video_subtitle_erase_poll",
+                    url=url,
+                    method="GET",
+                    request_payload={"task_id": task_id},
+                    error=error_msg,
+                    status_code=response.status_code,
+                    duration_ms=duration_ms,
+                )
+                return {
+                    "success": False,
+                    "status": "poll_failed",
+                    "error": error_msg,
+                    "task_id": task_id,
+                    "raw_poll_response": {
+                        "status_code": response.status_code,
+                        "response_text": response.text,
+                    },
+                }
+
+            data = response.json()
+            task_status = str(data.get("status", "running")).lower()
+
+            self._log(
+                operation="video_subtitle_erase_poll",
+                url=url,
+                method="GET",
+                request_payload={"task_id": task_id},
+                response_data=data,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+
+            if not bool(data.get("success", False)):
+                err = data.get("error") or {}
+                return {
+                    "success": False,
+                    "status": "poll_failed",
+                    "error": err.get("message") or "字幕擦除轮询失败",
+                    "task_id": task_id,
+                    "raw_poll_response": data,
+                }
+
+            if task_status in ("running", "processing", "pending", "queued"):
+                return {
+                    "success": True,
+                    "status": "in_progress" if task_status in ("running", "processing") else "pending",
+                    "task_id": task_id,
+                    "raw_poll_response": data,
+                }
+
+            if task_status == "completed":
+                result = data.get("result") or {}
+                video_url = (result.get("video_url") or "").strip()
+                if not video_url:
+                    return {
+                        "success": False,
+                        "status": "poll_failed",
+                        "error": "字幕擦除结果缺少 video_url",
+                        "task_id": task_id,
+                        "raw_poll_response": data,
+                    }
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "video_url": video_url,
+                    "task_id": task_id,
+                    "raw_poll_response": data,
+                }
+
+            if task_status == "failed":
+                err = data.get("error") or {}
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "error": err.get("message") or "字幕擦除任务失败",
+                    "task_id": task_id,
+                    "raw_poll_response": data,
+                }
+
+            return {
+                "success": False,
+                "status": "poll_failed",
+                "error": f"未知字幕擦除任务状态: {task_status}",
+                "task_id": task_id,
+                "raw_poll_response": data,
+            }
+
+        except Exception as e:
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            error_msg = f"CreateNow subtitle erase poll error: {str(e)}"
+            self._log(
+                operation="video_subtitle_erase_poll",
+                url=url,
+                method="GET",
+                request_payload={"task_id": task_id},
+                error=error_msg,
+                duration_ms=duration_ms,
+            )
+            return {
+                "success": False,
+                "status": "poll_failed",
+                "error": error_msg,
+                "task_id": task_id,
+            }

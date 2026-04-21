@@ -200,3 +200,13 @@ class VideoGenService(AIService):
         logger.info(f"poll_video_task called: task_id={task_id}, api_type={self.api_type}")
         adapter = self._get_adapter()
         return await adapter.poll(task_id)
+
+    async def erase_subtitle(self, video_url: str, model: Optional[str] = None) -> Dict[str, Any]:
+        """创建字幕擦除任务（由支持该能力的平台适配器实现）"""
+        adapter = self._get_adapter()
+        return await adapter.erase_subtitle(video_url=video_url, model=model)
+
+    async def poll_subtitle_task(self, task_id: str) -> Dict[str, Any]:
+        """轮询字幕擦除任务（由支持该能力的平台适配器实现）"""
+        adapter = self._get_adapter()
+        return await adapter.poll_subtitle_task(task_id=task_id)

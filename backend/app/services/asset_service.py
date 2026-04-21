@@ -5,7 +5,16 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 
-from app.models.project import Project, Character, Scene, Prop, Episode, Storyboard, ImageGeneration
+from app.models.project import (
+    Project,
+    Character,
+    Scene,
+    Prop,
+    Episode,
+    Storyboard,
+    ImageGeneration,
+    ensure_global_style_config,
+)
 from app.core.config import settings
 from app.core.context import get_current_data_root
 
@@ -299,7 +308,9 @@ class ProjectService:
             if "ai_config" in kwargs:
                 existing_config = project.ai_config or {}
                 new_config = kwargs["ai_config"]
-                project.ai_config = {**existing_config, **new_config}
+                merged_config = {**existing_config, **new_config}
+                merged_config, _ = ensure_global_style_config(merged_config)
+                project.ai_config = merged_config
 
             for field in ["total_episodes", "minutes_per_episode",
                           "compute_budget_per_minute", "project_duration_days",

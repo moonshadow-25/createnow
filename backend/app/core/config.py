@@ -56,7 +56,12 @@ class Settings(BaseSettings):
 
     # CreateNow 官方接口
     CREATENOW_BASE_URL: str = "https://myapi.firstarpc.com/v1"
-    CREATENOW_SECRET_KEY: str = "a8f5e2c9b4d7a1e6f3c8b5d2a9e7f4c1b8d5a2e9f6c3b0d7a4e1f8c5b2d9a6e3"
+    # 安全要求：严禁在代码中硬编码真实密钥，必须从环境变量注入
+    CREATENOW_SECRET_KEY: str = ""
+    CREATENOW_OFFICIAL_HOST: str = "myapi.firstarpc.com"
+    CREATENOW_SUBTITLE_SUBMIT_PATH: str = "/api/v1/ark-tools/ark-erase-video-subtitle-pro"
+    CREATENOW_SUBTITLE_POLL_PATH: str = "/api/v1/ark-tasks/{task_id}"
+    CREATENOW_SUBTITLE_MODEL_ID: str = "zm1"
 
     # 部署模式：selfhosted（默认，现有行为） | saas（Web 公网版）
     DEPLOY_MODE: str = "selfhosted"

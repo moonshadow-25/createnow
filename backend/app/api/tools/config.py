@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from typing import Dict
 from app.services import AssetService
+from app.models.project import normalize_global_style_config
 from .helpers import _resolve_episode_id, KEY_ALIASES
 
 
@@ -18,7 +19,7 @@ async def handle_update_project_config(project_id: str, parameters: Dict) -> Dic
         if path not in ALLOWED_PATHS:
             return {"success": False, "error": f"不允许修改路径 '{path}'，只允许：{', '.join(sorted(ALLOWED_PATHS))}"}
         ai_cfg = proj.get("ai_config", {})
-        global_style = ai_cfg.get("global_style_config", {})
+        global_style = normalize_global_style_config(ai_cfg.get("global_style_config"))
 
         def _apply_style(style_key: str, val: str):
             style_cfg = global_style.get(style_key, {})

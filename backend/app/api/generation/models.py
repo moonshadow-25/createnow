@@ -100,6 +100,15 @@ class VideoGenerateRequest(BaseModel):
         return v
 
 
+class VideoSubtitleRemovalRequest(BaseModel):
+    """视频字幕擦除请求"""
+    source_video_url: str
+    source_video_id: Optional[str] = None
+    storyboard_id: Optional[str] = None
+    episode_id: Optional[str] = None
+    prompt: str = "去除字幕"
+
+
 class ImageEditPromptRequest(BaseModel):
     """生成图像编辑提示词请求"""
     parent_asset_id: str  # 父角色ID

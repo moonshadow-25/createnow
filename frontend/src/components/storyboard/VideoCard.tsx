@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Download, Trash2, Clock, CheckCircle, XCircle, Loader2, Play } from 'lucide-react';
+import { Download, Trash2, Clock, CheckCircle, XCircle, Loader2, Play, Subtitles } from 'lucide-react';
+
 import { getVideoUrl } from './utils/mediaUtils';
 
 export interface VideoRecord {
@@ -14,7 +15,7 @@ export interface VideoRecord {
   storyboard_id: string;
   episode_id: string;
   task_id?: string;
-  status?: 'pending' | 'completed' | 'failed' | 'queued' | 'in_progress';
+  status?: 'pending' | 'completed' | 'failed' | 'queued' | 'in_progress' | 'poll_failed';
   poll_count?: number;
   last_poll_time?: string;
   last_poll_response?: any;
@@ -32,6 +33,7 @@ interface VideoCardProps {
   onSetPrimary: (videoId: string, storyboardId: string) => void;
   onDelete: (videoId: string) => void;
   onPoll: (videoId: string) => void;
+  onRemoveSubtitle: (video: VideoRecord) => void;
 }
 
 export const VideoCard = memo(({
@@ -41,7 +43,8 @@ export const VideoCard = memo(({
   posterUrl,
   onSetPrimary,
   onDelete,
-  onPoll
+  onPoll,
+  onRemoveSubtitle
 }: VideoCardProps) => {
   const videoUrl = getVideoUrl(video, projectId);
 
@@ -75,6 +78,8 @@ export const VideoCard = memo(({
           : `${status} (${pollInfo}) | ${duration}${resolution} | ${createTime}`;
       case 'failed':
         return `失败 | ${video.error?.substring(0, 20) || '未知错误'}`;
+      case 'poll_failed':
+        return `轮询异常(可手动继续) | ${video.error?.substring(0, 20) || '网络异常'}`;
       default:
         return `${status} | ${duration}${resolution}`;
     }
@@ -93,6 +98,8 @@ export const VideoCard = memo(({
         return <CheckCircle size={12} className="text-green-400 flex-shrink-0" />;
       case 'failed':
         return <XCircle size={12} className="text-red-400 flex-shrink-0" />;
+      case 'poll_failed':
+        return <XCircle size={12} className="text-orange-400 flex-shrink-0" />;
       default:
         return <Clock size={12} className="text-yellow-400 flex-shrink-0" />;
     }
@@ -147,7 +154,7 @@ export const VideoCard = memo(({
               {getCompactStatus(video)}
             </span>
           </div>
-          {video.status !== 'completed' && video.status !== 'failed' && (
+          {video.status !== 'completed' && (
             <button
               onClick={() => onPoll(video.video_id)}
               disabled={isPolling}
@@ -171,6 +178,16 @@ export const VideoCard = memo(({
               className="flex-1 flex items-center justify-center gap-1 text-xs bg-green-600 hover:bg-green-700 px-2 py-1 rounded"
             >
               设为主
+            </button>
+          )}
+          {video.status === 'completed' && !!video.video_path && (video.video_path.startsWith('http://') || video.video_path.startsWith('https://')) && (
+            <button
+              onClick={() => onRemoveSubtitle(video)}
+              className="flex-1 flex items-center justify-center gap-1 text-xs bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded"
+              title="仅支持 CreateNow 官方远程 URL，擦除后会生成新视频"
+            >
+              <Subtitles size={12} />
+              去除字幕
             </button>
           )}
           {videoUrl && (

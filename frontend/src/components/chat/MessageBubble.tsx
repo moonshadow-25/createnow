@@ -1,10 +1,11 @@
-import { ToolCall } from '@/types';
+import { ToolCall, ToolResult } from '@/types';
 import { Code } from 'lucide-react';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
   toolCalls?: ToolCall[];
+  toolResults?: ToolResult[];
   thinking?: string;
   isStreaming?: boolean;
 }
@@ -13,6 +14,7 @@ export function MessageBubble({
   role,
   content,
   toolCalls,
+  toolResults,
   thinking,
   isStreaming,
 }: MessageBubbleProps) {
@@ -39,6 +41,14 @@ export function MessageBubble({
                     <pre className="text-xs text-gray-400 mt-1 overflow-x-auto">
                       {JSON.stringify(tool.parameters, null, 2)}
                     </pre>
+                  )}
+                  {toolResults?.find(r => r.name === tool.name) && (
+                    <div className="mt-2 pt-2 border-t border-gray-700">
+                      <div className="font-mono text-green-400">result</div>
+                      <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
+                        {JSON.stringify(toolResults.find(r => r.name === tool.name)?.result, null, 2)}
+                      </pre>
+                    </div>
                   )}
                 </div>
               ))}

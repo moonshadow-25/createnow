@@ -244,7 +244,10 @@ export function VideoGallery({
 
   // 轮询所有未完成状态的视频（并发）
   const pollPendingVideos = async () => {
-    const pendingVideos = videosRef.current.filter(v => v.status !== 'completed' && v.status !== 'failed');
+    const pendingVideos = videosRef.current.filter(v => {
+      const status = v.status || 'pending';
+      return status === 'pending' || status === 'queued' || status === 'in_progress';
+    });
     if (pendingVideos.length === 0) return;
 
     // 并发轮询所有pending视频
@@ -288,6 +291,8 @@ export function VideoGallery({
 
       if (updatedVideo.status === 'completed') {
         toast(`视频生成完成`, 'success');
+      } else if (updatedVideo.status === 'poll_failed') {
+        toast(`轮询失败，已暂停自动轮询，可手动继续`, 'error');
       } else if (updatedVideo.status === 'failed') {
         toast(`视频生成失败: ${updatedVideo.error || '未知错误'}`, 'error');
       }
@@ -302,6 +307,30 @@ export function VideoGallery({
         next.delete(videoId);
         return next;
       });
+    }
+  };
+
+  // 发起字幕擦除（创建新视频记录，不覆盖旧视频）
+  const handleRemoveSubtitle = async (video: VideoRecord) => {
+    const sourceVideoUrl = (video.video_path || '').trim();
+    if (!sourceVideoUrl.startsWith('http://') && !sourceVideoUrl.startsWith('https://')) {
+      toast('字幕擦除仅支持远程原始 URL', 'error');
+      return;
+    }
+
+    try {
+      await generationApi.removeVideoSubtitle(projectId, {
+        source_video_id: video.video_id,
+        source_video_url: sourceVideoUrl,
+        storyboard_id: video.storyboard_id,
+        episode_id: video.episode_id,
+        prompt: `去除字幕: ${video.prompt}`,
+      });
+      toast('已创建字幕擦除任务（新视频）', 'success');
+      await loadAllVideos();
+      pollPendingVideos();
+    } catch (err: any) {
+      toast(err.response?.data?.detail || '字幕擦除任务创建失败', 'error');
     }
   };
 
@@ -502,6 +531,7 @@ export function VideoGallery({
                             onSetPrimary={handleSetPrimaryVideo}
                             onDelete={handleDeleteVideo}
                             onPoll={pollSingleVideo}
+                            onRemoveSubtitle={handleRemoveSubtitle}
                           />
                         )}
                         {video2 && (
@@ -513,6 +543,7 @@ export function VideoGallery({
                             onSetPrimary={handleSetPrimaryVideo}
                             onDelete={handleDeleteVideo}
                             onPoll={pollSingleVideo}
+                            onRemoveSubtitle={handleRemoveSubtitle}
                           />
                         )}
                       </div>
@@ -536,9 +567,15 @@ export function VideoGallery({
         <div className="p-4 border-t border-gray-700 flex justify-between items-center">
           <div className="text-sm text-gray-400">
             显示 {displayedVideos.length} / {allVideos.length} 个视频
-            {allVideos.filter(v => v.status !== 'completed' && v.status !== 'failed').length > 0 && (
+            {allVideos.filter(v => {
+              const status = v.status || 'pending';
+              return status === 'pending' || status === 'queued' || status === 'in_progress';
+            }).length > 0 && (
               <span className="ml-2 text-yellow-400">
-                ({allVideos.filter(v => v.status !== 'completed' && v.status !== 'failed').length} 个生成中，每30秒自动轮询)
+                ({allVideos.filter(v => {
+                  const status = v.status || 'pending';
+                  return status === 'pending' || status === 'queued' || status === 'in_progress';
+                }).length} 个生成中，每30秒自动轮询)
               </span>
             )}
           </div>

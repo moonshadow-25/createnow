@@ -2,10 +2,14 @@
 import json
 import logging
 import re
-from typing import Dict, Any
+import uuid
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, AsyncIterator
 
 from app.services.ai_service import get_ai_service
 from app.services.global_prompt_service import get_prompt_content
+from app.services.script_service import ScriptParser
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +131,10 @@ async def parse_script_with_ai(project_id: str, script_id: str, text: str, ai_co
             system_prompt=system_prompt,
             temperature=0.1,
             max_tokens=32000,
+            response_format={"type": "json_object"},
         )
+        if response.get("error"):
+            raise RuntimeError(response.get("error"))
         raw = response.get("content", "")
     except Exception as e:
         logger.error(f"[AIScriptParser] LLM call failed: {e}")
@@ -202,3 +209,258 @@ def _extract_json(text: str) -> Dict | None:
                         break
 
     return None
+
+
+def _get_import_session_dir(project_id: str, script_id: str) -> Path:
+    from app.services.script_service import ScriptService
+    script_dir = ScriptService._get_script_dir(project_id, script_id)
+    session_dir = script_dir / "import_sessions"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return session_dir
+
+
+def _save_import_session(project_id: str, script_id: str, session_id: str, state: Dict[str, Any]) -> None:
+    session_dir = _get_import_session_dir(project_id, script_id)
+    session_file = session_dir / f"{session_id}.json"
+    state["updated_at"] = datetime.now().isoformat()
+    session_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _build_round_prompt(full_text: str, round_index: int, session_state: Dict[str, Any]) -> str:
+    anchors = session_state.get("anchors_emitted", [])
+    imported_characters = session_state.get("imported_characters", [])
+    imported_episodes = session_state.get("imported_episodes", [])
+
+    return f"""你要在完整剧本上下文下进行第{round_index}轮增量解析。
+
+【完整剧本】
+{full_text}
+
+【已完成锚点】
+{json.dumps(anchors, ensure_ascii=False)}
+
+【已导入角色】
+{json.dumps(imported_characters, ensure_ascii=False)}
+
+【已导入集数】
+{json.dumps(imported_episodes, ensure_ascii=False)}
+
+【本轮目标】
+1. 只输出“下一批尚未导入内容”的JSON增量，不要重复已导入内容。
+2. 如仍有剩余内容，设置 has_more=true，并提供下一轮定位提示 next_hint。
+3. 必须输出 start_anchor 与 end_anchor（文本锚点，可用“第X集/场景名/首句片段”）。
+4. 当前单轮输出体量受限，建议本轮最多覆盖少量连续场景。
+
+【输出格式（仅JSON，不要其他文本）】
+{{
+  "title": "剧本名（可选）",
+  "start_anchor": "本轮起始锚点",
+  "end_anchor": "本轮结束锚点",
+  "has_more": true,
+  "next_hint": "下一轮应从哪里继续",
+  "warnings": ["可选警告"],
+  "characters": [
+    {{"name":"", "age":"", "gender":"", "description":""}}
+  ],
+  "episodes": [
+    {{
+      "episode_number": 1,
+      "title": "",
+      "scenes": [
+        {{
+          "location": "",
+          "time_of_day": "日",
+          "interior_exterior": "外",
+          "time_start": null,
+          "time_end": null,
+          "act_title": null,
+          "lines": [
+            {{
+              "line_type": "visual|dialogue|action|narration",
+              "content": "原文",
+              "character": null,
+              "parenthetical": null,
+              "dialogue": null,
+              "visual_description": null
+            }}
+          ]
+        }}
+      ]
+    }}
+  ]
+}}
+"""
+
+
+def _extract_import_round_json(text: str) -> Dict[str, Any] | None:
+    parsed = _extract_json(text)
+    if not parsed:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    parsed.setdefault("title", "")
+    parsed.setdefault("start_anchor", "")
+    parsed.setdefault("end_anchor", "")
+    parsed.setdefault("has_more", False)
+    parsed.setdefault("next_hint", "")
+    parsed.setdefault("warnings", [])
+    parsed.setdefault("characters", [])
+    parsed.setdefault("episodes", [])
+    return parsed
+
+
+async def stream_script_import_rounds(
+    project_id: str,
+    script_id: str,
+    text: str,
+    ai_config: Dict[str, Any],
+    max_rounds: int = 30,
+) -> AsyncIterator[Dict[str, Any]]:
+    llm = get_ai_service(ai_config, "llm", project_id)
+    system_prompt = get_prompt_content("script_parse", ai_config) or _FALLBACK_SCRIPT_PARSE_PROMPT
+
+    session_id = str(uuid.uuid4())
+    session_state: Dict[str, Any] = {
+        "session_id": session_id,
+        "status": "running",
+        "round_index": 0,
+        "anchors_emitted": [],
+        "imported_characters": [],
+        "imported_episodes": [],
+        "scene_fingerprints": [],
+        "line_fingerprints": [],
+        "totals": {"characters": 0, "episodes": 0, "scenes": 0, "lines": 0},
+        "warnings": [],
+        "created_at": datetime.now().isoformat(),
+    }
+    _save_import_session(project_id, script_id, session_id, session_state)
+
+    yield {
+        "type": "status",
+        "session_id": session_id,
+        "content": "已创建导入会话，开始多轮解析...",
+    }
+
+    try:
+        for round_idx in range(1, max_rounds + 1):
+            session_state["round_index"] = round_idx
+            _save_import_session(project_id, script_id, session_id, session_state)
+
+            yield {
+                "type": "status",
+                "session_id": session_id,
+                "content": f"第{round_idx}轮解析中...",
+            }
+
+            prompt = _build_round_prompt(text, round_idx, session_state)
+            resp = await llm.chat(
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt=system_prompt,
+                temperature=0.1,
+                max_tokens=32000,
+                response_format={"type": "json_object"},
+            )
+            if resp.get("error"):
+                raise RuntimeError(resp.get("error"))
+            raw = resp.get("content", "")
+            parsed = _extract_import_round_json(raw)
+            if not parsed:
+                snippet = (raw or "").strip()[:500]
+                session_state["status"] = "failed"
+                session_state["last_error"] = "本轮输出无法解析为JSON"
+                session_state["raw_preview"] = snippet
+                _save_import_session(project_id, script_id, session_id, session_state)
+                logger.error(
+                    "[AIScriptParser] round %s invalid JSON, preview=%s",
+                    round_idx,
+                    snippet,
+                )
+                yield {
+                    "type": "error",
+                    "session_id": session_id,
+                    "content": "本轮输出不是JSON格式（模型返回了正文/推理文本），导入已中止。",
+                }
+                return
+
+            start_anchor = (parsed.get("start_anchor") or "").strip()
+            end_anchor = (parsed.get("end_anchor") or "").strip()
+            anchor_key = f"{start_anchor} -> {end_anchor}" if start_anchor or end_anchor else ""
+            if anchor_key and anchor_key in session_state["anchors_emitted"]:
+                session_state["status"] = "failed"
+                session_state["last_error"] = "检测到重复锚点，已中止避免重复导入"
+                _save_import_session(project_id, script_id, session_id, session_state)
+                yield {
+                    "type": "error",
+                    "session_id": session_id,
+                    "content": "检测到重复锚点，已中止避免重复导入。",
+                }
+                return
+
+            import_result = ScriptParser.import_partial_to_project(project_id, script_id, parsed, session_state)
+            created = import_result.get("created", {})
+            skipped = import_result.get("skipped", {})
+
+            session_state["totals"]["characters"] += int(created.get("characters", 0))
+            session_state["totals"]["episodes"] += int(created.get("episodes", 0))
+            session_state["totals"]["scenes"] += int(created.get("scenes", 0))
+            session_state["totals"]["lines"] += int(created.get("lines", 0))
+
+            if anchor_key:
+                session_state["anchors_emitted"].append(anchor_key)
+
+            # 更新去重上下文
+            for c in parsed.get("characters", []) or []:
+                name = (c.get("name") or "").strip()
+                if name and name not in session_state["imported_characters"]:
+                    session_state["imported_characters"].append(name)
+            for ep in parsed.get("episodes", []) or []:
+                ep_num = ep.get("episode_number")
+                if isinstance(ep_num, int) and ep_num not in session_state["imported_episodes"]:
+                    session_state["imported_episodes"].append(ep_num)
+
+            session_state["warnings"].extend(parsed.get("warnings", []))
+            _save_import_session(project_id, script_id, session_id, session_state)
+
+            yield {
+                "type": "round_progress",
+                "session_id": session_id,
+                "round": round_idx,
+                "start_anchor": start_anchor,
+                "end_anchor": end_anchor,
+                "created": created,
+                "skipped": skipped,
+                "totals": session_state["totals"],
+                "has_more": bool(parsed.get("has_more", False)),
+                "next_hint": parsed.get("next_hint", ""),
+            }
+
+            if not parsed.get("has_more", False):
+                session_state["status"] = "completed"
+                _save_import_session(project_id, script_id, session_id, session_state)
+                yield {
+                    "type": "done",
+                    "session_id": session_id,
+                    "totals": session_state["totals"],
+                    "warnings": session_state.get("warnings", []),
+                }
+                return
+
+        session_state["status"] = "max_rounds_reached"
+        _save_import_session(project_id, script_id, session_id, session_state)
+        yield {
+            "type": "error",
+            "session_id": session_id,
+            "content": f"达到最大轮次({max_rounds})仍未完成，请继续导入。",
+        }
+    except Exception as e:
+        session_state["status"] = "failed"
+        session_state["last_error"] = str(e)
+        _save_import_session(project_id, script_id, session_id, session_state)
+        logger.error(f"[AIScriptParser] stream import failed: {e}")
+        yield {
+            "type": "error",
+            "session_id": session_id,
+            "content": f"导入失败：{e}",
+        }
+    finally:
+        await llm.close()

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Message, StreamChunk, ToolCall } from '@/types';
+import { Message, StreamChunk, ToolCall, ToolResult } from '@/types';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 
 export interface PendingConfirmation {
@@ -122,6 +122,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
         let assistantMessage = '';
         let assistantThinking = '';
         let currentToolCalls: ToolCall[] = [];
+        const toolResultsList: ToolResult[] = [];
         let assetsWereCreated = false;
         const toolCallParamsCache: Record<string, any> = {};
 
@@ -173,6 +174,12 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                     break;
                   case 'tool_result': {
                     const name = chunk.tool_name || '';
+                    if (name) {
+                      toolResultsList.push({
+                        name,
+                        result: chunk.result,
+                      });
+                    }
                     if (name === 'update_storyboard' || name === 'create_storyboard' || name === 'generate_storyboard') {
                       const params = toolCallParamsCache[name] as any;
                       const ids: string[] = [];
@@ -216,6 +223,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
         assistantMessage = filterToolBlocks(assistantMessage);
 
         if (assistantMessage) {
+          const toolResults = toolResultsList;
           const aiMessage: Message = {
             message_id: Date.now().toString(),
             role: 'assistant',
@@ -223,6 +231,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
             timestamp: new Date().toISOString(),
             thinking: assistantThinking || undefined,
             tool_calls: currentToolCalls.length > 0 ? currentToolCalls : undefined,
+            tool_results: toolResults.length > 0 ? toolResults : undefined,
             assets_extracted: addToHistory && currentToolCalls.length > 0 ? {
               characters: currentToolCalls.filter((t: any) => t?.name === 'create_character').map((t: any) => t.parameters?.name),
               scenes: currentToolCalls.filter((t: any) => t?.name === 'create_scene').map((t: any) => t.parameters?.name),

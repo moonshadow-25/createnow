@@ -1,13 +1,15 @@
 """剧本创作API"""
+import json
 import logging
 from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 from app.services import (
     ScriptService, ScriptCharacterService, ScriptEpisodeService,
     ScriptSceneService, ScriptLineService, ScriptParser, AILogService,
-    parse_script_with_ai
+    parse_script_with_ai, stream_script_import_rounds
 )
 from app.services.asset_service import ProjectService
 
@@ -354,6 +356,34 @@ async def import_script(project_id: str, script_id: str, request: ImportScriptRe
         raise
     except Exception as e:
         logger.error(f"Failed to import script: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{script_id}/import-stream")
+async def import_script_stream(project_id: str, script_id: str, request: ImportScriptRequest):
+    """导入剧本文本（AI多轮流式导入，适合长剧本）"""
+    try:
+        script = ScriptService.get_script(project_id, script_id)
+        if not script:
+            raise HTTPException(status_code=404, detail="Script not found")
+
+        if not request.use_ai:
+            result = ScriptParser.import_script_to_project(project_id, script_id, request.content)
+            return result
+
+        project = ProjectService.get_project(project_id)
+        ai_config = project.get("ai_config", {}) if project else {}
+
+        async def _event_stream():
+            async for event in stream_script_import_rounds(project_id, script_id, request.content, ai_config):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stream import script: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -1,6 +1,7 @@
 """查询工具执行逻辑"""
 from typing import Dict
 from app.services import AssetService, ImageService
+from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES
 
 
@@ -80,7 +81,7 @@ async def handle_get_project_config(project_id: str, parameters: Dict) -> Dict:
         from app.services import ProjectService
         proj = ProjectService.get_project(project_id)
         ai_cfg = proj.get("ai_config", {}) if proj else {}
-        global_style = ai_cfg.get("global_style_config", {})
+        global_style = normalize_global_style_config(ai_cfg.get("global_style_config"))
         return {"success": True, "global_style_config": global_style}
     except Exception as e:
         return {"success": False, "error": str(e)}

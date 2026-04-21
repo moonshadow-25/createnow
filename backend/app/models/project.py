@@ -2,8 +2,71 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, List, Union, Any
 from datetime import datetime
 from pathlib import Path
+import copy
 import json
 import uuid
+
+
+_DEFAULT_GLOBAL_STYLE_CONFIG = {
+    "prompt_language": "zh",
+    "image_style": {
+        "preset_id": "cinematic_realistic",
+        "custom_suffix": "",
+        "enabled": True,
+        "custom_presets": [],
+        "active_custom_id": "",
+    },
+    "video_style": {
+        "preset_id": "cinematic_realistic_video",
+        "custom_suffix": "",
+        "enabled": True,
+        "custom_presets": [],
+        "active_custom_id": "",
+    },
+    "global_resolution": "1280x720",
+    "nine_grid_mode": False,
+}
+
+
+def build_default_global_style_config() -> Dict[str, Any]:
+    return copy.deepcopy(_DEFAULT_GLOBAL_STYLE_CONFIG)
+
+
+def normalize_global_style_config(raw: Any) -> Dict[str, Any]:
+    default_cfg = build_default_global_style_config()
+    if not isinstance(raw, dict):
+        return default_cfg
+
+    normalized = copy.deepcopy(default_cfg)
+    normalized.update(raw)
+
+    for key in ["image_style", "video_style"]:
+        base = copy.deepcopy(default_cfg[key])
+        incoming = raw.get(key, {})
+        if isinstance(incoming, dict):
+            base.update(incoming)
+        if not isinstance(base.get("custom_presets"), list):
+            base["custom_presets"] = []
+        if not isinstance(base.get("active_custom_id"), str):
+            base["active_custom_id"] = ""
+        normalized[key] = base
+
+    if not isinstance(normalized.get("prompt_language"), str) or not normalized["prompt_language"].strip():
+        normalized["prompt_language"] = "zh"
+    if not isinstance(normalized.get("global_resolution"), str) or not normalized["global_resolution"].strip():
+        normalized["global_resolution"] = "1280x720"
+    normalized["nine_grid_mode"] = bool(normalized.get("nine_grid_mode", False))
+
+    return normalized
+
+
+def ensure_global_style_config(ai_config: Optional[Dict[str, Any]]) -> tuple[Dict[str, Any], bool]:
+    cfg = copy.deepcopy(ai_config or {})
+    existing = cfg.get("global_style_config")
+    normalized = normalize_global_style_config(existing)
+    changed = existing != normalized
+    cfg["global_style_config"] = normalized
+    return cfg, changed
 
 
 class Project:
@@ -71,7 +134,8 @@ class Project:
                 "api_url": "",
                 "api_key": "",
                 "model": ""
-            }
+            },
+            "global_style_config": build_default_global_style_config(),
         }
 
         # 保存项目元数据
@@ -121,6 +185,7 @@ class Project:
         project.updated_at = metadata["updated_at"]
         project.project_dir = project_dir
         project.ai_config = metadata.get("ai_config", {})
+        project.ai_config, ai_changed = ensure_global_style_config(project.ai_config)
         project.ai_instructions = metadata.get("ai_instructions", "")
         project.total_episodes = metadata.get("total_episodes", 0)
         project.minutes_per_episode = metadata.get("minutes_per_episode", 0.0)
@@ -139,6 +204,9 @@ class Project:
         (project_dir / "scripts").mkdir(exist_ok=True)
         (project_dir / "canvas").mkdir(exist_ok=True)
         (project_dir / "canvas_elements").mkdir(exist_ok=True)
+
+        if ai_changed:
+            project.save_metadata()
 
         return project
 

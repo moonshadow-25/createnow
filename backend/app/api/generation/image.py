@@ -23,6 +23,7 @@ from .models import (
 from .utils import parse_size, check_project_budget
 from .templates import DEFAULT_PROMPT_TEMPLATES
 from .template_helpers import get_active_template
+from app.models.project import normalize_global_style_config
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
     custom_templates = ai_config.get("prompt_templates", {})
 
     # 读取全局风格配置
-    global_style_config = ai_config.get("global_style_config", {})
+    global_style_config = normalize_global_style_config(ai_config.get("global_style_config"))
     language = global_style_config.get("prompt_language", "zh")
 
     # 获取图片风格后缀

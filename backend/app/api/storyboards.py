@@ -17,6 +17,7 @@ from app.services.video_service import VideoService
 from app.models.project import Storyboard
 from app.core.config import settings
 from app.core.context import get_current_data_root
+from app.models.project import normalize_global_style_config
 from app.api.generation.template_helpers import get_active_template
 
 router = APIRouter(prefix="/projects/{project_id}/storyboards", tags=["storyboards"])
@@ -621,7 +622,7 @@ async def generate_nine_grid_prompts(project_id: str, storyboard_id: str):
 
         # 5. 获取语言和风格配置
         from app.api.generation.style_presets import get_image_style_suffix
-        global_style_config = ai_config.get("global_style_config", {})
+        global_style_config = normalize_global_style_config(ai_config.get("global_style_config"))
         language = global_style_config.get("prompt_language", "zh")
         image_style = global_style_config.get("image_style", {})
         style_suffix = ""

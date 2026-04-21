@@ -7,6 +7,11 @@ export interface ToolCall {
   parameters?: any;
 }
 
+export interface ToolResult {
+  name: string;
+  result?: any;
+}
+
 // 资产提取信息
 export interface AssetsExtracted {
   characters?: string[];
@@ -24,6 +29,7 @@ export interface Message {
   thinking?: string;
   assets_extracted?: AssetsExtracted;
   tool_calls?: ToolCall[];
+  tool_results?: ToolResult[];
 }
 
 // 流式响应数据块类型
@@ -32,7 +38,7 @@ export interface StreamChunk {
   content?: string;
   tool_call?: ToolCall;
   tool_name?: string;
-  result?: string;
+  result?: any;
   submitted?: Array<{ image_id: string; asset_id: string; status: string }>;
   conversation_id?: string;
   // 确认机制字段

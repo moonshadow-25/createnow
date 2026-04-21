@@ -21,6 +21,21 @@ interface ImportResult {
   unparsed_sample?: Array<{ line_number: number; content: string }>;
 }
 
+interface ImportProgress {
+  sessionId: string;
+  round: number;
+  startAnchor: string;
+  endAnchor: string;
+  totals: {
+    characters: number;
+    episodes: number;
+    scenes: number;
+    lines: number;
+  };
+  statusText: string;
+  warnings: string[];
+}
+
 export function ScriptImportModal({
   projectId,
   scriptId,
@@ -33,6 +48,15 @@ export function ScriptImportModal({
   const [useAi, setUseAi] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [progress, setProgress] = useState<ImportProgress>({
+    sessionId: '',
+    round: 0,
+    startAnchor: '',
+    endAnchor: '',
+    totals: { characters: 0, episodes: 0, scenes: 0, lines: 0 },
+    statusText: '',
+    warnings: [],
+  });
 
   const handleImport = async () => {
     if (!content.trim()) {
@@ -42,14 +66,108 @@ export function ScriptImportModal({
 
     setImporting(true);
     setImportResult(null);
-    try {
-      const response = await scriptApi.import(projectId, scriptId, content, useAi);
-      const result = response.data as ImportResult;
-      setImportResult(result);
+    setProgress({
+      sessionId: '',
+      round: 0,
+      startAnchor: '',
+      endAnchor: '',
+      totals: { characters: 0, episodes: 0, scenes: 0, lines: 0 },
+      statusText: useAi ? '准备开始多轮导入...' : '准备导入...',
+      warnings: [],
+    });
 
-      const successMsg = `导入成功！人物: ${result.characters_count}, 集数: ${result.episodes_count}, 场景: ${result.scenes_count}, 镜头: ${result.lines_count}`;
-      toast(successMsg, 'success');
-      onImport();
+    try {
+      if (!useAi) {
+        const response = await scriptApi.import(projectId, scriptId, content, false);
+        const result = response.data as ImportResult;
+        setImportResult(result);
+        const successMsg = `导入成功！人物: ${result.characters_count}, 集数: ${result.episodes_count}, 场景: ${result.scenes_count}, 镜头: ${result.lines_count}`;
+        toast(successMsg, 'success');
+        onImport();
+        return;
+      }
+
+      const req = scriptApi.importStream(projectId, scriptId, content, true);
+      const response = await fetch(req.url, {
+        method: 'POST',
+        headers: req.headers,
+        body: req.body,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (!payload) continue;
+
+          let evt: any = null;
+          try {
+            evt = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+
+          if (evt.type === 'status') {
+            setProgress(prev => ({
+              ...prev,
+              sessionId: evt.session_id || prev.sessionId,
+              statusText: evt.content || prev.statusText,
+            }));
+          } else if (evt.type === 'round_progress') {
+            setProgress(prev => ({
+              ...prev,
+              sessionId: evt.session_id || prev.sessionId,
+              round: evt.round || prev.round,
+              startAnchor: evt.start_anchor || '',
+              endAnchor: evt.end_anchor || '',
+              totals: evt.totals || prev.totals,
+              statusText: evt.has_more ? `第${evt.round}轮完成，继续下一轮...` : `第${evt.round}轮完成`,
+            }));
+          } else if (evt.type === 'error') {
+            throw new Error(evt.content || '导入失败');
+          } else if (evt.type === 'done') {
+            const totals = evt.totals || progress.totals;
+            const warnings = evt.warnings || [];
+            setProgress(prev => ({
+              ...prev,
+              sessionId: evt.session_id || prev.sessionId,
+              totals,
+              warnings,
+              statusText: '导入完成',
+            }));
+            setImportResult({
+              title: scriptTitle,
+              characters_count: totals.characters || 0,
+              episodes_count: totals.episodes || 0,
+              scenes_count: totals.scenes || 0,
+              lines_count: totals.lines || 0,
+              warnings,
+              unparsed_sample: [],
+            });
+            toast(
+              `导入完成！人物: ${totals.characters || 0}, 集数: ${totals.episodes || 0}, 场景: ${totals.scenes || 0}, 镜头: ${totals.lines || 0}`,
+              'success'
+            );
+            onImport();
+            return;
+          }
+        }
+      }
     } catch (error: any) {
       toast(`导入失败: ${error.response?.data?.detail || error.message}`, 'error');
     } finally {
@@ -139,11 +257,26 @@ export function ScriptImportModal({
 
           {/* 解析中提示 */}
           {importing && (
-            <div className="flex items-center gap-3 p-3 bg-purple-900 bg-opacity-30 border border-purple-700 rounded">
-              <div className="animate-spin w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full flex-shrink-0" />
-              <span className="text-sm text-purple-300">
-                {useAi ? 'AI 正在理解剧本结构，请稍候...' : '正在解析剧本...'}
-              </span>
+            <div className="flex items-start gap-3 p-3 bg-purple-900 bg-opacity-30 border border-purple-700 rounded">
+              <div className="animate-spin w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-purple-300 space-y-1">
+                <div>{progress.statusText || (useAi ? 'AI 正在理解剧本结构，请稍候...' : '正在解析剧本...')}</div>
+                {useAi && (
+                  <>
+                    <div className="text-xs text-purple-200">
+                      会话: {progress.sessionId || '初始化中'} | 轮次: {progress.round || 0}
+                    </div>
+                    <div className="text-xs text-purple-200">
+                      累计导入 - 人物 {progress.totals.characters} / 集数 {progress.totals.episodes} / 场景 {progress.totals.scenes} / 镜头 {progress.totals.lines}
+                    </div>
+                    {(progress.startAnchor || progress.endAnchor) && (
+                      <div className="text-xs text-purple-200 break-all">
+                        锚点: {progress.startAnchor || '（起点）'} → {progress.endAnchor || '（本轮结束）'}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
