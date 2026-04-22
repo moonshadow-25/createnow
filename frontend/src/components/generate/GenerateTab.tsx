@@ -6,6 +6,7 @@ import { useAssetStore } from '@/store/assetStore';
 import { generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
+import { VideoGallery } from '@/components/storyboard/VideoGallery';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
@@ -30,6 +31,11 @@ interface VideoRecord {
   model: string;
   status: string;
   created_at: string;
+  task_id?: string;
+  poll_count?: number;
+  last_poll_time?: string | null;
+  last_poll_response?: any;
+  error?: string;
   generate_audio?: boolean | null;
   reference_media?: RefMedia[];
 }
@@ -75,12 +81,14 @@ function inferRatioFromVideo(video: Pick<VideoRecord, 'ratio' | 'resolution'>): 
 function VideoStatusIcon({ status }: { status: string }) {
   if (status === 'completed') return <CheckCircle size={14} className="text-green-400" />;
   if (status === 'failed') return <XCircle size={14} className="text-red-400" />;
+  if (status === 'poll_failed') return <XCircle size={14} className="text-orange-400" />;
   return <Loader2 size={14} className="text-blue-400 animate-spin" />;
 }
 
 function VideoStatusText({ status }: { status: string }) {
   if (status === 'completed') return <span className="text-green-400">已完成</span>;
   if (status === 'failed') return <span className="text-red-400">生成失败</span>;
+  if (status === 'poll_failed') return <span className="text-orange-400">轮询异常（可手动继续）</span>;
   if (status === 'in_progress') return <span className="text-blue-400">生成中...</span>;
   return <span className="text-yellow-400">等待中...</span>;
 }
@@ -116,6 +124,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const [showRatioMenu, setShowRatioMenu] = useState(false);
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -128,6 +137,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const assetPickerRef = useRef<HTMLDivElement>(null);
   const videoListRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
+  const historyReadyRef = useRef(false);
 
   // 滚动到底部
   const scrollToBottom = useCallback(() => {
@@ -148,6 +158,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
       setVisibleCount(initialCount);
       setHasMoreHistory(asc.length > initialCount);
       shouldStickToBottomRef.current = true;
+      historyReadyRef.current = false;
     } catch { /* ignore */ }
   }, [projectId]);
 
@@ -183,12 +194,16 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   // 视频加载/新增后滚动到底部（仅在用户停留底部时）
   useEffect(() => {
     if (!shouldStickToBottomRef.current) return;
-    setTimeout(scrollToBottom, 50);
+    setTimeout(() => {
+      scrollToBottom();
+      historyReadyRef.current = true;
+    }, 50);
   }, [visibleVideos.length, scrollToBottom]);
 
   const handleVideoListScroll = useCallback(() => {
     const el = videoListRef.current;
     if (!el) return;
+    if (!historyReadyRef.current) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     shouldStickToBottomRef.current = nearBottom;
     if (el.scrollTop < 80 && hasMoreHistory && !isLoadingHistory) {
@@ -216,7 +231,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         const res = await generationApi.pollVideo(projectId, videoId);
         const updated: VideoRecord = res.data;
         setVideos(prev => prev.map(v => v.video_id === videoId ? updated : v));
-        if (updated.status === 'completed' || updated.status === 'failed') {
+        if (updated.status === 'completed' || updated.status === 'failed' || updated.status === 'poll_failed') {
           clearInterval(timer);
           pollingRef.current.delete(videoId);
           setPollingIds(prev => { const s = new Set(prev); s.delete(videoId); return s; });
@@ -500,6 +515,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                 isPlaying={playingVideoId === video.video_id}
                 onPlay={() => setPlayingVideoId(playingVideoId === video.video_id ? null : video.video_id)}
                 onRegenerate={() => handleRegenerate(video)}
+                onRetryPoll={() => startPolling(video.video_id)}
               />
             ))}
           </div>
@@ -746,6 +762,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
           <div className="flex-1" />
 
+          <button
+            onClick={() => setShowLibrary(true)}
+            className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+          >
+            <Film size={14} />
+            视频库
+          </button>
+
           {/* 生成按钮 */}
           <button
             onClick={handleGenerate}
@@ -757,6 +781,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           </button>
         </div>
       </div>
+
+      {showLibrary && (
+        <VideoGallery
+          projectId={projectId}
+          onClose={() => setShowLibrary(false)}
+          libraryOnly
+        />
+      )}
     </div>
   );
 }
@@ -769,9 +801,10 @@ interface VideoItemProps {
   isPlaying: boolean;
   onPlay: () => void;
   onRegenerate: () => void;
+  onRetryPoll: () => void;
 }
 
-function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerate }: VideoItemProps) {
+function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerate, onRetryPoll }: VideoItemProps) {
   const videoUrl = getVideoUrl(video, projectId);
   const displayRatio = inferRatioFromVideo(video);
   const resLabel = `${displayRatio} ${normalizeResolutionValue(video.resolution)}`;
@@ -853,7 +886,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
       </button>
 
       {/* 视频区域 */}
-      {video.status === 'pending' || video.status === 'in_progress' ? (
+      {video.status === 'pending' || video.status === 'queued' || video.status === 'in_progress' ? (
         <div className="h-12 border-t border-gray-700 flex items-center px-3 gap-2 text-gray-500">
           <Loader2 size={14} className="animate-spin flex-shrink-0" />
           <span className="text-xs">生成中，请稍候...</span>
@@ -861,7 +894,28 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
       ) : video.status === 'failed' ? (
         <div className="h-12 border-t border-gray-700 flex items-center px-3 gap-2 text-red-400">
           <XCircle size={14} className="flex-shrink-0" />
-          <span className="text-xs">生成失败</span>
+          <span className="text-xs">生成失败{video.error ? `: ${video.error}` : ''}</span>
+        </div>
+      ) : video.status === 'poll_failed' ? (
+        <div className="border-t border-gray-700 px-3 py-2 text-orange-300 text-xs space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <XCircle size={14} className="flex-shrink-0" />
+              <span className="truncate">轮询异常{video.error ? `: ${video.error}` : ''}</span>
+            </div>
+            <button
+              onClick={onRetryPoll}
+              disabled={isPolling}
+              className="text-blue-400 hover:text-blue-300 disabled:text-gray-500"
+            >
+              手动继续
+            </button>
+          </div>
+          {video.task_id && <div className="text-gray-400">Task: {video.task_id}</div>}
+          <div className="text-gray-500">
+            轮询次数: {video.poll_count ?? 0}
+            {video.last_poll_time ? ` · 最近: ${new Date(video.last_poll_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+          </div>
         </div>
       ) : videoUrl ? (
         /* 固定容器尺寸（来自已知分辨率），单一 video 元素，preload none 避免自动加载 */
@@ -899,6 +953,25 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
             <Loader2 size={11} className="animate-spin" />轮询中
           </span>
         </div>
+      )}
+
+      {(video.task_id || video.error || video.last_poll_response || video.poll_count || video.last_poll_time) && (
+        <details className="border-t border-gray-700 px-3 py-2">
+          <summary className="text-xs text-blue-400 cursor-pointer">调试信息</summary>
+          <div className="mt-2 text-xs text-gray-400 space-y-1">
+            {video.task_id && <div>Task: {video.task_id}</div>}
+            {video.error && <div className="text-red-300">错误: {video.error}</div>}
+            <div>
+              轮询次数: {video.poll_count ?? 0}
+              {video.last_poll_time ? ` · 最近轮询: ${new Date(video.last_poll_time).toLocaleString('zh-CN')}` : ''}
+            </div>
+          </div>
+          {video.last_poll_response && (
+            <pre className="mt-2 p-2 bg-gray-900 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto text-gray-300">
+              {JSON.stringify(video.last_poll_response, null, 2)}
+            </pre>
+          )}
+        </details>
       )}
     </div>
   );

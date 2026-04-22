@@ -21,12 +21,13 @@ function App() {
   const adminAuth = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
   const { isOpen: vibeDramaOpen, panelWidth: vibeDramaPanelWidth, toggle: toggleVibeDrama } = useVibeDramaStore();
-  const { theme } = useThemeStore();
+  const { theme, appearanceMode } = useThemeStore();
 
   // 组件挂载时确保 DOM 属性和 store 同步
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    document.documentElement.setAttribute('data-app-mode', appearanceMode);
+  }, [theme, appearanceMode]);
 
   // 悬浮按钮拖拽状态：存 right/top 距离，天然跟随窗口边缘
   const [btnPos, setBtnPos] = useState({ right: 12, top: 12 });
@@ -98,6 +99,10 @@ function App() {
   const needsLogin = deployMode === 'saas'
     ? !saasAuth.isAuthenticated
     : (!adminAuth.isAuthenticated || showLogin);
+  const isVipMode = appearanceMode === 'vip';
+  const contentRightPadding = isVipMode
+    ? (vibeDramaOpen ? vibeDramaPanelWidth + 18 : 18)
+    : (vibeDramaOpen ? vibeDramaPanelWidth : 0);
 
   return (
     <ToastProvider>
@@ -108,17 +113,33 @@ function App() {
       )}
       {/* 全局布局：内容区随侧边栏自动让位 */}
       <div
-        className="transition-all duration-300"
-        style={{ paddingRight: vibeDramaOpen ? vibeDramaPanelWidth : 0 }}
+        className={isVipMode ? 'vip-app-shell transition-all duration-300' : 'h-screen overflow-hidden transition-all duration-300'}
+        style={{ paddingRight: contentRightPadding }}
       >
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
-            <Route path="/project/:projectId" element={<ProjectPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+        {isVipMode ? (
+          <div className="vip-app-shell__frame">
+            <div className="vip-app-shell__topbar">VIP Privilege Workspace</div>
+            <div className="vip-app-shell__content">
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
+                  <Route path="/project/:projectId" element={<ProjectPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </BrowserRouter>
+            </div>
+          </div>
+        ) : (
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
+              <Route path="/project/:projectId" element={<ProjectPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        )}
       </div>
       <VibeDramaPanel />
       {/* 全局悬浮呼出按钮，面板关闭时显示，可拖拽 */}
@@ -126,7 +147,7 @@ function App() {
         <button
           onMouseDown={handleBtnMouseDown}
           onClick={toggleVibeDrama}
-          className="fixed z-50 w-9 h-9 rounded-full bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-red-500 shadow-lg flex items-center justify-center transition-colors select-none cursor-grab active:cursor-grabbing"
+          className={`fixed z-50 w-9 h-9 rounded-full border shadow-lg flex items-center justify-center transition-colors select-none cursor-grab active:cursor-grabbing ${appearanceMode === 'vip' ? 'bg-gray-900/95 hover:bg-gray-800 border-yellow-700/40 hover:border-yellow-500/70' : 'bg-gray-800 hover:bg-gray-700 border-gray-600 hover:border-red-500'}`}
           style={{ right: btnPos.right, top: btnPos.top }}
           title="小龙虾 AI 助手"
         >

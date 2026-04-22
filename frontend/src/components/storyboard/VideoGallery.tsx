@@ -45,6 +45,7 @@ interface VideoGalleryProps {
   storyboardCount?: number;
   loadStoryboards?: () => Promise<void>;
   storyboardPrimaryImages?: Map<string, string>; // 父组件提供的分镜主图 Map
+  libraryOnly?: boolean;
 }
 
 export function VideoGallery({
@@ -54,7 +55,8 @@ export function VideoGallery({
   onClose,
   storyboardCount = 0,
   loadStoryboards,
-  storyboardPrimaryImages
+  storyboardPrimaryImages,
+  libraryOnly = false,
 }: VideoGalleryProps) {
   const { toast } = useToast();
 
@@ -160,8 +162,15 @@ export function VideoGallery({
   const loadAllVideos = async () => {
     setLoading(true);
     try {
-      const response = await generationApi.listVideos(projectId, episodeId);
+      const response = libraryOnly
+        ? await generationApi.listLibraryVideos(projectId)
+        : await generationApi.listVideos(projectId, episodeId);
       let videoList = response.data || [];
+
+      // 广场模式只保留非分镜视频，兜底过滤
+      if (libraryOnly) {
+        videoList = videoList.filter((v: VideoRecord) => !v.storyboard_id);
+      }
 
       // 如果指定了 storyboardId，过滤
       if (storyboardId) {
@@ -529,6 +538,7 @@ export function VideoGallery({
                             isPolling={pollingVideos.has(video1.video_id)}
                             posterUrl={storyboardThumbnails.get(video1.storyboard_id)}
                             onSetPrimary={handleSetPrimaryVideo}
+                            showSetPrimary={!libraryOnly && !!video1.storyboard_id}
                             onDelete={handleDeleteVideo}
                             onPoll={pollSingleVideo}
                             onRemoveSubtitle={handleRemoveSubtitle}
@@ -541,6 +551,7 @@ export function VideoGallery({
                             isPolling={pollingVideos.has(video2.video_id)}
                             posterUrl={storyboardThumbnails.get(video2.storyboard_id)}
                             onSetPrimary={handleSetPrimaryVideo}
+                            showSetPrimary={!libraryOnly && !!video2.storyboard_id}
                             onDelete={handleDeleteVideo}
                             onPoll={pollSingleVideo}
                             onRemoveSubtitle={handleRemoveSubtitle}

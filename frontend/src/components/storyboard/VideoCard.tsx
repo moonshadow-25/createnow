@@ -30,6 +30,7 @@ interface VideoCardProps {
   projectId: string;
   isPolling: boolean;
   posterUrl?: string;
+  showSetPrimary?: boolean;
   onSetPrimary: (videoId: string, storyboardId: string) => void;
   onDelete: (videoId: string) => void;
   onPoll: (videoId: string) => void;
@@ -41,6 +42,7 @@ export const VideoCard = memo(({
   projectId,
   isPolling,
   posterUrl,
+  showSetPrimary = true,
   onSetPrimary,
   onDelete,
   onPoll,
@@ -172,7 +174,7 @@ export const VideoCard = memo(({
         {/* 操作按钮 */}
         <div className="flex gap-1">
           {/* 设为主视频按钮 - 仅对已完成且非主视频的显示 */}
-          {video.status === 'completed' && !video.is_primary && (
+          {showSetPrimary && video.status === 'completed' && !video.is_primary && (
             <button
               onClick={() => onSetPrimary(video.video_id, video.storyboard_id)}
               className="flex-1 flex items-center justify-center gap-1 text-xs bg-green-600 hover:bg-green-700 px-2 py-1 rounded"
