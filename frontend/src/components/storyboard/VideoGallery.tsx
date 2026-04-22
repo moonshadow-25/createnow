@@ -163,7 +163,8 @@ export function VideoGallery({
   // 加载所有视频（有 initialVideos 时直接用内存数据，跳过网络请求）
   const loadAllVideos = async (forceRemote = false) => {
     if (initialVideos && !forceRemote) {
-      const videoList = initialVideos;
+      // 视频库要最新在上面（降序），广场传入的是升序，这里反转，不影响原数组
+      const videoList = [...initialVideos].reverse();
       setAllVideos(videoList);
       setDisplayedVideos(videoList.slice(0, displayCount));
       setHasMore(videoList.length > displayCount);
