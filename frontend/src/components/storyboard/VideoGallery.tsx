@@ -341,7 +341,7 @@ export function VideoGallery({
     }
 
     try {
-      await generationApi.removeVideoSubtitle(projectId, {
+      const res = await generationApi.removeVideoSubtitle(projectId, {
         source_video_id: video.video_id,
         source_video_url: sourceVideoUrl,
         storyboard_id: video.storyboard_id,
@@ -349,7 +349,14 @@ export function VideoGallery({
         prompt: `去除字幕: ${video.prompt}`,
       });
       toast('已创建字幕擦除任务（新视频）', 'success');
-      await loadAllVideos(true);
+      const newVideo: VideoRecord = res.data;
+      if (initialVideos) {
+        // 有内存数据模式：直接把新视频插到列表头部，不全量拉取
+        setAllVideos(prev => [newVideo, ...prev]);
+        setDisplayedVideos(prev => [newVideo, ...prev]);
+      } else {
+        await loadAllVideos(true);
+      }
       pollPendingVideos();
     } catch (err: any) {
       toast(err.response?.data?.detail || '字幕擦除任务创建失败', 'error');
