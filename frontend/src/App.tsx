@@ -113,7 +113,7 @@ function App() {
       )}
       {/* 全局布局：内容区随侧边栏自动让位 */}
       <div
-        className={isVipMode ? 'vip-app-shell transition-all duration-300' : 'h-screen overflow-hidden transition-all duration-300'}
+        className={isVipMode ? 'vip-app-shell transition-all duration-300' : 'h-screen transition-all duration-300'}
         style={{ paddingRight: contentRightPadding }}
       >
         {isVipMode ? (

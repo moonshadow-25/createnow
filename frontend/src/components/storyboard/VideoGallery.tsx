@@ -46,6 +46,7 @@ interface VideoGalleryProps {
   loadStoryboards?: () => Promise<void>;
   storyboardPrimaryImages?: Map<string, string>; // 父组件提供的分镜主图 Map
   libraryOnly?: boolean;
+  initialVideos?: any[];
 }
 
 export function VideoGallery({
@@ -57,6 +58,7 @@ export function VideoGallery({
   loadStoryboards,
   storyboardPrimaryImages,
   libraryOnly = false,
+  initialVideos,
 }: VideoGalleryProps) {
   const { toast } = useToast();
 
@@ -158,8 +160,18 @@ export function VideoGallery({
     return () => scrollElement.removeEventListener('scroll', handleScroll);
   }, [hasMore, loading, displayedVideos.length]);
 
-  // 加载所有视频（一次性从后端加载）
-  const loadAllVideos = async () => {
+  // 加载所有视频（有 initialVideos 时直接用内存数据，跳过网络请求）
+  const loadAllVideos = async (forceRemote = false) => {
+    if (initialVideos && !forceRemote) {
+      const videoList = initialVideos;
+      setAllVideos(videoList);
+      setDisplayedVideos(videoList.slice(0, displayCount));
+      setHasMore(videoList.length > displayCount);
+      setLoading(false);
+      setError('');
+      return videoList;
+    }
+
     setLoading(true);
     try {
       const response = libraryOnly
@@ -177,14 +189,14 @@ export function VideoGallery({
         videoList = videoList.filter((v: VideoRecord) => v.storyboard_id === storyboardId);
       }
 
-      setAllVideos(videoList);  // 保存全部到内存
-      setDisplayedVideos(videoList.slice(0, displayCount)); // 只显示前10个
+      setAllVideos(videoList);
+      setDisplayedVideos(videoList.slice(0, displayCount));
       setHasMore(videoList.length > displayCount);
       setError('');
-      return videoList;  // 返回视频列表
+      return videoList;
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || '加载视频失败');
-      return [];  // 错误时返回空数组
+      return [];
     } finally {
       setLoading(false);
     }
@@ -336,7 +348,7 @@ export function VideoGallery({
         prompt: `去除字幕: ${video.prompt}`,
       });
       toast('已创建字幕擦除任务（新视频）', 'success');
-      await loadAllVideos();
+      await loadAllVideos(true);
       pollPendingVideos();
     } catch (err: any) {
       toast(err.response?.data?.detail || '字幕擦除任务创建失败', 'error');

@@ -787,6 +787,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           projectId={projectId}
           onClose={() => setShowLibrary(false)}
           libraryOnly
+          initialVideos={videos}
         />
       )}
     </div>
