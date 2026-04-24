@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import aiohttp
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,44 @@ async def trigger_update(background_tasks: BackgroundTasks):
 async def get_frontend_config():
     """返回前端所需的部署配置（无需认证）"""
     from app.core.config import settings
+    from app.services.auth_service import _read_global_config
+
+    global_cfg = _read_global_config()
+    ui_cfg = global_cfg.get("ui", {}) if isinstance(global_cfg, dict) else {}
+
     return {
         "deploy_mode": settings.DEPLOY_MODE,
+        "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
+    }
+
+
+@router.put("/config/ui")
+async def update_ui_config(request: Request, body: dict):
+    """更新前端 UI 相关配置（仅 selfhosted 管理员）"""
+    from app.core.config import settings
+    from app.services.auth_service import _read_global_config, _write_global_config
+
+    if settings.DEPLOY_MODE == "saas":
+        raise HTTPException(status_code=403, detail="SaaS 模式不支持修改本地 UI 配置")
+
+    admin_user = getattr(request.state, "admin_user", None)
+    if not admin_user or admin_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可修改该配置")
+
+    hide_cost = bool(body.get("hide_cost_for_subaccounts", False))
+
+    cfg = _read_global_config()
+    if not isinstance(cfg, dict):
+        cfg = {}
+    ui_cfg = cfg.get("ui", {})
+    if not isinstance(ui_cfg, dict):
+        ui_cfg = {}
+    ui_cfg["hide_cost_for_subaccounts"] = hide_cost
+    cfg["ui"] = ui_cfg
+    _write_global_config(cfg)
+
+    return {
+        "success": True,
+        "hide_cost_for_subaccounts": hide_cost,
     }
 

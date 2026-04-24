@@ -12,7 +12,7 @@ import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
 import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2 } from 'lucide-react';
-import { adminAuthApi } from '@/services/api';
+import { adminAuthApi, versionApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
 import { CostDashboard } from '@/components/dashboard/CostDashboard';
@@ -25,8 +25,7 @@ export default function HomePage() {
   const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
   const { username: adminUsername, role: adminRole, logout: adminLogout, isAuthenticated } = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
-  const { theme, toggle: toggleTheme } = useThemeStore();
-
+  const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
   const [showLogin, setShowLogin] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -34,6 +33,8 @@ export default function HomePage() {
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [deployMode, setDeployMode] = useState<'selfhosted' | 'saas'>('selfhosted');
+  const [hideCostForSubaccounts, setHideCostForSubaccounts] = useState(false);
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -72,6 +73,22 @@ export default function HomePage() {
       fetchProjects();
     }
   }, [saasAuth.isAuthenticated, isAuthenticated, fetchProjects]);
+
+  useEffect(() => {
+    versionApi.getFrontendConfig()
+      .then((r) => {
+        const mode = r.data?.deploy_mode === 'saas' ? 'saas' : 'selfhosted';
+        setDeployMode(mode);
+        setHideCostForSubaccounts(!!r.data?.hide_cost_for_subaccounts);
+      })
+      .catch(() => {
+        setDeployMode('selfhosted');
+        setHideCostForSubaccounts(false);
+      });
+  }, []);
+
+  const isSubaccount = !isSaasUser && adminRole === 'user';
+  const shouldHideCost = isSaasUser || (deployMode === 'selfhosted' && isSubaccount && hideCostForSubaccounts);
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -283,13 +300,15 @@ export default function HomePage() {
               </div>
             )}
             {/* 主题切换 */}
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              title={theme === 'light' ? '切换暗色主题' : '切换亮色主题'}
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-            </button>
+            {appearanceMode !== 'vip' && (
+              <button
+                onClick={toggleTheme}
+                className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                title={theme === 'light' ? '切换暗色主题' : '切换亮色主题'}
+              >
+                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+              </button>
+            )}
           </div>
         </div>
 
@@ -311,14 +330,14 @@ export default function HomePage() {
           </div>
         ) : (
           <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+            <div className={`grid gap-3 mb-10 ${appearanceMode === 'vip' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'}`}>
               {[...projects].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map((project) => (
                 <ProjectCard
                   key={project.project_id}
                   project={project}
                   stats={project.stats}
                   isAdmin={isAdmin}
-                  hideCost={isSaasUser}
+                  hideCost={shouldHideCost}
                   onOpen={() => handleOpenProject(project)}
                   onDelete={() => handleDeleteProject(project.project_id)}
                   onEdit={() => setEditingProject(project)}

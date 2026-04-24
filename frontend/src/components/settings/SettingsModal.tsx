@@ -27,7 +27,8 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   const saasAuth = useSaasAuthStore();
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = role === 'admin';
-  const canSeeApiSettings = isAdmin && !isSaasUser;
+  const canSeeApiSettings = !isSaasUser;
+  const apiSettingsLimitedMode = !isAdmin;
   const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(() => canSeeApiSettings ? 'api' : 'global-style');
   const [saving, setSaving] = useState(false);
 
@@ -333,6 +334,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 onPresetsChange={setConfigPresets}
                 onSwitchTag={handleSwitchTag}
                 activePresetIds={activePresetIds}
+                limitedMode={apiSettingsLimitedMode}
               />
             )}
             {settingsPanel === 'global-style' && (

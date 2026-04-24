@@ -184,6 +184,8 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
         "/api/auth/",
         "/api/user/auth/",
         "/api/user/logout",
+    )
+    _WHITELIST_EXACT = (
         "/api/health",
         "/api/config",
     )
@@ -214,6 +216,10 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
         for prefix in self._WHITELIST_PREFIXES:
             if path.startswith(prefix):
                 return await call_next(request)
+
+        # 放行：白名单（精确路径）
+        if path in self._WHITELIST_EXACT:
+            return await call_next(request)
 
         # 放行：图片访问路径（img src 无法携带 token）
         for substr in self._WHITELIST_CONTAINS:

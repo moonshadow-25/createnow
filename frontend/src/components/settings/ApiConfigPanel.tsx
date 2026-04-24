@@ -23,6 +23,7 @@ interface ApiConfigPanelProps {
     video: string | null;
     tts: string | null;
   };
+  limitedMode?: boolean;
 }
 
 const API_TYPE_OPTIONS = [
@@ -43,7 +44,8 @@ export function ApiConfigPanel({
   configPresets,
   onPresetsChange,
   onSwitchTag,
-  activePresetIds
+  activePresetIds,
+  limitedMode = false
 }: ApiConfigPanelProps) {
   const { toast } = useToast();
   const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'tts'>('llm');
@@ -257,11 +259,19 @@ export function ApiConfigPanel({
 
     // ✅ 移除验证 - 允许保存空白配置
     // 用户可以先创建预设，再填写配置
+    const presetConfig: ApiConfig = limitedMode
+      ? {
+          ...config,
+          api_type: 'createnow',
+          api_url: CREATENOW_API_URL,
+          model: config.model || 'nova-pro',
+        }
+      : { ...config };
 
     const newPreset: ApiConfigPreset = {
       id: uuidv4(),
       name: name.trim(),
-      config: { ...config },
+      config: presetConfig,
       created_at: new Date().toISOString()
     };
 
@@ -376,39 +386,41 @@ export function ApiConfigPanel({
           </div>
         )}
         <div className="space-y-3">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">API 类型</label>
-            <select
-              value={config.api_type}
-              onChange={(e) => handleApiTypeChange(type, e.target.value as 'openai' | 'dashscope')}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
-              disabled={hasNoActiveTag}
-            >
-              {API_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {isDashscope && (
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ 使用阿里百炼平台，API地址和模型已自动配置
-              </p>
-            )}
-            {isCreatenow && (
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ 使用 CreateNow 官方接口，需在主页登录账号
-              </p>
-            )}
-            {hasNoActiveTag && (
-              <p className="text-xs text-yellow-500 mt-1">
-                请先创建配置预设
-              </p>
-            )}
-          </div>
+          {!limitedMode && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">API 类型</label>
+              <select
+                value={config.api_type}
+                onChange={(e) => handleApiTypeChange(type, e.target.value as 'openai' | 'dashscope')}
+                className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
+                disabled={hasNoActiveTag}
+              >
+                {API_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {isDashscope && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ℹ️ 使用阿里百炼平台，API地址和模型已自动配置
+                </p>
+              )}
+              {isCreatenow && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ℹ️ 使用 CreateNow 官方接口，需在主页登录账号
+                </p>
+              )}
+              {hasNoActiveTag && (
+                <p className="text-xs text-yellow-500 mt-1">
+                  请先创建配置预设
+                </p>
+              )}
+            </div>
+          )}
 
           {/* API URL：createnow 时完全隐藏 */}
-          {!isCreatenow && (
+          {!limitedMode && !isCreatenow && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">API URL</label>
               <input
@@ -427,57 +439,59 @@ export function ApiConfigPanel({
             </div>
           )}
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">API Key</label>
-            <div className="flex gap-2">
-              <input
-                type={showKeys[type] ? 'text' : 'password'}
-                value={config.api_key}
-                onChange={(e) => handleConfigChange(type, 'api_key', e.target.value)}
-                placeholder="sk-..."
-                autoComplete="new-password"
-                className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
-                disabled={hasNoActiveTag}
-              />
-              {/* 显示/隐藏 API Key */}
-              <button
-                type="button"
-                onClick={() => toggleShowKey(type)}
-                disabled={hasNoActiveTag}
-                className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                title={showKeys[type] ? '隐藏密钥' : '显示密钥'}
-              >
-                {showKeys[type] ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-              {isCreatenow && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await authApi.getKey();
-                      const { logged_in, api_key } = res.data;
-                      if (!logged_in || !api_key) {
-                        toast('请先在主页登录 CreateNow 账号', 'error');
-                        return;
-                      }
-                      handleConfigChange(type, 'api_key', api_key);
-                      toast('已填入登录密钥', 'success');
-                    } catch {
-                      toast('获取密钥失败', 'error');
-                    }
-                  }}
+          {!limitedMode && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">API Key</label>
+              <div className="flex gap-2">
+                <input
+                  type={showKeys[type] ? 'text' : 'password'}
+                  value={config.api_key}
+                  onChange={(e) => handleConfigChange(type, 'api_key', e.target.value)}
+                  placeholder="sk-..."
+                  autoComplete="new-password"
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
                   disabled={hasNoActiveTag}
-                  className="px-3 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm whitespace-nowrap disabled:bg-gray-700 disabled:cursor-not-allowed transition"
+                />
+                {/* 显示/隐藏 API Key */}
+                <button
+                  type="button"
+                  onClick={() => toggleShowKey(type)}
+                  disabled={hasNoActiveTag}
+                  className="px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title={showKeys[type] ? '隐藏密钥' : '显示密钥'}
                 >
-                  使用登录密钥
+                  {showKeys[type] ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
+                {isCreatenow && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await authApi.getKey();
+                        const { logged_in, api_key } = res.data;
+                        if (!logged_in || !api_key) {
+                          toast('请先在主页登录 CreateNow 账号', 'error');
+                          return;
+                        }
+                        handleConfigChange(type, 'api_key', api_key);
+                        toast('已填入登录密钥', 'success');
+                      } catch {
+                        toast('获取密钥失败', 'error');
+                      }
+                    }}
+                    disabled={hasNoActiveTag}
+                    className="px-3 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm whitespace-nowrap disabled:bg-gray-700 disabled:cursor-not-allowed transition"
+                  >
+                    使用登录密钥
+                  </button>
+                )}
+              </div>
+              {isCreatenow && (
+                <p className="text-xs text-gray-500 mt-1">
+                  点击"使用登录密钥"自动填入，或手动输入
+                </p>
               )}
             </div>
-            {isCreatenow && (
-              <p className="text-xs text-gray-500 mt-1">
-                点击"使用登录密钥"自动填入，或手动输入
-              </p>
-            )}
-          </div>
+          )}
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">模型</label>
@@ -491,7 +505,7 @@ export function ApiConfigPanel({
             />
           </div>
 
-          {showVoiceField && (
+          {!limitedMode && showVoiceField && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">默认音色 (可选)</label>
               <input
@@ -508,7 +522,7 @@ export function ApiConfigPanel({
             </div>
           )}
 
-          {showIdField && (
+          {!limitedMode && showIdField && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">Speaker ID (可选)</label>
               <input
@@ -525,7 +539,7 @@ export function ApiConfigPanel({
             </div>
           )}
 
-          {showByteSeedVideoOptions && (
+          {!limitedMode && showByteSeedVideoOptions && (
             <>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -555,7 +569,7 @@ export function ApiConfigPanel({
             </>
           )}
 
-          {showMultimodalReference && (
+          {!limitedMode && showMultimodalReference && (
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -570,7 +584,7 @@ export function ApiConfigPanel({
             </div>
           )}
 
-          {showVolcengineAkSk && (
+          {!limitedMode && showVolcengineAkSk && (
             <div className="space-y-3 border-t border-gray-700 pt-3">
               <p className="text-xs text-gray-400">Volcengine 素材库（可选，用于提交虚拟人像素材）</p>
               <div>
@@ -598,7 +612,7 @@ export function ApiConfigPanel({
             </div>
           )}
 
-          {showByteSeedImageOptions && (
+          {!limitedMode && showByteSeedImageOptions && (
             <>
               <div className="space-y-3">
                 <div>
@@ -685,7 +699,7 @@ export function ApiConfigPanel({
             </div>
           </div>
 
-          {showImageEditModel && (
+          {!limitedMode && showImageEditModel && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">图像编辑模型 (图生图)</label>
               <input
