@@ -89,6 +89,7 @@ export default function HomePage() {
 
   const isSubaccount = !isSaasUser && adminRole === 'user';
   const shouldHideCost = isSaasUser || (deployMode === 'selfhosted' && isSubaccount && hideCostForSubaccounts);
+  const shouldShowPointsInHideMode = deployMode === 'selfhosted' && isSubaccount && hideCostForSubaccounts;
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -338,6 +339,7 @@ export default function HomePage() {
                   stats={project.stats}
                   isAdmin={isAdmin}
                   hideCost={shouldHideCost}
+                  showPointsInHideMode={shouldShowPointsInHideMode}
                   onOpen={() => handleOpenProject(project)}
                   onDelete={() => handleDeleteProject(project.project_id)}
                   onEdit={() => setEditingProject(project)}

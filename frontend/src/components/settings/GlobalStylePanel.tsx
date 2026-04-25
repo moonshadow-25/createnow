@@ -109,7 +109,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
   const [globalRatio, setGlobalRatio] = useState('16:9');
   const [globalResolution, setGlobalResolution] = useState('720p');
 
-  const defaultImageSizes: ImageSizes = { character: '1x1', scene: '16x9', prop: '1x1', storyboard: '16x9' };
+  const defaultImageSizes: ImageSizes = { character: '16x9', scene: '16x9', prop: '1x1', storyboard: '16x9' };
   const [imageSizes, setImageSizes] = useState<ImageSizes>(defaultImageSizes);
 
   useEffect(() => {
@@ -431,7 +431,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
         <div className="grid grid-cols-2 gap-3">
           {(['character', 'scene', 'prop', 'storyboard'] as const).map((key) => {
             const labels = { character: '角色', scene: '场景', prop: '道具', storyboard: '分镜' };
-            const defaults = { character: '1x1', scene: '16x9', prop: '1x1', storyboard: '16x9' };
+            const defaults = { character: '16x9', scene: '16x9', prop: '1x1', storyboard: '16x9' };
             return (
               <div key={key}>
                 <label className="block text-xs text-gray-400 mb-1">{labels[key]}分辨率</label>

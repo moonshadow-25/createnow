@@ -1,5 +1,6 @@
 import { FolderOpen, Trash2, Pencil, Lock } from 'lucide-react';
 import { Project } from '@/types';
+import { useThemeStore } from '@/store/themeStore';
 
 interface ProjectStats {
   episode_count: number;
@@ -19,9 +20,20 @@ interface Props {
   stats: ProjectStats | null | undefined;
   isAdmin: boolean;
   hideCost?: boolean;
+  showPointsInHideMode?: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onEdit: () => void;
+}
+
+const IMAGE_POINTS_PER_ITEM = 100;
+const VIDEO_POINTS_PER_SECOND = 200;
+
+function computePoints(stats: ProjectStats) {
+  const imagePoints = stats.total_images * IMAGE_POINTS_PER_ITEM;
+  const videoPoints = Math.round(stats.total_video_seconds * VIDEO_POINTS_PER_SECOND);
+  const totalPoints = imagePoints + videoPoints;
+  return { imagePoints, videoPoints, totalPoints };
 }
 
 function computeMetrics(project: Project, stats: ProjectStats) {
@@ -42,7 +54,6 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     storyboard_video_seconds,
   } = stats;
 
-  // Progress
   const yellowPct = total_episodes > 0 ? Math.min(episode_count / total_episodes, 1) : 0;
   const storyboards_with_image_only = storyboards_with_image - storyboards_with_video;
   const greenPct =
@@ -53,13 +64,10 @@ function computeMetrics(project: Project, stats: ProjectStats) {
         )
       : 0;
 
-  // Cost — completed_episodes 基于"已创建集数×完工率"，而非总集数
   const image_cost = 0.4 * total_images;
   const video_cost = (stats.total_video_compute_units ?? (1 * total_video_seconds));
   const completed_episodes = greenPct * episode_count;
-  // 绿条宽度相对于 total_episodes，确保 greenBar ≤ yellowBar
   const greenBarPct = total_episodes > 0 ? completed_episodes / total_episodes : 0;
-  // cost_per_minute 只统计分镜正片视频，排除广场实验性生成
   let cost_per_minute: number | null = null;
   if (completed_episodes > 0 && minutes_per_episode > 0) {
     const storyboard_video_cost = (stats.storyboard_video_compute_units ?? (1 * storyboard_video_seconds));
@@ -74,7 +82,6 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     else costColor = 'text-red-400';
   }
 
-  // Health
   const days_elapsed = (Date.now() - new Date(created_at).getTime()) / 86400000;
   const expected_ratio =
     project_duration_days > 0 ? Math.min(days_elapsed / project_duration_days, 1.0) : 0;
@@ -89,7 +96,6 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     healthColor = 'text-red-400';
   }
 
-  // actual_ep 与 completed_episodes 保持一致，都基于 episode_count
   const actual_ep = completed_episodes.toFixed(1);
   const expected_ep = (expected_ratio * total_episodes).toFixed(1);
   const completed_minutes = completed_episodes * minutes_per_episode;
@@ -114,12 +120,88 @@ function computeMetrics(project: Project, stats: ProjectStats) {
   };
 }
 
-export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen, onDelete, onEdit }: Props) {
+export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPointsInHideMode = false, onOpen, onDelete, onEdit }: Props) {
   const configured = (project.total_episodes ?? 0) > 0;
+  const appearanceMode = useThemeStore(s => s.appearanceMode);
+  const isVipMode = appearanceMode === 'vip';
+
+  if (isVipMode) {
+    const totalCost = stats
+      ? (stats.total_compute_spent ?? (0.4 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
+      : 0;
+    const isLocked = !!(project.budget_total != null && stats && totalCost >= project.budget_total);
+    const videoMinutes = stats ? stats.total_video_seconds / 60 : 0;
+    const budgetText = project.budget_total != null
+      ? `${totalCost.toFixed(0)}元/${project.budget_total.toFixed(0)}元`
+      : `${totalCost.toFixed(0)}元`;
+
+    return (
+      <div className="min-h-[236px] rounded-2xl px-4 py-4 flex flex-col relative overflow-hidden border border-[#786135]/45 shadow-[0_18px_40px_rgba(0,0,0,0.55)] bg-[linear-gradient(155deg,#14171d_0%,#11141a_48%,#1a1710_100%)]">
+        <div className="absolute -top-16 left-1/2 h-40 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.18),rgba(255,255,255,0.03)_55%,transparent_75%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_16%,rgba(243,211,130,0.22),rgba(243,211,130,0.02)_42%,transparent_64%)] pointer-events-none" />
+
+        <div className="relative z-10 flex items-start justify-between gap-2">
+          <h3 className="text-[15px] font-semibold text-[#f5e7bf] leading-5 line-clamp-2">{project.name}</h3>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {isLocked && (
+              <span title="预算已超出，API已锁定" className="text-red-400">
+                <Lock size={13} />
+              </span>
+            )}
+            {isAdmin && (
+              <button onClick={e => { e.stopPropagation(); onEdit(); }} className="text-gray-400 hover:text-yellow-200 p-1" title="编辑项目">
+                <Pencil size={13} />
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={e => { e.stopPropagation(); onDelete(); }} className="text-red-400 hover:text-red-300 p-1" title="删除项目">
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="relative z-10 mt-6">
+          {stats ? (
+            <>
+              <div className="text-[10px] tracking-[0.18em] text-gray-400">VIDEO MINUTES</div>
+              <div className="mt-1 flex items-end gap-1.5">
+                <span className="text-[34px] leading-none font-semibold text-[#f3d589]">{videoMinutes.toFixed(1)}</span>
+                <span className="text-sm text-[#d4bc85] mb-1">分钟</span>
+              </div>
+              <div className="mt-2 text-xs text-gray-300">{stats.episode_count}/{project.total_episodes || 0} 集 · {stats.total_images} 图</div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-400">等待数据</div>
+          )}
+        </div>
+
+        <div className="relative z-10 mt-auto flex items-end justify-between gap-3 pt-4">
+          <div className="space-y-1">
+            <div className="text-[11px] text-gray-400">{new Date(project.created_at).toLocaleDateString()}</div>
+            {!hideCost && stats && (
+              <div className={`text-xs font-mono ${isLocked ? 'text-red-300' : 'text-[#e8cc87]'}`}>{budgetText}</div>
+            )}
+            {hideCost && showPointsInHideMode && stats && (
+              <div className="text-xs font-mono text-[#e8cc87]">{computePoints(stats).totalPoints}积分</div>
+            )}
+          </div>
+          <button
+            onClick={onOpen}
+            className="h-8 px-4 rounded-lg bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] text-xs font-semibold shadow-[0_6px_18px_rgba(216,179,96,0.38)] hover:brightness-105"
+          >
+            <span className="flex items-center gap-1">
+              <FolderOpen size={13} />
+              进入
+            </span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 flex flex-col gap-3">
-      {/* Header */}
+    <div className="bg-gray-800 p-6 flex flex-col gap-3 rounded-lg">
       <div className="flex justify-between items-start">
         <h3 className="text-xl font-semibold flex-1 mr-2 truncate">{project.name}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -150,7 +232,6 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen,
         </div>
       </div>
 
-      {/* Stats section */}
       {configured ? (
         stats === undefined ? (
           <div className="space-y-2">
@@ -160,28 +241,22 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen,
         ) : stats === null ? (
           <p className="text-xs text-red-400">统计加载失败</p>
         ) : (
-          <StatsSection project={project} stats={stats} hideCost={hideCost} />
+          <StatsSection project={project} stats={stats} hideCost={hideCost} showPointsInHideMode={showPointsInHideMode} />
         )
       ) : (
         <>
           {stats === undefined ? (
             <div className="h-3 bg-gray-700 rounded animate-pulse w-1/2" />
           ) : stats ? (
-            <CostOnlySection project={project} stats={stats} hideCost={hideCost} />
+            <CostOnlySection project={project} stats={stats} hideCost={hideCost} showPointsInHideMode={showPointsInHideMode} />
           ) : null}
           <span className="text-xs text-gray-500 italic">未配置项目参数</span>
         </>
       )}
 
-      {/* Footer */}
       <div className="flex justify-between items-center mt-auto pt-2 border-t border-gray-700">
-        <span className="text-xs text-gray-500">
-          {new Date(project.created_at).toLocaleDateString()}
-        </span>
-        <button
-          onClick={onOpen}
-          className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm"
-        >
+        <span className="text-xs text-gray-500">{new Date(project.created_at).toLocaleDateString()}</span>
+        <button onClick={onOpen} className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm">
           <FolderOpen size={16} />
           打开项目
         </button>
@@ -190,18 +265,27 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, onOpen,
   );
 }
 
-function CostOnlySection({ project, stats, hideCost }: { project: Project; stats: ProjectStats; hideCost?: boolean }) {
+function CostOnlySection({ project, stats, hideCost, showPointsInHideMode }: { project: Project; stats: ProjectStats; hideCost?: boolean; showPointsInHideMode?: boolean }) {
   const image_cost = 0.4 * stats.total_images;
   const video_cost = stats.total_video_compute_units ?? (1 * stats.total_video_seconds);
   const total_cost = stats.total_compute_spent ?? (image_cost + video_cost);
+  const points = computePoints(stats);
   return (
     <div className="space-y-1 text-xs">
       <div className="flex justify-between text-gray-500">
         {hideCost ? (
-          <>
-            <span>图片 {stats.total_images}张</span>
-            <span>视频 {Math.round(stats.total_video_seconds)}秒</span>
-          </>
+          showPointsInHideMode ? (
+            <>
+              <span>图片 {points.imagePoints}积分</span>
+              <span>视频 {points.videoPoints}积分</span>
+              <span className="font-mono">共 {points.totalPoints}积分</span>
+            </>
+          ) : (
+            <>
+              <span>图片 {stats.total_images}张</span>
+              <span>视频 {Math.round(stats.total_video_seconds)}秒</span>
+            </>
+          )
         ) : (
           <>
             <span>图片 {stats.total_images}张: {Math.round(image_cost)}元</span>
@@ -236,12 +320,12 @@ function CostOnlySection({ project, stats, hideCost }: { project: Project; stats
     </div>
   );
 }
-function StatsSection({ project, stats, hideCost }: { project: Project; stats: ProjectStats; hideCost?: boolean }) {
+function StatsSection({ project, stats, hideCost, showPointsInHideMode }: { project: Project; stats: ProjectStats; hideCost?: boolean; showPointsInHideMode?: boolean }) {
   const m = computeMetrics(project, stats);
+  const points = computePoints(stats);
 
   return (
     <div className="space-y-2 text-xs">
-      {/* Progress */}
       <div className="space-y-1">
         <div className="flex justify-between text-gray-400">
           <span>制作进度</span>
@@ -268,12 +352,19 @@ function StatsSection({ project, stats, hideCost }: { project: Project; stats: P
         </div>
       </div>
 
-      {/* Cost / counts */}
       {hideCost ? (
-        <div className="flex justify-between text-gray-500">
-          <span>图片 {m.total_images}张</span>
-          <span>视频 {Math.round(m.total_video_seconds)}秒</span>
-        </div>
+        showPointsInHideMode ? (
+          <div className="flex justify-between text-gray-500">
+            <span>图片 {points.imagePoints}积分</span>
+            <span>视频 {points.videoPoints}积分</span>
+            <span className="font-mono">共 {points.totalPoints}积分</span>
+          </div>
+        ) : (
+          <div className="flex justify-between text-gray-500">
+            <span>图片 {m.total_images}张</span>
+            <span>视频 {Math.round(m.total_video_seconds)}秒</span>
+          </div>
+        )
       ) : (
         <div className="flex justify-between text-gray-500">
           <span>图片 {m.total_images}张: {Math.round(m.image_cost)}元</span>
@@ -284,7 +375,6 @@ function StatsSection({ project, stats, hideCost }: { project: Project; stats: P
         </div>
       )}
 
-      {/* Budget */}
       {!hideCost && project.budget_total != null && (() => {
         const spent = m.image_cost + m.video_cost;
         const total = project.budget_total;
@@ -309,7 +399,6 @@ function StatsSection({ project, stats, hideCost }: { project: Project; stats: P
         );
       })()}
 
-      {/* Health */}
       {(project.project_duration_days ?? 0) > 0 && (
         <div className="flex justify-between items-center text-gray-400">
           <span>项目健康</span>

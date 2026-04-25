@@ -39,6 +39,14 @@ def _get_projects_dir():
 router = APIRouter()
 
 
+def _resolve_generated_image_url(image_data: dict) -> str:
+    """兼容url和b64_json两种返回格式"""
+    image_url = image_data.get("url")
+    if not image_url and image_data.get("b64_json"):
+        image_url = f"data:image/png;base64,{image_data['b64_json']}"
+    return image_url or ""
+
+
 @router.post("/image-prompt")
 async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
     """生成图片提示词"""
@@ -160,7 +168,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
         ai_config = project.get("ai_config", {})
         check_project_budget(project)
 
-    default_sizes = {"character": "1x1", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
+    default_sizes = {"character": "16x9", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
     configured_sizes = ai_config.get("image_sizes", {})
     size_str = size or configured_sizes.get(asset_type) or default_sizes.get(asset_type, "1x1")
     width, height = parse_size(size_str)
@@ -185,10 +193,13 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
     if images_data:
         saved_images = []
         for i, img_data in enumerate(images_data):
+            image_url = _resolve_generated_image_url(img_data)
+            if not image_url:
+                raise ValueError("生图返回结果缺少 url/b64_json")
             record = {
                 "asset_id": asset_id, "asset_type": asset_type,
                 "prompt": prompt, "negative_prompt": negative_prompt,
-                "width": width, "height": height, "image_path": img_data["url"],
+                "width": width, "height": height, "image_path": image_url,
                 "model": ai_config.get("image", {}).get("model", "dall-e-3"),
                 "created_at": datetime.now().isoformat()
             }
@@ -197,13 +208,23 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
             if i == 0:
                 ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
                 AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
-            if img_data["url"].startswith(("http://", "https://")):
+            if image_url.startswith(("http://", "https://")):
                 try:
                     await ImageDownloadService.download_and_save_image(
                         project_id=project_id, image_id=saved["image_id"],
-                        url=img_data["url"], asset_type=asset_type)
+                        url=image_url, asset_type=asset_type)
                 except Exception as e:
                     logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+            elif image_url.startswith("data:image"):
+                try:
+                    ImageDownloadService.save_data_uri_image(
+                        project_id=project_id,
+                        image_id=saved["image_id"],
+                        data_uri=image_url,
+                        asset_type=asset_type,
+                    )
+                except Exception as e:
+                    logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
         logger.info(f"[多图生成] 成功生成并保存 {len(saved_images)} 张图片")
         return saved_images[0]
     else:
@@ -227,6 +248,16 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                     url=image_url, asset_type=asset_type)
             except Exception as e:
                 logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+        elif image_url and image_url.startswith("data:image"):
+            try:
+                ImageDownloadService.save_data_uri_image(
+                    project_id=project_id,
+                    image_id=saved["image_id"],
+                    data_uri=image_url,
+                    asset_type=asset_type,
+                )
+            except Exception as e:
+                logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
         return saved
 
 
@@ -318,7 +349,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
     if not reference_image_paths:
         raise ValueError("至少需要一张参考图片")
 
-    default_sizes = {"character": "1x1", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
+    default_sizes = {"character": "16x9", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
     configured_sizes = ai_config.get("image_sizes", {})
     size_str = size or configured_sizes.get(asset_type) or default_sizes.get(asset_type, "1x1")
     width, height = parse_size(size_str)
@@ -351,10 +382,13 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
     if images_data:
         saved_images = []
         for i, img_data in enumerate(images_data):
+            image_url = _resolve_generated_image_url(img_data)
+            if not image_url:
+                raise ValueError("图生图返回结果缺少 url/b64_json")
             record = {
                 "asset_id": asset_id, "asset_type": asset_type,
                 "prompt": prompt, "negative_prompt": "",
-                "width": width, "height": height, "image_path": img_data["url"],
+                "width": width, "height": height, "image_path": image_url,
                 "model": model, "created_at": datetime.now().isoformat()
             }
             saved = ImageService.save_generation_record(project_id, record)
@@ -362,13 +396,23 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             if i == 0:
                 ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
                 AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
-            if img_data["url"].startswith(("http://", "https://")):
+            if image_url.startswith(("http://", "https://")):
                 try:
                     await ImageDownloadService.download_and_save_image(
                         project_id=project_id, image_id=saved["image_id"],
-                        url=img_data["url"], asset_type=asset_type)
+                        url=image_url, asset_type=asset_type)
                 except Exception as e:
                     logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+            elif image_url.startswith("data:image"):
+                try:
+                    ImageDownloadService.save_data_uri_image(
+                        project_id=project_id,
+                        image_id=saved["image_id"],
+                        data_uri=image_url,
+                        asset_type=asset_type,
+                    )
+                except Exception as e:
+                    logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
         logger.info(f"[图生图] 成功生成并保存 {len(saved_images)} 张图片")
         return saved_images[0]
     else:
@@ -391,6 +435,16 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                     url=image_url, asset_type=asset_type)
             except Exception as e:
                 logger.warning(f"自动下载图片失败 (image_id: {saved['image_id']}): {e}")
+        elif image_url and image_url.startswith("data:image"):
+            try:
+                ImageDownloadService.save_data_uri_image(
+                    project_id=project_id,
+                    image_id=saved["image_id"],
+                    data_uri=image_url,
+                    asset_type=asset_type,
+                )
+            except Exception as e:
+                logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
         return saved
 
 
