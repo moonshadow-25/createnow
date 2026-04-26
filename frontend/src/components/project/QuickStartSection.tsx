@@ -5,11 +5,14 @@ import { useProjectStore } from '@/store/projectStore';
 import { projectApi, assetApi, generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { QUICK_START_TEMPLATES, QuickStartTemplate } from '@/data/quickStartTemplates';
+import { useThemeStore } from '@/store/themeStore';
 
 export function QuickStartSection() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { setCurrentProject } = useProjectStore();
+  const appearanceMode = useThemeStore(s => s.appearanceMode);
+  const isVipMode = appearanceMode === 'vip';
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [confirmTemplate, setConfirmTemplate] = useState<QuickStartTemplate | null>(null);
 
@@ -79,7 +82,7 @@ export function QuickStartSection() {
               key={template.id}
               onClick={() => handleClick(template)}
               disabled={loadingId !== null}
-              className="relative w-full aspect-video rounded-xl overflow-hidden group focus:outline-none"
+              className={`relative w-full aspect-video rounded-xl overflow-hidden group focus:outline-none ${isVipMode ? 'vip-card-surface vip-quickstart-card' : ''}`}
             >
               <img
                 src={template.coverImage}
@@ -88,7 +91,12 @@ export function QuickStartSection() {
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
               <div className="absolute inset-0 bg-gray-700 -z-10" />
-              <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.55) 35%, transparent 60%)' }} />
+              <div
+                className="absolute inset-0"
+                style={isVipMode
+                  ? { background: 'linear-gradient(to top, rgba(7,8,12,0.92) 0%, rgba(26,20,14,0.66) 38%, rgba(0,0,0,0.05) 68%)' }
+                  : { background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.55) 35%, transparent 60%)' }}
+              />
               {loadingId === template.id && (
                 <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                   <span style={{ color: '#fff' }} className="text-xs">创建中...</span>
@@ -96,14 +104,18 @@ export function QuickStartSection() {
               )}
               <div className="absolute bottom-0 left-0 right-0 px-3 py-3 flex items-end justify-between gap-2">
                 <div className="text-left">
-                  <div style={{ color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }} className="text-sm font-semibold leading-snug">
+                  <div style={isVipMode
+                    ? { color: '#f5e7c5', textShadow: '0 2px 10px rgba(0,0,0,0.72)' }
+                    : { color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }} className="text-sm font-semibold leading-snug">
                     {template.name}
                   </div>
-                  <div style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }} className="text-xs mt-0.5">
+                  <div style={isVipMode
+                    ? { color: 'rgba(236,212,162,0.82)', textShadow: '0 1px 5px rgba(0,0,0,0.6)' }
+                    : { color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }} className="text-xs mt-0.5">
                     {template.subtitle}
                   </div>
                 </div>
-                <ArrowRight size={14} style={{ color: 'rgba(255,255,255,0.85)', flexShrink: 0 }} />
+                <ArrowRight size={14} style={isVipMode ? { color: 'rgba(240,211,148,0.9)', flexShrink: 0 } : { color: 'rgba(255,255,255,0.85)', flexShrink: 0 }} />
               </div>
             </button>
           ))}

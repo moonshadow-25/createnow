@@ -231,11 +231,14 @@ END_TOOL
 - 生成分镜时总是先列出计划再执行", "mode": "replace", "description": "设置AI工作流程指令"}
 END_TOOL
 
-22. update_prompt_template - 为生成模板创建/更新"AI自定义"可见模板并激活（用户在提示词设置页可见）
+22. update_prompt_template - 更新生成模板并激活"AI自定义"模板（用户在提示词设置页可见）
     ⚠️ 适用于：用户要求修改分镜格/分镜图/分镜编辑/视频/图片等【生成按钮的提示词逻辑】时
     ⚠️ 禁止修改 key 为 conversation_tools_desc/conversation_system_prompt 的系统模板
-    ⚠️ **必须先调用 get_prompt_template 读取当前激活模板，再基于它重写完整内容**
-    ⚠️ content 必须是完整可用的模板全文，不能只写修改部分或附加说明
+    ⚠️ **必须先调用 get_prompt_template 读取当前激活模板，再调用 update_prompt_template**
+    ⚠️ 默认 mode=patch（局部编辑），支持 edits[] 一次调用批量修改（推荐，一次确认即可）
+    ⚠️ edits[] 每项使用 replace 语义：old_string/new_string/replace_all/occurrence，按数组顺序依次应用
+    ⚠️ 不传 edits[] 时，仍可用单步 operation（replace_text/delete_text/insert_after_anchor/insert_before_anchor）
+    ⚠️ patch 默认会自动清理重复标点（normalize_punctuation=true）
     **关键词 → key 对照（必须按此匹配，不得自行推断）：**
       "分镜编辑" / "图生图" / "分镜图生图"    → storyboard_image_edit
       "分镜图" / "分镜生图" / "文生图分镜"      → storyboard_image
@@ -243,12 +246,16 @@ END_TOOL
       "视频"                                    → video  
       "图片"                                    → image
       "九宫格"                                  → nine_grid_combined_prompts
-    **正确流程**：
+    **正确流程（批量修改，推荐）**：
     步骤1 - 先读取当前模板：TOOL: get_prompt_template
-{"key": "storyboard_image_edit"}
+{"key": "image"}
 END_TOOL
-    步骤2 - 基于读取内容完整重写后调用：TOOL: update_prompt_template
-{"key": "storyboard_image_edit", "content": "## 分镜图生成规范\n\n[完整重写后的模板全文...]", "description": "修改分镜编辑模板：禁用九宫格，改为单张画面输出"}
+    步骤2 - 一次调用批量替换：TOOL: update_prompt_template
+{"key": "image", "mode": "patch", "edits": [{"old_string": "影视角色设定参考图（character design sheet）", "new_string": ""}, {"old_string": "重点呈现面料纹理、刺绣/暗纹、腰带与鞋履等细节", "new_string": "重点呈现面料纹理、刺绣/暗纹、腰带与鞋履等细节，并补充电影级光效描述（体积光、侧逆光、轮廓光）"}], "description": "删除旧词并补充光效要求"}
+END_TOOL
+    **整篇重写（仅在用户明确要求时）**：
+    TOOL: update_prompt_template
+{"key": "storyboard_image_edit", "mode": "replace", "content": "## 分镜图生成规范\n\n[完整重写后的模板全文...]", "description": "按要求重写分镜编辑模板"}
 END_TOOL
 
 23. update_episode_script - 写入/追加剧集剧本内容（mode: replace或append）

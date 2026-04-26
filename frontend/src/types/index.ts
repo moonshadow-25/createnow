@@ -3,13 +3,16 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 
 // 工具调用类型
 export interface ToolCall {
+  id?: string;
   name: string;
   parameters?: any;
 }
 
 export interface ToolResult {
   name: string;
+  tool_call_id?: string;
   result?: any;
+  raw_result?: any;
 }
 
 // 资产提取信息
@@ -38,7 +41,9 @@ export interface StreamChunk {
   content?: string;
   tool_call?: ToolCall;
   tool_name?: string;
+  tool_call_id?: string;
   result?: any;
+  raw_result?: any;
   submitted?: Array<{ image_id: string; asset_id: string; status: string }>;
   conversation_id?: string;
   // 确认机制字段

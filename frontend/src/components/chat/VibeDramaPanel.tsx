@@ -3,6 +3,7 @@ import { X, History, ChevronRight, Trash2, Code } from 'lucide-react';
 import { useVibeDramaStore, SessionEntry } from '@/store/vibeDramaStore';
 import { useAssetStore } from '@/store/assetStore';
 import { ChatTab } from './ChatTab';
+import { useThemeStore } from '@/store/themeStore';
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -102,6 +103,8 @@ function DebugPromptModal({ projectId, episodeId, tabName, onClose }: DebugPromp
 
 export function VibeDramaPanel() {
   const { isOpen, activeKey, sessions, panelWidth, toggle, setContext, removeSession, clearAllSessions, setPanelWidth } = useVibeDramaStore();
+  const appearanceMode = useThemeStore(s => s.appearanceMode);
+  const isVipMode = appearanceMode === 'vip';
   const { episodes } = useAssetStore();
   const [showHistory, setShowHistory] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -134,7 +137,7 @@ export function VibeDramaPanel() {
     <>
       {/* fixed 定位，始终挂载，isOpen=false 时用 CSS 隐藏，保持流式传输不中断 */}
       <div
-        className="fixed bottom-0 right-0 bg-gray-900 border-l border-gray-700 flex flex-col z-40 shadow-2xl"
+        className={`fixed bottom-0 right-0 border-l flex flex-col z-40 shadow-2xl ${isVipMode ? 'bg-gray-900/95 border-yellow-700/40' : 'bg-gray-900 border-gray-700'}`}
         style={{ width: panelWidth, height: '100vh', display: isOpen ? 'flex' : 'none' }}
       >
         {/* 左侧拖拽调宽手柄 */}
@@ -145,7 +148,7 @@ export function VibeDramaPanel() {
         />
 
         {/* 顶部标题栏 */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 flex-shrink-0 bg-gray-800">
+        <div className={`flex items-center justify-between px-4 py-3 border-b flex-shrink-0 ${isVipMode ? 'border-yellow-700/30 bg-gray-800/90' : 'border-gray-700 bg-gray-800'}`}>
           <div className="flex items-center gap-2">
             <span className="text-lg leading-none select-none">🦞</span>
             <span className="text-sm font-semibold text-red-300">小龙虾</span>

@@ -82,7 +82,7 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
     """
     获取提示词内容。
 
-    优先级：项目级自定义 > 项目级激活预设 > 全局 JSON default 预设
+    优先级：项目级自定义 > 项目级激活预设 > 全局默认预设（default → default_ai → 首个可用预设）
 
     若项目覆盖中存在 custom_suffix，则在基础内容末尾追加自定义指令段。
 
@@ -92,6 +92,22 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
     """
     prompts = load_prompts()
     if key not in prompts:
+        return ""
+
+    def _pick_default_content(presets: Dict[str, Any]) -> str:
+        if not isinstance(presets, dict) or not presets:
+            return ""
+        for preset_key in ("default", "default_ai"):
+            preset = presets.get(preset_key)
+            if isinstance(preset, dict):
+                content = preset.get("content", "")
+                if content:
+                    return content
+        for preset in presets.values():
+            if isinstance(preset, dict):
+                content = preset.get("content", "")
+                if content:
+                    return content
         return ""
 
     base_content = ""
@@ -106,26 +122,22 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
             if active in custom:
                 base_content = custom[active].get("content", "")
             else:
-                # 激活的是某个全局 preset
                 presets = prompts[key].get("presets", {})
-                if active in presets:
+                if active in presets and isinstance(presets.get(active), dict):
                     base_content = presets[active].get("content", "")
 
-            # 追加 custom_suffix（若存在）
             custom_suffix = override.get("custom_suffix", "").strip()
             if custom_suffix:
                 if not base_content:
-                    # 若尚未从 custom 或 preset 取到内容，回退到全局默认
                     presets = prompts[key].get("presets", {})
-                    base_content = presets.get("default", {}).get("content", "")
+                    base_content = _pick_default_content(presets)
                 return base_content + "\n\n---\n[项目自定义附加指令（最高优先级，严格遵守）]\n" + custom_suffix
 
             if base_content:
                 return base_content
 
-    # 全局默认（default preset）
     presets = prompts[key].get("presets", {})
-    return presets.get("default", {}).get("content", "")
+    return _pick_default_content(presets)
 
 
 def reset_to_defaults() -> Dict[str, Any]:

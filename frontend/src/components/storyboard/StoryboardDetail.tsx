@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
-import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, Download, GripVertical, CheckCircle } from 'lucide-react';
+import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, ChevronRight, Download, CheckCircle } from 'lucide-react';
+
 import { VideoGallery } from './VideoGallery';
 import { EpisodePlayer } from './EpisodePlayer';
 import { ImageGallery } from '@/components/assets/ImageGallery';
@@ -20,8 +21,8 @@ import { StoryboardEditDialog } from './StoryboardEditDialog';
 import { AssetSelectorDialog } from './AssetSelectorDialog';
 import { StoryboardBatchActions } from './StoryboardBatchActions';
 import { StoryboardPromptDialog } from './StoryboardPromptDialog';
-import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useOneClickGeneration } from './hooks/useOneClickGeneration';
 import { useDialogManager } from './hooks/useDialogManager';
@@ -29,6 +30,7 @@ import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useJianyingExport } from './hooks/useJianyingExport';
 import { useVideoGeneration } from './hooks/useVideoGeneration';
+import { useThemeStore } from '@/store/themeStore';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -45,12 +47,14 @@ interface SortableEpisodeButtonProps {
   episode: any;
   displayIndex: number;
   isSelected: boolean;
+  draggableEnabled: boolean;
   onClick: () => void;
 }
 
-function SortableEpisodeButton({ episode, displayIndex, isSelected, onClick }: SortableEpisodeButtonProps) {
+function SortableEpisodeButton({ episode, displayIndex, isSelected, draggableEnabled, onClick }: SortableEpisodeButtonProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: episode.asset_id,
+    disabled: !draggableEnabled,
   });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -58,25 +62,19 @@ function SortableEpisodeButton({ episode, displayIndex, isSelected, onClick }: S
     opacity: isDragging ? 0.5 : 1,
   };
   return (
-    <div ref={setNodeRef} style={style} className="flex flex-col items-center gap-0.5">
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300"
-        title="拖拽排序"
-      >
-        <GripVertical size={12} />
-      </div>
-      <button
-        onClick={onClick}
-        className={`w-10 h-10 rounded flex items-center justify-center font-semibold transition ${
-          isSelected ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-        }`}
-        title={`第${displayIndex}集`}
-      >
-        {displayIndex}
-      </button>
-    </div>
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={onClick}
+      className={`w-10 h-10 rounded flex items-center justify-center font-semibold transition ${
+        draggableEnabled ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+      } ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+      title={draggableEnabled ? `第${displayIndex}集（可直接拖拽排序）` : `第${displayIndex}集（拖拽已关闭）`}
+    >
+      {displayIndex}
+    </button>
   );
 }
 
@@ -100,6 +98,9 @@ export function StoryboardDetail({
 
   const [selectedEpisode, setSelectedEpisode] = useState<any>(null);
   const [orderedEpisodes, setOrderedEpisodes] = useState<any[]>([]);
+  const [episodeDragEnabled, setEpisodeDragEnabled] = useState(false);
+  const appearanceMode = useThemeStore(s => s.appearanceMode);
+  const isVipMode = appearanceMode === 'vip';
   const isReorderingEpisodes = useRef(false);
   const [storyboards, setStoryboards] = useState<any[]>([]);
   const [storyboardPrimaryImages, setStoryboardPrimaryImages] = useState<Map<string, string>>(new Map());
@@ -140,6 +141,15 @@ export function StoryboardDetail({
   // 更多菜单
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const [showScriptPanel, setShowScriptPanel] = useState(false);
+  const [showAssetsPanel, setShowAssetsPanel] = useState(true);
+
+  useEffect(() => {
+    if (isVipMode) {
+      setShowScriptPanel(false);
+      setShowAssetsPanel(false);
+    }
+  }, [isVipMode]);
 
   // Vibe Drama：设置上下文 + 订阅资产刷新事件
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
@@ -1079,6 +1089,7 @@ export function StoryboardDetail({
   };
 
   const handleEpisodeDragEnd = async (event: DragEndEvent) => {
+    if (!episodeDragEnabled) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = orderedEpisodes.findIndex(ep => ep.asset_id === active.id);
@@ -1106,24 +1117,49 @@ export function StoryboardDetail({
     ? orderedEpisodes.findIndex(ep => ep.asset_id === selectedEpisode.asset_id) + 1
     : 0;
 
+  const episodeSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const handleToggleEpisodeDragEnabled = () => {
+    setEpisodeDragEnabled(prev => !prev);
+  };
+
   return (
-    <div className="flex gap-4 h-full min-h-0">
+    <div className={`h-full min-h-0 ${isVipMode ? 'flex flex-col gap-3' : 'flex gap-4'}`}>
       {/* 左侧：剧集数字按钮 */}
-      <div className="bg-gray-800 rounded-lg p-2 overflow-y-auto flex-shrink-0">
-        <div className="flex flex-col gap-1">
-          <DndContext collisionDetection={closestCenter} onDragEnd={handleEpisodeDragEnd}>
-            <SortableContext items={orderedEpisodes.map(ep => ep.asset_id)} strategy={verticalListSortingStrategy}>
+      <div className={`bg-gray-800 rounded-lg p-2 overflow-y-auto flex-shrink-0 ${isVipMode ? 'overflow-x-auto overflow-y-hidden' : ''}`}>
+        <div className={`gap-1 ${isVipMode ? 'flex flex-row items-center min-w-max' : 'flex flex-col'}`}>
+          <button
+            onClick={handleToggleEpisodeDragEnabled}
+            className={`w-10 h-10 rounded flex items-center justify-center font-semibold transition ${episodeDragEnabled ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+            title={episodeDragEnabled ? '关闭集数拖拽' : '开启集数拖拽'}
+          >
+            拖
+          </button>
+
+          <DndContext sensors={episodeSensors} collisionDetection={closestCenter} onDragEnd={handleEpisodeDragEnd}>
+            <SortableContext
+              items={orderedEpisodes.map(ep => ep.asset_id)}
+              strategy={isVipMode ? horizontalListSortingStrategy : verticalListSortingStrategy}
+            >
               {orderedEpisodes.map((episode, index) => (
                 <SortableEpisodeButton
                   key={episode.asset_id}
                   episode={episode}
                   displayIndex={index + 1}
                   isSelected={selectedEpisode?.asset_id === episode.asset_id}
+                  draggableEnabled={episodeDragEnabled}
                   onClick={() => setSelectedEpisode(episode)}
                 />
               ))}
             </SortableContext>
           </DndContext>
+
           {/* 新增剧集按钮 */}
           <button
             onClick={handleAddEpisode}
@@ -1132,6 +1168,7 @@ export function StoryboardDetail({
           >
             +
           </button>
+
           {orderedEpisodes.length === 0 && (
             <div className="text-gray-500 text-xs p-2 text-center w-10">
               空
@@ -1389,7 +1426,13 @@ export function StoryboardDetail({
             {/* 剧本内容 */}
             <div className="mb-4 p-3 bg-gray-700 rounded">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="text-sm font-semibold text-gray-400">剧本内容</h4>
+                <button
+                  onClick={() => setShowScriptPanel(v => !v)}
+                  className="text-sm font-semibold text-gray-400 flex items-center gap-1"
+                >
+                  <ChevronRight size={14} className={`transition-transform ${showScriptPanel ? 'rotate-90' : ''}`} />
+                  剧本内容
+                </button>
                 <button
                   onClick={handleEditScript}
                   className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"
@@ -1398,21 +1441,25 @@ export function StoryboardDetail({
                   编辑
                 </button>
               </div>
-              {selectedEpisode.script ? (
-                <p className="text-sm text-gray-200 line-clamp-3">
-                  {selectedEpisode.script}
-                </p>
+              {showScriptPanel && (selectedEpisode.script ? (
+                <p className="text-sm text-gray-200 whitespace-pre-wrap">{selectedEpisode.script}</p>
               ) : (
                 <p className="text-sm text-gray-500 italic">暂无剧本内容</p>
-              )}
+              ))}
             </div>
 
             {/* 剧集资产统计 - 常驻显示 */}
             <div className="mb-4 p-3 bg-gray-700 rounded">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="text-sm font-semibold text-gray-400">使用资产</h4>
+                <button
+                  onClick={() => setShowAssetsPanel(v => !v)}
+                  className="text-sm font-semibold text-gray-400 flex items-center gap-1"
+                >
+                  <ChevronRight size={14} className={`transition-transform ${showAssetsPanel ? 'rotate-90' : ''}`} />
+                  使用资产
+                </button>
               </div>
-              {storyboards.length > 0 ? (
+              {showAssetsPanel && (storyboards.length > 0 ? (
                 <div className="flex flex-wrap gap-3 text-sm">
                   {/* 收集所有分镜的角色 */}
                   {(() => {
@@ -1505,35 +1552,97 @@ export function StoryboardDetail({
                 </div>
               ) : (
                 <p className="text-xs text-gray-500 italic">暂无分镜</p>
-              )}
+              ))}
             </div>
 
             {/* 分镜列表 */}
-            <h4 className="text-md font-semibold mb-3">分镜 ({storyboards.length}) - 拖拽可调整顺序</h4>
-            <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={storyboards.map(sb => sb.asset_id)} strategy={verticalListSortingStrategy}>
-                <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 320px))' }}>
-                  {storyboards.map((sb) => (
-                    <SortableStoryboardCard
+            <h4 className="text-md font-semibold mb-3">分镜 ({storyboards.length}) {isVipMode ? '· 详细列表' : '- 拖拽可调整顺序'}</h4>
+
+            {isVipMode ? (
+              <div className="space-y-2">
+                {storyboards.map((sb) => {
+                  const thumb = storyboardPrimaryImages.get(sb.asset_id);
+                  return (
+                    <div
                       key={sb.asset_id}
-                      storyboard={sb}
-                      storyboardPrimaryImages={storyboardPrimaryImages}
-                      imageStatuses={imageStatuses}
-                      onEdit={handleEditStoryboard}
-                      onDelete={handleDeleteStoryboard}
-                      onOpenImageGallery={handleOpenImageGallery}
-                      isSelected={selectedStoryboardIds.has(sb.asset_id)}
-                      onToggleSelect={handleToggleSelect}
-                    />
-                  ))}
-                  {storyboards.length === 0 && (
-                    <div className="col-span-full text-gray-500 text-sm p-4 text-center">
-                      暂无分镜，点击上方按钮添加或让AI自动生成
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest('button')) return;
+                        handleEditStoryboard(sb);
+                      }}
+                      className={`w-full rounded-lg border px-3 py-2 flex items-start gap-3 transition cursor-pointer ${selectedStoryboardIds.has(sb.asset_id) ? 'border-yellow-500/70 bg-gray-700/80' : 'border-gray-700 bg-gray-750/70 hover:border-yellow-700/50'}`}
+                    >
+                      <button
+                        onClick={() => handleOpenImageGallery(sb)}
+                        className="w-20 h-12 rounded overflow-hidden flex-shrink-0 bg-gray-700 border border-gray-600"
+                        title="查看分镜图库"
+                      >
+                        {thumb ? (
+                          <img src={thumb} alt={`分镜${sb.sequence}`} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500">无图</div>
+                        )}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-3 mb-1">
+                          <div className="text-sm font-semibold text-yellow-100">#{sb.sequence}</div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleToggleSelect(sb.asset_id); }}
+                              className={`text-xs px-2 py-0.5 rounded ${selectedStoryboardIds.has(sb.asset_id) ? 'bg-yellow-600 text-black' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                            >
+                              {selectedStoryboardIds.has(sb.asset_id) ? '已选' : '选择'}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteStoryboard(sb.asset_id); }}
+                              className="text-xs px-2 py-0.5 rounded bg-red-700 hover:bg-red-600"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-200 whitespace-pre-wrap leading-5">
+                          {sb.description || '（无画面描述）'}
+                          {sb.dialogue ? `\n对白：${sb.dialogue}` : ''}
+                          {sb.action ? `\n动作：${sb.action}` : ''}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </SortableContext>
-            </DndContext>
+                  );
+                })}
+                {storyboards.length === 0 && (
+                  <div className="text-gray-500 text-sm p-4 text-center rounded bg-gray-700/60">
+                    暂无分镜，点击上方按钮添加或让AI自动生成
+                  </div>
+                )}
+              </div>
+            ) : (
+              <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={storyboards.map(sb => sb.asset_id)} strategy={verticalListSortingStrategy}>
+                  <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 320px))' }}>
+                    {storyboards.map((sb) => (
+                      <SortableStoryboardCard
+                        key={sb.asset_id}
+                        storyboard={sb}
+                        storyboardPrimaryImages={storyboardPrimaryImages}
+                        imageStatuses={imageStatuses}
+                        onEdit={handleEditStoryboard}
+                        onDelete={handleDeleteStoryboard}
+                        onOpenImageGallery={handleOpenImageGallery}
+                        isSelected={selectedStoryboardIds.has(sb.asset_id)}
+                        onToggleSelect={handleToggleSelect}
+                      />
+                    ))}
+                    {storyboards.length === 0 && (
+                      <div className="col-span-full text-gray-500 text-sm p-4 text-center">
+                        暂无分镜，点击上方按钮添加或让AI自动生成
+                      </div>
+                    )}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
           </>
         ) : (
           <div className="flex items-center justify-center h-full text-gray-500">

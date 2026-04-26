@@ -6,14 +6,14 @@
 2. create_scene - 创建场景（需要：name, description, location）
 3. create_prop - 创建道具（需要：name, description）- 仅重要道具
 4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**）
+5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**, **dialogue_units（逐条对白原文）**, **dialogue_chars_declared（去空白后的对白总字数）**；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
 
 **资产更新工具（重要！）：**
 6. update_character - 更新现有角色（需要：name用于查找；可选：description/gender/age/appearance/personality/background/image_prompt生图提示词）
 7. update_scene - 更新现有场景（需要：name用于查找；可选：description/location/time_of_day/weather/mood/image_prompt生图提示词）
 8. update_prop - 更新现有道具（需要：name用于查找；可选：description/category/era/material/image_prompt生图提示词）
 9. update_episode - 更新现有剧集（需要：episode_number用于查找，其他字段可选）
-10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description/video_prompt视频提示词/image_prompt分镜生图提示词/character_ids/scene_ids/prop_ids）
+10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description/video_prompt视频提示词/image_prompt分镜生图提示词/character_ids/scene_ids/prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
 
 **删除工具：**
 11. delete_storyboard - 删除单个分镜（需要：storyboard_id或episode_id+sequence，confirmed=true）
@@ -21,7 +21,7 @@
     ⚠️ **重新生成分镜时必须用此工具**，一次确认删全部，不要逐个调用 delete_storyboard
 
 **插入工具：**
-12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description）
+12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description, dialogue_units, dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
 
 **剧本创作工具：**
 13. create_script - 创建新剧本（需要：title）
@@ -34,6 +34,8 @@
 - 只有在用户明确要求"创建"、"添加"、"新建"时，才使用create工具
 - 使用update工具时，通过name找到现有资产，只更新用户提到的字段
 - ⚠️ **资产创建极简原则**：只为剧本中**有姓名、有台词或有专属特写镜头**的主要角色/场景建档。路人、龙套、无名侍卫、无名宫女等**一律不创建资产**。每个 create_character 调用后，工具会返回已有角色列表，必须仔细检查，避免重复和冗余。
+
+⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。
 
 调用格式（必须严格遵循）：
 
@@ -105,7 +107,11 @@ TOOL: create_storyboard
   "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
   "duration": 15,
   "character_ids": ["出场角色的asset_id，必填，从项目已有资产中匹配"],
-  "scene_ids": ["出场场景的asset_id，必填，从项目已有资产中匹配"]
+  "scene_ids": ["出场场景的asset_id，必填，从项目已有资产中匹配"],
+  "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
+  "dialogue_chars_declared": 58,
+  "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
+  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
 }
 END_TOOL
 
@@ -118,7 +124,11 @@ TOOL: update_storyboard
   "description": "△ 简要标注\n原文剧本台词（可选，不更新则省略）",
   "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
   "character_ids": ["角色asset_id"],
-  "scene_ids": ["场景asset_id"]
+  "scene_ids": ["场景asset_id"],
+  "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
+  "dialogue_chars_declared": 62,
+  "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
+  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
 }
 END_TOOL
 
@@ -162,7 +172,11 @@ TOOL: insert_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式）",
   "insert_at_sequence": 4,
-  "description": "△ 高阳入朝请缨\n角色名（语气）：原文台词"
+  "description": "△ 高阳入朝请缨\n角色名（语气）：原文台词",
+  "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
+  "dialogue_chars_declared": 56,
+  "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
+  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
 }
 END_TOOL
 
@@ -258,19 +272,25 @@ END_TOOL
 - 生成分镜时总是先列出计划再执行", "mode": "replace", "description": "设置AI工作流程指令"}
 END_TOOL
 
-22. update_prompt_template - 为生成模板创建/更新"AI自定义"可见模板并激活（用户在提示词设置页可见）
+22. update_prompt_template - 更新生成模板并激活"AI自定义"模板（用户在提示词设置页可见）
     ⚠️ 适用于：用户要求修改分镜图/分镜编辑/视频/图片等【生成按钮的提示词逻辑】时
     ⚠️ 禁止修改 key 为 conversation_tools_desc/conversation_system_prompt 的系统模板
-    ⚠️ **必须先调用 get_prompt_template 读取当前激活模板，再基于它修改后调用**
-    ⚠️ **修改铁律：原模板的所有章节标题、规则条目、示例、禁止清单必须完整保留，不得删除任何章节，不得合并或精简规则条目，不得用自己的理解替换原文表述。只在用户指定的位置插入新内容或修改对应字段，其余内容原样复制。**
-    ⚠️ content 必须是完整可用的模板全文，不能只写修改部分或附加说明
+    ⚠️ **必须先调用 get_prompt_template 读取当前激活模板，再调用 update_prompt_template**
+    ⚠️ 默认 mode=patch（局部编辑），支持 edits[] 一次调用批量修改（推荐，一次确认即可）
+    ⚠️ edits[] 每项使用 replace 语义：old_string/new_string/replace_all/occurrence，按数组顺序依次应用
+    ⚠️ 不传 edits[] 时，仍可用单步 operation（replace_text/delete_text/insert_after_anchor/insert_before_anchor）
+    ⚠️ patch 默认会自动清理重复标点（normalize_punctuation=true）
     ⚠️ 关键词→key 对照同上 get_prompt_template
-    **正确流程**：
+    **正确流程（批量修改，推荐）**：
     步骤1 - 先读取当前模板：TOOL: get_prompt_template
-{"key": "storyboard_image_edit"}
+{"key": "image"}
 END_TOOL
-    步骤2 - 基于读取内容完整重写后调用：TOOL: update_prompt_template
-{"key": "storyboard_image_edit", "content": "## 分镜图生成规范\n\n[完整重写后的模板全文...]", "description": "修改分镜编辑模板：禁用九宫格，改为单张画面输出"}
+    步骤2 - 一次调用批量替换：TOOL: update_prompt_template
+{"key": "image", "mode": "patch", "edits": [{"old_string": "影视角色设定参考图（character design sheet）", "new_string": ""}, {"old_string": "重点呈现面料纹理、刺绣/暗纹、腰带与鞋履等细节", "new_string": "重点呈现面料纹理、刺绣/暗纹、腰带与鞋履等细节，并补充电影级光效描述（体积光、侧逆光、轮廓光）"}], "description": "删除旧词并补充光效要求"}
+END_TOOL
+    **整篇重写（仅在用户明确要求时）**：
+    TOOL: update_prompt_template
+{"key": "storyboard_image_edit", "mode": "replace", "content": "## 分镜图生成规范\n\n[完整重写后的模板全文...]", "description": "按要求重写分镜编辑模板"}
 END_TOOL
 
 23. generate_asset_image - 为单个角色/场景/道具生成图片（文生图，需用户确认，会产生费用）

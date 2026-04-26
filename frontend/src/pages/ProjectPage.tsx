@@ -23,7 +23,8 @@ export default function ProjectPage() {
   const { characters, scenes, props, episodes, fetchAssets, loadedProjectId } = useAssetStore();
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
-  const { theme, toggle: toggleTheme } = useThemeStore();
+  const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
+  const isVipMode = appearanceMode === 'vip';
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
@@ -154,9 +155,9 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+    <div className="h-full min-h-0 bg-gray-900 text-white flex flex-col overflow-hidden">
       {/* 顶部导航 */}
-      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex-shrink-0">
+      <div className={`border-b px-6 py-4 flex-shrink-0 ${isVipMode ? 'vip-nav-shell bg-gray-800 border-gray-700' : 'bg-gray-800 border-gray-700'}`}>
         <div className="flex justify-between items-center">
           <div>
             <button onClick={() => navigate('/')} className="text-gray-400 hover:text-white mr-4">
@@ -164,11 +165,13 @@ export default function ProjectPage() {
             </button>
             <h1 className="text-2xl font-bold inline">{currentProject.name}</h1>
           </div>
-          <div className="flex gap-2 pr-10">
+          <div className="flex items-center gap-2 pr-10">
             <button
               onClick={() => setActiveTab('storyboard')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'storyboard' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm ${
+                activeTab === 'storyboard'
+                  ? 'bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] border border-[#d0ad63] shadow-[0_6px_16px_rgba(216,179,96,0.32)]'
+                  : isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'
               }`}
             >
               <Film size={18} className="inline mr-2" />
@@ -176,8 +179,10 @@ export default function ProjectPage() {
             </button>
             <button
               onClick={() => setActiveTab('assets')}
-              className={`px-4 py-2 rounded-lg transition ${
-                activeTab === 'assets' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm ${
+                activeTab === 'assets'
+                  ? 'bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] border border-[#d0ad63] shadow-[0_6px_16px_rgba(216,179,96,0.32)]'
+                  : isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'
               }`}
             >
               <Users size={18} className="inline mr-2" />
@@ -187,17 +192,17 @@ export default function ProjectPage() {
             <div className="relative" ref={moreMenuRef}>
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className={`px-4 py-2 rounded-lg transition flex items-center gap-1 ${
+                className={`px-4 py-2 rounded-lg transition flex items-center gap-1 text-sm ${
                   ['generate', 'chat'].includes(activeTab)
-                    ? 'bg-blue-600'
-                    : 'bg-gray-700 hover:bg-gray-600'
+                    ? 'bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] border border-[#d0ad63] shadow-[0_6px_16px_rgba(216,179,96,0.32)]'
+                    : isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'
                 }`}
               >
                 更多
                 <ChevronDown size={16} />
               </button>
               {showMoreMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 min-w-[140px]">
+                <div className={`absolute right-0 top-full mt-1 border rounded-lg shadow-lg z-50 min-w-[140px] ${isVipMode ? 'bg-gray-800 border-yellow-700/40' : 'bg-gray-700 border-gray-600'}`}>
                   <button
                     onClick={() => { setActiveTab('generate'); setShowMoreMenu(false); }}
                     className={`w-full flex items-center gap-2 px-4 py-2 text-sm rounded-t-lg hover:bg-gray-600 ${activeTab === 'generate' ? 'text-blue-400' : 'text-gray-200'}`}
@@ -227,27 +232,27 @@ export default function ProjectPage() {
             </div>
             <button
               onClick={handleOpenSettings}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-2"
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm transition ${isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'}`}
               title="设置"
             >
               <Settings size={18} />
               设置
             </button>
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-gray-200 transition-colors"
-              title={theme === 'light' ? '切换暗色主题' : '切换亮色主题'}
-            >
-              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-            </button>
+            {appearanceMode !== 'vip' && (
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-gray-200 transition-colors"
+                title={theme === 'light' ? '切换暗色主题' : '切换亮色主题'}
+              >
+                {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* 主体：内容区 */}
-      <div
-        className="overflow-hidden h-[calc(100vh-73px)]"
-      >
+      <div className="flex-1 min-h-0 overflow-hidden">
         {/* 主内容区 */}
         <div className="h-full overflow-hidden">
           {activeTab === 'chat' && (

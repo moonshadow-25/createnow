@@ -134,7 +134,7 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
         pending = _pending_confirmations.pop(token, None)
         if pending and pending.get("project_id") == project_id:
             # 先发 tool_call 事件，让前端显示工具调用 tips
-            yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'name': pending['tool_name'], 'parameters': pending['parameters']}})}\n\n"
+            yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'id': token, 'name': pending['tool_name'], 'parameters': pending['parameters']}}, ensure_ascii=False)}\n\n"
             # 用户已确认，注入 confirmed=True（供 handler 内部检查使用）
             confirmed_params = {**pending["parameters"], "confirmed": True}
             result = await execute_tool_call(project_id, pending["tool_name"], confirmed_params, pending.get("ai_config"))
@@ -142,7 +142,7 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
             if result.get("success"):
                 yield f"data: {json.dumps({'type': 'content', 'content': f'✓ 已执行：{desc}'})}\n\n"
                 # 发送 tool_result 事件（供前端流水线逻辑使用）
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': pending['tool_name'], 'result': f'✓ 已执行：{desc}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': pending['tool_name'], 'tool_call_id': token, 'result': f'✓ 已执行：{desc}', 'raw_result': result}, ensure_ascii=False)}\n\n"
             else:
                 _err_msg = result.get("error", "未知错误")
                 yield f"data: {json.dumps({'type': 'content', 'content': f'❌ 执行失败：{_err_msg}'})}\n\n"
@@ -312,12 +312,12 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
                 parameters = tool_call.get("parameters", {})
 
                 # 发送工具调用通知给前端
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'name': tool_name, 'parameters': parameters}})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'id': tool_id, 'name': tool_name, 'parameters': parameters}}, ensure_ascii=False)}\n\n"
 
                 # Layer 3：资产 tab 硬拦截分镜工具
                 if not is_storyboard_tab and tool_name in STORYBOARD_TOOLS:
                     error_msg = "❌ 当前界面（资产管理）不允许执行分镜操作"
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': {'success': False, 'error': error_msg}}, ensure_ascii=False)}\n\n"
                     tool_result_msgs.append({
                         "role": "tool",
                         "tool_call_id": tool_id,
@@ -388,11 +388,11 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
                         success_msg = f'✅ {tool_name} 操作成功'
                     # submit_images_for_review 额外携带 submitted 列表，供前端轮询审核状态
                     extra = {}
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': success_msg, **extra})}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': success_msg, 'raw_result': result, **extra}, ensure_ascii=False)}\n\n"
                     tool_results_lines.append(f"{tool_name} → {success_msg}")
                 else:
                     error_msg = f'❌ 失败: {result.get("error", "未知错误")}'
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': result}, ensure_ascii=False)}\n\n"
                     tool_results_lines.append(f"{tool_name} → {error_msg}")
 
                 tool_result_msgs.append({
@@ -601,10 +601,11 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
         created_assets = {"characters": [], "scenes": [], "props": [], "episodes": []}
 
         for tool_call in all_tool_calls:
+            tool_event_id = str(uuid.uuid4())
             tool_name = tool_call.get("name")
             parameters = tool_call.get("parameters", {})
 
-            yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': tool_call})}\n\n"
+            yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'id': tool_event_id, **tool_call}}, ensure_ascii=False)}\n\n"
 
             result = await execute_tool_call(project_id, tool_name, parameters, ai_config)
 
@@ -613,10 +614,10 @@ async def stream_script_analysis(project_id: str, script_content: str, filename:
                 if asset_type in created_assets:
                     created_assets[asset_type].append(result.get("name"))
                 success_msg = f'✅ 成功创建: {result.get("name", tool_name)}'
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': success_msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_event_id, 'result': success_msg, 'raw_result': result}, ensure_ascii=False)}\n\n"
             else:
                 error_msg = f'❌ 失败: {result.get("error", "未知错误")}'
-                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'result': error_msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_event_id, 'result': error_msg, 'raw_result': result}, ensure_ascii=False)}\n\n"
 
         # 发送汇总
         yield f"data: {json.dumps({'type': 'summary', 'created_assets': created_assets})}\n\n"

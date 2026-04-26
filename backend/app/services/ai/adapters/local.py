@@ -82,8 +82,13 @@ class LocalImageAdapter(ImageAdapter):
                 }
 
             data = response.json()
-            image_url = data["data"][0]["url"]
-            revised_prompt = data["data"][0].get("revised_prompt", prompt)
+            first_item = (data.get("data") or [{}])[0]
+            image_url = first_item.get("url")
+            if not image_url and first_item.get("b64_json"):
+                image_url = f"data:image/png;base64,{first_item['b64_json']}"
+            if not image_url:
+                raise ValueError("No image url or b64_json in response")
+            revised_prompt = first_item.get("revised_prompt", prompt)
 
             self._log(
                 operation="image_generate",
@@ -211,8 +216,13 @@ class LocalImageAdapter(ImageAdapter):
 
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
 
-            image_url = data["data"][0]["url"]
-            revised_prompt = data["data"][0].get("revised_prompt", prompt)
+            first_item = (data.get("data") or [{}])[0]
+            image_url = first_item.get("url")
+            if not image_url and first_item.get("b64_json"):
+                image_url = f"data:image/png;base64,{first_item['b64_json']}"
+            if not image_url:
+                raise ValueError("No image url or b64_json in response")
+            revised_prompt = first_item.get("revised_prompt", prompt)
 
             self._log(
                 operation="image_edit",

@@ -1,4 +1,5 @@
 import { StoryboardDetail } from './StoryboardDetail';
+import { useThemeStore } from '@/store/themeStore';
 
 interface Episode {
   episode_id: string;
@@ -46,8 +47,9 @@ export function StoryboardTab({
   multimodalReference = false,
   showAssetSubmit = false,
 }: StoryboardTabProps) {
+  const appearanceMode = useThemeStore(s => s.appearanceMode);
   return (
-    <div className="flex-1 p-6 flex flex-col h-full">
+    <div className={`flex-1 p-6 flex flex-col h-full ${appearanceMode === 'vip' ? 'px-3 py-3' : ''}`}>
       <div className="mb-4 flex-shrink-0">
         <h2 className="text-xl font-semibold mb-2">剧本分镜管理</h2>
         <p className="text-sm text-gray-400">选择剧集，管理分镜，生成分镜图和视频</p>

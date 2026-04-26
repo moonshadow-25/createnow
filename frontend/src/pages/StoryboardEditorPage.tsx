@@ -18,6 +18,7 @@ import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { getImageUrl, getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
+import { useThemeStore } from '@/store/themeStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ export default function StoryboardEditorPage() {
   const openVibeDrama = useVibeDramaStore(s => s.open);
   const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
   const currentProject = useProjectStore(s => s.currentProject);
+  const appearanceMode = useThemeStore(s => s.appearanceMode);
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [storyboard, setStoryboard] = useState<any>(null);
@@ -710,7 +712,7 @@ export default function StoryboardEditorPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col overflow-hidden">
+    <div className={`h-screen bg-gray-900 text-white flex flex-col overflow-hidden ${appearanceMode === 'vip' ? 'vip-editor-shell' : ''}`}>
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-2.5 flex items-center justify-between flex-shrink-0 h-[52px]">
         <div className="flex items-center gap-3">

@@ -3,6 +3,7 @@ import json
 import aiohttp
 import asyncio
 import base64
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Callable, Union
 from datetime import datetime
@@ -323,6 +324,41 @@ class ImageDownloadService:
 
         except Exception as e:
             print(f"[自动下载] 下载图片时出错 {image_id}: {e}")
+            return False
+
+    @staticmethod
+    def save_data_uri_image(
+        project_id: str,
+        image_id: str,
+        data_uri: str,
+        asset_type: str = "character"
+    ) -> bool:
+        """将data URI图片直接保存到本地并更新元数据"""
+        try:
+            match = re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,(.+)$", data_uri, re.DOTALL)
+            if not match:
+                print(f"[自动保存] data URI格式无效 {image_id}")
+                return False
+
+            ext = match.group(1).lower()
+            base64_data = match.group(2)
+
+            if ext == "jpeg":
+                ext = "jpg"
+
+            image_bytes = base64.b64decode(base64_data)
+
+            images_dir = ImageDownloadService.get_images_dir(project_id)
+            filename = f"{image_id}.{ext}"
+            save_path = images_dir / asset_type / filename
+            save_path.write_bytes(image_bytes)
+
+            local_path = f"{asset_type}/{filename}"
+            ImageDownloadService._update_image_metadata(project_id, image_id, local_path)
+            print(f"[自动保存] 成功保存base64图片 {image_id}: {local_path}")
+            return True
+        except Exception as e:
+            print(f"[自动保存] 保存base64图片时出错 {image_id}: {e}")
             return False
 
     @staticmethod

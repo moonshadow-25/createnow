@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Clapperboard, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Clapperboard } from 'lucide-react';
 import { ToolCall, Message, ToolResult } from '@/types';
 import { MessageBubble } from './MessageBubble';
 import { PendingConfirmation } from '@/hooks/useChat';
@@ -27,35 +27,12 @@ const FUNNY_MESSAGES = [
   '🌍 正在查阅全球15秒短视频大数据...',
 ];
 
-const TOOL_LABELS: Record<string, string> = {
-  create_storyboard: '新建分镜',
-  update_storyboard: '更新分镜',
-  delete_storyboard: '删除分镜',
-  create_character: '创建角色',
-  update_character: '更新角色',
-  create_scene: '创建场景',
-  update_scene: '更新场景',
-  create_prop: '创建道具',
-  update_prop: '更新道具',
-  create_episode: '创建集数',
-  update_episode: '更新集数',
-  get_project_info: '读取项目信息',
-  list_assets: '列出资产',
-  generate_storyboard: '生成分镜',
-  get_project_config: '读取项目配置',
-  get_ai_instructions: '读取AI指令',
-  get_prompt_template: '读取模板',
-  update_project_config: '修改项目配置',
-  update_ai_instructions: '更新AI指令',
-  update_prompt_template: '更新提示词模板',
-  update_episode_script: '写入剧本',
-};
-
 interface MessageListProps {
   messages: Message[];
   currentMessage?: string;
   currentThinking?: string;
   toolCalls?: ToolCall[];
+  liveToolResults?: ToolResult[];
   isStreaming: boolean;
   error?: string | null;
   onClearMessages: () => void;
@@ -67,8 +44,10 @@ interface MessageListProps {
 
 export function MessageList({
   messages,
+  currentMessage,
   currentThinking,
   toolCalls,
+  liveToolResults,
   isStreaming,
   error,
   onClearMessages,
@@ -81,7 +60,6 @@ export function MessageList({
   const [hasUserScrolled, setHasUserScrolled] = useState(false);
   const [funnyIdx, setFunnyIdx] = useState(0);
 
-  // 搞笑状态轮播
   useEffect(() => {
     if (!isStreaming) return;
     setFunnyIdx(Math.floor(Math.random() * FUNNY_MESSAGES.length));
@@ -171,50 +149,19 @@ export function MessageList({
               />
             ))}
 
-          {/* 流式处理中：搞笑状态 + 实时工具调用 */}
           {isStreaming && (
-            <div className="flex justify-start">
-              <div className="max-w-sm rounded-xl p-4 bg-gray-800 border border-gray-700 text-gray-100 space-y-3">
-                {/* 已执行的工具调用 */}
-                {toolCalls && toolCalls.length > 0 && (
-                  <div className="space-y-1.5">
-                    {toolCalls.map((tool, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs">
-                        <CheckCircle2 size={12} className="text-green-400 flex-shrink-0" />
-                        <span className="font-mono text-blue-300">
-                          {TOOL_LABELS[tool.name] ?? tool.name}
-                        </span>
-                        {tool.parameters?.sequence && (
-                          <span className="text-gray-500">#{tool.parameters.sequence}</span>
-                        )}
-                        {tool.parameters?.name && (
-                          <span className="text-gray-500 truncate max-w-[6rem]">
-                            {tool.parameters.name}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                    <div className="border-t border-gray-700 mt-2" />
-                  </div>
-                )}
-
-                {/* 搞笑状态文字 */}
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <Clapperboard size={14} className="text-indigo-400 animate-pulse flex-shrink-0" />
-                  <span className="transition-all duration-500">{FUNNY_MESSAGES[funnyIdx]}</span>
-                </div>
-
-                {/* thinking 折叠 */}
-                {currentThinking && (
-                  <details className="mt-1">
-                    <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
-                      思考过程
-                    </summary>
-                    <div className="text-xs text-gray-600 mt-1 whitespace-pre-wrap max-h-32 overflow-y-auto">
-                      {currentThinking}
-                    </div>
-                  </details>
-                )}
+            <div className="space-y-2">
+              <MessageBubble
+                role="assistant"
+                content={currentMessage || ''}
+                toolCalls={toolCalls}
+                toolResults={liveToolResults}
+                thinking={currentThinking}
+                isStreaming={true}
+              />
+              <div className="flex items-center gap-2 text-sm text-gray-400 pl-1">
+                <Clapperboard size={14} className="text-indigo-400 animate-pulse flex-shrink-0" />
+                <span className="transition-all duration-500">{FUNNY_MESSAGES[funnyIdx]}</span>
               </div>
             </div>
           )}

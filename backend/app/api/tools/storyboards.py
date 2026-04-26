@@ -3,7 +3,21 @@ import uuid
 from datetime import datetime
 from typing import Dict
 from app.services import AssetService
-from .helpers import _resolve_episode_id, validate_asset_refs
+from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue
+
+
+def _validate_dialogue_payload(project_id: str, parameters: Dict) -> Dict:
+    check = validate_declared_dialogue(project_id, parameters)
+    if not check.get("ok"):
+        return {
+            "success": False,
+            "error": check.get("error", "对白审计失败"),
+            "dialogue_audit": check.get("audit"),
+        }
+    return {
+        "success": True,
+        "dialogue_audit": check.get("audit"),
+    }
 
 
 async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
@@ -38,6 +52,12 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if ref_err:
         return {"success": False, "error": ref_err}
 
+    dialogue_audit = None
+    dialogue_check = _validate_dialogue_payload(project_id, parameters)
+    if not dialogue_check.get("success"):
+        return dialogue_check
+    dialogue_audit = dialogue_check.get("dialogue_audit")
+
     result = AssetService.save_asset(project_id, "storyboard", parameters)
     existing_ids = episode.get("storyboard_ids", [])
     if result["asset_id"] not in existing_ids:
@@ -45,7 +65,10 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
         episode["updated_at"] = datetime.now().isoformat()
         AssetService.save_asset(project_id, "episode", episode)
 
-    return {"success": True, "storyboard_id": result["asset_id"], "sequence": result.get("sequence"), "description": result.get("description")}
+    response = {"success": True, "storyboard_id": result["asset_id"], "sequence": result.get("sequence"), "description": result.get("description")}
+    if dialogue_audit is not None:
+        response["dialogue_audit"] = dialogue_audit
+    return response
 
 
 async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
@@ -69,9 +92,30 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
 
     if "description" in parameters and parameters["description"]:
         current["description"] = parameters["description"]
-    for key in ["action", "dialogue", "camera_angle", "shot_type", "character_ids", "scene_id", "scene_ids", "prop_ids", "video_prompt", "duration", "image_prompt"]:
+    for key in [
+        "action", "dialogue", "camera_angle", "shot_type", "character_ids", "scene_id", "scene_ids", "prop_ids",
+        "video_prompt", "duration", "image_prompt", "dialogue_units", "dialogue_chars_declared", "short_dialogue_reason", "short_dialogue_time_evidence"
+    ]:
         if key in parameters and parameters[key] is not None:
             current[key] = parameters[key]
+
+    dialogue_audit = None
+    need_dialogue_validation = any(k in parameters for k in ["video_prompt", "dialogue_units", "dialogue_chars_declared", "short_dialogue_reason", "short_dialogue_time_evidence"])
+    if need_dialogue_validation:
+        dialogue_payload = {
+            "episode_id": current.get("episode_id"),
+            "sequence": current.get("sequence"),
+            "description": current.get("description", ""),
+            "video_prompt": current.get("video_prompt", ""),
+            "dialogue_units": current.get("dialogue_units"),
+            "dialogue_chars_declared": current.get("dialogue_chars_declared"),
+            "short_dialogue_reason": current.get("short_dialogue_reason"),
+            "short_dialogue_time_evidence": current.get("short_dialogue_time_evidence"),
+        }
+        dialogue_check = _validate_dialogue_payload(project_id, dialogue_payload)
+        if not dialogue_check.get("success"):
+            return dialogue_check
+        dialogue_audit = dialogue_check.get("dialogue_audit")
 
     ref_err = validate_asset_refs(
         project_id,
@@ -84,7 +128,7 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
 
     current["updated_at"] = datetime.now().isoformat()
     result = AssetService.save_asset(project_id, "storyboard", current)
-    return {
+    response = {
         "success": True, "storyboard_id": result["asset_id"], "sequence": result.get("sequence"),
         "character_ids": result.get("character_ids", []), "scene_ids": result.get("scene_ids", []),
         "prop_ids": result.get("prop_ids", []),
@@ -92,6 +136,9 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
         "image_prompt_preview": (result.get("image_prompt") or "")[:80],
         "updated": True
     }
+    if dialogue_audit is not None:
+        response["dialogue_audit"] = dialogue_audit
+    return response
 
 
 async def handle_delete_storyboard(project_id: str, parameters: Dict) -> Dict:
@@ -233,6 +280,30 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat()
     }
+
+    dialogue_audit = None
+    dialogue_payload = {
+        "episode_id": episode_id,
+        "sequence": insert_at,
+        "description": parameters.get("description", ""),
+        "video_prompt": new_storyboard.get("video_prompt", ""),
+        "dialogue_units": parameters.get("dialogue_units"),
+        "dialogue_chars_declared": parameters.get("dialogue_chars_declared"),
+        "short_dialogue_reason": parameters.get("short_dialogue_reason"),
+        "short_dialogue_time_evidence": parameters.get("short_dialogue_time_evidence"),
+    }
+    dialogue_check = _validate_dialogue_payload(project_id, dialogue_payload)
+    if not dialogue_check.get("success"):
+        return dialogue_check
+    dialogue_audit = dialogue_check.get("dialogue_audit")
+
+    new_storyboard["dialogue_units"] = parameters.get("dialogue_units", [])
+    new_storyboard["dialogue_chars_declared"] = parameters.get("dialogue_chars_declared")
+    if parameters.get("short_dialogue_reason") is not None:
+        new_storyboard["short_dialogue_reason"] = parameters.get("short_dialogue_reason")
+    if parameters.get("short_dialogue_time_evidence") is not None:
+        new_storyboard["short_dialogue_time_evidence"] = parameters.get("short_dialogue_time_evidence")
+
     result = AssetService.save_asset(project_id, "storyboard", new_storyboard)
 
     existing_ids = episode.get("storyboard_ids", [])
@@ -241,5 +312,8 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         episode["updated_at"] = datetime.now().isoformat()
         AssetService.save_asset(project_id, "episode", episode)
 
-    return {"success": True, "storyboard_id": result["asset_id"], "sequence": insert_at,
+    response = {"success": True, "storyboard_id": result["asset_id"], "sequence": insert_at,
             "description": result.get("description"), "moved_count": moved_count}
+    if dialogue_audit is not None:
+        response["dialogue_audit"] = dialogue_audit
+    return response

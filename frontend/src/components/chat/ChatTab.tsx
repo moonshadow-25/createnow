@@ -16,7 +16,7 @@ export function ChatTab({ projectId, episodeId, label, tabName, scriptContent }:
   const [inputMessage, setInputMessage] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
-  const { messages, currentMessage, currentThinking, isStreaming, sendMessage, error, toolCalls, clearMessages, pendingConfirmation, confirmPendingAction, cancelPendingAction } =
+  const { messages, currentMessage, currentThinking, isStreaming, sendMessage, error, toolCalls, liveToolResults, clearMessages, pendingConfirmation, confirmPendingAction, cancelPendingAction } =
     useChat(projectId, { episodeId, label, tabName });
 
   const pendingMessage = useVibeDramaStore(s => s.pendingMessage);
@@ -52,6 +52,7 @@ export function ChatTab({ projectId, episodeId, label, tabName, scriptContent }:
         currentMessage={currentMessage}
         currentThinking={currentThinking}
         toolCalls={toolCalls}
+        liveToolResults={liveToolResults}
         isStreaming={isStreaming}
         error={error}
         onClearMessages={clearMessages}

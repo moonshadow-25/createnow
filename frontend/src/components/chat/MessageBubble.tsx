@@ -28,32 +28,37 @@ export function MessageBubble({
         }`}
       >
         {toolCalls && toolCalls.length > 0 && (
-          <details className="mb-1" open={false}>
-            <summary className="text-xs text-gray-400 cursor-pointer flex items-center gap-1 hover:text-gray-300">
+          <div className="mb-1 space-y-1">
+            <div className="text-xs text-gray-400 flex items-center gap-1">
               <Code size={12} />
               工具调用 ({toolCalls.length})
-            </summary>
-            <div className="text-xs text-gray-500 mt-1 space-y-1">
-              {toolCalls.map((tool: ToolCall, idx: number) => (
-                <div key={idx} className="bg-gray-900 rounded p-2">
-                  <div className="font-mono text-blue-400">{tool.name}</div>
-                  {tool.parameters && (
-                    <pre className="text-xs text-gray-400 mt-1 overflow-x-auto">
-                      {JSON.stringify(tool.parameters, null, 2)}
-                    </pre>
-                  )}
-                  {toolResults?.find(r => r.name === tool.name) && (
-                    <div className="mt-2 pt-2 border-t border-gray-700">
-                      <div className="font-mono text-green-400">result</div>
-                      <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
-                        {JSON.stringify(toolResults.find(r => r.name === tool.name)?.result, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
-          </details>
+            {toolCalls.map((tool: ToolCall, idx: number) => {
+              const matchedResult = toolResults?.find(r => (tool.id && r.tool_call_id === tool.id) || (!tool.id && r.name === tool.name));
+              return (
+                <details key={idx} className="bg-gray-900 rounded" open={false}>
+                  <summary className="px-2 py-1 text-xs text-blue-300 cursor-pointer select-none">
+                    {tool.name}
+                  </summary>
+                  <div className="px-2 pb-2">
+                    {tool.parameters && (
+                      <pre className="text-xs text-gray-400 mt-1 overflow-x-auto">
+                        {JSON.stringify(tool.parameters, null, 2)}
+                      </pre>
+                    )}
+                    {matchedResult && (
+                      <div className="mt-2 pt-2 border-t border-gray-700">
+                        <div className="font-mono text-green-400 text-xs">result</div>
+                        <pre className="text-xs text-gray-300 mt-1 overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify(matchedResult.raw_result ?? matchedResult.result, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
         )}
         {thinking && (
           <details className="mb-1" open={false}>

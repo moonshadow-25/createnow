@@ -122,9 +122,13 @@ TOOLS = [
                 "action": {"type": "string", "description": "动作描述（可选，新版已弃用）"},
                 "dialogue": {"type": "string", "description": "对白（可选，新版已弃用）"},
                 "camera_angle": {"type": "string", "description": "镜头角度（可选，新版已弃用）"},
-                "shot_type": {"type": "string", "description": "镜头类型（可选，新版已弃用）"}
+                "shot_type": {"type": "string", "description": "镜头类型（可选，新版已弃用）"},
+                "dialogue_units": {"type": "array", "items": {"type": "string"}, "description": "AI上报的对白原文数组（逐条）"},
+                "dialogue_chars_declared": {"type": "integer", "description": "AI上报的对白总字数（去空白后）"},
+                "short_dialogue_reason": {"type": "string", "description": "当对白偏短时的原因说明（建议填写）", "enum": ["REACTION_SHOT", "TIMECODE_CONSTRAINT", "SOURCE_TEXT_SHORT"]},
+                "short_dialogue_time_evidence": {"type": "string", "description": "仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填：剧本中包含时间数字的原文片段（如'站着不动3秒'）"}
             },
-            "required": ["episode_id", "sequence"]
+            "required": ["episode_id", "sequence", "dialogue_units", "dialogue_chars_declared"]
         }
     },
     {
@@ -146,7 +150,11 @@ TOOLS = [
                 "action": {"type": "string", "description": "动作描述（可选）"},
                 "dialogue": {"type": "string", "description": "对白（可选）"},
                 "camera_angle": {"type": "string", "description": "镜头角度（可选）"},
-                "shot_type": {"type": "string", "description": "镜头类型（可选）"}
+                "shot_type": {"type": "string", "description": "镜头类型（可选）"},
+                "dialogue_units": {"type": "array", "items": {"type": "string"}, "description": "AI上报的对白原文数组（逐条）"},
+                "dialogue_chars_declared": {"type": "integer", "description": "AI上报的对白总字数（去空白后）"},
+                "short_dialogue_reason": {"type": "string", "description": "当对白偏短时的原因说明（建议填写）", "enum": ["REACTION_SHOT", "TIMECODE_CONSTRAINT", "SOURCE_TEXT_SHORT"]},
+                "short_dialogue_time_evidence": {"type": "string", "description": "仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填：剧本中包含时间数字的原文片段（如'站着不动3秒'）"}
             },
             "required": []
         }
@@ -196,9 +204,13 @@ TOOLS = [
                 "action": {"type": "string", "description": "动作描述（可选）"},
                 "dialogue": {"type": "string", "description": "对白（可选）"},
                 "camera_angle": {"type": "string", "description": "镜头角度（可选）"},
-                "shot_type": {"type": "string", "description": "镜头类型（可选）"}
+                "shot_type": {"type": "string", "description": "镜头类型（可选）"},
+                "dialogue_units": {"type": "array", "items": {"type": "string"}, "description": "AI上报的对白原文数组（逐条）"},
+                "dialogue_chars_declared": {"type": "integer", "description": "AI上报的对白总字数（去空白后）"},
+                "short_dialogue_reason": {"type": "string", "description": "当对白偏短时的原因说明（建议填写）", "enum": ["REACTION_SHOT", "TIMECODE_CONSTRAINT", "SOURCE_TEXT_SHORT"]},
+                "short_dialogue_time_evidence": {"type": "string", "description": "仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填：剧本中包含时间数字的原文片段（如'站着不动3秒'）"}
             },
-            "required": ["episode_id", "insert_at_sequence"]
+            "required": ["episode_id", "insert_at_sequence", "dialogue_units", "dialogue_chars_declared"]
         }
     },
     {
@@ -322,7 +334,7 @@ TOOLS = [
     },
     {
         "name": "update_prompt_template",
-        "description": "为某个生成模板创建或更新'AI自定义'可见模板并激活它。必须先调用 get_prompt_template 读取当前激活模板，再修改后调用此工具。⚠️ 修改铁律：原模板的所有章节标题、规则条目、示例、禁止清单必须完整保留，不得删除任何章节，不得合并或精简规则条目，不得用自己的理解替换原文表述。只允许在用户指定的位置插入新内容或修改对应字段，其余内容原样复制。此操作持久化，需要用户确认。",
+        "description": "更新某个生成模板并激活'AI自定义'模板。必须先调用 get_prompt_template 读取当前激活模板。默认 patch 模式支持一次调用批量 edits（推荐，一次确认即可），仅当用户明确要求整篇重写时才用 replace 模式。此操作持久化，需要用户确认。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -331,10 +343,32 @@ TOOLS = [
                     "description": "模板key。中文对照：分镜图生图（图生图）→storyboard_image_edit，分镜图文生图→storyboard_image，分镜视频提示词→video，资产图片提示词（角色/场景/道具）→image",
                     "enum": ["storyboard_image_edit", "storyboard_image", "video", "image"]
                 },
-                "content": {"type": "string", "description": "完整的模板内容（Markdown格式）。必须包含原模板的所有章节和条目，只在用户要求的地方做改动，其余原文照搬不得精简。"},
+                "mode": {"type": "string", "description": "更新模式：patch（默认，局部编辑）或 replace（整篇替换）", "enum": ["patch", "replace"]},
+                "edits": {
+                    "type": "array",
+                    "description": "patch 推荐：批量替换步骤，按顺序应用。每项支持 old_string/new_string/replace_all/occurrence。提供 edits 时优先使用 edits。",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "old_string": {"type": "string", "description": "要匹配的原文片段"},
+                            "new_string": {"type": "string", "description": "替换后的文本；删除时传空字符串"},
+                            "replace_all": {"type": "boolean", "description": "是否替换全部命中，默认 false"},
+                            "occurrence": {"type": "integer", "description": "replace_all=false 且命中多处时可指定替换第几处（从1开始）"}
+                        },
+                        "required": ["old_string", "new_string"]
+                    }
+                },
+                "operation": {"type": "string", "description": "patch 单步操作类型：replace_text（替换）、delete_text（删除）、insert_after_anchor（在锚点后插入）、insert_before_anchor（在锚点前插入）", "enum": ["replace_text", "delete_text", "insert_after_anchor", "insert_before_anchor"]},
+                "old_string": {"type": "string", "description": "单步 patch 时使用：要匹配的原文片段；也可作为 insert 操作的后备锚点"},
+                "new_string": {"type": "string", "description": "单步 patch 的替换/插入文本，delete_text 可留空"},
+                "anchor": {"type": "string", "description": "insert_* 操作推荐提供：唯一锚点文本（优先于 old_string）"},
+                "replace_all": {"type": "boolean", "description": "单步 replace_text/delete_text 可选：是否替换全部命中，默认 false"},
+                "occurrence": {"type": "integer", "description": "单步 replace_all=false 且命中多处时可指定替换第几处（从1开始）"},
+                "normalize_punctuation": {"type": "boolean", "description": "patch 后是否自动清理重复标点（默认 true）"},
+                "content": {"type": "string", "description": "replace 模式必填：完整模板内容（Markdown）"},
                 "description": {"type": "string", "description": "向用户说明这次修改的意义（将显示在确认弹窗中）"}
             },
-            "required": ["key", "content", "description"]
+            "required": ["key", "description"]
         }
     },
     {

@@ -18,6 +18,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
   const [currentMessage, setCurrentMessage] = useState('');
   const [currentThinking, setCurrentThinking] = useState('');
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [liveToolResults, setLiveToolResults] = useState<ToolResult[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   // 初始化时立即生成本地 UUID，避免首次对话前 conversationId 为空导致保存失败
   const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
@@ -83,6 +84,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
       setCurrentMessage('');
       setCurrentThinking('');
       setToolCalls([]);
+      setLiveToolResults([]);
 
       if (addToHistory) {
         const userMessage: Message = {
@@ -159,9 +161,9 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                     if (chunk.tool_call) {
                       currentToolCalls.push(chunk.tool_call);
                       setToolCalls([...currentToolCalls]);
-                      // 缓存参数供 tool_result 时使用
-                      if (chunk.tool_call.name) {
-                        toolCallParamsCache[chunk.tool_call.name] = chunk.tool_call.parameters;
+                      // 缓存参数供 tool_result 时使用（按 tool_call_id 绑定，避免同名工具串线）
+                      if (chunk.tool_call.id) {
+                        toolCallParamsCache[chunk.tool_call.id] = chunk.tool_call.parameters;
                       }
                       if (chunk.tool_call.name?.startsWith('create_') ||
                           chunk.tool_call.name?.startsWith('update_') ||
@@ -174,14 +176,19 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                     break;
                   case 'tool_result': {
                     const name = chunk.tool_name || '';
+                    const toolCallId = chunk.tool_call_id || '';
                     if (name) {
-                      toolResultsList.push({
+                      const incomingResult: ToolResult = {
                         name,
+                        tool_call_id: toolCallId || undefined,
                         result: chunk.result,
-                      });
+                        raw_result: chunk.raw_result,
+                      };
+                      toolResultsList.push(incomingResult);
+                      setLiveToolResults(prev => [...prev, incomingResult]);
                     }
                     if (name === 'update_storyboard' || name === 'create_storyboard' || name === 'generate_storyboard') {
-                      const params = toolCallParamsCache[name] as any;
+                      const params = (toolCallId ? toolCallParamsCache[toolCallId] : null) as any;
                       const ids: string[] = [];
                       if (params?.asset_id) ids.push(params.asset_id);
                       if (params?.storyboard_id) ids.push(params.storyboard_id);
@@ -222,17 +229,17 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
 
         assistantMessage = filterToolBlocks(assistantMessage);
 
-        if (assistantMessage) {
+        if (assistantMessage || currentToolCalls.length > 0 || toolResultsList.length > 0 || assistantThinking) {
           const toolResults = toolResultsList;
           const aiMessage: Message = {
             message_id: Date.now().toString(),
             role: 'assistant',
-            content: assistantMessage,
+            content: assistantMessage || ' ',
             timestamp: new Date().toISOString(),
             thinking: assistantThinking || undefined,
             tool_calls: currentToolCalls.length > 0 ? currentToolCalls : undefined,
             tool_results: toolResults.length > 0 ? toolResults : undefined,
-            assets_extracted: addToHistory && currentToolCalls.length > 0 ? {
+            assets_extracted: currentToolCalls.length > 0 ? {
               characters: currentToolCalls.filter((t: any) => t?.name === 'create_character').map((t: any) => t.parameters?.name),
               scenes: currentToolCalls.filter((t: any) => t?.name === 'create_scene').map((t: any) => t.parameters?.name),
               props: currentToolCalls.filter((t: any) => t?.name === 'create_prop').map((t: any) => t.parameters?.name),
@@ -257,6 +264,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
         setCurrentMessage('');
         setCurrentThinking('');
         setToolCalls([]);
+        setLiveToolResults([]);
 
         // 处理排队中的下一条消息
         const next = pendingQueueRef.current.shift();
@@ -356,6 +364,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     currentMessage,
     currentThinking,
     toolCalls,
+    liveToolResults,
     isStreaming,
     error,
     sendMessage,
