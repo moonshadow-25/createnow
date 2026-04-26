@@ -100,16 +100,13 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     const requestId = storyboard.asset_id;
     startTask(requestId, 'video_prompt');
     try {
-      const response = await generationApi.generateVideoPrompt(projectId, {
+      const response = await generationApi.generateVideoPromptSubagent(projectId, {
         storyboard_id: storyboard.asset_id,
         description: editDescription,
         dialogue: editDialogue,
         action: editAction,
         shot_type: editShotType,
         camera_angle: editCameraAngle,
-        characters: storyboard.character_ids || [],
-        scene: (storyboard.scene_ids?.length ? storyboard.scene_ids[0] : storyboard.scene_id) || '',
-        props: storyboard.prop_ids || [],
         duration: editDuration,
       });
       const newPrompt = response.data.prompt || '';

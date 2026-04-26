@@ -67,6 +67,17 @@ class VideoReversePromptRequest(BaseModel):
     duration: int = 6
 
 
+class VideoPromptSubagentRequest(BaseModel):
+    """独立子代：单分镜视频提示词生成请求"""
+    storyboard_id: str
+    description: str = ""
+    dialogue: str = ""
+    action: str = ""
+    shot_type: str = ""
+    camera_angle: str = ""
+    duration: Optional[int] = None
+
+
 class VideoGenerateRequest(BaseModel):
     storyboard_id: Optional[str] = None
     episode_id: Optional[str] = None

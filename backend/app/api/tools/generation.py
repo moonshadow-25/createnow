@@ -1,5 +1,6 @@
 """生成工具执行逻辑"""
-from typing import Dict, Optional, Tuple
+from datetime import datetime
+from typing import Dict, Optional, Tuple, List, Any
 from app.services import AssetService
 from app.models.project import normalize_global_style_config
 
@@ -25,6 +26,132 @@ def _parse_global_video_resolution(raw_resolution: str | None) -> Tuple[str, Opt
         return value, None
 
     return value, None
+
+
+def _extract_generated_asset_lines(prompt_text: str) -> List[str]:
+    if not prompt_text:
+        return []
+
+    lines = prompt_text.splitlines()
+    started = False
+    collected: List[str] = []
+
+    for raw in lines:
+        line = raw.strip()
+        if not started:
+            if line.lower().startswith("[asset definitions]"):
+                started = True
+            continue
+
+        if not line:
+            continue
+
+        if line.startswith("[") and not line.startswith("@图"):
+            break
+
+        if line.startswith("@图") or line.startswith("图"):
+            collected.append(line)
+            continue
+
+        if collected:
+            break
+
+    return collected
+
+
+def _compact_asset_line(s: str) -> str:
+    return "".join(str(s or "").split()).replace("（", "(").replace("）", ")")
+
+
+def _build_expected_asset_lines(characters: List[Dict[str, Any]], scenes: List[Dict[str, Any]], props: List[Dict[str, Any]]) -> List[str]:
+    expected: List[str] = []
+    idx = 1
+
+    for char in characters:
+        expected.append(f"@图{idx} ({char.get('name', '')})")
+        idx += 1
+    for scene in scenes:
+        expected.append(f"@图{idx} ({scene.get('name', '')})")
+        idx += 1
+    for prop in props:
+        expected.append(f"@图{idx} ({prop.get('name', '')})")
+        idx += 1
+
+    return expected
+
+
+def _build_ordered_assets(project_id: str, character_ids: List[str], scene_ids: List[str], prop_ids: List[str]) -> Dict[str, Any]:
+    ordered_characters: List[Dict[str, Any]] = []
+    ordered_scenes: List[Dict[str, Any]] = []
+    ordered_props: List[Dict[str, Any]] = []
+
+    for cid in character_ids or []:
+        char = AssetService.load_asset(project_id, "character", cid)
+        if char:
+            ordered_characters.append(char)
+
+    for sid in scene_ids or []:
+        scene = AssetService.load_asset(project_id, "scene", sid)
+        if scene:
+            ordered_scenes.append(scene)
+
+    for pid in prop_ids or []:
+        prop = AssetService.load_asset(project_id, "prop", pid)
+        if prop:
+            ordered_props.append(prop)
+
+    assets_lines: List[str] = []
+    img_idx = 1
+    for char in ordered_characters:
+        assets_lines.append(f"图{img_idx}（角色）：{char.get('name', '')} - {char.get('description', '')}")
+        img_idx += 1
+    for scene in ordered_scenes:
+        assets_lines.append(f"图{img_idx}（场景）：{scene.get('name', '')} - {scene.get('description', '')}")
+        img_idx += 1
+    for prop in ordered_props:
+        assets_lines.append(f"图{img_idx}（道具）：{prop.get('name', '')} - {prop.get('description', '')}")
+        img_idx += 1
+
+    audio_lines: List[str] = []
+    audio_idx = 1
+    for char in ordered_characters:
+        if char.get("voice_audio_id"):
+            audio_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
+            audio_idx += 1
+
+    expected_asset_lines = _build_expected_asset_lines(ordered_characters, ordered_scenes, ordered_props)
+
+    return {
+        "characters": ordered_characters,
+        "scenes": ordered_scenes,
+        "props": ordered_props,
+        "assets_desc": "\n".join(assets_lines) if assets_lines else "（无参考资产）",
+        "audios_desc": "，".join(audio_lines) if audio_lines else "",
+        "expected_asset_lines": expected_asset_lines,
+    }
+
+
+def _evaluate_asset_order(prompt_text: str, expected_lines: List[str]) -> Dict[str, Any]:
+    actual_lines = _extract_generated_asset_lines(prompt_text)
+    expected_compact = [_compact_asset_line(x) for x in expected_lines]
+    actual_compact = [_compact_asset_line(x) for x in actual_lines]
+
+    # 无资产时视为通过
+    if not expected_lines:
+        return {
+            "status": "ok",
+            "expected": expected_lines,
+            "actual": actual_lines,
+            "message": "无资产需要校验",
+        }
+
+    strict_match = expected_compact == actual_compact
+    return {
+        "status": "ok" if strict_match else "mismatch",
+        "expected": expected_lines,
+        "actual": actual_lines,
+        "message": "asset definitions 顺序已校验" if strict_match else "asset definitions 顺序不一致，请按 expected 顺序使用 @图N",
+    }
 
 
 async def handle_generate_asset_image(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
@@ -116,6 +243,14 @@ async def handle_generate_storyboard_image(project_id: str, parameters: Dict) ->
         return {"success": True, "image_id": saved["image_id"], "storyboard_sequence": storyboard.get("sequence")}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+async def handle_generate_storyboard_video_prompt_subagent(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
+    """独立子代：单独为某个分镜生成并保存 video_prompt，附带资产顺序拦截。"""
+    return {
+        "success": False,
+        "error": "请使用 /generate/video-prompt-subagent 接口，该工具入口已保留但不在当前链路启用",
+    }
 
 
 async def handle_generate_storyboard_video(project_id: str, parameters: Dict) -> Dict:

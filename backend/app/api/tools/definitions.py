@@ -433,6 +433,27 @@ TOOLS = [
         }
     },
     {
+        "name": "generate_storyboard_video_prompt_subagent",
+        "description": "独立子代生成：单独为某个分镜生成并保存 video_prompt，并强制校验 @图N 与分镜资产顺序一致。需要用户确认后执行。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "storyboard_id": {"type": "string", "description": "分镜ID"},
+                "storyboard_description": {"type": "string", "description": "可选：覆盖分镜 description 参与本次生成（不写回 description）"},
+                "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成"},
+                "action": {"type": "string", "description": "可选：覆盖分镜 action 参与本次生成"},
+                "shot_type": {"type": "string", "description": "可选：覆盖分镜 shot_type 参与本次生成"},
+                "camera_angle": {"type": "string", "description": "可选：覆盖分镜 camera_angle 参与本次生成"},
+                "duration": {"type": "integer", "description": "可选：覆盖分镜 duration 参与本次生成"},
+                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的角色顺序"},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的场景顺序"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的道具顺序"},
+                "description": {"type": "string", "description": "向用户说明此次生成意义（显示在确认弹窗中）"}
+            },
+            "required": ["storyboard_id", "description"]
+        }
+    },
+    {
         "name": "generate_storyboard_video",
         "description": "为单个分镜生成视频。分镜必须已有 video_prompt 且关联资产有主图。需要用户确认后执行。",
         "parameters": {

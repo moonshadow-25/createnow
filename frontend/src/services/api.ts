@@ -161,6 +161,8 @@ export const generationApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
+  generateVideoPromptSubagent: (projectId: string, data: any) =>
+    api.post(`/projects/${projectId}/generate/video-prompt-subagent`, data),
   generateVideoPrompt: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/video-prompt`, data),
   generateVideoReversePrompt: (projectId: string, data: any) =>

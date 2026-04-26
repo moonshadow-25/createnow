@@ -26,6 +26,7 @@ from .config import (
 from .generation import (
     handle_generate_asset_image, handle_generate_all_asset_images,
     handle_generate_storyboard_image, handle_generate_storyboard_video,
+    handle_generate_storyboard_video_prompt_subagent,
     handle_generate_all_storyboard_images, handle_generate_all_storyboard_videos,
     handle_submit_images_for_review,
 )
@@ -42,6 +43,7 @@ CONFIRMATION_REQUIRED_TOOLS = {
     "generate_asset_image",
     "generate_storyboard_image",
     "generate_storyboard_video",
+    "generate_storyboard_video_prompt_subagent",
     "generate_all_asset_images",
     "generate_all_storyboard_images",
     "generate_all_storyboard_videos",
@@ -95,6 +97,7 @@ _AI_CONFIG_HANDLERS = {
     "generate_storyboard": handle_generate_storyboard,
     "generate_asset_image": handle_generate_asset_image,
     "generate_all_asset_images": handle_generate_all_asset_images,
+    "generate_storyboard_video_prompt_subagent": handle_generate_storyboard_video_prompt_subagent,
 }
 
 

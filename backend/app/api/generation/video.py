@@ -8,7 +8,7 @@ import uuid
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
@@ -17,7 +17,7 @@ from app.services import get_ai_service, PromptService, ImageService, AudioServi
 from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
-from .models import VideoPromptRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest
+from .models import VideoPromptRequest, VideoPromptSubagentRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest
 from .template_helpers import get_active_template
 from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units
 from app.models.project import normalize_global_style_config
@@ -99,6 +99,127 @@ def _is_local_video_api_url(url: str, project_id: str) -> bool:
     return marker in path or marker in url
 
 
+def _build_ordered_assets(project_id: str, character_ids: List[str], scene_ids: List[str], prop_ids: List[str]) -> Dict[str, Any]:
+    from app.services import AssetService
+
+    ordered_characters: List[Dict[str, Any]] = []
+    ordered_scenes: List[Dict[str, Any]] = []
+    ordered_props: List[Dict[str, Any]] = []
+
+    for cid in character_ids or []:
+        char = AssetService.load_asset(project_id, "character", cid)
+        if char:
+            ordered_characters.append(char)
+
+    for sid in scene_ids or []:
+        scene = AssetService.load_asset(project_id, "scene", sid)
+        if scene:
+            ordered_scenes.append(scene)
+
+    for pid in prop_ids or []:
+        prop = AssetService.load_asset(project_id, "prop", pid)
+        if prop:
+            ordered_props.append(prop)
+
+    assets_lines: List[str] = []
+    img_idx = 1
+    for char in ordered_characters:
+        assets_lines.append(f"图{img_idx}（角色）：{char.get('name', '')} - {char.get('description', '')}")
+        img_idx += 1
+    for scene in ordered_scenes:
+        assets_lines.append(f"图{img_idx}（场景）：{scene.get('name', '')} - {scene.get('description', '')}")
+        img_idx += 1
+    for prop in ordered_props:
+        assets_lines.append(f"图{img_idx}（道具）：{prop.get('name', '')} - {prop.get('description', '')}")
+        img_idx += 1
+
+    audio_lines: List[str] = []
+    audio_idx = 1
+    for char in ordered_characters:
+        if char.get("voice_audio_id"):
+            audio_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
+            audio_idx += 1
+
+    return {
+        "characters": ordered_characters,
+        "scenes": ordered_scenes,
+        "props": ordered_props,
+        "assets_desc": "\n".join(assets_lines) if assets_lines else "（无参考资产）",
+        "audios_desc": "，".join(audio_lines) if audio_lines else "",
+    }
+
+
+def _extract_generated_asset_lines(prompt_text: str) -> List[str]:
+    if not prompt_text:
+        return []
+
+    lines = prompt_text.splitlines()
+    started = False
+    collected: List[str] = []
+
+    for raw in lines:
+        line = raw.strip()
+        if not started:
+            if line.lower().startswith("[asset definitions]"):
+                started = True
+            continue
+
+        if not line:
+            continue
+
+        if line.startswith("[") and not line.startswith("@图"):
+            break
+
+        if line.startswith("@图"):
+            collected.append(line)
+            continue
+
+        if line.startswith("图"):
+            collected.append(line)
+            continue
+
+        if collected:
+            break
+
+    return collected
+
+
+def _enforce_asset_order_guard(prompt_text: str, ordered_assets: Dict[str, Any]) -> Dict[str, Any]:
+    expected_lines: List[str] = []
+    img_idx = 1
+
+    for char in ordered_assets.get("characters", []):
+        expected_lines.append(f"@图{img_idx} ({char.get('name', '')})")
+        img_idx += 1
+    for scene in ordered_assets.get("scenes", []):
+        expected_lines.append(f"@图{img_idx} ({scene.get('name', '')})")
+        img_idx += 1
+    for prop in ordered_assets.get("props", []):
+        expected_lines.append(f"@图{img_idx} ({prop.get('name', '')})")
+        img_idx += 1
+
+    actual_lines = _extract_generated_asset_lines(prompt_text)
+
+    def _compact(s: str) -> str:
+        return "".join(str(s or "").split()).replace("（", "(").replace("）", ")")
+
+    expected_compact = [_compact(x) for x in expected_lines]
+    actual_compact = [_compact(x) for x in actual_lines]
+
+    strict_match = bool(expected_lines) and (expected_compact == actual_compact)
+
+    return {
+        "prompt": prompt_text,
+        "asset_order_guard": {
+            "enabled": True,
+            "status": "ok" if strict_match else "mismatch",
+            "expected": expected_lines,
+            "actual": actual_lines,
+            "message": "asset definitions 顺序已校验" if strict_match else "asset definitions 顺序不一致，请按 expected 顺序使用 @图N",
+        }
+    }
+
+
 def _get_createnow_api_key(project: dict) -> str:
     ai_config = project.get("ai_config", {})
     video_config = ai_config.get("video", {})
@@ -157,36 +278,13 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
         "duration": request.duration,
     }
 
-    # 构建 assets_desc（供模板中 {assets_desc} 使用）
-    from app.services import AssetService
-    assets_lines = []
-    img_idx = 1
-    for cid in request.characters:
-        char = AssetService.load_asset(project_id, "character", cid)
-        if char:
-            assets_lines.append(f"图{img_idx}（角色）：{char.get('name', '')} - {char.get('description', '')}")
-            img_idx += 1
-    if request.scene:
-        scene_asset = AssetService.load_asset(project_id, "scene", request.scene)
-        if scene_asset:
-            assets_lines.append(f"图{img_idx}（场景）：{scene_asset.get('name', '')} - {scene_asset.get('description', '')}")
-            img_idx += 1
-    for pid in request.props:
-        prop = AssetService.load_asset(project_id, "prop", pid)
-        if prop:
-            assets_lines.append(f"图{img_idx}（道具）：{prop.get('name', '')} - {prop.get('description', '')}")
-            img_idx += 1
-    assets_desc = "\n".join(assets_lines) if assets_lines else "（无参考资产）"
-
-    # 构建 audios_desc（供模板中 {audios_desc} 使用，告知 LLM 哪些角色有主音色）
-    audio_lines = []
-    audio_idx = 1
-    for cid in request.characters:
-        char = AssetService.load_asset(project_id, "character", cid)
-        if char and char.get("voice_audio_id"):
-            audio_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
-            audio_idx += 1
-    audios_desc = "，".join(audio_lines) if audio_lines else ""
+    scene_ids = [request.scene] if request.scene else []
+    ordered_assets = _build_ordered_assets(
+        project_id,
+        request.characters or [],
+        scene_ids,
+        request.props or [],
+    )
 
     try:
         result = await PromptService.generate_video_prompt(
@@ -203,12 +301,102 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
             custom_template=custom_template,
             language=language,
             style_suffix=style_suffix,
-            assets_desc=assets_desc,
-            audios_desc=audios_desc
+            assets_desc=ordered_assets["assets_desc"],
+            audios_desc=ordered_assets["audios_desc"]
         )
+        guarded = _enforce_asset_order_guard(result, ordered_assets)
         await llm.close()
-        return {"prompt": result}
+        return guarded
 
+    except Exception as e:
+        await llm.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/video-prompt-subagent")
+async def generate_video_prompt_subagent(project_id: str, request: VideoPromptSubagentRequest):
+    """独立子代：单独为某个分镜生成并保存 video_prompt，含资产顺序拦截"""
+    from app.services import ProjectService
+    from .style_presets import get_video_style_suffix
+
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    storyboard = AssetService.load_asset(project_id, "storyboard", request.storyboard_id)
+    if not storyboard:
+        raise HTTPException(status_code=404, detail="Storyboard not found")
+
+    ai_config = project.get("ai_config", {})
+    llm = get_ai_service(ai_config, "llm", project_id)
+    custom_template = get_active_template(ai_config, "video")
+
+    global_style_config = normalize_global_style_config(ai_config.get("global_style_config"))
+    language = global_style_config.get("prompt_language", "zh")
+
+    video_style = global_style_config.get("video_style", {})
+    style_suffix = ""
+    if video_style.get("enabled", True):
+        preset_id = video_style.get("preset_id", "none")
+        custom = video_style.get("custom_suffix", "")
+        if preset_id == "custom":
+            style_suffix = custom
+        elif preset_id != "none":
+            style_suffix = get_video_style_suffix(preset_id, language)
+            if custom:
+                style_suffix = style_suffix + "，" + custom if style_suffix else custom
+
+    character_ids = storyboard.get("character_ids") or []
+    scene_ids = storyboard.get("scene_ids") or ([storyboard["scene_id"]] if storyboard.get("scene_id") else [])
+    prop_ids = storyboard.get("prop_ids") or []
+
+    ordered_assets = _build_ordered_assets(project_id, character_ids, scene_ids, prop_ids)
+
+    try:
+        generated = await PromptService.generate_video_prompt(
+            llm,
+            description=request.description or storyboard.get("description", ""),
+            dialogue=request.dialogue or storyboard.get("dialogue", ""),
+            action=request.action or storyboard.get("action", ""),
+            shot_type=request.shot_type or storyboard.get("shot_type", ""),
+            camera_angle=request.camera_angle or storyboard.get("camera_angle", ""),
+            characters=character_ids,
+            scene=scene_ids[0] if scene_ids else "",
+            props=prop_ids,
+            duration=request.duration or storyboard.get("duration", 6),
+            custom_template=custom_template,
+            language=language,
+            style_suffix=style_suffix,
+            assets_desc=ordered_assets["assets_desc"],
+            audios_desc=ordered_assets["audios_desc"],
+        )
+
+        guarded = _enforce_asset_order_guard(generated, ordered_assets)
+        if guarded["asset_order_guard"]["status"] != "ok":
+            await llm.close()
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "视频提示词资产顺序校验失败",
+                    "asset_order_guard": guarded["asset_order_guard"],
+                    "prompt_preview": (generated or "")[:240],
+                }
+            )
+
+        storyboard["video_prompt"] = generated
+        storyboard["updated_at"] = datetime.now().isoformat()
+        AssetService.save_asset(project_id, "storyboard", storyboard)
+
+        await llm.close()
+        return {
+            "prompt": generated,
+            "saved": True,
+            "storyboard_id": request.storyboard_id,
+            "asset_order_guard": guarded["asset_order_guard"],
+        }
+    except HTTPException:
+        await llm.close()
+        raise
     except Exception as e:
         await llm.close()
         raise HTTPException(status_code=500, detail=str(e))
