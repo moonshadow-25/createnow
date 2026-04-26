@@ -247,10 +247,103 @@ async def handle_generate_storyboard_image(project_id: str, parameters: Dict) ->
 
 async def handle_generate_storyboard_video_prompt_subagent(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
     """独立子代：单独为某个分镜生成并保存 video_prompt，附带资产顺序拦截。"""
-    return {
-        "success": False,
-        "error": "请使用 /generate/video-prompt-subagent 接口，该工具入口已保留但不在当前链路启用",
-    }
+    try:
+        from app.services import ProjectService, get_ai_service, PromptService
+        from app.api.generation.template_helpers import get_active_template
+        from app.api.generation.style_presets import get_video_style_suffix
+
+        storyboard_id = parameters.get("storyboard_id")
+        if not storyboard_id:
+            return {"success": False, "error": "storyboard_id 为必填项"}
+
+        storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+        if not storyboard:
+            return {"success": False, "error": f"分镜不存在: {storyboard_id}"}
+
+        project = ProjectService.get_project(project_id)
+        if not project:
+            return {"success": False, "error": "项目不存在"}
+
+        project_ai_config = ai_config or project.get("ai_config", {})
+        llm = get_ai_service(project_ai_config, "llm", project_id)
+
+        # 统一来源：以分镜已保存资产顺序为准；缺失时允许参数覆盖
+        character_ids = storyboard.get("character_ids") or parameters.get("character_ids") or []
+        scene_ids = storyboard.get("scene_ids") or ([storyboard["scene_id"]] if storyboard.get("scene_id") else [])
+        if not scene_ids and parameters.get("scene_ids"):
+            scene_ids = parameters.get("scene_ids") or []
+        if not scene_ids and parameters.get("scene"):
+            scene_ids = [parameters.get("scene")]
+        prop_ids = storyboard.get("prop_ids") or parameters.get("prop_ids") or []
+
+        ordered_assets = _build_ordered_assets(project_id, character_ids, scene_ids, prop_ids)
+
+        global_style_config = normalize_global_style_config(project_ai_config.get("global_style_config"))
+        language = global_style_config.get("prompt_language", "zh")
+        video_style = global_style_config.get("video_style", {})
+        style_suffix = ""
+        if video_style.get("enabled", True):
+            preset_id = video_style.get("preset_id", "none")
+            custom = video_style.get("custom_suffix", "")
+            if preset_id == "custom":
+                style_suffix = custom
+            elif preset_id != "none":
+                style_suffix = get_video_style_suffix(preset_id, language)
+                if custom:
+                    style_suffix = style_suffix + "，" + custom if style_suffix else custom
+
+        custom_template = get_active_template(project_ai_config, "video")
+
+        result_prompt = await PromptService.generate_video_prompt(
+            llm,
+            description=parameters.get("storyboard_description") or storyboard.get("description", ""),
+            dialogue=parameters.get("dialogue") or storyboard.get("dialogue", ""),
+            action=parameters.get("action") or storyboard.get("action", ""),
+            shot_type=parameters.get("shot_type") or storyboard.get("shot_type", ""),
+            camera_angle=parameters.get("camera_angle") or storyboard.get("camera_angle", ""),
+            characters=character_ids,
+            scene=scene_ids[0] if scene_ids else "",
+            props=prop_ids,
+            duration=int(parameters.get("duration") or storyboard.get("duration") or 6),
+            custom_template=custom_template,
+            language=language,
+            style_suffix=style_suffix,
+            assets_desc=ordered_assets["assets_desc"],
+            audios_desc=ordered_assets["audios_desc"],
+        )
+
+        guard = _evaluate_asset_order(result_prompt, ordered_assets["expected_asset_lines"])
+
+        if guard["status"] != "ok":
+            await llm.close()
+            return {
+                "success": False,
+                "error": "视频提示词资产顺序校验失败：@图N 顺序与分镜资产顺序不一致",
+                "asset_order_guard": {
+                    "enabled": True,
+                    **guard,
+                },
+                "prompt_preview": (result_prompt or "")[:240],
+            }
+
+        storyboard["video_prompt"] = result_prompt
+        storyboard["updated_at"] = datetime.now().isoformat()
+        AssetService.save_asset(project_id, "storyboard", storyboard)
+
+        await llm.close()
+        return {
+            "success": True,
+            "storyboard_id": storyboard_id,
+            "sequence": storyboard.get("sequence"),
+            "video_prompt": result_prompt,
+            "asset_order_guard": {
+                "enabled": True,
+                **guard,
+            },
+            "saved": True,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def handle_generate_storyboard_video(project_id: str, parameters: Dict) -> Dict:
