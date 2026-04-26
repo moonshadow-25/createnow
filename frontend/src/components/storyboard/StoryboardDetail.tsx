@@ -1010,7 +1010,7 @@ export function StoryboardDetail({
 
     // 验证必填字段
     if (!editDescription.trim()) {
-      toast('请填写画面描述', 'error');
+      toast('请填写剧本原文', 'error');;
       return;
     }
 
@@ -1603,7 +1603,7 @@ export function StoryboardDetail({
                           </div>
                         </div>
                         <div className="text-xs text-gray-200 whitespace-pre-wrap leading-5">
-                          {sb.description || '（无画面描述）'}
+                          {sb.description || '（无剧本原文）'}
                           {sb.dialogue ? `\n对白：${sb.dialogue}` : ''}
                           {sb.action ? `\n动作：${sb.action}` : ''}
                         </div>

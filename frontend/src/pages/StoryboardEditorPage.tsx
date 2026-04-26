@@ -932,13 +932,13 @@ export default function StoryboardEditorPage() {
               {contentExpanded && (
                 <div className="space-y-2">
                   <div>
-                    <label className="block text-[10px] text-gray-500 mb-0.5">画面描述 *</label>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">剧本原文 *</label>
                     <textarea
                       value={editDescription}
                       onChange={e => setEditDescription(e.target.value)}
                       className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
                       rows={12}
-                      placeholder="描述画面..."
+                      placeholder="粘贴该镜头对应的剧本原文片段..."
                     />
                   </div>
                   <div>
@@ -1064,7 +1064,7 @@ export default function StoryboardEditorPage() {
                   onClick={() => {
                     if (!storyboard) return;
                     setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
-                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成图片提示词，只更新这一个分镜，不要修改其他分镜。根据以下画面描述生成：\n${editDescription}\n########` });
+                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成图片提示词，只更新这一个分镜，不要修改其他分镜。根据以下剧本原文生成：\n${editDescription}\n########` });
                     openVibeDrama();
                   }}
                   disabled={getTaskStatus(storyboardId, 'prompt') === 'generating'}
@@ -1179,7 +1179,7 @@ export default function StoryboardEditorPage() {
                         if (!storyboard) return;
                         setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
                         openVibeDrama();
-                        setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成视频提示词，只更新这一个分镜，不要修改其他分镜。根据以下画面描述生成：\n${editDescription}\n########` });
+                        setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成视频提示词，只更新这一个分镜，不要修改其他分镜。根据以下剧本原文生成：\n${editDescription}\n########` });
                       }}
                       disabled={getTaskStatus(storyboardId, 'video_prompt') === 'generating' || !editDescription}
                       className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"

@@ -15,6 +15,7 @@ Seedance 2.0 视频提示词应用规范 (V2.0)
 
 二、强制分片：总长≤≤15秒：输出 1 个 Segment。总长 16-30秒：输出 2 个 Segment。总长 31秒以上：依此类推。视觉桥梁锁死：强制执行Segment [N].Shot 1 = Segment [N-1].Shot 5的视觉参数同步。矩阵生成：严格执行“3秒一跳/5段矩阵”格式，确保每一段 100% 独立。视觉保戏：在 Segment [N] 的 Shot 1，必须复述 Segment [N-1] 的 Shot 5 结尾状态。3. 输出规范与标准格式 (Output Standard)[必须遵循的结构要求]：每一段 15 秒提示词必须包含以下四个完整模块：核心剧情摘要：一句话说明本段内容。资产映射 (Asset Definitions)：全量列出本次生成调用的所有 @image 标签。全局风格 (Global Style)：定义画质、光影、相机策略。5段式分镜矩阵 (Matrix Script)：分 5 个 Shot，每个 Shot 包含：【主体动作】、【物理细节】、【镜头语言】。原生视听 (Native Audio)：含对白全文标注 [Lip-sync] 及环境音。
 此外，分片最重要的因素是对白（包括OS）的字数（不含动作描写/镜头语言）：
+- description 字段语义固定为"剧本原文切片"，你只能产出/修改 `video_prompt` 文本，不得输出任何会促使 description 被改写、摘要化的内容。
 - 无明确时标时：目标 40-65 字，优先压在该区间。
 - 后端硬上限为90，超过会被工具拒绝写入。
 - 少于40字时为建议补充区间：建议填写 `short_dialogue_reason` 说明原因；可用枚举值：`REACTION_SHOT` / `TIMECODE_CONSTRAINT` / `SOURCE_TEXT_SHORT`。

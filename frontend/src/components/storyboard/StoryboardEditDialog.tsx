@@ -371,15 +371,15 @@ export function StoryboardEditDialog({
 
               {contentExpanded && (
                 <div className="p-4 pt-0 space-y-3">
-                  {/* 画面描述 */}
+                  {/* 剧本原文 */}
                   <div>
-                    <label className="block text-xs text-gray-400 mb-1">画面描述 *</label>
+                    <label className="block text-xs text-gray-400 mb-1">剧本原文 *</label>
                     <textarea
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                       className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       rows={6}
-                      placeholder="描述画面内容..."
+                      placeholder="粘贴该镜头对应的剧本原文片段..."
                     />
                   </div>
 
@@ -882,13 +882,13 @@ function VideoTab({
         {contentExpanded && (
           <div className="p-4 pt-0 space-y-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">画面描述 *</label>
+              <label className="block text-xs text-gray-400 mb-1">剧本原文 *</label>
               <textarea
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                 rows={6}
-                placeholder="描述画面内容..."
+                placeholder="粘贴该镜头对应的剧本原文片段..."
               />
             </div>
             <div className="grid grid-cols-2 gap-3">

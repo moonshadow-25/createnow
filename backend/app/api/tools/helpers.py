@@ -127,6 +127,50 @@ def _extract_storyboard_script_text(parameters: Dict, units: list[str]) -> str:
     return "\n".join(units)
 
 
+def _extract_description_candidates(description: str) -> list[str]:
+    raw = str(description or "").strip()
+    if not raw:
+        return []
+
+    lines = [line.rstrip() for line in raw.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    full_text = "\n".join(lines).strip()
+    candidates = [full_text]
+
+    if len(lines) > 1:
+        body_text = "\n".join(lines[1:]).strip()
+        if body_text:
+            candidates.append(body_text)
+
+    return [c for c in candidates if c]
+
+
+def validate_storyboard_description_origin(project_id: str, episode_id: str, description: str) -> Dict:
+    desc = str(description or "").strip()
+    if not desc:
+        return {"ok": False, "error": "description 不能为空，必须填写剧本原文片段"}
+
+    script = _load_episode_script(project_id, str(episode_id or "").strip())
+    script_norm = _normalize_text_for_match(script)
+    if not script_norm:
+        return {"ok": False, "error": "当前剧集缺少剧本文本，无法校验 description 是否为原文片段"}
+
+    candidates = _extract_description_candidates(desc)
+    if not candidates:
+        return {"ok": False, "error": "description 不能为空，必须填写剧本原文片段"}
+
+    for text in candidates:
+        if _normalize_text_for_match(text) in script_norm:
+            return {"ok": True}
+
+    return {
+        "ok": False,
+        "error": "description 必须来自当前剧集剧本原文（允许首行简标，后续粘贴原文），禁止改写或摘要",
+    }
+
+
 def _has_time_literal(text: str) -> bool:
     if not text:
         return False

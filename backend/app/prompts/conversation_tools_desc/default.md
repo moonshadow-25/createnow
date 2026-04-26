@@ -35,6 +35,8 @@
 - 使用update工具时，通过name找到现有资产，只更新用户提到的字段
 - ⚠️ **资产创建极简原则**：只为剧本中**有姓名、有台词或有专属特写镜头**的主要角色/场景建档。路人、龙套、无名侍卫、无名宫女等**一律不创建资产**。每个 create_character 调用后，工具会返回已有角色列表，必须仔细检查，避免重复和冗余。
 
+⚠️ **description 原文规则（最高优先级，强制）**：create_storyboard / update_storyboard / insert_storyboard 中的 `description` 必须来自当前剧集剧本原文片段（允许首行简标 + 后续原文），禁止改写、总结、润色；生成 `video_prompt` 或 `image_prompt` 时，禁止改写 `description`。
+
 ⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。
 
 调用格式（必须严格遵循）：

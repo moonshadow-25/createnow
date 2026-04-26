@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict
 from app.services import AssetService
-from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue
+from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue, validate_storyboard_description_origin
 
 
 def _validate_dialogue_payload(project_id: str, parameters: Dict) -> Dict:
@@ -26,7 +26,7 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if "sequence" not in parameters:
         return {"success": False, "error": "缺少必需字段: sequence"}
     if "description" not in parameters:
-        parameters["description"] = (parameters.get("video_prompt", "") or "")[:100]
+        return {"success": False, "error": "缺少必需字段: description（必须填写剧本原文片段）"}
     if "duration" not in parameters:
         parameters["duration"] = 15
 
@@ -39,9 +39,9 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if not episode:
         return {"success": False, "error": "剧集不存在"}
 
-    for sb in AssetService.list_assets(project_id, "storyboard"):
-        if sb.get("episode_id") == episode_id and sb.get("sequence") == parameters["sequence"]:
-            return {"success": False, "error": f"第{parameters['sequence']}镜已存在"}
+    desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
+    if not desc_check.get("ok"):
+        return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
 
     ref_err = validate_asset_refs(
         project_id,
@@ -92,6 +92,11 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
 
     if "description" in parameters and parameters["description"]:
         current["description"] = parameters["description"]
+
+    desc_check = validate_storyboard_description_origin(project_id, current.get("episode_id", ""), current.get("description", ""))
+    if not desc_check.get("ok"):
+        return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
+
     for key in [
         "action", "dialogue", "camera_angle", "shot_type", "character_ids", "scene_id", "scene_ids", "prop_ids",
         "video_prompt", "duration", "image_prompt", "dialogue_units", "dialogue_chars_declared", "short_dialogue_reason", "short_dialogue_time_evidence"
@@ -252,6 +257,10 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
             sb["updated_at"] = datetime.now().isoformat()
             AssetService.save_asset(project_id, "storyboard", sb)
             moved_count += 1
+
+    desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
+    if not desc_check.get("ok"):
+        return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
 
     ref_err = validate_asset_refs(
         project_id,
