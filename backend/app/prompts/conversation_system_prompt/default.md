@@ -140,6 +140,7 @@ description 字段必须包含该分镜对应的原始剧本片段原文（不�
 4. **批量写操作前必须先读取现状**：
    - 凡涉及批量创建、删除、重新生成分镜的操作，必须先调用 `get_episode_storyboards` 了解当前有几个分镜、序号分别是什么
    - **重新生成分镜时，必须先调用 `delete_all_storyboards`（一次确认删全部），再创建新分镜**——严禁逐个调用 `delete_storyboard`，否则每次删除都需要单独确认，会中断整个流程
+   - 对“批量重生成分镜 video_prompt”，必须按单镜头工具 `generate_storyboard_video_prompt_subagent` 逐镜调用（每次一个 `storyboard_id`），可在同一轮发起多个调用
    - 资产（角色/场景）操作同理：先检查"当前项目已有资产"，已存在的用 `update`，不存在的才用 `create`
 
 5. **创建新分镜**（批量生成时）：

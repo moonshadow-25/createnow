@@ -91,7 +91,16 @@ class LLMService(AIService):
 
                     try:
                         data = json.loads(data_str)
-                        choice = data["choices"][0]
+                        choices = data.get("choices")
+                        if not isinstance(choices, list) or not choices:
+                            logger.warning(
+                                "[LLM chat_stream] invalid choices: model=%s keys=%s raw=%s",
+                                self.model,
+                                list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+                                data_str[:500]
+                            )
+                            continue
+                        choice = choices[0]
                         delta = choice.get("delta", {})
                         finish_reason = choice.get("finish_reason") or finish_reason
 
@@ -177,6 +186,7 @@ class LLMService(AIService):
                     }
 
         except Exception as e:
+            logger.exception("[LLM chat_stream] stream error: model=%s", self.model)
             yield {
                 "type": "error",
                 "content": f"Network Error: {str(e)}"
@@ -240,7 +250,21 @@ class LLMService(AIService):
                 duration_ms=duration_ms
             )
 
-            message = data["choices"][0]["message"]
+            choices = data.get("choices")
+            if not isinstance(choices, list) or not choices:
+                logger.error(
+                    "[LLM chat] empty/invalid choices: model=%s status=%s keys=%s raw=%s",
+                    self.model,
+                    response.status_code,
+                    list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+                    json.dumps(data, ensure_ascii=False)[:1000]
+                )
+                return {
+                    "error": "Invalid LLM response: choices is empty",
+                    "raw": data
+                }
+
+            message = choices[0].get("message", {})
 
             # 若模型返回了工具调用
             if message.get("tool_calls"):

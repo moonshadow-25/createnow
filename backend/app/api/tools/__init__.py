@@ -43,7 +43,6 @@ CONFIRMATION_REQUIRED_TOOLS = {
     "generate_asset_image",
     "generate_storyboard_image",
     "generate_storyboard_video",
-    "generate_storyboard_video_prompt_subagent",
     "generate_all_asset_images",
     "generate_all_storyboard_images",
     "generate_all_storyboard_videos",

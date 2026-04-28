@@ -1,8 +1,12 @@
 """生成工具执行逻辑"""
 from datetime import datetime
 from typing import Dict, Optional, Tuple, List, Any
+import logging
+import json
 from app.services import AssetService
 from app.models.project import normalize_global_style_config
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_global_video_resolution(raw_resolution: str | None) -> Tuple[str, Optional[str]]:
@@ -142,14 +146,32 @@ def _evaluate_asset_order(prompt_text: str, expected_lines: List[str]) -> Dict[s
             "status": "ok",
             "expected": expected_lines,
             "actual": actual_lines,
+            "expected_compact": expected_compact,
+            "actual_compact": actual_compact,
+            "mismatches": [],
             "message": "无资产需要校验",
         }
 
     strict_match = expected_compact == actual_compact
+    mismatch_count = max(len(expected_compact), len(actual_compact))
+    mismatches: List[Dict[str, Any]] = []
+    for i in range(mismatch_count):
+        expected_item = expected_lines[i] if i < len(expected_lines) else ""
+        actual_item = actual_lines[i] if i < len(actual_lines) else ""
+        if _compact_asset_line(expected_item) != _compact_asset_line(actual_item):
+            mismatches.append({
+                "index": i,
+                "expected": expected_item,
+                "actual": actual_item,
+            })
+
     return {
         "status": "ok" if strict_match else "mismatch",
         "expected": expected_lines,
         "actual": actual_lines,
+        "expected_compact": expected_compact,
+        "actual_compact": actual_compact,
+        "mismatches": mismatches,
         "message": "asset definitions 顺序已校验" if strict_match else "asset definitions 顺序不一致，请按 expected 顺序使用 @图N",
     }
 
@@ -245,10 +267,10 @@ async def handle_generate_storyboard_image(project_id: str, parameters: Dict) ->
         return {"success": False, "error": str(e)}
 
 
-async def handle_generate_storyboard_video_prompt_subagent(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
-    """独立子代：单独为某个分镜生成并保存 video_prompt，附带资产顺序拦截。"""
+async def _generate_storyboard_video_prompt_subagent_single(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
+    """独立子代：为单个分镜生成并保存 video_prompt，附带资产顺序拦截与自动重试。"""
     try:
-        from app.services import ProjectService, get_ai_service, PromptService
+        from app.services import ProjectService, get_ai_service
         from app.api.generation.template_helpers import get_active_template
         from app.api.generation.style_presets import get_video_style_suffix
 
@@ -294,39 +316,162 @@ async def handle_generate_storyboard_video_prompt_subagent(project_id: str, para
 
         custom_template = get_active_template(project_ai_config, "video")
 
-        result_prompt = await PromptService.generate_video_prompt(
-            llm,
-            description=parameters.get("storyboard_description") or storyboard.get("description", ""),
-            dialogue=parameters.get("dialogue") or storyboard.get("dialogue", ""),
-            action=parameters.get("action") or storyboard.get("action", ""),
-            shot_type=parameters.get("shot_type") or storyboard.get("shot_type", ""),
-            camera_angle=parameters.get("camera_angle") or storyboard.get("camera_angle", ""),
-            characters=character_ids,
-            scene=scene_ids[0] if scene_ids else "",
-            props=prop_ids,
-            duration=int(parameters.get("duration") or storyboard.get("duration") or 6),
-            custom_template=custom_template,
-            language=language,
-            style_suffix=style_suffix,
-            assets_desc=ordered_assets["assets_desc"],
-            audios_desc=ordered_assets["audios_desc"],
+        from app.services.global_prompt_service import get_prompt_content
+
+        episode = AssetService.load_asset(project_id, "episode", storyboard.get("episode_id", "")) if storyboard.get("episode_id") else None
+        script_content = (episode or {}).get("script", "")
+
+        global_style_context = {
+            "prompt_language": language,
+            "video_style": video_style,
+            "style_suffix": style_suffix,
+        }
+
+        request_payload = {
+            "storyboard_id": storyboard_id,
+            "storyboard_description": parameters.get("storyboard_description") or storyboard.get("description", ""),
+            "dialogue": parameters.get("dialogue") or storyboard.get("dialogue", ""),
+            "action": parameters.get("action") or storyboard.get("action", ""),
+            "shot_type": parameters.get("shot_type") or storyboard.get("shot_type", ""),
+            "camera_angle": parameters.get("camera_angle") or storyboard.get("camera_angle", ""),
+            "duration": int(parameters.get("duration") or storyboard.get("duration") or 6),
+            "character_ids": character_ids,
+            "scene_ids": scene_ids,
+            "prop_ids": prop_ids,
+        }
+
+        storyboard_context = {
+            "sequence": storyboard.get("sequence"),
+            "asset_id": storyboard.get("asset_id"),
+            "episode_id": storyboard.get("episode_id"),
+            "description": request_payload["storyboard_description"],
+            "dialogue": request_payload["dialogue"],
+            "action": request_payload["action"],
+            "shot_type": request_payload["shot_type"],
+            "camera_angle": request_payload["camera_angle"],
+            "duration": request_payload["duration"],
+        }
+
+        expected_asset_lines = ordered_assets["expected_asset_lines"]
+        canonical_asset_lines = "\n".join(expected_asset_lines)
+        output_contract = (
+            "你只能输出最终 video_prompt 文本本身，不允许解释、不允许提问、不允许索要补充信息。\n"
+            "必须包含 [Asset Definitions] 段，并严格使用 @图N (资产名) 顺序。\n"
+            "[Asset Definitions] 中每一行名称必须与下方 [CANONICAL_ASSET_LINES] 逐字一致，禁止同义替换、禁止加后缀、禁止改写标点。"
         )
 
-        guard = _evaluate_asset_order(result_prompt, ordered_assets["expected_asset_lines"])
+        def build_subagent_user_prompt(extra_instruction: str = "") -> str:
+            return (
+                "你是视频提示词子代理执行器。你的任务是基于已提供上下文直接生成最终可用 video_prompt。\n"
+                f"{output_contract}\n"
+                f"{extra_instruction}\n\n"
+                "## 全局风格配置\n"
+                f"{json.dumps(global_style_context, ensure_ascii=False, indent=2)}\n\n"
+                "## 当前集完整剧本\n"
+                f"{script_content or '（无剧本）'}\n\n"
+                "## 视频提示词模板（必须遵循）\n"
+                f"{custom_template or get_prompt_content('video', project_ai_config) or ''}\n\n"
+                "## 当前分镜完整数据\n"
+                f"{json.dumps(storyboard_context, ensure_ascii=False, indent=2)}\n\n"
+                "## 分镜引用资产完整信息\n"
+                f"{ordered_assets['assets_desc']}\n"
+                f"{('音频：' + ordered_assets['audios_desc']) if ordered_assets['audios_desc'] else ''}\n\n"
+                "## [CANONICAL_ASSET_LINES]（必须逐字复制到 [Asset Definitions]）\n"
+                f"{canonical_asset_lines}\n\n"
+                "现在直接输出最终 video_prompt。"
+            )
 
-        if guard["status"] != "ok":
+        attempts: List[Dict[str, Any]] = []
+        final_prompt = ""
+        final_guard: Dict[str, Any] = {}
+
+        extra_retry_instruction = (
+            "\n\n【硬性约束-重试】\n"
+            "你必须严格输出 [Asset Definitions] 段，并按给定资产顺序逐行列出。\n"
+            "格式必须为 @图N (资产名)，N 从 1 递增，不得缺失、跳号或交换。\n"
+            "[Asset Definitions] 必须逐字复制 [CANONICAL_ASSET_LINES] 的每一行，禁止改写、别名化、加后缀（如‘场景’）。"
+        )
+
+        first_user_prompt = build_subagent_user_prompt()
+        first_llm_result = await llm.chat([{"role": "user", "content": first_user_prompt}])
+        first_prompt = (first_llm_result.get("content", "") or "").strip()
+
+        first_guard = _evaluate_asset_order(first_prompt, expected_asset_lines)
+        logger.info(
+            "[subagent_debug] storyboard_id=%s attempt=1 guard_status=%s expected=%s actual=%s",
+            storyboard_id,
+            first_guard.get("status"),
+            first_guard.get("expected"),
+            first_guard.get("actual"),
+        )
+        attempts.append({
+            "attempt": 1,
+            "prompt": first_prompt,
+            "prompt_preview": (first_prompt or "")[:500],
+            "model_raw_content_preview": (first_llm_result.get("content", "") or "")[:500],
+            "subagent_user_prompt_preview": first_user_prompt[:800],
+            "asset_order_guard": {
+                "enabled": True,
+                **first_guard,
+            },
+            "retry_enhanced": False,
+        })
+
+        if first_guard["status"] == "ok":
+            final_prompt = first_prompt
+            final_guard = first_guard
+        else:
+            retry_user_prompt = build_subagent_user_prompt(extra_retry_instruction)
+            second_llm_result = await llm.chat([{"role": "user", "content": retry_user_prompt}])
+            second_prompt = (second_llm_result.get("content", "") or "").strip()
+
+            second_guard = _evaluate_asset_order(second_prompt, expected_asset_lines)
+            logger.info(
+                "[subagent_debug] storyboard_id=%s attempt=2 guard_status=%s expected=%s actual=%s",
+                storyboard_id,
+                second_guard.get("status"),
+                second_guard.get("expected"),
+                second_guard.get("actual"),
+            )
+            attempts.append({
+                "attempt": 2,
+                "prompt": second_prompt,
+                "prompt_preview": (second_prompt or "")[:500],
+                "model_raw_content_preview": (second_llm_result.get("content", "") or "")[:500],
+                "subagent_user_prompt_preview": retry_user_prompt[:800],
+                "asset_order_guard": {
+                    "enabled": True,
+                    **second_guard,
+                },
+                "retry_enhanced": True,
+                "retry_instruction": extra_retry_instruction,
+            })
+
+            final_prompt = second_prompt
+            final_guard = second_guard
+
+        if final_guard.get("status") != "ok":
             await llm.close()
             return {
                 "success": False,
                 "error": "视频提示词资产顺序校验失败：@图N 顺序与分镜资产顺序不一致",
+                "storyboard_id": storyboard_id,
+                "sequence": storyboard.get("sequence"),
+                "request": request_payload,
+                "ordered_assets": {
+                    "expected_asset_lines": expected_asset_lines,
+                    "assets_desc": ordered_assets["assets_desc"],
+                    "audios_desc": ordered_assets["audios_desc"],
+                },
                 "asset_order_guard": {
                     "enabled": True,
-                    **guard,
+                    **final_guard,
                 },
-                "prompt_preview": (result_prompt or "")[:240],
+                "attempt_count": len(attempts),
+                "attempts": attempts,
             }
 
-        storyboard["video_prompt"] = result_prompt
+        storyboard["video_prompt"] = final_prompt
         storyboard["updated_at"] = datetime.now().isoformat()
         AssetService.save_asset(project_id, "storyboard", storyboard)
 
@@ -335,13 +480,44 @@ async def handle_generate_storyboard_video_prompt_subagent(project_id: str, para
             "success": True,
             "storyboard_id": storyboard_id,
             "sequence": storyboard.get("sequence"),
-            "video_prompt": result_prompt,
+            "request": request_payload,
+            "ordered_assets": {
+                "expected_asset_lines": expected_asset_lines,
+                "assets_desc": ordered_assets["assets_desc"],
+                "audios_desc": ordered_assets["audios_desc"],
+            },
+            "video_prompt": final_prompt,
             "asset_order_guard": {
                 "enabled": True,
-                **guard,
+                **final_guard,
             },
+            "attempt_count": len(attempts),
+            "attempts": attempts,
             "saved": True,
         }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def handle_generate_storyboard_video_prompt_subagent(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
+    """独立子代：仅处理单个分镜（原子能力）。批量由主对话层发起多个并行调用。"""
+    try:
+        storyboard_id = parameters.get("storyboard_id")
+        if not storyboard_id:
+            return {"success": False, "error": "storyboard_id 为必填项（单次仅处理一个分镜）"}
+
+        if parameters.get("storyboard_ids") or parameters.get("episode_id"):
+            return {
+                "success": False,
+                "error": "该工具为单分镜原子工具：批量请让主代理同轮发起多个 storyboard_id 调用"
+            }
+
+        single_parameters = dict(parameters)
+        single_parameters["storyboard_id"] = storyboard_id
+        single_parameters.pop("storyboard_ids", None)
+        single_parameters.pop("episode_id", None)
+
+        return await _generate_storyboard_video_prompt_subagent_single(project_id, single_parameters, ai_config)
     except Exception as e:
         return {"success": False, "error": str(e)}
 

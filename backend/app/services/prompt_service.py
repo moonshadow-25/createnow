@@ -421,19 +421,24 @@ class PromptService:
 
         result = await llm.chat([{"role": "user", "content": prompt}])
 
+        content = (result.get("content", "") or "").strip()
+
         try:
-            content = result.get("content", "")
             import re
             json_match = re.search(r'\{.*\}', content, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
-                prompt_result = data.get("prompt", description)
-                # 如果模板返回数组（多段视频），序列化为 JSON 字符串
+                prompt_result = data.get("prompt")
                 if isinstance(prompt_result, list):
                     return json.dumps(prompt_result, ensure_ascii=False)
-                return prompt_result
-        except:
+                if isinstance(prompt_result, str) and prompt_result.strip():
+                    return prompt_result.strip()
+        except Exception:
             pass
+
+        # 非 JSON 返回时，直接使用模型原始文本，避免错误回退到 description
+        if content:
+            return content
 
         return description
 

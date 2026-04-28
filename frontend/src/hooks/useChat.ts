@@ -178,6 +178,15 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                     const name = chunk.tool_name || '';
                     const toolCallId = chunk.tool_call_id || '';
                     if (name) {
+                      console.log('[tool_result_debug] incoming', {
+                        name,
+                        toolCallId,
+                        result: chunk.result,
+                        rawResultKeys: chunk.raw_result ? Object.keys(chunk.raw_result) : [],
+                        attemptCount: chunk.raw_result?.attempt_count,
+                        hasAttempts: Array.isArray(chunk.raw_result?.attempts) && chunk.raw_result.attempts.length > 0,
+                        hasGuard: !!chunk.raw_result?.asset_order_guard,
+                      });
                       const incomingResult: ToolResult = {
                         name,
                         tool_call_id: toolCallId || undefined,

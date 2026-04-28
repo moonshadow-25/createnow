@@ -434,11 +434,11 @@ TOOLS = [
     },
     {
         "name": "generate_storyboard_video_prompt_subagent",
-        "description": "独立子代生成：单独为某个分镜生成并保存 video_prompt，并强制校验 @图N 与分镜资产顺序一致。需要用户确认后执行。",
+        "description": "独立子代生成：仅处理单个分镜并保存 video_prompt，强制校验 @图N 与分镜资产顺序一致。批量时请在同一轮发起多个该工具调用（每次一个 storyboard_id）。执行时无需确认。",
         "parameters": {
             "type": "object",
             "properties": {
-                "storyboard_id": {"type": "string", "description": "分镜ID"},
+                "storyboard_id": {"type": "string", "description": "分镜ID（单次仅支持一个）"},
                 "storyboard_description": {"type": "string", "description": "可选：覆盖分镜 description 参与本次生成（不写回 description）"},
                 "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成"},
                 "action": {"type": "string", "description": "可选：覆盖分镜 action 参与本次生成"},
@@ -450,7 +450,7 @@ TOOLS = [
                 "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的道具顺序"},
                 "description": {"type": "string", "description": "向用户说明此次生成意义（显示在确认弹窗中）"}
             },
-            "required": ["storyboard_id", "description"]
+            "required": ["storyboard_id"]
         }
     },
     {

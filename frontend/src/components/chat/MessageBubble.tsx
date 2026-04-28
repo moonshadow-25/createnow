@@ -34,9 +34,20 @@ export function MessageBubble({
               工具调用 ({toolCalls.length})
             </div>
             {toolCalls.map((tool: ToolCall, idx: number) => {
-              const matchedResult = toolResults?.find(r => (tool.id && r.tool_call_id === tool.id) || (!tool.id && r.name === tool.name));
+              const sameNameCallsBefore = toolCalls
+                .slice(0, idx + 1)
+                .filter(t => t.name === tool.name).length;
+              const fallbackByOrder = toolResults
+                ?.filter(r => r.name === tool.name)[sameNameCallsBefore - 1];
+              const matchedResult = toolResults?.find(r =>
+                (tool.id && r.tool_call_id === tool.id) || (!tool.id && r.name === tool.name)
+              ) || fallbackByOrder;
+              const isFailed =
+                String(matchedResult?.result || '').includes('❌') ||
+                matchedResult?.raw_result?.success === false;
+
               return (
-                <details key={idx} className="bg-gray-900 rounded" open={false}>
+                <details key={idx} className="bg-gray-900 rounded" open={isFailed}>
                   <summary className="px-2 py-1 text-xs text-blue-300 cursor-pointer select-none">
                     {tool.name}
                   </summary>
@@ -47,9 +58,11 @@ export function MessageBubble({
                       </pre>
                     )}
                     {matchedResult && (
-                      <div className="mt-2 pt-2 border-t border-gray-700">
-                        <div className="font-mono text-green-400 text-xs">result</div>
-                        <pre className="text-xs text-gray-300 mt-1 overflow-x-auto whitespace-pre-wrap">
+                      <div className="mt-2 pt-2 border-t border-gray-700 space-y-2">
+                        <div className={`font-mono text-xs ${isFailed ? 'text-red-400' : 'text-green-400'}`}>
+                          {String(matchedResult.result || '')}
+                        </div>
+                        <pre className="text-xs text-gray-300 overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify(matchedResult.raw_result ?? matchedResult.result, null, 2)}
                         </pre>
                       </div>

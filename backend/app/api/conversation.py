@@ -2,10 +2,12 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
+import asyncio
 import json
 import re
 import uuid
 import time
+import logging
 from datetime import datetime
 
 from app.services import get_ai_service, AssetService, ScriptService, ScriptParser
@@ -13,6 +15,7 @@ from app.api.tools import OPENAI_TOOLS, ASSET_ONLY_TOOLS, CONFIRMATION_REQUIRED_
 from app.models.project import normalize_global_style_config
 
 router = APIRouter(prefix="/projects/{project_id}/chat", tags=["conversation"])
+logger = logging.getLogger(__name__)
 
 # 待确认操作缓存（进程内存，TTL 10 分钟）
 _pending_confirmations: Dict[str, Dict] = {}  # token → {tool_name, parameters, project_id, ts}
@@ -145,7 +148,21 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
                 yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': pending['tool_name'], 'tool_call_id': token, 'result': f'✓ 已执行：{desc}', 'raw_result': result}, ensure_ascii=False)}\n\n"
             else:
                 _err_msg = result.get("error", "未知错误")
-                yield f"data: {json.dumps({'type': 'content', 'content': f'❌ 执行失败：{_err_msg}'})}\n\n"
+                detail_lines = []
+                guard = result.get("asset_order_guard") or {}
+                attempts = result.get("attempts") or []
+                if guard:
+                    detail_lines.append(f"expected: {json.dumps(guard.get('expected') or [], ensure_ascii=False)}")
+                    detail_lines.append(f"actual: {json.dumps(guard.get('actual') or [], ensure_ascii=False)}")
+                    detail_lines.append(f"mismatches: {json.dumps(guard.get('mismatches') or [], ensure_ascii=False)}")
+                if attempts:
+                    detail_lines.append(f"attempt_count: {len(attempts)}")
+                _final_err_text = f"❌ 执行失败：{_err_msg}"
+                if detail_lines:
+                    _final_err_text += "\n" + "\n".join(detail_lines)
+                yield f"data: {json.dumps({'type': 'content', 'content': _final_err_text}, ensure_ascii=False)}\n\n"
+                # 失败时也必须发 tool_result + raw_result，前端才能拿到完整诊断
+                yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': pending['tool_name'], 'tool_call_id': token, 'result': _final_err_text, 'raw_result': result}, ensure_ascii=False)}\n\n"
         else:
             yield f"data: {json.dumps({'type': 'content', 'content': '确认已过期或无效。'})}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'conversation_id': conversation_id or ''})}\n\n"
@@ -306,103 +323,209 @@ async def stream_conversation(project_id: str, message: str, conversation_id: Op
             tool_result_msgs = []
             tool_results_lines = []  # 用于 fallback 模式的文本汇总
 
-            for tool_call in tool_calls:
-                tool_id = tool_call.get("id", str(uuid.uuid4()))
-                tool_name = tool_call.get("name", "")
-                parameters = tool_call.get("parameters", {})
-
-                # 发送工具调用通知给前端
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'id': tool_id, 'name': tool_name, 'parameters': parameters}}, ensure_ascii=False)}\n\n"
-
-                # Layer 3：资产 tab 硬拦截分镜工具
-                if not is_storyboard_tab and tool_name in STORYBOARD_TOOLS:
-                    error_msg = "❌ 当前界面（资产管理）不允许执行分镜操作"
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': {'success': False, 'error': error_msg}}, ensure_ascii=False)}\n\n"
-                    tool_result_msgs.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": f"success: False\nerror: {error_msg}"  # 使用文本格式
-                    })
-                    tool_results_lines.append(f"{tool_name} → {error_msg}")
-                    continue
-
-                # Layer 4：需要用户确认的工具 — 暂存并通知前端，本轮停止执行
-                if tool_name in CONFIRMATION_REQUIRED_TOOLS:
-                    token = str(uuid.uuid4())[:8]
-                    _pending_confirmations[token] = {
-                        "tool_name": tool_name,
-                        "parameters": parameters,
-                        "project_id": project_id,
-                        "ai_config": ai_config,
-                        "ts": time.time(),
-                    }
-                    desc = parameters.get("description", f"执行 {tool_name}")
-                    yield f"data: {json.dumps({'type': 'confirmation_required', 'token': token, 'tool_name': tool_name, 'description': desc})}\n\n"
-                    tool_results_lines.append(f"{tool_name} → [等待用户确认]")
-                    # 追加 tool 角色消息，告诉 LLM 此操作等待确认
-                    tool_result_msgs.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": "pending_confirmation: 操作已提交用户确认，等待确认后执行"
-                    })
-                    # 中断本轮 agentic loop（不继续处理后续工具调用）
-                    break
-
-                # 执行工具
-                result = await execute_tool_call(project_id, tool_name, parameters, ai_config)
-
-                # 格式化工具结果为易读文本（保留真实换行）
-                def format_tool_result(result: Dict) -> str:
-                    """将工具结果格式化为易读的文本格式，保留换行符"""
-                    if not isinstance(result, dict):
-                        return str(result)
-
-                    lines = []
-                    for key, value in result.items():
-                        if isinstance(value, (list, dict)):
-                            # 复杂结构用 JSON 格式
-                            lines.append(f"{key}: {json.dumps(value, ensure_ascii=False, indent=2)}")
-                        elif isinstance(value, str) and '\n' in value:
-                            # 多行字符串保持原样
-                            lines.append(f"{key}:\n{value}")
-                        else:
-                            lines.append(f"{key}: {value}")
-                    return "\n".join(lines)
-
-                result_text = format_tool_result(result)
-
-                # 发送工具执行结果给前端
-                if result.get("success"):
-                    if tool_name == "create_storyboard":
-                        success_msg = f'✅ 成功创建第{result.get("sequence", "")}镜'
-                    elif tool_name == "insert_storyboard":
-                        moved = result.get("moved_count", 0)
-                        success_msg = f'✅ 成功在第{result.get("sequence", "")}镜位置插入新分镜' + (f'，已将{moved}个后续分镜后移' if moved > 0 else '')
-                    elif tool_name == "update_storyboard":
-                        success_msg = f'✅ 成功更新第{result.get("sequence", "")}镜'
-                    elif tool_name == "delete_storyboard":
-                        success_msg = f'✅ 成功删除分镜'
-                    elif "name" in result:
-                        success_msg = f'✅ 成功创建: {result.get("name", tool_name)}'
+            def format_tool_result(result: Dict) -> str:
+                """将工具结果格式化为易读的文本格式，保留换行符"""
+                if not isinstance(result, dict):
+                    return str(result)
+                lines = []
+                for key, value in result.items():
+                    if isinstance(value, (list, dict)):
+                        lines.append(f"{key}: {json.dumps(value, ensure_ascii=False, indent=2)}")
+                    elif isinstance(value, str) and '\n' in value:
+                        lines.append(f"{key}:\n{value}")
                     else:
-                        success_msg = f'✅ {tool_name} 操作成功'
-                    # submit_images_for_review 额外携带 submitted 列表，供前端轮询审核状态
-                    extra = {}
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': success_msg, 'raw_result': result, **extra}, ensure_ascii=False)}\n\n"
-                    tool_results_lines.append(f"{tool_name} → {success_msg}")
-                else:
-                    error_msg = f'❌ 失败: {result.get("error", "未知错误")}'
-                    yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': result}, ensure_ascii=False)}\n\n"
-                    tool_results_lines.append(f"{tool_name} → {error_msg}")
+                        lines.append(f"{key}: {value}")
+                return "\n".join(lines)
 
-                tool_result_msgs.append({
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": result_text  # 使用格式化的文本，而不是 JSON
-                })
+            def build_error_message(tool_name: str, result: Dict) -> str:
+                error_msg = f'❌ 失败: {result.get("error", "未知错误")}'
+                if tool_name == "generate_storyboard_video_prompt_subagent":
+                    detail_lines = []
+                    guard = result.get("asset_order_guard") or {}
+                    attempts = result.get("attempts") or []
+                    if guard:
+                        expected = guard.get("expected") or []
+                        actual = guard.get("actual") or []
+                        mismatches = guard.get("mismatches") or []
+                        detail_lines.append(f"expected: {json.dumps(expected, ensure_ascii=False)}")
+                        detail_lines.append(f"actual: {json.dumps(actual, ensure_ascii=False)}")
+                        detail_lines.append(f"mismatches: {json.dumps(mismatches, ensure_ascii=False)}")
+                    if attempts:
+                        detail_lines.append(f"attempt_count: {len(attempts)}")
+                        last_attempt = attempts[-1]
+                        last_preview = (last_attempt.get("prompt_preview") or "")
+                        if last_preview:
+                            detail_lines.append(f"last_prompt_preview: {last_preview[:240]}")
+                    if detail_lines:
+                        error_msg = error_msg + "\n" + "\n".join(detail_lines)
+                return error_msg
 
-            # 若有待确认操作，终止 agentic loop（不再向 LLM 发起新一轮）
-            pending_confirm_triggered = any("pending_confirmation" in m.get("content", "") for m in tool_result_msgs)
+            pending_confirm_triggered = False
+            parallel_tool_name = "generate_storyboard_video_prompt_subagent"
+            can_parallel_subagent = len(tool_calls) > 1 and all((tc.get("name", "") == parallel_tool_name) for tc in tool_calls)
+
+            if can_parallel_subagent:
+                exec_items = []
+                for tool_call in tool_calls:
+                    tool_id = tool_call.get("id", str(uuid.uuid4()))
+                    tool_name = tool_call.get("name", "")
+                    parameters = tool_call.get("parameters", {})
+
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'id': tool_id, 'name': tool_name, 'parameters': parameters}}, ensure_ascii=False)}\n\n"
+
+                    if not is_storyboard_tab and tool_name in STORYBOARD_TOOLS:
+                        error_msg = "❌ 当前界面（资产管理）不允许执行分镜操作"
+                        yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': {'success': False, 'error': error_msg}}, ensure_ascii=False)}\n\n"
+                        tool_result_msgs.append({"role": "tool", "tool_call_id": tool_id, "content": f"success: False\nerror: {error_msg}"})
+                        tool_results_lines.append(f"{tool_name} → {error_msg}")
+                        continue
+
+                    if tool_name in CONFIRMATION_REQUIRED_TOOLS:
+                        token = str(uuid.uuid4())[:8]
+                        _pending_confirmations[token] = {
+                            "tool_name": tool_name,
+                            "parameters": parameters,
+                            "project_id": project_id,
+                            "ai_config": ai_config,
+                            "ts": time.time(),
+                        }
+                        desc = parameters.get("description", f"执行 {tool_name}")
+                        yield f"data: {json.dumps({'type': 'confirmation_required', 'token': token, 'tool_name': tool_name, 'description': desc})}\n\n"
+                        tool_results_lines.append(f"{tool_name} → [等待用户确认]")
+                        tool_result_msgs.append({"role": "tool", "tool_call_id": tool_id, "content": "pending_confirmation: 操作已提交用户确认，等待确认后执行"})
+                        pending_confirm_triggered = True
+                        break
+
+                    exec_items.append({"tool_id": tool_id, "tool_name": tool_name, "parameters": parameters})
+
+                if not pending_confirm_triggered and exec_items:
+                    semaphore = asyncio.Semaphore(4)
+
+                    async def _run_one(item: Dict[str, Any]) -> Dict[str, Any]:
+                        async with semaphore:
+                            result = await execute_tool_call(project_id, item["tool_name"], item["parameters"], ai_config)
+                            return {"tool_id": item["tool_id"], "tool_name": item["tool_name"], "result": result}
+
+                    run_results = await asyncio.gather(*[_run_one(item) for item in exec_items], return_exceptions=True)
+
+                    for rr in run_results:
+                        if isinstance(rr, Exception):
+                            synthetic = {"success": False, "error": str(rr)}
+                            tool_id = ""
+                            tool_name = parallel_tool_name
+                            result = synthetic
+                        else:
+                            tool_id = rr["tool_id"]
+                            tool_name = rr["tool_name"]
+                            result = rr["result"]
+
+                        logger.info(
+                            "[tool_result_debug] tool=%s success=%s keys=%s attempt_count=%s has_attempts=%s has_guard=%s",
+                            tool_name,
+                            result.get("success") if isinstance(result, dict) else None,
+                            list(result.keys()) if isinstance(result, dict) else [],
+                            result.get("attempt_count") if isinstance(result, dict) else None,
+                            bool(result.get("attempts")) if isinstance(result, dict) else False,
+                            bool(result.get("asset_order_guard")) if isinstance(result, dict) else False,
+                        )
+
+                        result_text = format_tool_result(result)
+
+                        if isinstance(result, dict) and result.get("success"):
+                            success_msg = f'✅ {tool_name} 操作成功'
+                            yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': success_msg, 'raw_result': result}, ensure_ascii=False)}\n\n"
+                            tool_results_lines.append(f"{tool_name} → {success_msg}")
+                        else:
+                            safe_result = result if isinstance(result, dict) else {"error": str(result)}
+                            error_msg = build_error_message(tool_name, safe_result)
+                            yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': safe_result}, ensure_ascii=False)}\n\n"
+                            tool_results_lines.append(f"{tool_name} → {error_msg}")
+
+                        tool_result_msgs.append({"role": "tool", "tool_call_id": tool_id, "content": result_text})
+
+            else:
+                for tool_call in tool_calls:
+                    tool_id = tool_call.get("id", str(uuid.uuid4()))
+                    tool_name = tool_call.get("name", "")
+                    parameters = tool_call.get("parameters", {})
+
+                    # 发送工具调用通知给前端
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool_call': {'id': tool_id, 'name': tool_name, 'parameters': parameters}}, ensure_ascii=False)}\n\n"
+
+                    # Layer 3：资产 tab 硬拦截分镜工具
+                    if not is_storyboard_tab and tool_name in STORYBOARD_TOOLS:
+                        error_msg = "❌ 当前界面（资产管理）不允许执行分镜操作"
+                        yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': {'success': False, 'error': error_msg}}, ensure_ascii=False)}\n\n"
+                        tool_result_msgs.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": f"success: False\nerror: {error_msg}"
+                        })
+                        tool_results_lines.append(f"{tool_name} → {error_msg}")
+                        continue
+
+                    # Layer 4：需要用户确认的工具 — 暂存并通知前端，本轮停止执行
+                    if tool_name in CONFIRMATION_REQUIRED_TOOLS:
+                        token = str(uuid.uuid4())[:8]
+                        _pending_confirmations[token] = {
+                            "tool_name": tool_name,
+                            "parameters": parameters,
+                            "project_id": project_id,
+                            "ai_config": ai_config,
+                            "ts": time.time(),
+                        }
+                        desc = parameters.get("description", f"执行 {tool_name}")
+                        yield f"data: {json.dumps({'type': 'confirmation_required', 'token': token, 'tool_name': tool_name, 'description': desc})}\n\n"
+                        tool_results_lines.append(f"{tool_name} → [等待用户确认]")
+                        tool_result_msgs.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": "pending_confirmation: 操作已提交用户确认，等待确认后执行"
+                        })
+                        pending_confirm_triggered = True
+                        break
+
+                    result = await execute_tool_call(project_id, tool_name, parameters, ai_config)
+
+                    logger.info(
+                        "[tool_result_debug] tool=%s success=%s keys=%s attempt_count=%s has_attempts=%s has_guard=%s",
+                        tool_name,
+                        result.get("success"),
+                        list(result.keys()) if isinstance(result, dict) else [],
+                        result.get("attempt_count") if isinstance(result, dict) else None,
+                        bool(result.get("attempts")) if isinstance(result, dict) else False,
+                        bool(result.get("asset_order_guard")) if isinstance(result, dict) else False,
+                    )
+
+                    result_text = format_tool_result(result)
+
+                    if result.get("success"):
+                        if tool_name == "create_storyboard":
+                            success_msg = f'✅ 成功创建第{result.get("sequence", "")}镜'
+                        elif tool_name == "insert_storyboard":
+                            moved = result.get("moved_count", 0)
+                            success_msg = f'✅ 成功在第{result.get("sequence", "")}镜位置插入新分镜' + (f'，已将{moved}个后续分镜后移' if moved > 0 else '')
+                        elif tool_name == "update_storyboard":
+                            success_msg = f'✅ 成功更新第{result.get("sequence", "")}镜'
+                        elif tool_name == "delete_storyboard":
+                            success_msg = f'✅ 成功删除分镜'
+                        elif "name" in result:
+                            success_msg = f'✅ 成功创建: {result.get("name", tool_name)}'
+                        else:
+                            success_msg = f'✅ {tool_name} 操作成功'
+                        extra = {}
+                        yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': success_msg, 'raw_result': result, **extra}, ensure_ascii=False)}\n\n"
+                        tool_results_lines.append(f"{tool_name} → {success_msg}")
+                    else:
+                        error_msg = build_error_message(tool_name, result)
+                        yield f"data: {json.dumps({'type': 'tool_result', 'tool_name': tool_name, 'tool_call_id': tool_id, 'result': error_msg, 'raw_result': result}, ensure_ascii=False)}\n\n"
+                        tool_results_lines.append(f"{tool_name} → {error_msg}")
+
+                    tool_result_msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": result_text
+                    })
 
             if native_tool_calls:
                 # 原生模式：追加 tool 角色消息列表
