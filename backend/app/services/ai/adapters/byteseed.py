@@ -496,7 +496,12 @@ class ByteSeedVideoAdapter(VideoAdapter):
 
             # 根据状态返回不同结果
             if status == "completed":
-                video_url = data.get("content", {}).get("video_url")
+                video_url = (
+                    data.get("content", {}).get("video_url")
+                    or data.get("video_url")
+                    or data.get("output", {}).get("video_url")
+                    or data.get("result", {}).get("video_url")
+                )
                 if not video_url:
                     return {
                         "success": False,
