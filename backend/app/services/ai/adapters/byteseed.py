@@ -58,6 +58,11 @@ SEEDANCE_2_0_MODELS = {
     "doubao-seedance-2-0-fast-260128",
 }
 
+# 不支持 asset_id，只接受 base64 或公网 URL 的模型
+ASSET_UNSUPPORTED_MODELS = {
+    "happyhorse-1.0-r2v",
+}
+
 
 class ByteSeedVideoAdapter(VideoAdapter):
     """字节Seed视频生成适配器"""

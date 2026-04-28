@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 from app.services import get_ai_service, PromptService, ImageService, AudioService
+from app.services.ai.adapters.byteseed import ASSET_UNSUPPORTED_MODELS
 from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
@@ -206,7 +207,33 @@ def _enforce_asset_order_guard(prompt_text: str, ordered_assets: Dict[str, Any])
     expected_compact = [_compact(x) for x in expected_lines]
     actual_compact = [_compact(x) for x in actual_lines]
 
-    strict_match = bool(expected_lines) and (expected_compact == actual_compact)
+    if not expected_lines:
+        return {
+            "prompt": prompt_text,
+            "asset_order_guard": {
+                "enabled": True,
+                "status": "ok",
+                "expected": expected_lines,
+                "actual": actual_lines,
+                "expected_compact": expected_compact,
+                "actual_compact": actual_compact,
+                "mismatches": [],
+                "message": "无资产需要校验",
+            }
+        }
+
+    strict_match = expected_compact == actual_compact
+    mismatch_count = max(len(expected_compact), len(actual_compact))
+    mismatches: List[Dict[str, Any]] = []
+    for i in range(mismatch_count):
+        expected_item = expected_lines[i] if i < len(expected_lines) else ""
+        actual_item = actual_lines[i] if i < len(actual_lines) else ""
+        if _compact(expected_item) != _compact(actual_item):
+            mismatches.append({
+                "index": i,
+                "expected": expected_item,
+                "actual": actual_item,
+            })
 
     return {
         "prompt": prompt_text,
@@ -215,6 +242,9 @@ def _enforce_asset_order_guard(prompt_text: str, ordered_assets: Dict[str, Any])
             "status": "ok" if strict_match else "mismatch",
             "expected": expected_lines,
             "actual": actual_lines,
+            "expected_compact": expected_compact,
+            "actual_compact": actual_compact,
+            "mismatches": mismatches,
             "message": "asset definitions 顺序已校验" if strict_match else "asset definitions 顺序不一致，请按 expected 顺序使用 @图N",
         }
     }
@@ -315,7 +345,7 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
 
 @router.post("/video-prompt-subagent")
 async def generate_video_prompt_subagent(project_id: str, request: VideoPromptSubagentRequest):
-    """独立子代：单独为某个分镜生成并保存 video_prompt，含资产顺序拦截"""
+    """独立子代：单独为某个分镜生成并保存 video_prompt，含资产顺序拦截与自动重试"""
     from app.services import ProjectService
     from .style_presets import get_video_style_suffix
 
@@ -352,18 +382,39 @@ async def generate_video_prompt_subagent(project_id: str, request: VideoPromptSu
 
     ordered_assets = _build_ordered_assets(project_id, character_ids, scene_ids, prop_ids)
 
+    request_payload = {
+        "storyboard_id": request.storyboard_id,
+        "description": request.description or storyboard.get("description", ""),
+        "dialogue": request.dialogue or storyboard.get("dialogue", ""),
+        "action": request.action or storyboard.get("action", ""),
+        "shot_type": request.shot_type or storyboard.get("shot_type", ""),
+        "camera_angle": request.camera_angle or storyboard.get("camera_angle", ""),
+        "duration": request.duration or storyboard.get("duration", 6),
+        "character_ids": character_ids,
+        "scene_ids": scene_ids,
+        "prop_ids": prop_ids,
+    }
+
+    extra_retry_instruction = (
+        "\n\n【硬性约束-重试】\n"
+        "你必须严格输出 [Asset Definitions] 段，并按给定资产顺序逐行列出。\n"
+        "格式必须为 @图N (资产名)，N 从 1 递增，不得缺失、跳号或交换。"
+    )
+
+    attempts: List[Dict[str, Any]] = []
+
     try:
-        generated = await PromptService.generate_video_prompt(
+        first_generated = await PromptService.generate_video_prompt(
             llm,
-            description=request.description or storyboard.get("description", ""),
-            dialogue=request.dialogue or storyboard.get("dialogue", ""),
-            action=request.action or storyboard.get("action", ""),
-            shot_type=request.shot_type or storyboard.get("shot_type", ""),
-            camera_angle=request.camera_angle or storyboard.get("camera_angle", ""),
+            description=request_payload["description"],
+            dialogue=request_payload["dialogue"],
+            action=request_payload["action"],
+            shot_type=request_payload["shot_type"],
+            camera_angle=request_payload["camera_angle"],
             characters=character_ids,
             scene=scene_ids[0] if scene_ids else "",
             props=prop_ids,
-            duration=request.duration or storyboard.get("duration", 6),
+            duration=request_payload["duration"],
             custom_template=custom_template,
             language=language,
             style_suffix=style_suffix,
@@ -371,28 +422,84 @@ async def generate_video_prompt_subagent(project_id: str, request: VideoPromptSu
             audios_desc=ordered_assets["audios_desc"],
         )
 
-        guarded = _enforce_asset_order_guard(generated, ordered_assets)
-        if guarded["asset_order_guard"]["status"] != "ok":
+        first_guarded = _enforce_asset_order_guard(first_generated, ordered_assets)
+        attempts.append({
+            "attempt": 1,
+            "prompt": first_generated,
+            "prompt_preview": (first_generated or "")[:500],
+            "asset_order_guard": first_guarded["asset_order_guard"],
+            "retry_enhanced": False,
+        })
+
+        final_generated = first_generated
+        final_guarded = first_guarded
+
+        if first_guarded["asset_order_guard"]["status"] != "ok":
+            retry_template = (custom_template or "") + extra_retry_instruction
+            second_generated = await PromptService.generate_video_prompt(
+                llm,
+                description=request_payload["description"],
+                dialogue=request_payload["dialogue"],
+                action=request_payload["action"],
+                shot_type=request_payload["shot_type"],
+                camera_angle=request_payload["camera_angle"],
+                characters=character_ids,
+                scene=scene_ids[0] if scene_ids else "",
+                props=prop_ids,
+                duration=request_payload["duration"],
+                custom_template=retry_template,
+                language=language,
+                style_suffix=style_suffix,
+                assets_desc=ordered_assets["assets_desc"],
+                audios_desc=ordered_assets["audios_desc"],
+            )
+            second_guarded = _enforce_asset_order_guard(second_generated, ordered_assets)
+            attempts.append({
+                "attempt": 2,
+                "prompt": second_generated,
+                "prompt_preview": (second_generated or "")[:500],
+                "asset_order_guard": second_guarded["asset_order_guard"],
+                "retry_enhanced": True,
+                "retry_instruction": extra_retry_instruction,
+            })
+
+            final_generated = second_generated
+            final_guarded = second_guarded
+
+        if final_guarded["asset_order_guard"]["status"] != "ok":
             await llm.close()
             raise HTTPException(
                 status_code=422,
                 detail={
                     "error": "视频提示词资产顺序校验失败",
-                    "asset_order_guard": guarded["asset_order_guard"],
-                    "prompt_preview": (generated or "")[:240],
+                    "request": request_payload,
+                    "ordered_assets": {
+                        "assets_desc": ordered_assets["assets_desc"],
+                        "audios_desc": ordered_assets["audios_desc"],
+                    },
+                    "asset_order_guard": final_guarded["asset_order_guard"],
+                    "attempt_count": len(attempts),
+                    "attempts": attempts,
                 }
             )
 
-        storyboard["video_prompt"] = generated
+        storyboard["video_prompt"] = final_generated
         storyboard["updated_at"] = datetime.now().isoformat()
         AssetService.save_asset(project_id, "storyboard", storyboard)
 
         await llm.close()
         return {
-            "prompt": generated,
+            "prompt": final_generated,
             "saved": True,
             "storyboard_id": request.storyboard_id,
-            "asset_order_guard": guarded["asset_order_guard"],
+            "request": request_payload,
+            "ordered_assets": {
+                "assets_desc": ordered_assets["assets_desc"],
+                "audios_desc": ordered_assets["audios_desc"],
+            },
+            "asset_order_guard": final_guarded["asset_order_guard"],
+            "attempt_count": len(attempts),
+            "attempts": attempts,
         }
     except HTTPException:
         await llm.close()
@@ -535,6 +642,8 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
     try:
         # 处理所有图片，转换为URL或base64
         image_urls = []
+        video_model = ai_config.get("video", {}).get("model", "")
+        skip_asset = video_model in ASSET_UNSUPPORTED_MODELS
 
         for image_id in (image_ids or []):
             image = ImageService.get_image(project_id, image_id)
@@ -543,8 +652,8 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
             image_url = None
 
-            # 优先使用 Volcengine Asset ID（asset:// URI）
-            if image.get("volcengine_asset_id") and image.get("volcengine_asset_status") == "Active":
+            # 优先使用 Volcengine Asset ID（asset:// URI），不支持 asset 的模型跳过
+            if not skip_asset and image.get("volcengine_asset_id") and image.get("volcengine_asset_status") == "Active":
                 image_url = f"asset://{image['volcengine_asset_id']}"
                 logger.info(f"[视频生成] 使用 Volcengine Asset URI: {image_url}")
 
