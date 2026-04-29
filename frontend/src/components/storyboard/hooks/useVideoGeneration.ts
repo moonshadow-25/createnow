@@ -10,10 +10,11 @@ interface UseVideoGenerationOptions {
   characters?: any[];
   scenes?: any[];
   props?: any[];
+  selectedStoryboardReferenceImageIds?: string[];
   multimodalReference?: boolean;
 }
 
-export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters, scenes, props, multimodalReference }: UseVideoGenerationOptions) => {
+export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters, scenes, props, selectedStoryboardReferenceImageIds, multimodalReference }: UseVideoGenerationOptions) => {
   const { toast } = useToast();
   const { startTask, completeTask, failTask, hasRunningTask, getTaskStatus } = useStoryboardGenerationStore();
 
@@ -148,44 +149,27 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     return ids;
   }, [characters, scenes, props]);
 
-  const FIXED_PROMPT_MARKER = '###########以上是固定提示词。';
-
-  const buildPromptWithTransitionPrefix = useCallback((rawPrompt: string, imageIndex: number): string => {
-    if (!rawPrompt?.trim() || imageIndex <= 0) return rawPrompt;
-    const fixedPrefix = `以@图片${imageIndex} 为起始画面，【接下来动作/场景变化】，镜头平滑过渡，主体位置衔接，光影不变。并且保持当前的位置关系一致。${FIXED_PROMPT_MARKER}`;
-
-    let body = rawPrompt.trim();
-    const markerIdx = body.indexOf(FIXED_PROMPT_MARKER);
-    if (markerIdx >= 0) {
-      body = body.slice(markerIdx + FIXED_PROMPT_MARKER.length).trimStart();
-    }
-
-    return `${fixedPrefix}\n${body}`;
-  }, []);
+  const collectSelectedReferenceImageIds = useCallback((storyboard: any): string[] => {
+    const assetImageIds = collectAssetImageIds(storyboard);
+    const selectedStoryboardIds = selectedStoryboardReferenceImageIds || [];
+    return Array.from(new Set([
+      ...assetImageIds,
+      ...selectedStoryboardIds,
+    ].filter(Boolean)));
+  }, [collectAssetImageIds, selectedStoryboardReferenceImageIds]);
 
   const handleGenerateVideo = useCallback(async (storyboard: any, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string) => {
     if (!videoPrompt.trim()) { toast('请输入或生成视频提示词', 'error'); return; }
 
-    const assetImageIds = collectAssetImageIds(storyboard);
-    const transitionFrameImageId = storyboard?.transition_frame_image_id;
-    const allImageIds = Array.from(new Set([
-      ...assetImageIds,
-      ...(primaryImage ? [primaryImage.image_id] : []),
-      ...(transitionFrameImageId ? [transitionFrameImageId] : []),
-    ].filter(Boolean)));
-    if (allImageIds.length === 0) { toast('请选择资产或生成分镜图', 'error'); return; }
-
-    const transitionImageIndex = transitionFrameImageId ? allImageIds.indexOf(transitionFrameImageId) + 1 : 0;
-    const promptForGeneration = buildPromptWithTransitionPrefix(videoPrompt, transitionImageIndex);
+    const allImageIds = collectSelectedReferenceImageIds(storyboard);
+    if (allImageIds.length === 0) { toast('请选择引用图后再生成视频', 'error'); return; }
 
     let prompts: string[];
     try {
-      const parsed = JSON.parse(promptForGeneration);
-      prompts = Array.isArray(parsed) && parsed.length > 0
-        ? parsed.map(p => buildPromptWithTransitionPrefix(String(p || ''), transitionImageIndex))
-        : [buildPromptWithTransitionPrefix(promptForGeneration, transitionImageIndex)];
+      const parsed = JSON.parse(videoPrompt);
+      prompts = Array.isArray(parsed) && parsed.length > 0 ? parsed : [videoPrompt];
     } catch {
-      prompts = [promptForGeneration];
+      prompts = [videoPrompt];
     }
     const finalPrompt = prompts.length > 1 ? JSON.stringify(prompts) : prompts[0];
     const isMultiSegment = multimodalReference && prompts.length > 1;
@@ -257,7 +241,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       toast(`视频生成失败: ${errorMsg}`, 'error');
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
-  }, [projectId, episodeId, primaryImage, videoPrompt, multimodalReference, collectAssetImageIds, buildPromptWithTransitionPrefix, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
+  }, [projectId, episodeId, videoPrompt, multimodalReference, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
 
   const handleGenerateVideoSegment = useCallback(async (storyboard: any, segmentIndex: number, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string) => {
     let prompts: string[];
@@ -268,21 +252,13 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       prompts = [videoPrompt];
     }
 
-    const assetImageIds = collectAssetImageIds(storyboard);
-    const transitionFrameImageId = storyboard?.transition_frame_image_id;
-    const allImageIds = Array.from(new Set([
-      ...assetImageIds,
-      ...(primaryImage ? [primaryImage.image_id] : []),
-      ...(transitionFrameImageId ? [transitionFrameImageId] : []),
-    ].filter(Boolean)));
-    if (allImageIds.length === 0) { toast('请选择资产或生成分镜图', 'error'); return; }
+    const allImageIds = collectSelectedReferenceImageIds(storyboard);
+    if (allImageIds.length === 0) { toast('请选择引用图后再生成视频', 'error'); return; }
 
-    const transitionImageIndex = transitionFrameImageId ? allImageIds.indexOf(transitionFrameImageId) + 1 : 0;
-    const normalizedPrompts = prompts.map(p => buildPromptWithTransitionPrefix(String(p || ''), transitionImageIndex));
-    const segmentPrompt = normalizedPrompts[segmentIndex];
+    const segmentPrompt = prompts[segmentIndex];
     if (!segmentPrompt?.trim()) { toast('该段提示词为空', 'error'); return; }
 
-    const finalPrompt = normalizedPrompts.length > 1 ? JSON.stringify(normalizedPrompts) : normalizedPrompts[0];
+    const finalPrompt = prompts.length > 1 ? JSON.stringify(prompts) : prompts[0];
 
     startTask(storyboard.asset_id, 'video');
     try {
@@ -316,7 +292,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       toast(`视频生成失败: ${errorMsg}`, 'error');
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
-  }, [projectId, episodeId, primaryImage, videoPrompt, collectAssetImageIds, buildPromptWithTransitionPrefix, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
+  }, [projectId, episodeId, videoPrompt, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
 
   const handleExport = useCallback(async (storyboard: any) => {
     setIsExporting(true);

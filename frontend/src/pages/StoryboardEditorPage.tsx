@@ -75,6 +75,8 @@ export default function StoryboardEditorPage() {
   const [showVideoGallery, setShowVideoGallery] = useState(false);
   const [insertingTransitionFrame, setInsertingTransitionFrame] = useState(false);
   const [hasPreviousStoryboardVideo, setHasPreviousStoryboardVideo] = useState(false);
+  const [selectedStoryboardReferenceImageIds, setSelectedStoryboardReferenceImageIds] = useState<string[]>([]);
+  const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
   const [svgPaths, setSvgPaths] = useState<Array<{ d: string; stroke: string }>>([]);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -115,6 +117,7 @@ export default function StoryboardEditorPage() {
     characters,
     scenes,
     props,
+    selectedStoryboardReferenceImageIds,
     multimodalReference: true,
   });
 
@@ -131,6 +134,7 @@ export default function StoryboardEditorPage() {
       if (sb) {
         setStoryboard(sb);
         setGeneratedPrompt(sb.image_prompt || '');
+        setSelectedStoryboardReferenceImageIds(Array.isArray(sb.reference_image_ids) ? sb.reference_image_ids : []);
         latestTextRef.current = { ...latestTextRef.current, generatedPrompt: sb.image_prompt || '' };
       }
       const sorted = (imgRes.data || []).sort((a: any, b: any) => {
@@ -173,6 +177,10 @@ export default function StoryboardEditorPage() {
   useEffect(() => {
     latestAssetsRef.current = { selectedCharacters, selectedScenes, selectedProps };
   }, [selectedCharacters, selectedScenes, selectedProps]);
+
+  useEffect(() => {
+    selectedStoryboardReferenceImageIdsRef.current = selectedStoryboardReferenceImageIds;
+  }, [selectedStoryboardReferenceImageIds]);
 
   useEffect(() => {
     assetStatusesRef.current = assetImageStatuses;
@@ -242,6 +250,7 @@ export default function StoryboardEditorPage() {
         setSelectedScenes(sb?.scene_ids?.length ? sb.scene_ids : (sb?.scene_id ? [sb.scene_id] : []));
         setSelectedProps(sb?.prop_ids || []);
         setGeneratedPrompt(sb?.image_prompt || '');
+        setSelectedStoryboardReferenceImageIds(Array.isArray(sb?.reference_image_ids) ? sb.reference_image_ids : []);
         // Images
         const imgs = (imgRes.data || []).sort((a: any, b: any) => {
           if (a.is_primary && !b.is_primary) return -1;
@@ -264,6 +273,13 @@ export default function StoryboardEditorPage() {
       }
     })();
   }, [storyboardId, projectId]); // eslint-disable-line
+
+  // ── Init videoGen when storyboard+episodeId ready ──────────────────────────
+  useEffect(() => {
+    if (storyboard && episodeId) {
+      videoGen.initForStoryboard(storyboard);
+    }
+  }, [storyboard?.asset_id, storyboard?.video_prompt, episodeId]); // eslint-disable-line
 
   useEffect(() => {
     if (!projectId || !storyboardId || !storyboard?.episode_id || !storyboard?.sequence) {
@@ -360,6 +376,13 @@ export default function StoryboardEditorPage() {
       setSaveStatus('saving');
       const v = latestTextRef.current;
       try {
+        const hasPersistedPrompt = storyboard?.video_prompt !== undefined && storyboard?.video_prompt !== null;
+        const isPromptUnexpectedlyEmpty = hasPersistedPrompt && !(v.videoPrompt || '').trim();
+        if (isPromptUnexpectedlyEmpty) {
+          setSaveStatus('saved');
+          return;
+        }
+
         await storyboardApi.update(projectId, storyboardId, {
           description: v.editDescription?.trim() || '',
           dialogue: v.editDialogue?.trim() || '',
@@ -388,12 +411,13 @@ export default function StoryboardEditorPage() {
       try {
         await assetApi.update(projectId, 'storyboard', storyboardId, {
           character_ids: sc, scene_ids: ss, prop_ids: sp,
+          reference_image_ids: selectedStoryboardReferenceImageIdsRef.current,
         });
       } catch {}
     }, 300);
   }, [projectId, storyboardId]);
 
-  useEffect(() => { scheduleAssetSave(); }, [selectedCharacters.join(','), selectedScenes.join(','), selectedProps.join(',')]); // eslint-disable-line
+  useEffect(() => { scheduleAssetSave(); }, [selectedCharacters.join(','), selectedScenes.join(','), selectedProps.join(','), selectedStoryboardReferenceImageIds.join(',')]); // eslint-disable-line
 
   // ── SVG connection drawing ─────────────────────────────────────────────────
   const recomputeConnections = useCallback(() => {
@@ -474,35 +498,47 @@ export default function StoryboardEditorPage() {
     return visible.find(i => i.is_primary) || visible[0] || null;
   }, [storyboardImages, hiddenImageIds]);
 
+  const orderedStoryboardReferenceImages = useMemo(() => {
+    const visible = storyboardImages.filter(img => !hiddenImageIds.has(img.image_id));
+    return visible.filter(img => selectedStoryboardReferenceImageIds.includes(img.image_id));
+  }, [storyboardImages, hiddenImageIds, selectedStoryboardReferenceImageIds]);
+
+  const orderedAssetReferenceImageIds = useMemo(() => {
+    if (!storyboard) return [] as string[];
+    const ids: string[] = [];
+    for (const charId of selectedCharacters) {
+      const char = characters.find((c: any) => c.asset_id === charId);
+      if (char?.image_id) ids.push(char.image_id);
+    }
+    const sceneIds: string[] = selectedScenes;
+    for (const sid of sceneIds) {
+      const scene = scenes.find((s: any) => s.asset_id === sid);
+      if (scene?.image_id) ids.push(scene.image_id);
+    }
+    for (const propId of selectedProps) {
+      const prop = props.find((p: any) => p.asset_id === propId);
+      if (prop?.image_id) ids.push(prop.image_id);
+    }
+    return ids;
+  }, [storyboard, selectedCharacters, selectedScenes, selectedProps, characters, scenes, props]);
+
+  const orderedReferenceImageIds = useMemo(() => {
+    return Array.from(new Set([
+      ...orderedAssetReferenceImageIds,
+      ...orderedStoryboardReferenceImages.map(img => img.image_id),
+    ].filter(Boolean)));
+  }, [orderedAssetReferenceImageIds, orderedStoryboardReferenceImages]);
+
   // Keep ref in sync so recomputeConnections (useCallback []) can read current value
   useEffect(() => { primaryImageRef.current = primaryImage; }, [primaryImage]);
 
   const trackingId = primaryImage?.image_id ?? storyboardId;
 
   const handleSubmitAsset = useCallback(async () => {
-    const imageIds: string[] = [];
-    // 建立 imageId → localAssetId 映射，用于轮询时写入正确的 key
+    const imageIds = [...orderedReferenceImageIds];
     const imageToLocalAsset: Record<string, string> = {};
-    if (primaryImage?.image_id) {
-      imageIds.push(primaryImage.image_id);
-      imageToLocalAsset[primaryImage.image_id] = storyboardId; // 分镜主图用 storyboardId
-    }
-    const transitionFrameImageId = storyboard?.transition_frame_image_id;
-    if (transitionFrameImageId && !imageIds.includes(transitionFrameImageId)) {
-      imageIds.push(transitionFrameImageId);
-      imageToLocalAsset[transitionFrameImageId] = transitionFrameImageId;
-    }
-    for (const charId of latestAssetsRef.current.selectedCharacters) {
-      const imgId = assetStatusesRef.current[charId]?.image_id || characters.find((c: any) => c.asset_id === charId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = charId; }
-    }
-    for (const sceneId of latestAssetsRef.current.selectedScenes) {
-      const imgId = assetStatusesRef.current[sceneId]?.image_id || scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = sceneId; }
-    }
-    for (const propId of latestAssetsRef.current.selectedProps) {
-      const imgId = assetStatusesRef.current[propId]?.image_id || props.find((p: any) => p.asset_id === propId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = propId; }
+    for (const imageId of orderedReferenceImageIds) {
+      imageToLocalAsset[imageId] = imageId;
     }
     if (imageIds.length === 0) { toast('没有可提交的图片', 'error'); return; }
     setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
@@ -552,31 +588,13 @@ export default function StoryboardEditorPage() {
     } catch {
       setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
     }
-  }, [projectId, trackingId, primaryImage, storyboard, storyboardId, characters, scenes, props, reloadStoryboard, reloadAssets, loadAssetImageStatuses, videoGen, toast]);
+  }, [projectId, trackingId, orderedReferenceImageIds, reloadStoryboard, reloadAssets, loadAssetImageStatuses, videoGen, storyboard, toast]);
 
   const handleResubmitAsset = useCallback(async () => {
-    const imageIds: string[] = [];
+    const imageIds = [...orderedReferenceImageIds];
     const imageToLocalAsset: Record<string, string> = {};
-    if (primaryImage?.image_id) {
-      imageIds.push(primaryImage.image_id);
-      imageToLocalAsset[primaryImage.image_id] = storyboardId;
-    }
-    const transitionFrameImageId = storyboard?.transition_frame_image_id;
-    if (transitionFrameImageId && !imageIds.includes(transitionFrameImageId)) {
-      imageIds.push(transitionFrameImageId);
-      imageToLocalAsset[transitionFrameImageId] = transitionFrameImageId;
-    }
-    for (const charId of latestAssetsRef.current.selectedCharacters) {
-      const imgId = assetStatusesRef.current[charId]?.image_id || characters.find((c: any) => c.asset_id === charId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = charId; }
-    }
-    for (const sceneId of latestAssetsRef.current.selectedScenes) {
-      const imgId = assetStatusesRef.current[sceneId]?.image_id || scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = sceneId; }
-    }
-    for (const propId of latestAssetsRef.current.selectedProps) {
-      const imgId = assetStatusesRef.current[propId]?.image_id || props.find((p: any) => p.asset_id === propId)?.image_id;
-      if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = propId; }
+    for (const imageId of orderedReferenceImageIds) {
+      imageToLocalAsset[imageId] = imageId;
     }
     if (imageIds.length === 0) { toast('没有可提交的图片', 'error'); return; }
     setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
@@ -622,7 +640,7 @@ export default function StoryboardEditorPage() {
     } catch {
       setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
     }
-  }, [projectId, trackingId, primaryImage, storyboard, storyboardId, characters, scenes, props, reloadStoryboard, reloadAssets, videoGen, toast]);
+  }, [projectId, trackingId, orderedReferenceImageIds, reloadStoryboard, reloadAssets, videoGen, storyboard, toast]);
 
   // ── Action handlers ────────────────────────────────────────────────────────
   const handleBack = () => navigate(`/project/${projectId}`, { state: { episodeId } });
@@ -658,6 +676,7 @@ export default function StoryboardEditorPage() {
         await reloadStoryboard();
         const imgs = (await generationApi.listImages(projectId, storyboardId)).data || [];
         setGalleryState(prev => ({ ...prev, images: imgs }));
+        setSelectedStoryboardReferenceImageIds(prev => prev.includes(imageId) ? prev : [...prev, imageId]);
       } else {
         // Reload asset gallery images
         const res = await generationApi.listImages(projectId, galleryState.assetId);
@@ -671,18 +690,61 @@ export default function StoryboardEditorPage() {
     if (!projectId || !storyboardId) return;
     setInsertingTransitionFrame(true);
     try {
-      await storyboardApi.insertTransitionFrame(projectId, storyboardId);
-      await reloadStoryboard();
+      const insertRes = await storyboardApi.insertTransitionFrame(projectId, storyboardId);
+      const transitionImageId = insertRes.data?.transition_image?.image_id;
+      if (!transitionImageId) {
+        toast('插入衔接帧失败: 未返回图片ID', 'error');
+        return;
+      }
+
+      const nextSelectedStoryboardIds = selectedStoryboardReferenceImageIds.includes(transitionImageId)
+        ? selectedStoryboardReferenceImageIds
+        : [...selectedStoryboardReferenceImageIds, transitionImageId];
+      setSelectedStoryboardReferenceImageIds(nextSelectedStoryboardIds);
+
+      const orderedIdsAfterInsert = Array.from(new Set([
+        ...orderedAssetReferenceImageIds,
+        ...nextSelectedStoryboardIds,
+      ].filter(Boolean)));
+
+      const n = orderedIdsAfterInsert.indexOf(transitionImageId) + 1;
+      const fixedPrefix = `以@图片${n} 为起始画面，【接下来动作/场景变化】，镜头平滑过渡，主体位置衔接，光影不变。并且保持当前的位置关系一致。`;
+      const rewriteOne = (raw: string) => {
+        const body = (raw || '').trim().replace(/^以@图片\d+ 为起始画面，【接下来动作\/场景变化】，镜头平滑过渡，主体位置衔接，光影不变。并且保持当前的位置关系一致。\s*/u, '');
+        return body ? `${fixedPrefix}\n${body}` : fixedPrefix;
+      };
+
+      const currentPrompt = videoGen.videoPrompt || '';
+      let nextPrompt = currentPrompt;
+      try {
+        const parsed = JSON.parse(currentPrompt);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          nextPrompt = JSON.stringify(parsed.map((p: any) => rewriteOne(String(p || ''))));
+        } else {
+          nextPrompt = rewriteOne(currentPrompt);
+        }
+      } catch {
+        nextPrompt = rewriteOne(currentPrompt);
+      }
+
+      videoGen.handlePromptChange(nextPrompt);
+      await storyboardApi.update(projectId, storyboardId, {
+        video_prompt: nextPrompt,
+        reference_image_ids: nextSelectedStoryboardIds,
+      });
+
       if (storyboard) {
         await videoGen.loadPrimaryImage(storyboard);
       }
-      toast('衔接帧已插入，可用于素材审核与视频生成', 'success');
+      await reloadStoryboard();
+      toast('衔接帧已插入并更新提示词前缀', 'success');
     } catch (error: any) {
       toast(`插入衔接帧失败: ${error.response?.data?.detail || error.message || '操作失败'}`, 'error');
     } finally {
       setInsertingTransitionFrame(false);
     }
-  }, [projectId, storyboardId, reloadStoryboard, storyboard, videoGen, toast]);
+  }, [projectId, storyboardId, storyboard, selectedStoryboardReferenceImageIds, orderedAssetReferenceImageIds, videoGen, reloadStoryboard, toast]);
+
 
   const handleExport = () => videoGen.handleExport(storyboard);
   const handleDownload = () => videoGen.handleDownload(storyboard);
@@ -690,16 +752,12 @@ export default function StoryboardEditorPage() {
   // ── Volcengine status summary ───────────────────────────────────────────────
   const allStatuses = useMemo(() => {
     const s: (string | undefined)[] = [];
-    if (primaryImage) s.push(assetImageStatuses[primaryImage.image_id]?.status ?? primaryImage.volcengine_asset_status);
-    if (storyboard?.transition_frame_image_id) {
-      const transitionImage = storyboardImages.find(img => img.image_id === storyboard.transition_frame_image_id);
-      s.push(assetImageStatuses[storyboard.transition_frame_image_id]?.status ?? transitionImage?.volcengine_asset_status);
+    for (const imageId of orderedReferenceImageIds) {
+      const img = storyboardImages.find(item => item.image_id === imageId);
+      s.push(assetImageStatuses[imageId]?.status ?? img?.volcengine_asset_status);
     }
-    for (const id of selectedCharacters) s.push(assetImageStatuses[id]?.status);
-    for (const id of selectedScenes) s.push(assetImageStatuses[id]?.status);
-    for (const id of selectedProps) s.push(assetImageStatuses[id]?.status);
     return s;
-  }, [primaryImage, storyboard?.transition_frame_image_id, storyboardImages, assetImageStatuses, selectedCharacters, selectedScenes, selectedProps]);
+  }, [orderedReferenceImageIds, storyboardImages, assetImageStatuses]);
 
   const isSubmitting = assetSubmitting[trackingId];
   const anyProcessing = allStatuses.some(s => s === 'Processing');
@@ -1084,17 +1142,37 @@ export default function StoryboardEditorPage() {
             {/* Thumbnail strip */}
             {visibleImages.length > 1 && (
               <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
-                {visibleImages.slice(0, 6).map(img => (
-                  <div key={img.image_id} className="relative flex-shrink-0">
-                    <img
-                      src={getImageUrl(img, projectId).replace('/images/files/', '/thumbnails/')}
-                      alt=""
-                      className={`w-12 h-12 object-cover rounded cursor-pointer border-2 transition ${img.is_primary ? 'border-blue-500' : 'border-transparent hover:border-gray-500'}`}
-                      onClick={handleOpenStoryboardGallery}
-                    />
-                    {img.is_primary && <div className="absolute top-0 right-0 bg-blue-600 text-[9px] px-0.5 rounded-bl">主</div>}
-                  </div>
-                ))}
+                {visibleImages.slice(0, 6).map(img => {
+                  const checked = selectedStoryboardReferenceImageIds.includes(img.image_id);
+                  return (
+                    <div key={img.image_id} className="relative flex-shrink-0">
+                      <img
+                        src={getImageUrl(img, projectId).replace('/images/files/', '/thumbnails/')}
+                        alt=""
+                        className={`w-12 h-12 object-cover rounded cursor-pointer border-2 transition ${img.is_primary ? 'border-blue-500' : 'border-transparent hover:border-gray-500'}`}
+                        onClick={handleOpenStoryboardGallery}
+                      />
+                      <label
+                        className="absolute -bottom-1 -right-1 w-4 h-4 rounded bg-gray-900 border border-gray-500 flex items-center justify-center cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={checked}
+                          onChange={() => {
+                            setSelectedStoryboardReferenceImageIds(prev => {
+                              if (prev.includes(img.image_id)) return prev.filter(id => id !== img.image_id);
+                              return [...prev, img.image_id];
+                            });
+                          }}
+                        />
+                        {checked && <CheckCircle size={11} className="text-green-400" />}
+                      </label>
+                      {img.is_primary && <div className="absolute top-0 right-0 bg-blue-600 text-[9px] px-0.5 rounded-bl">主</div>}
+                    </div>
+                  );
+                })}
                 {visibleImages.length > 6 && (
                   <div onClick={handleOpenStoryboardGallery} className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400 cursor-pointer hover:bg-gray-600 flex-shrink-0">
                     +{visibleImages.length - 6}
