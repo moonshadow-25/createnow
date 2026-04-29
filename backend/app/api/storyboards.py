@@ -200,13 +200,9 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
     primary_images = ImageService.get_primary_images_batch(project_id, asset_ids)
     t1 = time.perf_counter()
 
-    # 对没有主图的分镜，批量查询主视频用于生成缩略图 URL
-    no_image_ids = [
-        sb["asset_id"] for sb in episode_storyboards
-        if not primary_images.get(sb["asset_id"])
-    ]
+    # 批量查询主视频用于注入 primary_video_url（无论是否有主图）
     videos_dir = str(_get_projects_dir() / project_id / "videos")
-    primary_videos = VideoService.get_primary_videos_batch(project_id, no_image_ids, videos_dir=videos_dir) if no_image_ids else {}
+    primary_videos = VideoService.get_primary_videos_batch(project_id, asset_ids, videos_dir=videos_dir) if asset_ids else {}
 
     for sb in episode_storyboards:
         primary_image = primary_images.get(sb["asset_id"])
