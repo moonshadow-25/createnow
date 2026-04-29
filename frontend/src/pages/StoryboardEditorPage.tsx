@@ -73,6 +73,8 @@ export default function StoryboardEditorPage() {
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [galleryState, setGalleryState] = useState<GalleryState>({ show: false, assetId: '', assetType: '', assetName: '', images: [] });
   const [showVideoGallery, setShowVideoGallery] = useState(false);
+  const [insertingTransitionFrame, setInsertingTransitionFrame] = useState(false);
+  const [hasPreviousStoryboardVideo, setHasPreviousStoryboardVideo] = useState(false);
   const [svgPaths, setSvgPaths] = useState<Array<{ d: string; stroke: string }>>([]);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -263,12 +265,28 @@ export default function StoryboardEditorPage() {
     })();
   }, [storyboardId, projectId]); // eslint-disable-line
 
-  // ── Init videoGen when storyboard+episodeId ready ──────────────────────────
   useEffect(() => {
-    if (storyboard && episodeId) {
-      videoGen.initForStoryboard(storyboard);
+    if (!projectId || !storyboardId || !storyboard?.episode_id || !storyboard?.sequence) {
+      setHasPreviousStoryboardVideo(false);
+      return;
     }
-  }, [storyboard?.asset_id, storyboard?.video_prompt, episodeId]); // eslint-disable-line
+
+    let disposed = false;
+    (async () => {
+      try {
+        const listRes = await storyboardApi.list(projectId, storyboard.episode_id);
+        const all = (listRes.data || []) as any[];
+        const prev = all.find(sb => Number(sb.sequence) === Number(storyboard.sequence) - 1);
+        if (!disposed) {
+          setHasPreviousStoryboardVideo(!!prev?.primary_video_url);
+        }
+      } catch {
+        if (!disposed) setHasPreviousStoryboardVideo(false);
+      }
+    })();
+
+    return () => { disposed = true; };
+  }, [projectId, storyboardId, storyboard?.episode_id, storyboard?.sequence]);
 
   // ── Reload assets (after AssetSelectorDialog creates new asset) ─────────────
   const reloadAssets = useCallback(async () => {
@@ -469,6 +487,11 @@ export default function StoryboardEditorPage() {
       imageIds.push(primaryImage.image_id);
       imageToLocalAsset[primaryImage.image_id] = storyboardId; // 分镜主图用 storyboardId
     }
+    const transitionFrameImageId = storyboard?.transition_frame_image_id;
+    if (transitionFrameImageId && !imageIds.includes(transitionFrameImageId)) {
+      imageIds.push(transitionFrameImageId);
+      imageToLocalAsset[transitionFrameImageId] = transitionFrameImageId;
+    }
     for (const charId of latestAssetsRef.current.selectedCharacters) {
       const imgId = assetStatusesRef.current[charId]?.image_id || characters.find((c: any) => c.asset_id === charId)?.image_id;
       if (imgId && !imageIds.includes(imgId)) { imageIds.push(imgId); imageToLocalAsset[imgId] = charId; }
@@ -537,6 +560,11 @@ export default function StoryboardEditorPage() {
     if (primaryImage?.image_id) {
       imageIds.push(primaryImage.image_id);
       imageToLocalAsset[primaryImage.image_id] = storyboardId;
+    }
+    const transitionFrameImageId = storyboard?.transition_frame_image_id;
+    if (transitionFrameImageId && !imageIds.includes(transitionFrameImageId)) {
+      imageIds.push(transitionFrameImageId);
+      imageToLocalAsset[transitionFrameImageId] = transitionFrameImageId;
     }
     for (const charId of latestAssetsRef.current.selectedCharacters) {
       const imgId = assetStatusesRef.current[charId]?.image_id || characters.find((c: any) => c.asset_id === charId)?.image_id;
@@ -639,6 +667,23 @@ export default function StoryboardEditorPage() {
     } catch { toast('设置主图失败', 'error'); }
   };
 
+  const handleInsertTransitionFrame = useCallback(async () => {
+    if (!projectId || !storyboardId) return;
+    setInsertingTransitionFrame(true);
+    try {
+      await storyboardApi.insertTransitionFrame(projectId, storyboardId);
+      await reloadStoryboard();
+      if (storyboard) {
+        await videoGen.loadPrimaryImage(storyboard);
+      }
+      toast('衔接帧已插入，可用于素材审核与视频生成', 'success');
+    } catch (error: any) {
+      toast(`插入衔接帧失败: ${error.response?.data?.detail || error.message || '操作失败'}`, 'error');
+    } finally {
+      setInsertingTransitionFrame(false);
+    }
+  }, [projectId, storyboardId, reloadStoryboard, storyboard, videoGen, toast]);
+
   const handleExport = () => videoGen.handleExport(storyboard);
   const handleDownload = () => videoGen.handleDownload(storyboard);
 
@@ -646,11 +691,15 @@ export default function StoryboardEditorPage() {
   const allStatuses = useMemo(() => {
     const s: (string | undefined)[] = [];
     if (primaryImage) s.push(assetImageStatuses[primaryImage.image_id]?.status ?? primaryImage.volcengine_asset_status);
+    if (storyboard?.transition_frame_image_id) {
+      const transitionImage = storyboardImages.find(img => img.image_id === storyboard.transition_frame_image_id);
+      s.push(assetImageStatuses[storyboard.transition_frame_image_id]?.status ?? transitionImage?.volcengine_asset_status);
+    }
     for (const id of selectedCharacters) s.push(assetImageStatuses[id]?.status);
     for (const id of selectedScenes) s.push(assetImageStatuses[id]?.status);
     for (const id of selectedProps) s.push(assetImageStatuses[id]?.status);
     return s;
-  }, [primaryImage, assetImageStatuses, selectedCharacters, selectedScenes, selectedProps]);
+  }, [primaryImage, storyboard?.transition_frame_image_id, storyboardImages, assetImageStatuses, selectedCharacters, selectedScenes, selectedProps]);
 
   const isSubmitting = assetSubmitting[trackingId];
   const anyProcessing = allStatuses.some(s => s === 'Processing');
@@ -1174,20 +1223,33 @@ export default function StoryboardEditorPage() {
                 <div className="border-t border-gray-700 pt-3 flex-1 flex flex-col min-h-0 mt-2">
                   <div className="flex items-center justify-between mb-2 flex-shrink-0">
                     <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">视频提示词</span>
-                    <button
-                      onClick={() => {
-                        if (!storyboard) return;
-                        setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
-                        openVibeDrama();
-                        setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成视频提示词，只更新这一个分镜，不要修改其他分镜。根据以下剧本原文生成：\n${editDescription}\n########` });
-                      }}
-                      disabled={getTaskStatus(storyboardId, 'video_prompt') === 'generating' || !editDescription}
-                      className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"
-                    >
-                      {getTaskStatus(storyboardId, 'video_prompt') === 'generating'
-                        ? <><Loader2 size={11} className="animate-spin" />生成中...</>
-                        : <><Wand2 size={11} />AI生成</>}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {hasPreviousStoryboardVideo && (
+                        <button
+                          onClick={handleInsertTransitionFrame}
+                          disabled={insertingTransitionFrame}
+                          className="text-xs flex items-center gap-1 text-cyan-400 hover:text-cyan-300 disabled:text-gray-600"
+                        >
+                          {insertingTransitionFrame
+                            ? <><Loader2 size={11} className="animate-spin" />插入中...</>
+                            : <><ImagePlus size={11} />插入衔接帧</>}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (!storyboard) return;
+                          setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
+                          openVibeDrama();
+                          setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成视频提示词，只更新这一个分镜，不要修改其他分镜。根据以下剧本原文生成：\n${editDescription}\n########` });
+                        }}
+                        disabled={getTaskStatus(storyboardId, 'video_prompt') === 'generating' || !editDescription}
+                        className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"
+                      >
+                        {getTaskStatus(storyboardId, 'video_prompt') === 'generating'
+                          ? <><Loader2 size={11} className="animate-spin" />生成中...</>
+                          : <><Wand2 size={11} />AI生成</>}
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     value={videoGen.videoPrompt}

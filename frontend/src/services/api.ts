@@ -419,6 +419,8 @@ export const storyboardApi = {
     api.post(`/projects/${projectId}/storyboards/generate`, data),
   createEndFrame: (projectId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/storyboards/${storyboardId}/create-end-frame`),
+  insertTransitionFrame: (projectId: string, storyboardId: string) =>
+    api.post(`/projects/${projectId}/storyboards/${storyboardId}/insert-transition-frame`),
   autoMatchAssets: (projectId: string, storyboardId: string) =>
     api.post(`/projects/${projectId}/storyboards/${storyboardId}/auto-match-assets`),
   generateNineGridPrompts: (projectId: string, storyboardId: string) =>

@@ -481,6 +481,112 @@ async def create_end_frame(project_id: str, storyboard_id: str):
         )
 
 
+@router.post("/{storyboard_id}/insert-transition-frame")
+async def insert_transition_frame(project_id: str, storyboard_id: str):
+    """
+    插入衔接帧
+
+    从上一个分镜的主视频提取最后一帧，保存为当前分镜的非主图引用素材。
+    不新建分镜，不占用当前分镜主图。
+    """
+    try:
+        if not VideoService.check_ffmpeg_installed():
+            raise HTTPException(
+                status_code=500,
+                detail="FFmpeg is not installed on the server. Please contact administrator."
+            )
+
+        current_storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
+        if not current_storyboard:
+            raise HTTPException(status_code=404, detail="Storyboard not found")
+
+        episode_id = current_storyboard.get("episode_id")
+        sequence = int(current_storyboard.get("sequence") or 0)
+        if not episode_id or sequence <= 1:
+            raise HTTPException(status_code=400, detail="No previous storyboard available")
+
+        all_storyboards = AssetService.list_assets(project_id, "storyboard")
+        previous_storyboard = next(
+            (
+                sb for sb in all_storyboards
+                if sb.get("episode_id") == episode_id and int(sb.get("sequence") or 0) == sequence - 1
+            ),
+            None,
+        )
+        if not previous_storyboard:
+            raise HTTPException(status_code=400, detail="Previous storyboard not found")
+
+        previous_storyboard_id = previous_storyboard["asset_id"]
+        primary_video = VideoService.get_primary_video(project_id, previous_storyboard_id)
+        if not primary_video:
+            raise HTTPException(status_code=400, detail="Previous storyboard has no completed primary video")
+
+        video_filename = primary_video.get("local_path")
+        if not video_filename:
+            raise HTTPException(status_code=400, detail="Previous storyboard primary video local path is missing")
+
+        video_path = os.path.join(
+            str(_get_projects_dir()),
+            project_id,
+            "videos",
+            "files",
+            video_filename,
+        )
+        if not os.path.exists(video_path):
+            raise HTTPException(status_code=404, detail=f"Video file not found: {video_filename}")
+
+        try:
+            last_frame_path = VideoService.extract_last_frame(
+                video_path,
+                project_id,
+                output_subdir="transition_frames",
+            )
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        image_record = ImageService.create_image_from_file(
+            project_id=project_id,
+            asset_id=current_storyboard["asset_id"],
+            asset_type="storyboard",
+            local_file_path=last_frame_path,
+            prompt=f"Transition end frame from storyboard {previous_storyboard_id}",
+            is_primary=False,
+        )
+
+        now = datetime.now().isoformat()
+        current_storyboard["transition_frame_image_id"] = image_record["image_id"]
+        current_storyboard["transition_frame_source_storyboard_id"] = previous_storyboard_id
+        current_storyboard["transition_frame_source_video_id"] = primary_video.get("video_id")
+        current_storyboard["transition_frame_updated_at"] = now
+        current_storyboard["updated_at"] = now
+        saved_storyboard = AssetService.save_asset(project_id, "storyboard", current_storyboard)
+
+        return {
+            "success": True,
+            "storyboard_id": storyboard_id,
+            "previous_storyboard_id": previous_storyboard_id,
+            "source_video_id": primary_video.get("video_id"),
+            "transition_image": {
+                "image_id": image_record.get("image_id"),
+                "local_path": image_record.get("local_path"),
+                "volcengine_asset_id": image_record.get("volcengine_asset_id"),
+                "volcengine_asset_status": image_record.get("volcengine_asset_status"),
+                "is_primary": image_record.get("is_primary", False),
+            },
+            "storyboard_transition_ref": {
+                "transition_frame_image_id": saved_storyboard.get("transition_frame_image_id"),
+                "transition_frame_source_storyboard_id": saved_storyboard.get("transition_frame_source_storyboard_id"),
+                "transition_frame_source_video_id": saved_storyboard.get("transition_frame_source_video_id"),
+                "transition_frame_updated_at": saved_storyboard.get("transition_frame_updated_at"),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error inserting transition frame: {str(e)}")
+
+
 @router.post("/{storyboard_id}/auto-match-assets")
 async def auto_match_assets(project_id: str, storyboard_id: str):
     """

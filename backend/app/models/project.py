@@ -294,6 +294,10 @@ class Storyboard(Asset):
     storyboard_mode: str = "regular"  # "regular" | "nine_grid"
     video_prompt: Optional[Union[str, List[str]]] = None
     duration: Optional[int] = None
+    transition_frame_image_id: Optional[str] = None
+    transition_frame_source_storyboard_id: Optional[str] = None
+    transition_frame_source_video_id: Optional[str] = None
+    transition_frame_updated_at: Optional[str] = None
 
 
 class ImageGeneration(BaseModel):

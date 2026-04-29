@@ -82,16 +82,17 @@ class VideoService:
             return False
 
     @staticmethod
-    def extract_last_frame(video_path: str, project_id: str) -> str:
+    def extract_last_frame(video_path: str, project_id: str, output_subdir: str = "storyboard") -> str:
         """
         使用 FFmpeg 提取视频最后一帧
 
         Args:
             video_path: 视频文件完整路径
             project_id: 项目ID
+            output_subdir: 输出子目录（相对 images/files）
 
         Returns:
-            str: 保存的图片相对路径 (storyboard/{filename})
+            str: 保存的图片相对路径 ({output_subdir}/{filename})
         """
         # 检查 FFmpeg 是否安装
         if not VideoService.check_ffmpeg_installed():
@@ -117,7 +118,7 @@ class VideoService:
             project_id,
             "images",
             "files",
-            "storyboard"
+            output_subdir
         )
         os.makedirs(images_dir, exist_ok=True)
 
@@ -161,7 +162,7 @@ class VideoService:
             if os.path.getsize(output_path) < 1024:  # 小于1KB可能有问题
                 raise RuntimeError("Output file is too small, extraction may have failed")
 
-            return f"storyboard/{filename}"
+            return f"{output_subdir}/{filename}"
 
         except subprocess.TimeoutExpired:
             raise RuntimeError("FFmpeg extraction timed out (>30 seconds)")
