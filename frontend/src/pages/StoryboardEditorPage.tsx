@@ -1173,7 +1173,7 @@ export default function StoryboardEditorPage() {
             </div>
 
             {/* Thumbnail strip */}
-            {visibleImages.length > 1 && (
+            {visibleImages.length > 0 && (
               <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
                 {visibleImages.slice(0, 6).map(img => {
                   const checked = selectedStoryboardReferenceImageIds.includes(img.image_id);
