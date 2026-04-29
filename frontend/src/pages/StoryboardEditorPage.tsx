@@ -737,6 +737,9 @@ export default function StoryboardEditorPage() {
         await videoGen.loadPrimaryImage(storyboard);
       }
       await reloadStoryboard();
+      setSelectedStoryboardReferenceImageIds(prev => prev.includes(transitionImageId)
+        ? prev
+        : [...prev, transitionImageId]);
       toast('衔接帧已插入并更新提示词前缀', 'success');
     } catch (error: any) {
       toast(`插入衔接帧失败: ${error.response?.data?.detail || error.message || '操作失败'}`, 'error');
@@ -750,14 +753,44 @@ export default function StoryboardEditorPage() {
   const handleDownload = () => videoGen.handleDownload(storyboard);
 
   // ── Volcengine status summary ───────────────────────────────────────────────
-  const allStatuses = useMemo(() => {
-    const s: (string | undefined)[] = [];
-    for (const imageId of orderedReferenceImageIds) {
-      const img = storyboardImages.find(item => item.image_id === imageId);
-      s.push(assetImageStatuses[imageId]?.status ?? img?.volcengine_asset_status);
+  const referenceImageStatusById = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+
+    for (const image of storyboardImages) {
+      map[image.image_id] = assetImageStatuses[image.image_id]?.status ?? image.volcengine_asset_status;
     }
-    return s;
-  }, [orderedReferenceImageIds, storyboardImages, assetImageStatuses]);
+
+    for (const assetId of selectedCharacters) {
+      const char = characters.find((c: any) => c.asset_id === assetId);
+      if (char?.image_id) {
+        map[char.image_id] = assetImageStatuses[char.image_id]?.status
+          ?? assetImageStatuses[assetId]?.status
+          ?? char.volcengine_asset_status;
+      }
+    }
+    for (const assetId of selectedScenes) {
+      const scene = scenes.find((s: any) => s.asset_id === assetId);
+      if (scene?.image_id) {
+        map[scene.image_id] = assetImageStatuses[scene.image_id]?.status
+          ?? assetImageStatuses[assetId]?.status
+          ?? scene.volcengine_asset_status;
+      }
+    }
+    for (const assetId of selectedProps) {
+      const prop = props.find((p: any) => p.asset_id === assetId);
+      if (prop?.image_id) {
+        map[prop.image_id] = assetImageStatuses[prop.image_id]?.status
+          ?? assetImageStatuses[assetId]?.status
+          ?? prop.volcengine_asset_status;
+      }
+    }
+
+    return map;
+  }, [storyboardImages, assetImageStatuses, selectedCharacters, selectedScenes, selectedProps, characters, scenes, props]);
+
+  const allStatuses = useMemo(() => {
+    return orderedReferenceImageIds.map((imageId) => referenceImageStatusById[imageId]);
+  }, [orderedReferenceImageIds, referenceImageStatusById]);
 
   const isSubmitting = assetSubmitting[trackingId];
   const anyProcessing = allStatuses.some(s => s === 'Processing');
@@ -1144,6 +1177,7 @@ export default function StoryboardEditorPage() {
               <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
                 {visibleImages.slice(0, 6).map(img => {
                   const checked = selectedStoryboardReferenceImageIds.includes(img.image_id);
+                  const imageStatus = referenceImageStatusById[img.image_id] ?? img.volcengine_asset_status;
                   return (
                     <div key={img.image_id} className="relative flex-shrink-0">
                       <img
@@ -1169,6 +1203,16 @@ export default function StoryboardEditorPage() {
                         />
                         {checked && <CheckCircle size={11} className="text-green-400" />}
                       </label>
+                      {imageStatus && (
+                        <div className="absolute bottom-0 left-0">
+                          {imageStatus === 'Active'
+                            ? <span className="bg-green-600 text-white text-[8px] px-1 py-0.5 rounded-tr">入库</span>
+                            : imageStatus === 'Processing'
+                            ? <span className="bg-yellow-600 text-white text-[8px] px-1 py-0.5 rounded-tr flex items-center gap-0.5"><Loader2 size={8} className="animate-spin" />审</span>
+                            : <span className="bg-red-600 text-white text-[8px] px-1 py-0.5 rounded-tr">!</span>
+                          }
+                        </div>
+                      )}
                       {img.is_primary && <div className="absolute top-0 right-0 bg-blue-600 text-[9px] px-0.5 rounded-bl">主</div>}
                     </div>
                   );
