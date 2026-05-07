@@ -283,6 +283,7 @@ class Storyboard(Asset):
     episode_id: str
     sequence: int
     description: str = ""
+    script_scene_label: Optional[str] = None
     character_ids: List[str] = []  # 参演角色
     scene_id: Optional[str] = None  # 场景（旧字段，保留兼容）
     scene_ids: List[str] = []  # 多场景支持

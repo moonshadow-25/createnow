@@ -35,6 +35,7 @@ class StoryboardCreate(BaseModel):
     episode_id: str
     sequence: int
     description: str
+    script_scene_label: Optional[str] = None
     character_ids: List[str] = []
     scene_id: str = None
     scene_ids: List[str] = []
@@ -48,6 +49,7 @@ class StoryboardCreate(BaseModel):
 
 class StoryboardUpdate(BaseModel):
     description: Optional[str] = None
+    script_scene_label: Optional[str] = None
     character_ids: Optional[List[str]] = None
     scene_id: Optional[str] = None
     scene_ids: Optional[List[str]] = None

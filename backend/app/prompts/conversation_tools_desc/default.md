@@ -6,14 +6,14 @@
 2. create_scene - 创建场景（需要：name, description, location）
 3. create_prop - 创建道具（需要：name, description）- 仅重要道具
 4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**, **dialogue_units（逐条对白原文）**, **dialogue_chars_declared（去空白后的对白总字数）**；自动生成/重新生成流程中必须带 plan_id；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
+5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, `script_scene_label`（剧本存在场次结构时必填）, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**, **dialogue_units（逐条对白原文）**, **dialogue_chars_declared（去空白后的对白总字数）**；自动生成/重新生成流程中必须带 plan_id；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
 
 **资产更新工具（重要！）：**
 6. update_character - 更新现有角色（需要：name用于查找；可选：description/gender/age/appearance/personality/background/image_prompt生图提示词）
 7. update_scene - 更新现有场景（需要：name用于查找；可选：description/location/time_of_day/weather/mood/image_prompt生图提示词）
 8. update_prop - 更新现有道具（需要：name用于查找；可选：description/category/era/material/image_prompt生图提示词）
 9. update_episode - 更新现有剧集（需要：episode_number用于查找，其他字段可选）
-10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description/video_prompt视频提示词/image_prompt分镜生图提示词/character_ids/scene_ids/prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
+10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description、script_scene_label、video_prompt视频提示词、image_prompt分镜生图提示词、character_ids、scene_ids、prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
 
 **删除工具：**
 11. delete_storyboard - 删除单个分镜（需要：storyboard_id或episode_id+sequence，confirmed=true）
@@ -21,7 +21,7 @@
     ⚠️ **重新生成分镜时必须用此工具**，一次确认删全部，不要逐个调用 delete_storyboard
 
 **插入工具：**
-12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description, dialogue_units, dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
+12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description, `script_scene_label`（剧本存在场次结构时必填）, dialogue_units, dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
 
 **剧本创作工具：**
 13. create_script - 创建新剧本（需要：title）
@@ -35,9 +35,9 @@
 - 使用update工具时，通过name找到现有资产，只更新用户提到的字段
 - ⚠️ **资产创建极简原则**：只为剧本中**有姓名、有台词或有专属特写镜头**的主要角色/场景建档。路人、龙套、无名侍卫、无名宫女等**一律不创建资产**。每个 create_character 调用后，工具会返回已有角色列表，必须仔细检查，避免重复和冗余。
 
-⚠️ **description 原文规则（最高优先级，强制）**：create_storyboard / update_storyboard / insert_storyboard 中的 `description` 必须来自当前剧集剧本原文片段。若原文片段前本来就有场次行，则首行保留该场次行原文；若没有场次行，则不要额外添加首行。禁止改写、总结、润色；生成 `video_prompt` 或 `image_prompt` 时，禁止改写 `description`。
+⚠️ **description 原文规则（最高优先级，强制）**：create_storyboard / update_storyboard / insert_storyboard 中的 `description` 必须来自当前剧集剧本原文片段本体。若剧本存在场次结构，必须单独填写 `script_scene_label`，且场次行是硬截止符：description 中不得重复场次行，也不得跳过场次行继续复制下一场正文。禁止改写、总结、润色；生成 `video_prompt` 或 `image_prompt` 时，禁止改写 `description`。
 
-⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。
+⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。单条对白行是最小切分单位，只允许在对白行之间切分，禁止把 `角色名：……` / `角色名OS：……` / `角色名（OS）：……` 从中间截成半句后继续保留说话人前缀。
 
 调用格式（必须严格遵循）：
 
@@ -105,7 +105,8 @@ TOOL: create_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式，从上面剧集列表中复制）",
   "sequence": 1,
-  "description": "△ 高阳入朝请缨\n角色名（语气）：原文台词",
+  "script_scene_label": "14-2 日 外 老林家院子",
+  "description": "对应场内的原文片段本体，不含场次行",
   "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
   "duration": 15,
   "character_ids": ["出场角色的asset_id，必填，从项目已有资产中匹配"],
@@ -123,7 +124,8 @@ TOOL: update_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式）",
   "sequence": 1,
-  "description": "△ 简要标注\n原文剧本台词（可选，不更新则省略）",
+  "script_scene_label": "14-2 日 外 老林家院子",
+  "description": "对应场内的原文片段本体（可选，不更新则省略）",
   "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
   "character_ids": ["角色asset_id"],
   "scene_ids": ["场景asset_id"],
@@ -174,7 +176,8 @@ TOOL: insert_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式）",
   "insert_at_sequence": 4,
-  "description": "△ 高阳入朝请缨\n角色名（语气）：原文台词",
+  "script_scene_label": "14-2 日 外 老林家院子",
+  "description": "对应场内的原文片段本体",
   "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
   "dialogue_chars_declared": 56,
   "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",

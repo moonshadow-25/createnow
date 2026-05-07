@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict
 from app.services import AssetService
-from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue, validate_storyboard_description_origin
+from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue, validate_storyboard_description_origin, validate_storyboard_scene_membership
 
 
 def _validate_dialogue_payload(project_id: str, parameters: Dict) -> Dict:
@@ -42,6 +42,11 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
     if not desc_check.get("ok"):
         return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
+
+    scene_label = str(parameters.get("script_scene_label") or "").strip()
+    scene_check = validate_storyboard_scene_membership(project_id, episode_id, scene_label, parameters.get("description", ""))
+    if not scene_check.get("ok"):
+        return {"success": False, "error": scene_check.get("error", "场次校验失败")}
 
     ref_err = validate_asset_refs(
         project_id,
@@ -97,9 +102,14 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
     if not desc_check.get("ok"):
         return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
 
+    scene_label = str(parameters.get("script_scene_label") or current.get("script_scene_label") or "").strip()
+    scene_check = validate_storyboard_scene_membership(project_id, current.get("episode_id", ""), scene_label, current.get("description", ""))
+    if not scene_check.get("ok"):
+        return {"success": False, "error": scene_check.get("error", "场次校验失败")}
+
     for key in [
         "action", "dialogue", "camera_angle", "shot_type", "character_ids", "scene_id", "scene_ids", "prop_ids",
-        "video_prompt", "duration", "image_prompt", "dialogue_units", "dialogue_chars_declared", "short_dialogue_reason", "short_dialogue_time_evidence"
+        "video_prompt", "duration", "image_prompt", "dialogue_units", "dialogue_chars_declared", "short_dialogue_reason", "short_dialogue_time_evidence", "script_scene_label"
     ]:
         if key in parameters and parameters[key] is not None:
             current[key] = parameters[key]
@@ -116,6 +126,7 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
             "dialogue_chars_declared": current.get("dialogue_chars_declared"),
             "short_dialogue_reason": current.get("short_dialogue_reason"),
             "short_dialogue_time_evidence": current.get("short_dialogue_time_evidence"),
+            "script_scene_label": current.get("script_scene_label"),
         }
         dialogue_check = _validate_dialogue_payload(project_id, dialogue_payload)
         if not dialogue_check.get("success"):
@@ -262,6 +273,11 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
     if not desc_check.get("ok"):
         return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
 
+    scene_label = str(parameters.get("script_scene_label") or "").strip()
+    scene_check = validate_storyboard_scene_membership(project_id, episode_id, scene_label, parameters.get("description", ""))
+    if not scene_check.get("ok"):
+        return {"success": False, "error": scene_check.get("error", "场次校验失败")}
+
     ref_err = validate_asset_refs(
         project_id,
         parameters.get("character_ids", []),
@@ -276,6 +292,7 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         "episode_id": episode_id,
         "sequence": insert_at,
         "description": parameters.get("description", ""),
+        "script_scene_label": parameters.get("script_scene_label", ""),
         "video_prompt": parameters.get("video_prompt", ""),
         "duration": parameters.get("duration", 15),
         "action": parameters.get("action", ""),
@@ -300,6 +317,7 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         "dialogue_chars_declared": parameters.get("dialogue_chars_declared"),
         "short_dialogue_reason": parameters.get("short_dialogue_reason"),
         "short_dialogue_time_evidence": parameters.get("short_dialogue_time_evidence"),
+        "script_scene_label": parameters.get("script_scene_label"),
     }
     dialogue_check = _validate_dialogue_payload(project_id, dialogue_payload)
     if not dialogue_check.get("success"):

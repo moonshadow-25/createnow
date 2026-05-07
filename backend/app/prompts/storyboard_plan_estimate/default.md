@@ -16,6 +16,11 @@ JSON字段：
   "dialogue_chars_total": 整数,
   "estimated_storyboard_count": 整数,
   "suggested_dialogue_chars_per_storyboard": 整数,
+  "has_scene_structure": 布尔,
+  "scene_count": 整数,
+  "scenes": [
+    {"label": "场次行原文，如14-2 日 外 老林家院子"}
+  ],
   "estimation_basis": {
     "has_explicit_storyboard_count": 布尔,
     "explicit_storyboard_count": 整数或null,

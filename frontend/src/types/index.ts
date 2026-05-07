@@ -109,6 +109,7 @@ export interface Storyboard {
   episode_id: string;
   sequence: number;
   description: string;
+  script_scene_label?: string;
   character_ids: string[];
   scene_id?: string;
   prop_ids: string[];

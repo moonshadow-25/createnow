@@ -100,6 +100,7 @@ export default function StoryboardEditorPage() {
   const contentEdit = useStoryboardContentEdit();
   const {
     editDescription, setEditDescription,
+    editScriptSceneLabel, setEditScriptSceneLabel,
     editDialogue, setEditDialogue,
     editAction, setEditAction,
     editShotType,
@@ -158,6 +159,7 @@ export default function StoryboardEditorPage() {
   const mergedStoryboard = useMemo(() => storyboard ? {
     ...storyboard,
     description: editDescription,
+    script_scene_label: editScriptSceneLabel,
     dialogue: editDialogue,
     action: editAction,
     shot_type: editShotType,
@@ -167,12 +169,12 @@ export default function StoryboardEditorPage() {
     character_ids: selectedCharacters,
     scene_ids: selectedScenes,
     prop_ids: selectedProps,
-  } : null, [storyboard, editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, selectedCharacters, selectedScenes, selectedProps]);
+  } : null, [storyboard, editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, selectedCharacters, selectedScenes, selectedProps]);
 
   // ── Sync latest refs ────────────────────────────────────────────────────────
   useEffect(() => {
-    latestTextRef.current = { editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, generatedPrompt, videoPrompt: videoGen.videoPrompt };
-  }, [editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, generatedPrompt, videoGen.videoPrompt]);
+    latestTextRef.current = { editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, generatedPrompt, videoPrompt: videoGen.videoPrompt };
+  }, [editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, generatedPrompt, videoGen.videoPrompt]);
 
   useEffect(() => {
     latestAssetsRef.current = { selectedCharacters, selectedScenes, selectedProps };
@@ -385,6 +387,7 @@ export default function StoryboardEditorPage() {
 
         await storyboardApi.update(projectId, storyboardId, {
           description: v.editDescription?.trim() || '',
+          script_scene_label: v.editScriptSceneLabel?.trim() || '',
           dialogue: v.editDialogue?.trim() || '',
           action: v.editAction?.trim() || '',
           shot_type: v.editShotType || '',
@@ -399,7 +402,7 @@ export default function StoryboardEditorPage() {
     }, 1500);
   }, [projectId, storyboardId]);
 
-  useEffect(() => { scheduleSave(); }, [editDescription, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, generatedPrompt]); // eslint-disable-line
+  useEffect(() => { scheduleSave(); }, [editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, generatedPrompt]); // eslint-disable-line
   useEffect(() => { if (isInitializedRef.current) scheduleSave(); }, [videoGen.videoPrompt]); // eslint-disable-line
 
   // ── Auto-save: asset selection (immediate partial save, 300ms debounce) ────
@@ -1079,6 +1082,16 @@ export default function StoryboardEditorPage() {
                       className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
                       rows={12}
                       placeholder="粘贴该镜头对应的剧本原文片段..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-0.5">场次</label>
+                    <input
+                      type="text"
+                      value={editScriptSceneLabel}
+                      onChange={e => setEditScriptSceneLabel(e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                      placeholder="如：14-2 日 外 老林家院子"
                     />
                   </div>
                   <div>

@@ -104,7 +104,12 @@ SHORT_DIALOGUE_REASON_ENUM = {
     "REACTION_SHOT",         # 反应镜头为主
     "TIMECODE_CONSTRAINT",   # 剧本中有明确时长要求
     "SOURCE_TEXT_SHORT",     # 原始剧本文本本就很短
+    "SCENE_BOUNDARY_CONSTRAINT",  # 场次边界导致本镜对白天然偏短
 }
+
+
+def _normalize_line_text(text: str) -> str:
+    return "".join(str(text or "").replace("　", " ").split())
 
 
 def _normalize_text_for_match(text: str) -> str:
@@ -138,14 +143,102 @@ def _extract_description_candidates(description: str) -> list[str]:
         return []
 
     full_text = "\n".join(lines).strip()
-    candidates = [full_text]
+    return [full_text]
 
-    if len(lines) > 1:
-        body_text = "\n".join(lines[1:]).strip()
-        if body_text:
-            candidates.append(body_text)
 
-    return [c for c in candidates if c]
+def _extract_scene_label_from_line(line: str) -> str:
+    text = str(line or "").strip().replace("　", " ")
+    compact = _normalize_line_text(text)
+    if not compact:
+        return ""
+    if compact.startswith("第") and "集" in compact:
+        return ""
+    if text.startswith("△") or text.startswith("▲"):
+        return ""
+    if "出场人物" in text or "人物表" in text:
+        return ""
+    if "：" in text or ":" in text:
+        return ""
+    has_time = any(token in text for token in ["日", "夜", "晨", "昏"])
+    has_space = any(token in text for token in ["内", "外"])
+    if not (has_time and has_space):
+        return ""
+    if len(compact) > 40:
+        return ""
+    return text
+
+
+def _build_scene_labels_from_script(script: str) -> list[str]:
+    labels = []
+    for raw_line in str(script or "").splitlines():
+        label = _extract_scene_label_from_line(raw_line)
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def _extract_scene_body_by_label(script: str, label: str) -> str:
+    text = str(script or "")
+    if not label:
+        return ""
+    marker = label.strip()
+    start = text.find(marker)
+    if start < 0:
+        return ""
+    rest = text[start + len(marker):]
+    lines = rest.splitlines()
+    collected = []
+    for raw_line in lines:
+        if _extract_scene_label_from_line(raw_line):
+            break
+        collected.append(raw_line)
+    return "\n".join(collected).strip()
+
+
+def _is_scene_tail_fragment(scene_body: str, description: str) -> bool:
+    body_norm = _normalize_text_for_match(scene_body)
+    desc_norm = _normalize_text_for_match(description)
+    return bool(body_norm and desc_norm and body_norm.endswith(desc_norm))
+
+
+def validate_storyboard_scene_membership(project_id: str, episode_id: str, scene_label: str, description: str) -> Dict:
+    script = _load_episode_script(project_id, str(episode_id or "").strip())
+    if not script:
+        return {"ok": False, "error": "当前剧集缺少剧本文本，无法校验场次字段"}
+
+    scene_labels = _build_scene_labels_from_script(script)
+    if not scene_labels:
+        return {"ok": True, "has_scene_structure": False}
+
+    if not scene_label:
+        return {"ok": False, "error": "当前剧本存在场次结构，必须填写 script_scene_label", "has_scene_structure": True}
+
+    if scene_label not in scene_labels:
+        return {"ok": False, "error": f"script_scene_label 必须来自剧本中的场次行: {scene_label}", "has_scene_structure": True}
+
+    normalized_description = _normalize_text_for_match(description)
+    for label in scene_labels:
+        if label != scene_label and _normalize_text_for_match(label) in normalized_description:
+            return {"ok": False, "error": f"description 出现了其他场次行「{label}」，禁止跨场", "has_scene_structure": True}
+
+    if _normalize_text_for_match(scene_label) in normalized_description:
+        return {"ok": False, "error": "description 中不允许包含场次行，场次必须填写在 script_scene_label 字段", "has_scene_structure": True}
+
+    body = _extract_scene_body_by_label(script, scene_label)
+    desc_norm = _normalize_text_for_match(description)
+    body_norm = _normalize_text_for_match(body)
+    if not desc_norm:
+        return {"ok": False, "error": "description 不能为空", "has_scene_structure": True}
+    if not body_norm:
+        return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
+    if desc_norm not in body_norm:
+        return {"ok": False, "error": f"description 必须属于场次「{scene_label}」的正文范围，禁止跨场", "has_scene_structure": True}
+    return {
+        "ok": True,
+        "has_scene_structure": True,
+        "scene_body": body,
+        "is_scene_tail": _is_scene_tail_fragment(body, description),
+    }
 
 
 def validate_storyboard_description_origin(project_id: str, episode_id: str, description: str) -> Dict:
@@ -166,10 +259,7 @@ def validate_storyboard_description_origin(project_id: str, episode_id: str, des
         if _normalize_text_for_match(text) in script_norm:
             return {"ok": True}
 
-    return {
-        "ok": False,
-        "error": "description 必须来自当前剧集剧本原文（允许首行简标，后续粘贴原文），禁止改写或摘要",
-    }
+    return {"ok": False, "error": "description 必须来自当前剧集剧本原文，禁止改写或摘要"}
 
 
 def _has_time_literal(text: str) -> bool:
@@ -265,6 +355,9 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
     min_allowed = max(0, suggested - tolerance)
     max_allowed = 90
 
+    scene_label = str(parameters.get("script_scene_label") or "").strip()
+    scene_check = validate_storyboard_scene_membership(project_id, episode_id, scene_label, parameters.get("description", "")) if scene_label else {"ok": True, "has_scene_structure": False, "is_scene_tail": False}
+
     def _audit(status: str) -> Dict:
         return {
             "status": status,
@@ -276,6 +369,7 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
             "allowed_max_chars": max_allowed,
             "guardrail_mode": "suggested_minus_tolerance_upper_90",
             "deviation": declared_count - suggested,
+            "scene_boundary_exception_applied": status == "scene_boundary_exception",
         }
 
     reason_valid = (not short_reason) or (short_reason in SHORT_DIALOGUE_REASON_ENUM)
@@ -286,10 +380,12 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
             "audit": _audit("reason_invalid"),
         }
 
-    if declared_count < min_allowed or declared_count > max_allowed or actual_count < min_allowed or actual_count > max_allowed:
+    if declared_count < min_allowed or declared_count > max_allowed:
+        if declared_count < min_allowed and short_reason == "SCENE_BOUNDARY_CONSTRAINT" and scene_check.get("ok") and scene_check.get("is_scene_tail"):
+            return {"ok": True, "audit": _audit("scene_boundary_exception")}
         return {
             "ok": False,
-            "error": f"对白字数需在建议值浮动范围内（{min_allowed}-{max_allowed}），当前上报{declared_count}、校验{actual_count}",
+            "error": f"对白字数需在建议值浮动范围内（{min_allowed}-{max_allowed}），当前上报{declared_count}，校验{actual_count}",
             "audit": _audit("out_of_guardrail"),
         }
 

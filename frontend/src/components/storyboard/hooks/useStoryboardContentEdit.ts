@@ -21,6 +21,8 @@ export interface StoryboardContentEditState {
   setContentExpanded: (v: boolean) => void;
   editDescription: string;
   setEditDescription: (v: string) => void;
+  editScriptSceneLabel: string;
+  setEditScriptSceneLabel: (v: string) => void;
   editDialogue: string;
   setEditDialogue: (v: string) => void;
   editAction: string;
@@ -40,6 +42,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
   const global_resolution = useGlobalStyleStore(s => s.global_resolution);
   const [contentExpanded, setContentExpanded] = useState(false);
   const [editDescription, setEditDescription] = useState('');
+  const [editScriptSceneLabel, setEditScriptSceneLabel] = useState('');
   const [editDialogue, setEditDialogue] = useState('');
   const [editAction, setEditAction] = useState('');
   const [editShotType, setEditShotType] = useState('中景');
@@ -55,6 +58,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
   const resetEditState = (storyboard?: any) => {
     if (storyboard) {
       setEditDescription(storyboard.description || '');
+      setEditScriptSceneLabel(storyboard.script_scene_label || '');
       setEditDialogue(storyboard.dialogue || '');
       setEditAction(storyboard.action || '');
       setEditShotType(storyboard.shot_type || '中景');
@@ -63,6 +67,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditResolution(normalizeStoryboardResolution(global_resolution));
     } else {
       setEditDescription('');
+      setEditScriptSceneLabel('');
       setEditDialogue('');
       setEditAction('');
       setEditShotType('中景');
@@ -77,6 +82,8 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
     setContentExpanded,
     editDescription,
     setEditDescription,
+    editScriptSceneLabel,
+    setEditScriptSceneLabel,
     editDialogue,
     setEditDialogue,
     editAction,

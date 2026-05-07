@@ -61,10 +61,22 @@ async def _build_script_analysis_with_llm(project_id: str, episode_id: str, scri
             return {"success": False, "error": "分镜规划解析失败：关键字段必须大于0"}
 
         basis = parsed.get("estimation_basis") if isinstance(parsed.get("estimation_basis"), dict) else {}
+        scenes = parsed.get("scenes") if isinstance(parsed.get("scenes"), list) else []
+        normalized_scenes = []
+        for item in scenes:
+            if isinstance(item, dict):
+                label = str(item.get("label") or "").strip()
+                if label:
+                    normalized_scenes.append({"label": label})
+        has_scene_structure = bool(parsed.get("has_scene_structure")) or bool(normalized_scenes)
+        scene_count = int(parsed.get("scene_count") or len(normalized_scenes) or 0)
         script_analysis = {
             "dialogue_chars_total": dialogue_chars_total,
             "estimated_storyboard_count": estimated_storyboard_count,
             "suggested_dialogue_chars_per_storyboard": suggested_dialogue_chars_per_storyboard,
+            "has_scene_structure": has_scene_structure,
+            "scene_count": scene_count,
+            "scenes": normalized_scenes,
             "estimation_basis": {
                 "has_explicit_storyboard_count": bool(basis.get("has_explicit_storyboard_count")),
                 "explicit_storyboard_count": basis.get("explicit_storyboard_count"),
