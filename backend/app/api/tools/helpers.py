@@ -1,5 +1,6 @@
 """工具公共辅助函数"""
 import re
+from datetime import datetime
 from typing import Optional, Dict
 from app.services import AssetService
 
@@ -182,12 +183,40 @@ def _has_time_literal(text: str) -> bool:
     return any(re.search(p, text) for p in patterns)
 
 
-def validate_declared_dialogue(project_id: str, parameters: Dict, min_exclusive: int = 40, max_exclusive: int = 90) -> Dict:
+def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
+    plan_id = str(parameters.get("plan_id") or "").strip()
+    if not plan_id:
+        return {"ok": True, "audit": None, "skipped": True}
+
+    plan = AssetService.load_asset(project_id, "storyboard_plan", plan_id)
+    if not plan:
+        return {"ok": False, "error": "plan_id 无效或已过期"}
+
+    episode_id_for_plan = str(plan.get("episode_id") or "").strip()
+    episode_id = str(parameters.get("episode_id") or "").strip()
+    if episode_id_for_plan and episode_id and episode_id_for_plan != episode_id:
+        return {"ok": False, "error": "plan_id 与当前 episode_id 不匹配"}
+
+    expires_at = str(plan.get("expires_at") or "").strip()
+    if expires_at:
+        try:
+            if datetime.now() > datetime.fromisoformat(expires_at):
+                return {"ok": False, "error": "plan_id 已过期，请重新调用估算工具"}
+        except Exception:
+            pass
+
+    plan_analysis = plan.get("script_analysis") if isinstance(plan.get("script_analysis"), dict) else {}
+    planned_suggested = plan_analysis.get("suggested_dialogue_chars_per_storyboard")
+    if planned_suggested is None:
+        return {"ok": False, "error": "plan_id 缺少建议字数字段"}
+
+    try:
+        planned_suggested = int(planned_suggested)
+    except Exception:
+        return {"ok": False, "error": "plan_id 中的建议字数无效"}
+
     units_raw = parameters.get("dialogue_units")
     declared = parameters.get("dialogue_chars_declared")
-    short_reason = str(parameters.get("short_dialogue_reason") or "").strip()
-    time_evidence = str(parameters.get("short_dialogue_time_evidence") or "").strip()
-
     if units_raw is None:
         return {"ok": False, "error": "缺少字段: dialogue_units"}
     if declared is None:
@@ -208,7 +237,33 @@ def validate_declared_dialogue(project_id: str, parameters: Dict, min_exclusive:
     except Exception:
         return {"ok": False, "error": "dialogue_chars_declared 必须是整数"}
 
+    suggested_raw = parameters.get("suggested_dialogue_chars")
+    if suggested_raw is not None:
+        try:
+            declared_suggested = int(suggested_raw)
+        except Exception:
+            return {"ok": False, "error": "suggested_dialogue_chars 必须是整数"}
+        if declared_suggested != planned_suggested:
+            return {"ok": False, "error": f"suggested_dialogue_chars 必须与 plan_id 中的建议字数一致（{planned_suggested}）"}
+
+    suggested = planned_suggested
+    if suggested <= 0:
+        return {"ok": False, "error": "plan_id 中的建议字数必须大于0"}
+
+    tolerance_raw = parameters.get("suggested_dialogue_tolerance", 20)
+    try:
+        tolerance = int(tolerance_raw)
+    except Exception:
+        return {"ok": False, "error": "suggested_dialogue_tolerance 必须是整数"}
+    if tolerance < 0:
+        return {"ok": False, "error": "suggested_dialogue_tolerance 不能小于0"}
+
     actual_count = count_dialogue_chars(units)
+    short_reason = str(parameters.get("short_dialogue_reason") or "").strip()
+    time_evidence = str(parameters.get("short_dialogue_time_evidence") or "").strip()
+
+    min_allowed = max(0, suggested - tolerance)
+    max_allowed = 90
 
     def _audit(status: str) -> Dict:
         return {
@@ -216,6 +271,11 @@ def validate_declared_dialogue(project_id: str, parameters: Dict, min_exclusive:
             "dialogue_chars_declared": declared_count,
             "dialogue_chars_verified": actual_count,
             "reason_code": short_reason or None,
+            "suggested_dialogue_chars": suggested,
+            "allowed_min_chars": min_allowed,
+            "allowed_max_chars": max_allowed,
+            "guardrail_mode": "suggested_minus_tolerance_upper_90",
+            "deviation": declared_count - suggested,
         }
 
     reason_valid = (not short_reason) or (short_reason in SHORT_DIALOGUE_REASON_ENUM)
@@ -226,14 +286,12 @@ def validate_declared_dialogue(project_id: str, parameters: Dict, min_exclusive:
             "audit": _audit("reason_invalid"),
         }
 
-    if declared_count >= max_exclusive or actual_count >= max_exclusive:
+    if declared_count < min_allowed or declared_count > max_allowed or actual_count < min_allowed or actual_count > max_allowed:
         return {
             "ok": False,
-            "error": f"对白字数必须小于{max_exclusive}，当前上报{declared_count}、校验{actual_count}",
-            "audit": _audit("too_long"),
+            "error": f"对白字数需在建议值浮动范围内（{min_allowed}-{max_allowed}），当前上报{declared_count}、校验{actual_count}",
+            "audit": _audit("out_of_guardrail"),
         }
-
-    low_dialogue_suggested = declared_count <= min_exclusive or actual_count <= min_exclusive
 
     episode_id = str(parameters.get("episode_id") or "").strip()
     episode_script = _load_episode_script(project_id, episode_id)
@@ -272,24 +330,7 @@ def validate_declared_dialogue(project_id: str, parameters: Dict, min_exclusive:
                 "audit": _audit("time_evidence_not_found"),
             }
 
-    prompt_text = _normalize_prompt_text(parameters.get("video_prompt"))
-    if prompt_text and units:
-        cursor = 0
-        for idx, unit in enumerate(units):
-            next_cursor = _contains_dialogue_in_prompt(prompt_text, unit, cursor)
-            if next_cursor < 0:
-                return {
-                    "ok": False,
-                    "error": f"上报对白与 video_prompt 不匹配（第{idx + 1}条未找到）",
-                    "audit": _audit("content_mismatch"),
-                }
-            cursor = next_cursor
-
-    audit = _audit("ok")
-    if low_dialogue_suggested:
-        audit["warning"] = f"对白字数低于建议值（>{min_exclusive}），建议补充或填写 short_dialogue_reason"
-        audit["low_dialogue_suggested"] = True
-    return {"ok": True, "audit": audit}
+    return {"ok": True, "audit": _audit("ok")}
 
 
 KEY_ALIASES = {

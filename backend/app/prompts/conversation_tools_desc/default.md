@@ -6,7 +6,7 @@
 2. create_scene - 创建场景（需要：name, description, location）
 3. create_prop - 创建道具（需要：name, description）- 仅重要道具
 4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**, **dialogue_units（逐条对白原文）**, **dialogue_chars_declared（去空白后的对白总字数）**；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
+5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**, **dialogue_units（逐条对白原文）**, **dialogue_chars_declared（去空白后的对白总字数）**；自动生成/重新生成流程中必须带 plan_id；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
 
 **资产更新工具（重要！）：**
 6. update_character - 更新现有角色（需要：name用于查找；可选：description/gender/age/appearance/personality/background/image_prompt生图提示词）
@@ -35,7 +35,7 @@
 - 使用update工具时，通过name找到现有资产，只更新用户提到的字段
 - ⚠️ **资产创建极简原则**：只为剧本中**有姓名、有台词或有专属特写镜头**的主要角色/场景建档。路人、龙套、无名侍卫、无名宫女等**一律不创建资产**。每个 create_character 调用后，工具会返回已有角色列表，必须仔细检查，避免重复和冗余。
 
-⚠️ **description 原文规则（最高优先级，强制）**：create_storyboard / update_storyboard / insert_storyboard 中的 `description` 必须来自当前剧集剧本原文片段（允许首行简标 + 后续原文），禁止改写、总结、润色；生成 `video_prompt` 或 `image_prompt` 时，禁止改写 `description`。
+⚠️ **description 原文规则（最高优先级，强制）**：create_storyboard / update_storyboard / insert_storyboard 中的 `description` 必须来自当前剧集剧本原文片段。若原文片段前本来就有场次行，则首行保留该场次行原文；若没有场次行，则不要额外添加首行。禁止改写、总结、润色；生成 `video_prompt` 或 `image_prompt` 时，禁止改写 `description`。
 
 ⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。
 
@@ -343,13 +343,13 @@ END_TOOL
 {"episode_id": "UUID", "script": "剧本内容...", "mode": "replace"}
 END_TOOL
 
-27. get_episode_script - 读取当前剧集的完整剧本内容
-    ⚠️ 凡涉及剧本内容的操作（修改剧本、按剧本生成分镜、剧本有变化等），必须先调用此工具
-    调用：TOOL: get_episode_script
+28. estimate_storyboard_plan - 在自动生成/重新生成分镜前，显式调用LLM估算分镜计划，返回 plan_id、预计分镜数和建议每镜字数
+    ⚠️ 自动生成/重新生成流程中，create_storyboard 必须携带此工具返回的 plan_id
+    ⚠️ 只传 episode_id，工具内部自动读取该集完整剧本，不要重复传script
+    调用：TOOL: estimate_storyboard_plan
 {"episode_id": "当前episode_id"}
 END_TOOL
 
-**⚠️ 工具选择规则（严格遵守，不得自行判断替换）：**
 - 用户说"修改/新增 XX 提示词""XX 模板改成..."→ 用 update_prompt_template（key选对应模板）
 - 用户说"修改视频风格""图片风格改成..."→ 用 update_project_config
 - 用户说"修改AI的行为/规则"→ 用 update_ai_instructions
@@ -361,9 +361,11 @@ END_TOOL
 当用户说"自动生成本集"/"一键生成本集"/"自动制作本集"时，按以下固定顺序调用工具：
 
 **步骤0（必须最先执行，单独一轮）**：
-- 同时调用 `get_episode_script` + `list_all_assets`
-- **必须等这两个工具的结果都返回后**，才能进行下一步
-- 拿到剧本内容和已有资产列表后，对比分析：哪些角色/场景已存在，哪些需要新建
+- 调用 `get_episode_script`
+- **必须等工具结果返回后**，才能进行下一步
+- 直接使用返回的 `existing_assets` 分析：哪些角色/场景已存在，哪些需要新建（不要再调用 list_all_assets）
+- 然后调用 `estimate_storyboard_plan`（仅传 episode_id）生成本轮 plan_id
+- 后续本轮自动创建分镜时，所有 `create_storyboard` 都必须携带该 `plan_id`
 
 **步骤1a（第二轮，基于步骤0的结果）**：
 - 若没有剧集，先调用 create_episode 创建剧集
@@ -376,7 +378,10 @@ END_TOOL
 **步骤1b（第二轮工具调用，拿到 asset_id 后）**：
 - ⚠️ **先调用 get_episode_storyboards 检查是否已有分镜**
 - 已有分镜（哪怕只有1个）→ **跳过创建分镜，直接进入步骤1c**（除非用户明确要求"重新生成分镜"）
-- 没有分镜 → 使用上一轮返回的真实 asset_id，调用 create_storyboard 创建所有分镜
+- 没有分镜 → 使用上一轮返回的真实 asset_id 进入“逐镜串行创建”
+- ⚠️ 自动生成/重新生成流程中，`create_storyboard` 必须一次只调用1镜：创建第N镜后必须等待工具返回成功，再创建第N+1镜
+- ⚠️ 若第N镜失败，必须先修复并重试第N镜，严禁继续创建后续序号
+- ⚠️ 每次 create 都必须传入步骤0得到的 `plan_id`，并保持 sequence 连续递增（1,2,3...）
 - 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
 - 同时填写每个分镜的 image_prompt 和 video_prompt
 - ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**
@@ -392,6 +397,7 @@ END_TOOL
 **步骤2**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
 
 ⚠️ **关键**：create_character/create_scene 和 create_storyboard 必须分开两轮调用，不能在同一轮回复中混合，否则 create_storyboard 无法获取真实 asset_id
+⚠️ **仅在自动生成/重新生成流程中**：禁止同一轮批量提交多个 create_storyboard，必须逐镜串行创建
 ⚠️ 每个步骤独立，不要在一次回复中连续调用多个需要确认的工具
 ⚠️ 收到"继续执行下一步"时，只执行当前步骤，不要重复已完成的步骤
 ⚠️ **自动生成本集的流程中只包含上述步骤，禁止调用 generate_all_storyboard_images 或 generate_storyboard_image，分镜图不是必要步骤**

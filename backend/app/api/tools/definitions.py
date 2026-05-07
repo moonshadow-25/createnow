@@ -111,6 +111,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "episode_id": {"type": "string", "description": "所属剧集的ID"},
+                "plan_id": {"type": "string", "description": "自动生成/重新生成流程的规划标签；由 estimate_storyboard_plan 返回，手工创建可不传"},
                 "sequence": {"type": "integer", "description": "分镜序号"},
                 "description": {"type": "string", "description": "分镜简要描述（可选，若提供video_prompt则可省略）"},
                 "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。@图N编号规则（严格执行）：按character_ids数组顺序依次编为@图1、@图2...，scene_ids紧接所有角色之后继续编号，prop_ids再接其后。"},
@@ -126,7 +127,9 @@ TOOLS = [
                 "dialogue_units": {"type": "array", "items": {"type": "string"}, "description": "AI上报的对白原文数组（逐条）"},
                 "dialogue_chars_declared": {"type": "integer", "description": "AI上报的对白总字数（去空白后）"},
                 "short_dialogue_reason": {"type": "string", "description": "当对白偏短时的原因说明（建议填写）", "enum": ["REACTION_SHOT", "TIMECODE_CONSTRAINT", "SOURCE_TEXT_SHORT"]},
-                "short_dialogue_time_evidence": {"type": "string", "description": "仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填：剧本中包含时间数字的原文片段（如'站着不动3秒'）"}
+                "short_dialogue_time_evidence": {"type": "string", "description": "仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填：剧本中包含时间数字的原文片段（如'站着不动3秒'）"},
+                "suggested_dialogue_chars": {"type": "integer", "description": "可选：对白建议字数。若传入且提供 plan_id，必须与 estimate_storyboard_plan 返回的建议字数一致"},
+                "suggested_dialogue_tolerance": {"type": "integer", "description": "建议字数浮动范围，默认20"}
             },
             "required": ["episode_id", "sequence", "dialogue_units", "dialogue_chars_declared"]
         }
@@ -383,6 +386,17 @@ TOOLS = [
         }
     },
     {
+        "name": "estimate_storyboard_plan",
+        "description": "在自动生成或重新生成分镜前，使用LLM对当前剧本进行显式规划，返回plan_id和分镜建议字数。手工单镜头创建不要调用此工具。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID（UUID格式，工具内部会据此读取完整剧本）"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
         "name": "update_episode_script",
         "description": "写入或追加剧集的剧本内容。当用户希望AI创作或修改剧本时调用。⚠️ replace模式前必须先调用 get_episode_script 读取现有剧本内容，在原有内容基础上修改，不得凭空覆盖。",
         "parameters": {
@@ -515,6 +529,6 @@ OPENAI_TOOLS = [
 _STORYBOARD_TOOL_NAMES = {
     "create_storyboard", "update_storyboard", "delete_storyboard",
     "insert_storyboard", "generate_storyboard", "create_child_asset",
-    "get_episode_storyboards", "delete_all_storyboards",
+    "get_episode_storyboards", "delete_all_storyboards", "estimate_storyboard_plan",
 }
 ASSET_ONLY_TOOLS = [t for t in OPENAI_TOOLS if t["function"]["name"] not in _STORYBOARD_TOOL_NAMES]

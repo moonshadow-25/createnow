@@ -354,17 +354,25 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
         expected_asset_lines = ordered_assets["expected_asset_lines"]
         canonical_asset_lines = "\n".join(expected_asset_lines)
-        output_contract = (
-            "你只能输出最终 video_prompt 文本本身，不允许解释、不允许提问、不允许索要补充信息。\n"
-            "必须包含 [Asset Definitions] 段，并严格使用 @图N (资产名) 顺序。\n"
-            "[Asset Definitions] 中每一行名称必须与下方 [CANONICAL_ASSET_LINES] 逐字一致，禁止同义替换、禁止加后缀、禁止改写标点。"
-        )
+        from app.services.global_prompt_service import get_prompt_content
+        contract_template = get_prompt_content("video_subagent_contract", project_ai_config)
+        if not contract_template:
+            await llm.close()
+            return {"success": False, "error": "缺少提示词模板: video_subagent_contract"}
+
+        rendered_contract = contract_template.format(canonical_asset_lines=canonical_asset_lines)
+        if "【RETRY_INSTRUCTION】" in rendered_contract:
+            base_part, retry_part = rendered_contract.split("【RETRY_INSTRUCTION】", 1)
+        else:
+            base_part, retry_part = rendered_contract, ""
+        output_contract = base_part.replace("【BASE_CONTRACT】", "").strip()
+        retry_instruction_from_template = retry_part.strip()
 
         def build_subagent_user_prompt(extra_instruction: str = "") -> str:
             return (
                 "你是视频提示词子代理执行器。你的任务是基于已提供上下文直接生成最终可用 video_prompt。\n"
                 f"{output_contract}\n"
-                f"{extra_instruction}\n\n"
+                f"{(extra_instruction or '').strip()}\n\n"
                 "## 全局风格配置\n"
                 f"{json.dumps(global_style_context, ensure_ascii=False, indent=2)}\n\n"
                 "## 当前集完整剧本\n"
@@ -385,12 +393,7 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
         final_prompt = ""
         final_guard: Dict[str, Any] = {}
 
-        extra_retry_instruction = (
-            "\n\n【硬性约束-重试】\n"
-            "你必须严格输出 [Asset Definitions] 段，并按给定资产顺序逐行列出。\n"
-            "格式必须为 @图N (资产名)，N 从 1 递增，不得缺失、跳号或交换。\n"
-            "[Asset Definitions] 必须逐字复制 [CANONICAL_ASSET_LINES] 的每一行，禁止改写、别名化、加后缀（如‘场景’）。"
-        )
+        extra_retry_instruction = retry_instruction_from_template
 
         first_user_prompt = build_subagent_user_prompt()
         first_llm_result = await llm.chat([{"role": "user", "content": first_user_prompt}])

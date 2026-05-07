@@ -17,7 +17,7 @@ from .queries import (
     handle_list_assets, handle_get_asset, handle_list_storyboards,
     handle_get_storyboard, handle_get_project_config, handle_get_ai_instructions,
     handle_get_prompt_template, handle_list_all_assets, handle_get_episode_storyboards,
-    handle_get_episode_script,
+    handle_get_episode_script, handle_estimate_storyboard_plan,
 )
 from .config import (
     handle_update_project_config, handle_update_ai_instructions,
@@ -97,6 +97,7 @@ _AI_CONFIG_HANDLERS = {
     "generate_asset_image": handle_generate_asset_image,
     "generate_all_asset_images": handle_generate_all_asset_images,
     "generate_storyboard_video_prompt_subagent": handle_generate_storyboard_video_prompt_subagent,
+    "estimate_storyboard_plan": handle_estimate_storyboard_plan,
 }
 
 

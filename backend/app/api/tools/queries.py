@@ -1,8 +1,98 @@
 """查询工具执行逻辑"""
-from typing import Dict
-from app.services import AssetService, ImageService
+import json
+import re
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+from app.services import AssetService, ImageService, ProjectService, get_ai_service
 from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES
+
+
+def _extract_json_object(raw: str) -> Optional[Dict]:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    code_block_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    if code_block_match:
+        text = code_block_match.group(1).strip()
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        pass
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
+async def _build_script_analysis_with_llm(project_id: str, episode_id: str, script: str) -> Dict:
+    project = ProjectService.get_project(project_id)
+    if not project:
+        return {"success": False, "error": "项目不存在"}
+
+    ai_config = project.get("ai_config", {})
+    llm = get_ai_service(ai_config, "llm", project_id)
+
+    from app.services.global_prompt_service import get_prompt_content
+    estimate_template = get_prompt_content("storyboard_plan_estimate", ai_config)
+    if not estimate_template:
+        return {"success": False, "error": "缺少提示词模板: storyboard_plan_estimate"}
+
+    prompt = estimate_template.replace("{script}", (script or ""))
+
+    try:
+        result = await llm.chat([{"role": "user", "content": prompt}])
+        content = result.get("content", "")
+        parsed = _extract_json_object(content)
+        if not parsed:
+            return {"success": False, "error": "分镜规划解析失败：LLM未返回有效JSON"}
+
+        dialogue_chars_total = int(parsed.get("dialogue_chars_total") or 0)
+        estimated_storyboard_count = int(parsed.get("estimated_storyboard_count") or 0)
+        suggested_dialogue_chars_per_storyboard = int(parsed.get("suggested_dialogue_chars_per_storyboard") or 0)
+
+        if dialogue_chars_total <= 0 or estimated_storyboard_count <= 0 or suggested_dialogue_chars_per_storyboard <= 0:
+            return {"success": False, "error": "分镜规划解析失败：关键字段必须大于0"}
+
+        basis = parsed.get("estimation_basis") if isinstance(parsed.get("estimation_basis"), dict) else {}
+        script_analysis = {
+            "dialogue_chars_total": dialogue_chars_total,
+            "estimated_storyboard_count": estimated_storyboard_count,
+            "suggested_dialogue_chars_per_storyboard": suggested_dialogue_chars_per_storyboard,
+            "estimation_basis": {
+                "has_explicit_storyboard_count": bool(basis.get("has_explicit_storyboard_count")),
+                "explicit_storyboard_count": basis.get("explicit_storyboard_count"),
+                "has_explicit_duration_seconds": bool(basis.get("has_explicit_duration_seconds")),
+                "explicit_duration_seconds": basis.get("explicit_duration_seconds"),
+                "rule_used": str(basis.get("rule_used") or "llm_estimate"),
+                "default_seconds_per_storyboard": 15,
+            },
+        }
+
+        plan_id = str(uuid.uuid4())
+        plan_record = {
+            "asset_id": plan_id,
+            "episode_id": episode_id,
+            "script_analysis": script_analysis,
+            "created_at": datetime.now().isoformat(),
+            "expires_at": (datetime.now() + timedelta(hours=2)).isoformat(),
+        }
+        AssetService.save_asset(project_id, "storyboard_plan", plan_record)
+
+        return {"success": True, "plan_id": plan_id, "script_analysis": script_analysis}
+    except Exception as e:
+        return {"success": False, "error": f"分镜规划失败: {str(e)}"}
+    finally:
+        try:
+            await llm.close()
+        except Exception:
+            pass
 
 
 async def handle_list_assets(project_id: str, parameters: Dict) -> Dict:
@@ -154,7 +244,6 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         if not episode:
             return {"success": False, "error": "剧集不存在"}
         script = episode.get("script", "")
-        # 同时返回项目已有资产，避免重复创建
         existing_assets = {}
         for asset_type in ["character", "scene", "prop"]:
             assets = AssetService.list_assets(project_id, asset_type) or []
@@ -197,3 +286,19 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_config: Optional[Dict] = None) -> Dict:
+    episode_id = parameters.get("episode_id")
+    if not episode_id:
+        return {"success": False, "error": "缺少必需字段: episode_id"}
+
+    episode = AssetService.load_asset(project_id, "episode", episode_id)
+    if not episode:
+        return {"success": False, "error": "剧集不存在"}
+
+    script = str(episode.get("script") or "").strip()
+    if not script:
+        return {"success": False, "error": "剧本为空，无法进行分镜规划估算"}
+
+    return await _build_script_analysis_with_llm(project_id, episode_id, script)

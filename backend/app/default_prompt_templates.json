@@ -355,5 +355,29 @@
         "content_file": "full_script_extract/default.md"
       }
     }
+  },
+  "storyboard_plan_estimate": {
+    "label": "分镜规划估算",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "自动/重生成分镜前，基于完整剧本估算对白总字数、分镜数和建议每镜字数",
+        "variables": ["{script}"],
+        "content_file": "storyboard_plan_estimate/default.md"
+      }
+    }
+  },
+  "video_subagent_contract": {
+    "label": "视频子代理约束",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "video_prompt 子代理输出约束（资产顺序、输出格式、重试强化）",
+        "variables": ["{canonical_asset_lines}"],
+        "content_file": "video_subagent_contract/default.md"
+      }
+    }
   }
 }
