@@ -113,8 +113,9 @@ TOOLS = [
                 "episode_id": {"type": "string", "description": "所属剧集的ID"},
                 "plan_id": {"type": "string", "description": "自动生成/重新生成流程的规划标签；由 estimate_storyboard_plan 返回，手工创建可不传"},
                 "sequence": {"type": "integer", "description": "分镜序号"},
-                "description": {"type": "string", "description": "分镜简要描述（可选，若提供video_prompt则可省略）"},
-                "script_scene_label": {"type": "string", "description": "剧本中的场次行原文。若剧本存在场次结构，则该字段必填，description 中不得再重复场次行"},
+                "script_scene_label": {"type": "string", "description": "剧本中的场次行原文。若剧本存在场次结构，则该字段必填"},
+                "description_start_text": {"type": "string", "description": "当前场正文中的起始锚点原文，必须来自正文本体，不得使用场次行或出场人物行；若命中不唯一应继续扩展直到唯一"},
+                "description_end_text": {"type": "string", "description": "当前场正文中的结束锚点原文，必须来自正文本体，不得使用场次行或出场人物行；若命中不唯一应继续扩展直到唯一"},
                 "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。@图N编号规则（严格执行）：按character_ids数组顺序依次编为@图1、@图2...，scene_ids紧接所有角色之后继续编号，prop_ids再接其后。"},
                 "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
@@ -129,7 +130,7 @@ TOOLS = [
                 "dialogue_chars_declared": {"type": "integer", "description": "AI上报的对白总字数（去空白后）"},
                 "short_dialogue_reason": {"type": "string", "description": "当对白偏短时的原因说明（建议填写）", "enum": ["REACTION_SHOT", "TIMECODE_CONSTRAINT", "SOURCE_TEXT_SHORT", "SCENE_BOUNDARY_CONSTRAINT"]},
                 "short_dialogue_time_evidence": {"type": "string", "description": "仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填：剧本中包含时间数字的原文片段（如'站着不动3秒'）"},
-                "suggested_dialogue_chars": {"type": "integer", "description": "可选：对白建议字数。若传入且提供 plan_id，必须与 estimate_storyboard_plan 返回的建议字数一致"},
+                "suggested_dialogue_chars": {"type": "integer", "description": "自动生成/重新生成流程中必须显式传入：对白建议字数，且必须等于 estimate_storyboard_plan 返回的 suggested_dialogue_chars_per_storyboard；手工创建可不传"},
                 "suggested_dialogue_tolerance": {"type": "integer", "description": "建议字数浮动范围，默认20"}
             },
             "required": ["episode_id", "sequence", "dialogue_units", "dialogue_chars_declared"]

@@ -65,25 +65,6 @@ def _is_duplicate(name: str, existing: List[Dict]) -> bool:
     return False
 
 
-def _build_existing_assets_summary(project_id: str) -> str:
-    existing_characters = AssetService.list_assets(project_id, "character")
-    existing_scenes = AssetService.list_assets(project_id, "scene")
-    existing_props = AssetService.list_assets(project_id, "prop")
-
-    parts = []
-    if existing_characters:
-        names = "、".join(c["name"] for c in existing_characters)
-        parts.append(f"角色：{names}")
-    if existing_scenes:
-        names = "、".join(s["name"] for s in existing_scenes)
-        parts.append(f"场景：{names}")
-    if existing_props:
-        names = "、".join(p["name"] for p in existing_props)
-        parts.append(f"道具：{names}")
-
-    return "\n".join(parts) if parts else "（暂无已有资产）"
-
-
 async def _chat_json_streaming(
     llm,
     *,
@@ -139,14 +120,13 @@ def _apply_split_parsed(project_id: str, parsed: Dict[str, Any]) -> Dict[str, An
 
     for ep_data in parsed.get("episodes", []) or []:
         ep_number = ep_data.get("episode_number", len(result_episodes) + 1)
-        ep_title = ep_data.get("title", f"第{ep_number}集")
+        ep_title = str(ep_data.get("title") or f"第{ep_number}集").strip() or f"第{ep_number}集"
         ep_content = ep_data.get("content", "")
 
         if ep_number in existing_by_number:
             existing_ep = existing_by_number[ep_number]
             existing_ep["script"] = ep_content
-            if ep_title:
-                existing_ep["name"] = ep_title
+            existing_ep["name"] = ep_title
             AssetService.save_asset(project_id, "episode", existing_ep)
             episodes_updated += 1
             result_episodes.append({
@@ -261,6 +241,7 @@ async def split_into_episodes(project_id: str, content: str, ai_config: Dict) ->
             system_prompt=system_prompt,
             temperature=0.1,
             max_tokens=64000,
+            extra_body={"thinking": {"type": "disabled"}},
         )
         if response.get("error"):
             raise RuntimeError(response.get("error"))
@@ -329,6 +310,7 @@ async def stream_split_and_extract(
             system_prompt=split_prompt,
             temperature=0.1,
             max_tokens=64000,
+            extra_body={"thinking": {"type": "disabled"}},
         ):
             evt_type = evt.get("type")
             if evt_type == "error":

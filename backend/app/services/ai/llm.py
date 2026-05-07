@@ -25,6 +25,7 @@ class LLMService(AIService):
         max_tokens: int = 32000,
         tools: Optional[List[Dict]] = None,
         response_format: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """流式对话，返回 thinking、content 和 tool_calls。
 
@@ -57,6 +58,9 @@ class LLMService(AIService):
 
         if response_format:
             payload["response_format"] = response_format
+
+        if extra_body:
+            payload.update(extra_body)
 
         try:
             async with self.client.stream(
@@ -200,6 +204,7 @@ class LLMService(AIService):
         max_tokens: int = 32000,
         tools: Optional[List[Dict]] = None,
         response_format: Optional[Dict[str, Any]] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """非流式对话，支持 tools"""
         import httpx
@@ -225,6 +230,9 @@ class LLMService(AIService):
 
         if response_format:
             payload["response_format"] = response_format
+
+        if extra_body:
+            payload.update(extra_body)
 
         start_time = datetime.now()
 

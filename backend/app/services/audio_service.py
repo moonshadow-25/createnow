@@ -103,6 +103,8 @@ class AudioService:
             with open(audio_file, "r", encoding="utf-8") as f:
                 audio = json.load(f)
 
+            character_id = audio.get("character_id")
+
             # 删除本地文件
             local_path = audio.get("local_path")
             if local_path:
@@ -113,6 +115,23 @@ class AudioService:
 
             # 删除记录文件
             audio_file.unlink()
+
+            if character_id:
+                from app.services.asset_service import AssetService
+
+                char = AssetService.load_asset(project_id, "character", character_id)
+                if char and char.get("voice_audio_id") == audio_id:
+                    remaining_audios = AudioService.list_audios(project_id, character_id=character_id)
+                    next_primary = next((item for item in remaining_audios if item.get("is_primary")), None)
+                    if not next_primary and remaining_audios:
+                        next_primary = remaining_audios[0]
+
+                    if next_primary:
+                        AudioService.set_primary_audio(project_id, next_primary["audio_id"], character_id=character_id)
+                    else:
+                        char["voice_audio_id"] = None
+                        AssetService.save_asset(project_id, "character", char)
+
             return True
         except Exception as e:
             print(f"Error deleting audio {audio_id}: {e}")

@@ -47,7 +47,7 @@ export function MessageBubble({
                 matchedResult?.raw_result?.success === false;
 
               return (
-                <details key={idx} className="bg-gray-900 rounded" open={isFailed}>
+                <details key={idx} className="bg-gray-900 rounded" open={false}>
                   <summary className="px-2 py-1 text-xs text-blue-300 cursor-pointer select-none">
                     {tool.name}
                   </summary>

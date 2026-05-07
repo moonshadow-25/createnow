@@ -76,6 +76,7 @@ export interface Character extends Asset {
   voice_prompt?: string;      // 音色描述
   voice_id?: string;          // TTS 音色名
   voice_audio_id?: string;    // 主音色样本音频 ID
+  voice_enabled?: boolean;    // 是否启用声音引用
 }
 
 // 场景类型

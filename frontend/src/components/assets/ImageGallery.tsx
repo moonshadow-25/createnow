@@ -86,12 +86,6 @@ export function ImageGallery({ images, assetName, assetId, projectId, assetType,
       return;
     }
 
-    // 验证文件大小（10MB）
-    if (file.size > 10 * 1024 * 1024) {
-      toast('文件过大，请上传小于10MB的图片', 'error');
-      return;
-    }
-
     if (!projectId || !assetId) {
       toast('缺少必要参数', 'error');
       return;

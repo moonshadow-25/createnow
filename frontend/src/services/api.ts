@@ -109,15 +109,6 @@ export const chatApi = {
       headers,
     };
   },
-  uploadScript: (projectId: string, file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post(`/projects/${projectId}/chat/upload-script`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
   extractAssets: (projectId: string, text: string) =>
     api.post(`/projects/${projectId}/chat/extract`, { text }),
   analyzeScript: (projectId: string, script: string) =>

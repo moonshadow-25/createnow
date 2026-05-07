@@ -119,7 +119,7 @@ def _build_ordered_assets(project_id: str, character_ids: List[str], scene_ids: 
     audio_lines: List[str] = []
     audio_idx = 1
     for char in ordered_characters:
-        if char.get("voice_audio_id"):
+        if char.get("voice_enabled", True) and char.get("voice_audio_id"):
             audio_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
             audio_idx += 1
 

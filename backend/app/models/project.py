@@ -252,6 +252,7 @@ class Character(Asset):
     voice_prompt: Optional[str] = None   # 音色描述（提示词）
     voice_id: Optional[str] = None       # TTS 音色名称/ID（如 "zhichu"）
     voice_audio_id: Optional[str] = None  # 主音色样本 AudioGeneration.audio_id
+    voice_enabled: bool = True           # 是否启用声音引用
 
 
 class Scene(Asset):

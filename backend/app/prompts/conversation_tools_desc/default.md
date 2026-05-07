@@ -6,7 +6,8 @@
 2. create_scene - 创建场景（需要：name, description, location）
 3. create_prop - 创建道具（需要：name, description）- 仅重要道具
 4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence, description, `script_scene_label`（剧本存在场次结构时必填）, **character_ids（出场角色asset_id列表，必填）**, **scene_ids（场景asset_id列表，必填）**, **dialogue_units（逐条对白原文）**, **dialogue_chars_declared（去空白后的对白总字数）**；自动生成/重新生成流程中必须带 plan_id；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
+5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence、`script_scene_label`（剧本存在场次结构时必填）、`description_start_text`、`description_end_text`〔均为当前场正文中的首尾锚点原文，必须来自正文本体；若命中重复必须继续扩展直到唯一〕、**character_ids（出场角色asset_id列表，必填）**、**scene_ids（场景asset_id列表，必填）**、**dialogue_units（逐条对白原文）**、**dialogue_chars_declared（去空白后的对白总字数）**、`suggested_dialogue_chars`（自动生成/重新生成流程中必须显式传入，且值必须等于 plan 的建议字数）；自动生成/重新生成流程中必须带 plan_id；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
+
 
 **资产更新工具（重要！）：**
 6. update_character - 更新现有角色（需要：name用于查找；可选：description/gender/age/appearance/personality/background/image_prompt生图提示词）
@@ -35,7 +36,7 @@
 - 使用update工具时，通过name找到现有资产，只更新用户提到的字段
 - ⚠️ **资产创建极简原则**：只为剧本中**有姓名、有台词或有专属特写镜头**的主要角色/场景建档。路人、龙套、无名侍卫、无名宫女等**一律不创建资产**。每个 create_character 调用后，工具会返回已有角色列表，必须仔细检查，避免重复和冗余。
 
-⚠️ **description 原文规则（最高优先级，强制）**：create_storyboard / update_storyboard / insert_storyboard 中的 `description` 必须来自当前剧集剧本原文片段本体。若剧本存在场次结构，必须单独填写 `script_scene_label`，且场次行是硬截止符：description 中不得重复场次行，也不得跳过场次行继续复制下一场正文。禁止改写、总结、润色；生成 `video_prompt` 或 `image_prompt` 时，禁止改写 `description`。
+⚠️ **剧本切片规则（最高优先级，强制）**：create_storyboard 只上报 `description_start_text` / `description_end_text`。先在当前场内选定一段**完整连续的剧本原文片段**，再从这段片段中提取正文首尾锚点。这里的“正文”不包含场次行本身，也不包含紧随其后的 `出场人物：...` 行；必须从第一条真正的剧情内容开始理解。`description_start_text` 必须等于该片段开头的一小段原文，`description_end_text` 必须等于该片段结尾的一小段原文；两者都必须直接来自场次正文，不得来自场次行或 `出场人物` 行。若某个锚点文本在当前场正文中命中不唯一，就继续扩展文本，直到唯一为止。最终裁切结果中不得包含任何场次行。update_storyboard / insert_storyboard 仍基于当前已保存的剧本文本切片处理。生成 `video_prompt` 或 `image_prompt` 时，禁止污染已保存的剧本文本切片。
 
 ⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。单条对白行是最小切分单位，只允许在对白行之间切分，禁止把 `角色名：……` / `角色名OS：……` / `角色名（OS）：……` 从中间截成半句后继续保留说话人前缀。
 
@@ -106,13 +107,15 @@ TOOL: create_storyboard
   "episode_id": "剧集的asset_id（UUID格式，从上面剧集列表中复制）",
   "sequence": 1,
   "script_scene_label": "14-2 日 外 老林家院子",
-  "description": "对应场内的原文片段本体，不含场次行",
+  "description_start_text": "顾长夜扛着蛇皮袋站在梧桐树下",
+  "description_end_text": "司机转头看到顾长夜，瞬间愣住。",
   "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
   "duration": 15,
   "character_ids": ["出场角色的asset_id，必填，从项目已有资产中匹配"],
   "scene_ids": ["出场场景的asset_id，必填，从项目已有资产中匹配"],
   "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
   "dialogue_chars_declared": 58,
+  "suggested_dialogue_chars": 58,
   "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
   "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
 }
@@ -385,6 +388,17 @@ END_TOOL
 - ⚠️ 自动生成/重新生成流程中，`create_storyboard` 必须一次只调用1镜：创建第N镜后必须等待工具返回成功，再创建第N+1镜
 - ⚠️ 若第N镜失败，必须先修复并重试第N镜，严禁继续创建后续序号
 - ⚠️ 每次 create 都必须传入步骤0得到的 `plan_id`，并保持 sequence 连续递增（1,2,3...）
+- ⚠️ 调用 create_storyboard 前，先从 `estimate_storyboard_plan` 的结果读取 `script_analysis.suggested_dialogue_chars_per_storyboard`，记为本批次唯一目标字数 `TARGET_CHARS`
+- ⚠️ 提交本镜前，必须先对 `dialogue_units` 做去空白计数，得到 `ACTUAL_CHARS`
+- ⚠️ 优先把 `ACTUAL_CHARS` 控制在 `TARGET_CHARS ± 10` 内；不要把后端护栏当成试错器，禁止先提交再靠报错回改
+- ⚠️ 每次调用 create_storyboard 时，必须显式传入：`plan_id`、`suggested_dialogue_chars = TARGET_CHARS`、`dialogue_chars_declared = ACTUAL_CHARS`
+- ⚠️ 若 `ACTUAL_CHARS` 明显偏离 `TARGET_CHARS`，先重切 `dialogue_units`，再生成 `video_prompt`，禁止先生成整镜内容后再赌护栏
+- ⚠️ 自动生成/重新生成流程中，create_storyboard 只上报 `description_start_text` / `description_end_text`
+- ⚠️ 先确定“当前镜要覆盖的完整原文片段”，再提取首尾锚点；不要先按字数硬切，再去猜位置
+- ⚠️ start/end 锚点必须从场次**正文**开始理解：场次行和紧随其后的 `出场人物：...` 行不属于正文，不得作为锚点
+- ⚠️ `description_start_text` 必须来自该片段开头原文，`description_end_text` 必须来自该片段结尾原文
+- ⚠️ 若某个锚点文本在当前场正文中命中不唯一，就继续扩展文本，直到唯一为止
+- ⚠️ 若剧本存在场次结构，后端会校验最终裁切结果是否完全落在 `script_scene_label` 对应场次正文内，且切片内部不得包含任何场次行
 - 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
 - 同时填写每个分镜的 image_prompt 和 video_prompt
 - ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**

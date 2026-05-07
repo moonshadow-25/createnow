@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict
 from app.services import AssetService
-from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue, validate_storyboard_description_origin, validate_storyboard_scene_membership
+from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue, validate_storyboard_description_origin, validate_storyboard_scene_membership, resolve_storyboard_description_from_text_anchors
 
 
 def _validate_dialogue_payload(project_id: str, parameters: Dict) -> Dict:
@@ -25,10 +25,12 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
         return {"success": False, "error": "缺少必需字段: episode_id"}
     if "sequence" not in parameters:
         return {"success": False, "error": "缺少必需字段: sequence"}
-    if "description" not in parameters:
-        return {"success": False, "error": "缺少必需字段: description（必须填写剧本原文片段）"}
     if "duration" not in parameters:
         parameters["duration"] = 15
+
+    has_text_slice = parameters.get("description_start_text") is not None or parameters.get("description_end_text") is not None
+    if not has_text_slice and not str(parameters.get("description") or "").strip():
+        return {"success": False, "error": "缺少必需字段: description（必须填写剧本原文片段）"}
 
     episode_id, ep_err = _resolve_episode_id(project_id, parameters["episode_id"])
     if ep_err:
@@ -39,12 +41,32 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if not episode:
         return {"success": False, "error": "剧集不存在"}
 
-    desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
-    if not desc_check.get("ok"):
-        return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
-
     scene_label = str(parameters.get("script_scene_label") or "").strip()
-    scene_check = validate_storyboard_scene_membership(project_id, episode_id, scene_label, parameters.get("description", ""))
+    if has_text_slice:
+        parameters.pop("description", None)
+        slice_check = resolve_storyboard_description_from_text_anchors(
+            project_id,
+            episode_id,
+            scene_label,
+            parameters.get("description_start_text"),
+            parameters.get("description_end_text"),
+        )
+        if not slice_check.get("ok"):
+            return {"success": False, "error": slice_check.get("error", "description 首尾文字裁切失败")}
+        parameters["description"] = slice_check.get("description", "")
+        parameters["_scene_is_tail"] = slice_check.get("is_scene_tail")
+    else:
+        desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
+        if not desc_check.get("ok"):
+            return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
+
+    scene_check = validate_storyboard_scene_membership(
+        project_id,
+        episode_id,
+        scene_label,
+        parameters.get("description", ""),
+        slice_check.get("is_scene_tail") if has_text_slice else None,
+    )
     if not scene_check.get("ok"):
         return {"success": False, "error": scene_check.get("error", "场次校验失败")}
 
@@ -62,6 +84,10 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if not dialogue_check.get("success"):
         return dialogue_check
     dialogue_audit = dialogue_check.get("dialogue_audit")
+
+    parameters.pop("description_start_text", None)
+    parameters.pop("description_end_text", None)
+    parameters.pop("_scene_is_tail", None)
 
     result = AssetService.save_asset(project_id, "storyboard", parameters)
     existing_ids = episode.get("storyboard_ids", [])

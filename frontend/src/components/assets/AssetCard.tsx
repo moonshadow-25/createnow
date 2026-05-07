@@ -47,6 +47,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   // 音色状态（仅角色）
   const [voicePrompt, setVoicePrompt] = useState(asset.voice_prompt || '');
   const [voiceId, setVoiceId] = useState(asset.voice_id || '');
+  const [voiceEnabled, setVoiceEnabled] = useState(asset.voice_enabled ?? true);
   const [sampleText, setSampleText] = useState('');
   const [voices, setVoices] = useState<any[]>([]);
   const [generatingVoice, setGeneratingVoice] = useState(false);
@@ -63,6 +64,12 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     setPrimaryImage(asset.primary_image_url || null);
     setImageCount(asset.image_count || 0);
   }, [asset.primary_image_url, asset.image_count]);
+
+  useEffect(() => {
+    setVoicePrompt(asset.voice_prompt || '');
+    setVoiceId(asset.voice_id || '');
+    setVoiceEnabled(asset.voice_enabled ?? true);
+  }, [asset.voice_prompt, asset.voice_id, asset.voice_enabled]);
 
   // 读取隐藏图片状态
   useEffect(() => {
@@ -135,7 +142,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
 
   // 打开编辑弹框
   const openEditModal = async () => {
-    setEditData({ ...asset });
+    setEditData({ ...asset, voice_enabled: asset.voice_enabled ?? true });
     setImagePrompt(asset.image_prompt || '');
     setEditImagePrompt(asset.edit_image_prompt || '');
     setImagePromptSectionExpanded(!asset.parent_id);
@@ -148,6 +155,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     if (assetType === 'character') {
       setVoicePrompt(asset.voice_prompt || '');
       setVoiceId(asset.voice_id || '');
+      setVoiceEnabled(asset.voice_enabled ?? true);
       await loadVoices();
     }
   };
@@ -159,7 +167,8 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       const dataToSave = {
         ...editData,
         image_prompt: imagePrompt || undefined,
-        edit_image_prompt: editImagePrompt || undefined
+        edit_image_prompt: editImagePrompt || undefined,
+        ...(assetType === 'character' ? { voice_enabled: voiceEnabled } : {})
       };
       await assetApi.update(projectId, assetType, asset.asset_id, dataToSave);
       setSaveSuccess(true);
@@ -399,6 +408,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       await generationApi.setCharacterPrimaryVoice(projectId, audioId, asset.asset_id);
       toast('已设为主音色', 'success');
       await loadVoices();
+      onDeleted();
     } catch (error: any) {
       toast(`操作失败: ${error.response?.data?.detail || error.message}`, 'error');
     }
@@ -410,6 +420,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       await generationApi.deleteCharacterVoice(projectId, audioId);
       toast('已删除', 'success');
       await loadVoices();
+      onDeleted();
     } catch (error: any) {
       toast(`删除失败: ${error.response?.data?.detail || error.message}`, 'error');
     }
@@ -888,7 +899,10 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                     {voiceSectionExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     <Mic size={14} className="text-purple-400" />
                     <h3 className="text-sm font-semibold text-gray-300">音色管理</h3>
-                    {voices.some(v => v.is_primary) && (
+                    {!voiceEnabled && (
+                      <span className="ml-1 text-xs bg-gray-600 text-gray-200 px-1.5 py-0.5 rounded">已关闭</span>
+                    )}
+                    {voiceEnabled && voices.some(v => v.is_primary) && (
                       <span className="ml-1 text-xs bg-purple-700 text-purple-200 px-1.5 py-0.5 rounded">已设置</span>
                     )}
                     <span className="text-xs text-gray-500 ml-1">{voiceSectionExpanded ? '收起' : '展开'}</span>
@@ -896,6 +910,27 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
 
                   {voiceSectionExpanded && (
                     <div className="p-4 pt-0 space-y-3">
+                      <div className="flex items-center justify-between rounded bg-gray-600 px-3 py-2">
+                        <div>
+                          <div className="text-sm text-gray-200">声音启用</div>
+                          <div className="text-xs text-gray-400">关闭后将停止自动引用和 API 传输角色声音</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextEnabled = !voiceEnabled;
+                            setVoiceEnabled(nextEnabled);
+                            setEditData((prev: any) => ({ ...prev, voice_enabled: nextEnabled }));
+                          }}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${voiceEnabled ? 'bg-purple-600' : 'bg-gray-500'}`}
+                          title={voiceEnabled ? '关闭声音' : '启用声音'}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${voiceEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                          />
+                        </button>
+                      </div>
+
                       <div>
                         <label className="block text-sm text-gray-400 mb-1">音色描述</label>
                         <textarea
