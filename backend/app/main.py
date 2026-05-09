@@ -279,6 +279,8 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                         )
 
         request.state.admin_user = payload  # {"sub": "username", "role": "admin"}
+        from app.core.context import set_current_user
+        set_current_user(payload.get("sub"))
         return await call_next(request)
 
 
@@ -386,6 +388,9 @@ class SaasAuthMiddleware(BaseHTTPMiddleware):
         request.state.saas_user = user
         request.state.saas_token_payload = payload
         request.state.saas_data_root = settings.USERS_DIR / user_id
+
+        from app.core.context import set_current_user
+        set_current_user(user.get("display_name") or user.get("email") or user_id)
 
         return await call_next(request)
 

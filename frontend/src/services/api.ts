@@ -68,6 +68,7 @@ export const projectApi = {
   getStats: (id: string) => api.get(`/projects/${id}/stats`),
   setBudget: (id: string, budgetTotal: number | null) =>
     api.put(`/projects/${id}/budget`, { budget_total: budgetTotal }),
+  getStatsByUser: () => api.get('/projects/stats/by-user'),
 };
 
 // 管理员相关API

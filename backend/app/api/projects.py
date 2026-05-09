@@ -260,3 +260,59 @@ async def set_project_budget(project_id: str, body: SetBudgetRequest, request: R
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
     return result
+
+
+@router.get("/stats/by-user")
+async def get_stats_by_user():
+    """按用户汇总所有项目的实际消耗（基于 created_by 字段）"""
+    import json as _json
+    projects_dir = _get_projects_dir()
+    user_costs: dict[str, dict] = {}  # username -> {image_cost, video_cost, total_cost}
+
+    if not projects_dir.exists():
+        return {"users": [], "unknown_cost": 0}
+
+    for project_dir in sorted(projects_dir.iterdir()):
+        if not project_dir.is_dir():
+            continue
+
+        # 扫描图片记录
+        images_dir = project_dir / "images"
+        if images_dir.exists():
+            for img_file in images_dir.glob("*.json"):
+                try:
+                    img = _json.loads(img_file.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                username = (img.get("created_by") or "").strip() or "__unknown__"
+                cost = 0.4
+                entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+                entry["image_cost"] += cost
+                entry["total_cost"] += cost
+
+        # 扫描视频记录
+        videos_dir = project_dir / "videos"
+        if videos_dir.exists():
+            for vf in videos_dir.glob("*.json"):
+                try:
+                    v = _json.loads(vf.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if v.get("status") != "completed":
+                    continue
+                username = (v.get("created_by") or "").strip() or "__unknown__"
+                cost = calc_video_compute_units(v.get("duration") or 0, v.get("resolution"))
+                entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+                entry["video_cost"] += cost
+                entry["total_cost"] += cost
+
+    unknown = user_costs.pop("__unknown__", {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+    users = [
+        {"username": uname, **costs}
+        for uname, costs in sorted(user_costs.items(), key=lambda x: x[1]["total_cost"], reverse=True)
+    ]
+
+    return {
+        "users": users,
+        "unknown_cost": round(unknown["total_cost"], 2),
+    }

@@ -21,6 +21,7 @@ from app.core.context import get_current_data_root
 from .models import VideoPromptRequest, VideoPromptSubagentRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest
 from .template_helpers import get_active_template
 from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units
+from app.core.context import get_current_user
 from app.models.project import normalize_global_style_config
 
 logger = logging.getLogger(__name__)
@@ -752,6 +753,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "estimated_cost": round(calc_video_compute_units(request.duration, request.resolution), 2),
             "model": ai_config.get("video", {}).get("model", "sora"),
             "created_at": datetime.now().isoformat(),
+            "created_by": get_current_user() or "",
             "task_id": result.get("task_id", ""),
             "status": "pending",  # 等待轮询
             "poll_count": 0,
@@ -828,6 +830,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
         "estimated_cost": 0,
         "model": settings.CREATENOW_SUBTITLE_MODEL_ID,
         "created_at": datetime.now().isoformat(),
+        "created_by": get_current_user() or "",
         "task_id": submit_result.get("task_id", ""),
         "status": "pending",
         "poll_count": 0,

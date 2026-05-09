@@ -3,7 +3,7 @@ import { X, BarChart2 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { adminUserApi } from '@/services/api';
+import { adminUserApi, projectApi } from '@/services/api';
 import { Project } from '@/types';
 
 interface ProjectStats {
@@ -31,8 +31,9 @@ interface ProjectCost {
 interface UserCost {
   username: string;
   display_name?: string;
-  estimated_cost: number;
-  project_count: number;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
 }
 
 const COLORS = [
@@ -52,12 +53,29 @@ function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost:
 const fmt = (n: number) => n.toFixed(2);
 
 export function CostDashboard({ projects, projectStats, isAdmin, onClose }: CostDashboardProps) {
-  const [users, setUsers] = useState<any[]>([]);
+  const [userCosts, setUserCosts] = useState<UserCost[]>([]);
+  const [unknownCost, setUnknownCost] = useState(0);
 
   useEffect(() => {
-    if (isAdmin) {
-      adminUserApi.list().then(r => setUsers(r.data || [])).catch(() => {});
-    }
+    if (!isAdmin) return;
+    (async () => {
+      const [usersRes, statsRes] = await Promise.all([
+        adminUserApi.list().then(r => r.data || []).catch(() => [] as any[]),
+        projectApi.getStatsByUser().then(r => r.data).catch(() => ({ users: [], unknown_cost: 0 })),
+      ]);
+      setUnknownCost(statsRes.unknown_cost || 0);
+      const merged: UserCost[] = (statsRes.users || []).map((u: any) => {
+        const adminUser = usersRes.find((au: any) => au.username === u.username);
+        return {
+          username: u.username,
+          display_name: adminUser?.display_name || u.username,
+          image_cost: u.image_cost,
+          video_cost: u.video_cost,
+          total_cost: u.total_cost,
+        };
+      }).sort((a: UserCost, b: UserCost) => b.total_cost - a.total_cost);
+      setUserCosts(merged);
+    })();
   }, [isAdmin]);
 
   // 计算每个项目费用
@@ -84,32 +102,6 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
     const otherCost = projectCosts.slice(TOP_N).reduce((s, p) => s + p.total_cost, 0);
     pieData.push({ name: '其他', value: parseFloat(otherCost.toFixed(2)) });
   }
-
-  // 按用户汇总：每个项目费用 ÷ 该项目的参与用户数，取平均分摊
-  const projectUserCount: Record<string, number> = {};
-  users.forEach(u => {
-    (u.assigned_project_ids || []).forEach((id: string) => {
-      projectUserCount[id] = (projectUserCount[id] || 0) + 1;
-    });
-  });
-
-  const userCosts: UserCost[] = users
-    .filter(u => u.assigned_project_ids?.length)
-    .map(u => {
-      const ids: string[] = u.assigned_project_ids || [];
-      const estimated_cost = ids.reduce((s, id) => {
-        const { total_cost } = calcCost(projectStats[id] ?? null);
-        const participants = projectUserCount[id] || 1;
-        return s + total_cost / participants;
-      }, 0);
-      return {
-        username: u.username,
-        display_name: u.display_name,
-        estimated_cost,
-        project_count: ids.length,
-      };
-    })
-    .sort((a, b) => b.estimated_cost - a.estimated_cost);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -215,33 +207,37 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                 </div>
               </div>
 
-              {/* 用户汇总（仅管理员） */}
+              {/* 用户汇总（仅管理员，基于实际生成记录归属） */}
               {isAdmin && userCosts.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-300 mb-3">按用户汇总（基于平均值估计）</h3>
+                  <h3 className="text-sm font-medium text-gray-300 mb-3">按用户汇总（实际归属）</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
                           <th className="text-left py-2 pr-4">用户名</th>
-                          <th className="text-right py-2 pr-4">项目数</th>
-                          <th className="text-right py-2">估算消耗</th>
+                          <th className="text-right py-2 pr-4">图片费用</th>
+                          <th className="text-right py-2 pr-4">视频费用</th>
+                          <th className="text-right py-2">实际消耗</th>
                         </tr>
                       </thead>
                       <tbody>
                         {userCosts.map(u => (
                           <tr key={u.username} className="border-b border-gray-700/50 hover:bg-gray-700/30">
                             <td className="py-2 pr-4">
-                              {u.display_name ? `${u.display_name} (${u.username})` : u.username}
+                              {u.display_name && u.display_name !== u.username ? `${u.display_name} (${u.username})` : u.username}
                             </td>
-                            <td className="text-right py-2 pr-4 text-gray-400">{u.project_count}</td>
-                            <td className="text-right py-2 font-medium">¥{fmt(u.estimated_cost)}</td>
+                            <td className="text-right py-2 pr-4 text-blue-400">¥{fmt(u.image_cost)}</td>
+                            <td className="text-right py-2 pr-4 text-green-400">¥{fmt(u.video_cost)}</td>
+                            <td className="text-right py-2 font-medium">¥{fmt(u.total_cost)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">* 多人共享项目按参与人数平均分摊，仅供参考</p>
+                  {unknownCost > 0 && (
+                    <p className="text-xs text-gray-500 mt-2">* 历史记录（无归属）：¥{fmt(unknownCost)}，已从各用户消耗中排除</p>
+                  )}
                 </div>
               )}
             </>
