@@ -173,7 +173,20 @@ async def handle_get_storyboard(project_id: str, parameters: Dict) -> Dict:
         storyboard = AssetService.load_asset(project_id, "storyboard", storyboard_id)
         if not storyboard:
             return {"success": False, "error": "分镜不存在"}
-        return {"success": True, "storyboard": storyboard}
+
+        def _resolve_names(asset_type: str, ids: list) -> list:
+            result = []
+            for aid in (ids or []):
+                asset = AssetService.load_asset(project_id, asset_type, aid)
+                result.append({"asset_id": aid, "name": asset.get("name", "") if asset else ""})
+            return result
+
+        resolved_assets = {
+            "character_ids": _resolve_names("character", storyboard.get("character_ids", [])),
+            "scene_ids": _resolve_names("scene", storyboard.get("scene_ids", [])),
+            "prop_ids": _resolve_names("prop", storyboard.get("prop_ids", [])),
+        }
+        return {"success": True, "storyboard": storyboard, "resolved_assets": resolved_assets}
     except Exception as e:
         return {"success": False, "error": f"获取分镜失败: {str(e)}"}
 
