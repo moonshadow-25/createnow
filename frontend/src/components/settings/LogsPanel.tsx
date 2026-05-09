@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, X, ChevronDown, Code, FileText, AlertCircle, Image, Video } from 'lucide-react';
+import { RefreshCw, X, ChevronDown, Code, FileText, AlertCircle, Image, Video, Copy } from 'lucide-react';
 import { generationApi } from '@/services/api';
+import { translateError } from '@/utils/errorMessages';
 
 interface LogsPanelProps {
   projectId: string;
@@ -209,7 +210,28 @@ export function LogsPanel({ projectId }: LogsPanelProps) {
                         )}
                         {log.error && (
                           <div className="mt-2 text-xs text-red-300 bg-red-900/30 rounded p-2">
-                            {log.error}
+                            {(() => {
+                              const cn = translateError(log.error);
+                              return cn ? (
+                                <div>
+                                  <div className="text-yellow-300 font-medium mb-1">{cn}</div>
+                                  <div className="flex items-start gap-1">
+                                    <span className="text-red-300/70 break-all">{log.error}</span>
+                                    <button
+                                      onClick={async () => {
+                                        try { await navigator.clipboard.writeText(log.error || ''); } catch {}
+                                      }}
+                                      className="p-0.5 rounded hover:bg-white/10 flex-shrink-0"
+                                      title="复制原始错误"
+                                    >
+                                      <Copy size={10} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                log.error
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

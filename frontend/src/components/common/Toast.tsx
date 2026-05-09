@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
-import { CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info, Copy } from 'lucide-react';
+import { translateError } from '@/utils/errorMessages';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -7,12 +8,14 @@ interface Toast {
   id: string;
   type: ToastType;
   message: string;
+  originalText?: string;  // 可复制的原始英文错误
   duration?: number;
 }
 
 interface ToastContextType {
   toasts: Toast[];
   toast: (message: string, type?: ToastType, duration?: number) => void;
+  toastError: (detail: string, fallback?: string) => void;
   removeToast: (id: string) => void;
 }
 
@@ -21,17 +24,25 @@ export const ToastContext = React.createContext<ToastContextType | null>(null);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = (message: string, type: ToastType = 'info', duration = 3000) => {
+  const addToast = (message: string, type: ToastType = 'info', duration = 3000, originalText?: string) => {
     const id = Date.now().toString();
-    const newToast: Toast = { id, message, type, duration };
+    const newToast: Toast = { id, message, type, duration, originalText };
 
     setToasts(prev => [...prev, newToast]);
 
-    // 自动移除
     if (duration > 0) {
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== id));
       }, duration);
+    }
+  };
+
+  const toastError = (detail: string, fallback = '操作失败') => {
+    const cn = translateError(detail);
+    if (cn) {
+      addToast(cn, 'error', 5000, detail);
+    } else {
+      addToast(detail || fallback, 'error', 4000);
     }
   };
 
@@ -40,10 +51,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <ToastContext.Provider value={{ toasts, toast: addToast, removeToast }}>
+    <ToastContext.Provider value={{ toasts, toast: addToast, toastError, removeToast }}>
       {children}
 
-      {/* Toast容器 */}
       <div className="fixed bottom-4 right-4 z-[999999] flex flex-col gap-2">
         {toasts.map(t => (
           <div
@@ -53,11 +63,25 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           >
             {getToastIcon(t.type)}
             <span className="text-sm font-medium">{t.message}</span>
+            {t.originalText && (
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(t.originalText!);
+                  } catch {
+                    // fallback: ignore
+                  }
+                }}
+                className="ml-1 p-1 rounded hover:bg-white/20 transition flex-shrink-0"
+                title="复制原始错误信息"
+              >
+                <Copy size={12} />
+              </button>
+            )}
           </div>
         ))}
       </div>
 
-      {/* CSS动画 */}
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
@@ -98,7 +122,6 @@ function getToastIcon(type: ToastType) {
   }
 }
 
-// 全局 Toast Hook
 export const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {
