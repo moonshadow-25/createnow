@@ -147,13 +147,12 @@ END_TOOL
 - **两个字段绝对不能混用**
 
 生图提示词示例（update_storyboard + image_prompt）：
+⚠️ 先调 get_storyboard 读取分镜的 character_ids、scene_ids，据此确定 @图N 引用对象，再生成 image_prompt。
 TOOL: update_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式）",
   "sequence": 5,
-  "image_prompt": "← 按系统提示词📋中'分镜生图提示词'规范填写",
-  "character_ids": ["从 get_storyboard 结果中原样复制"],
-  "scene_ids": ["从 get_storyboard 结果中原样复制"]
+  "image_prompt": "← 按系统提示词📋中'分镜生图提示词'规范填写"
 }
 END_TOOL
 
