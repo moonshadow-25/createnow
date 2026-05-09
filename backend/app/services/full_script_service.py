@@ -312,9 +312,27 @@ def _apply_extract_parsed(project_id: str, parsed: Dict[str, Any]) -> Dict[str, 
 # ── 原同步接口（兼容） ─────────────────────────────────────────────────────────
 
 async def split_into_episodes(project_id: str, content: str, ai_config: Dict) -> Dict[str, Any]:
+    # 短剧本走原版单次 LLM
+    if len(content) <= SHORT_LIMIT:
+        return await _split_single_llm(project_id, content, ai_config)
+
+    # 长剧本走分块并发
+    try:
+        chunks = _chunk_text(content)
+        logger.info(f"[FullScriptService] split: {len(content)} chars → {len(chunks)} chunks")
+        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config)
+        boundaries = _locate_boundaries(content, chunk_results)
+        episodes = _slice_episodes(content, boundaries)
+        return _apply_episodes_to_project(project_id, episodes)
+    except Exception as e:
+        logger.error(f"[FullScriptService] chunked split failed: {e}")
+        raise RuntimeError(f"AI 分集失败：{e}")
+
+
+async def _split_single_llm(project_id: str, content: str, ai_config: Dict) -> Dict[str, Any]:
+    """短剧本单次 LLM 分集（原版逻辑）"""
     llm = get_ai_service(ai_config, "llm", project_id)
     system_prompt = get_prompt_content("full_script_split", ai_config)
-
     try:
         response = await llm.chat(
             messages=[{"role": "user", "content": f"请将以下完整剧本进行分集：\n\n{content}"}],
@@ -330,13 +348,31 @@ async def split_into_episodes(project_id: str, content: str, ai_config: Dict) ->
             raise RuntimeError("AI 返回结果无法解析，请重试")
         return _apply_split_parsed(project_id, parsed)
     except Exception as e:
-        logger.error(f"[FullScriptService] split LLM call failed: {e}")
+        logger.error(f"[FullScriptService] single split LLM call failed: {e}")
         raise RuntimeError(f"AI 分集失败：{e}")
     finally:
         await llm.close()
 
 
 async def extract_all_assets(project_id: str, content: str, ai_config: Dict) -> Dict[str, Any]:
+    # 短剧本走原版单次 LLM
+    if len(content) <= SHORT_LIMIT:
+        return await _extract_single_llm(project_id, content, ai_config)
+
+    # 长剧本走分块并发
+    try:
+        chunks = _chunk_text(content)
+        logger.info(f"[FullScriptService] extract: {len(content)} chars → {len(chunks)} chunks")
+        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config)
+        merged = await _merge_assets_master(project_id, chunk_results, ai_config)
+        return _apply_extract_parsed(project_id, merged)
+    except Exception as e:
+        logger.error(f"[FullScriptService] chunked extract failed: {e}")
+        raise RuntimeError(f"AI 资产提取失败：{e}")
+
+
+async def _extract_single_llm(project_id: str, content: str, ai_config: Dict) -> Dict[str, Any]:
+    """短剧本单次 LLM 资产提取（原版逻辑）"""
     llm = get_ai_service(ai_config, "llm", project_id)
     existing_summary = _build_existing_assets_summary(project_id)
     template = get_prompt_content("full_script_extract", ai_config)
@@ -356,7 +392,7 @@ async def extract_all_assets(project_id: str, content: str, ai_config: Dict) -> 
             raise RuntimeError("AI 返回结果无法解析，请重试")
         return _apply_extract_parsed(project_id, parsed)
     except Exception as e:
-        logger.error(f"[FullScriptService] extract LLM call failed: {e}")
+        logger.error(f"[FullScriptService] single extract LLM call failed: {e}")
         raise RuntimeError(f"AI 资产提取失败：{e}")
     finally:
         await llm.close()
