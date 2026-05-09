@@ -477,21 +477,11 @@ def _locate_boundaries(full_text: str, all_chunk_results: List[Dict]) -> List[Di
 
 
 def _find_at_line_boundary(full_text: str, marker: str) -> int:
-    """查找 marker，要求命中位置在行首（前一个字符是 \\n 或文本开头）"""
-    # 尝试 marker + 换行（最精确）
+    """查找 marker 在全文中的位置，优先匹配 marker + 换行"""
     pos = full_text.find(marker + "\n")
-    if pos != -1 and (pos == 0 or full_text[pos - 1] == "\n"):
+    if pos != -1:
         return pos
-    # 尝试不加换行
-    pos = full_text.find(marker)
-    if pos != -1 and (pos == 0 or full_text[pos - 1] == "\n"):
-        return pos
-    # marker 可能在行尾（最后一行没有尾随换行）
-    if full_text.endswith(marker):
-        pos = len(full_text) - len(marker)
-        if pos == 0 or full_text[pos - 1] == "\n":
-            return pos
-    return -1
+    return full_text.find(marker)
 
 
 def _slice_episodes(full_text: str, boundaries: List[Dict]) -> List[Dict]:
