@@ -537,7 +537,6 @@ async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str) -> D
             system_prompt=prompt,
             temperature=0.1,
             max_tokens=8192,
-            response_format={"type": "json_object"},
             extra_body={"thinking": {"type": "disabled"}},
         )
         if response.get("error"):
@@ -607,7 +606,6 @@ async def _merge_assets_master(project_id: str, all_chunk_results: List[Dict], a
             system_prompt=system_prompt,
             temperature=0.1,
             max_tokens=8192,
-            response_format={"type": "json_object"},
         )
         if response.get("error"):
             raise RuntimeError(response.get("error"))
