@@ -124,10 +124,6 @@ async def handle_update_storyboard(project_id: str, parameters: Dict) -> Dict:
     if "description" in parameters and parameters["description"]:
         current["description"] = parameters["description"]
 
-    desc_check = validate_storyboard_description_origin(project_id, current.get("episode_id", ""), current.get("description", ""))
-    if not desc_check.get("ok"):
-        return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
-
     scene_label = str(parameters.get("script_scene_label") or current.get("script_scene_label") or "").strip()
     scene_check = validate_storyboard_scene_membership(project_id, current.get("episode_id", ""), scene_label, current.get("description", ""))
     if not scene_check.get("ok"):
