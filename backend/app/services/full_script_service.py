@@ -477,11 +477,18 @@ def _locate_boundaries(full_text: str, all_chunk_results: List[Dict]) -> List[Di
 
 
 def _find_at_line_boundary(full_text: str, marker: str) -> int:
-    """查找 marker 在全文中的位置，优先匹配 marker + 换行"""
-    pos = full_text.find(marker + "\n")
-    if pos != -1:
-        return pos
-    return full_text.find(marker)
+    """查找 marker 在全文中的位置，确保不是更长标识符的子串（如 EPISODE 5 不匹配 EPISODE 50）"""
+    pos = 0
+    mlen = len(marker)
+    while True:
+        pos = full_text.find(marker, pos)
+        if pos == -1:
+            return -1
+        # 检查 marker 后面的字符：不能是数字（防止 EPISODE 5 命中 EPISODE 50）
+        after = pos + mlen
+        if after >= len(full_text) or not full_text[after].isdigit():
+            return pos
+        pos += 1
 
 
 def _slice_episodes(full_text: str, boundaries: List[Dict]) -> List[Dict]:
