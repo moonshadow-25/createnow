@@ -316,11 +316,12 @@ async def split_into_episodes(project_id: str, content: str, ai_config: Dict) ->
     if len(content) <= SHORT_LIMIT:
         return await _split_single_llm(project_id, content, ai_config)
 
-    # 长剧本走分块并发
+    # 长剧本走分块并发（仅边界）
     try:
         chunks = _chunk_text(content)
         logger.info(f"[FullScriptService] split: {len(content)} chars → {len(chunks)} chunks")
-        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config)
+        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config,
+            prompt_key="full_script_split_chunk_boundary")
         boundaries = _locate_boundaries(content, chunk_results)
         episodes = _slice_episodes(content, boundaries)
         return _apply_episodes_to_project(project_id, episodes)
@@ -359,11 +360,12 @@ async def extract_all_assets(project_id: str, content: str, ai_config: Dict) -> 
     if len(content) <= SHORT_LIMIT:
         return await _extract_single_llm(project_id, content, ai_config)
 
-    # 长剧本走分块并发
+    # 长剧本走分块并发（仅资产）
     try:
         chunks = _chunk_text(content)
         logger.info(f"[FullScriptService] extract: {len(content)} chars → {len(chunks)} chunks")
-        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config)
+        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config,
+            prompt_key="full_script_extract_chunk")
         merged = await _merge_assets_master(project_id, chunk_results, ai_config)
         return _apply_extract_parsed(project_id, merged)
     except Exception as e:
@@ -527,11 +529,15 @@ def _slice_episodes(full_text: str, boundaries: List[Dict]) -> List[Dict]:
 
 # ── 分块并发 LLM ──────────────────────────────────────────────────────────────
 
-async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str) -> Dict:
-    """单个块的 LLM 调用：边界 + 资产"""
+async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str, prompt_key: str = "full_script_split_chunk") -> Dict:
+    """单个块的 LLM 调用。prompt_key 决定任务类型：
+    - full_script_split_chunk:          边界 + 资产
+    - full_script_split_chunk_boundary: 仅边界
+    - full_script_extract_chunk:        仅资产
+    """
     llm = get_ai_service(ai_config, "llm", project_id)
     try:
-        prompt = get_prompt_content("full_script_split_chunk", ai_config)
+        prompt = get_prompt_content(prompt_key, ai_config)
         response = await llm.chat(
             messages=[{"role": "user", "content": f"剧本片段：\n\n{chunk['text']}"}],
             system_prompt=prompt,
@@ -545,7 +551,7 @@ async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str) -> D
         return {
             "chunk_index": chunk["index"],
             "boundaries": parsed.get("boundaries", []) or [],
-            "assets": parsed.get("assets", {"characters": [], "scenes": [], "props": []}) or {},
+            "assets": parsed if prompt_key == "full_script_extract_chunk" else (parsed.get("assets") or {}),
         }
     except Exception as e:
         logger.error(f"[FullScriptService] chunk {chunk['index']} failed: {e}")
@@ -558,10 +564,10 @@ async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str) -> D
         await llm.close()
 
 
-async def _split_chunks_parallel(project_id: str, chunks: List[Dict], ai_config: Dict) -> List[Dict]:
+async def _split_chunks_parallel(project_id: str, chunks: List[Dict], ai_config: Dict, prompt_key: str = "full_script_split_chunk") -> List[Dict]:
     """并发调用所有块的 LLM"""
     results = await asyncio.gather(*[
-        _process_one_chunk(c, ai_config, project_id) for c in chunks
+        _process_one_chunk(c, ai_config, project_id, prompt_key) for c in chunks
     ])
     return sorted(results, key=lambda r: r["chunk_index"])
 

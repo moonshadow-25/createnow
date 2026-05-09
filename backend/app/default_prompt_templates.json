@@ -345,13 +345,35 @@
     }
   },
   "full_script_split_chunk": {
-    "label": "全剧本分集（分块）",
+    "label": "全剧本分集并提取（分块）",
     "category": "服务提示词",
     "presets": {
       "default": {
         "name": "默认",
-        "description": "从剧本片段中识别分集边界，返回原文定位标记",
+        "description": "从剧本片段中同时识别分集边界和提取资产",
         "content_file": "full_script_split_chunk/default.md"
+      }
+    }
+  },
+  "full_script_split_chunk_boundary": {
+    "label": "全剧本分集（分块·仅边界）",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "从剧本片段中仅识别分集边界，不提取资产",
+        "content_file": "full_script_split_chunk_boundary/default.md"
+      }
+    }
+  },
+  "full_script_extract_chunk": {
+    "label": "全剧本资产提取（分块）",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "从剧本片段中仅提取资产，不识别分集边界",
+        "content_file": "full_script_extract_chunk/default.md"
       }
     }
   },
