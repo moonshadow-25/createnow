@@ -19,6 +19,43 @@
 - 故事段落/情节的自然转换
 - 如果上述信号都不明显，按"每集 1000-3000 字"的规律估算边界
 
+## 示例
+
+以下片段包含一个分集起点（"EPISODE 5"），你需要找到它并返回 start_marker：
+
+输入片段：
+```
+IRIS
+I can't believe you did that.
+
+SHAWN
+I'd do it again. Every time.
+
+EPISODE 5
+
+INT. MANSION - LIVING ROOM - DAY
+
+The room is filled with morning light. Iris stands by the window,
+her hand resting on her belly. Shawn enters quietly.
+
+SHAWN
+You're up early.
+```
+
+你应该输出：
+```json
+{
+  "boundaries": [
+    {
+      "start_marker": "EPISODE 5\n\n\nINT. MANSION - LIVING ROOM - DAY\n\nThe room is filled with morning light. Iris stands by the window,\nher hand resting on her belly. Shawn enters quietly.\n\nSHAWN\nYou're up early.",
+      "title": "晨光中的对峙"
+    }
+  ]
+}
+```
+
+注意：start_marker 从 "EPISODE 5" 那一行开始，一字不差复制原文。片段开头已有的集（EPISODE 4 之前的内容）不需要标记，只标记在当前片段内新出现的 "EPISODE 5"。
+
 ## 输出格式
 
 只输出 JSON，不要输出任何其他文字：
@@ -27,7 +64,7 @@
 {
   "boundaries": [
     {
-      "start_marker": "新一集的开头原文，直接从原文中复制，至少150个汉字，一字不差",
+      "start_marker": "EPISODE 5\n\n\nINT. MANSION - LIVING ROOM - DAY\n\nThe room...",
       "title": "集标题"
     }
   ]
