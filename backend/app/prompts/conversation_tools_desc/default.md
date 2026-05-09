@@ -14,7 +14,7 @@
 7. update_scene - 更新现有场景（需要：name用于查找；可选：description/location/time_of_day/weather/mood/image_prompt生图提示词）
 8. update_prop - 更新现有道具（需要：name用于查找；可选：description/category/era/material/image_prompt生图提示词）
 9. update_episode - 更新现有剧集（需要：episode_number用于查找，其他字段可选）
-10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description、script_scene_label、video_prompt视频提示词、image_prompt分镜生图提示词、character_ids、scene_ids、prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
+10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description、script_scene_label、video_prompt视频提示词、image_prompt分镜生图提示词、character_ids、scene_ids、prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）⚠️ **无论更新什么字段，都必须先调用 get_storyboard 读取该分镜完整信息，再将 character_ids、scene_ids、prop_ids 原样回传，禁止凭空编造或省略**
 
 **删除工具：**
 11. delete_storyboard - 删除单个分镜（需要：storyboard_id或episode_id+sequence，confirmed=true）
@@ -123,6 +123,8 @@ END_TOOL
 
 ⚠️ **character_ids 和 scene_ids 是必填字段**：创建分镜前必须先从"当前项目已有资产"中找到对应角色和场景的 asset_id 填入，不可留空或省略。@图N 编号顺序与 character_ids 数组顺序严格对应。
 
+🚨 **update_storyboard 铁律（最高优先级）**：调用前必须先调 `get_storyboard` 读取完整分镜信息（包括 character_ids、scene_ids、prop_ids、description、video_prompt、image_prompt），再将读到的 character_ids、scene_ids、prop_ids 原样回传。生成 video_prompt 或 image_prompt 时，@图N 引用必须基于这些真实 asset_id 对应的资产信息。
+
 TOOL: update_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式）",
@@ -149,7 +151,9 @@ TOOL: update_storyboard
 {
   "episode_id": "剧集的asset_id（UUID格式）",
   "sequence": 5,
-  "image_prompt": "← 按系统提示词📋中'分镜生图提示词'规范填写"
+  "image_prompt": "← 按系统提示词📋中'分镜生图提示词'规范填写",
+  "character_ids": ["从 get_storyboard 结果中原样复制"],
+  "scene_ids": ["从 get_storyboard 结果中原样复制"]
 }
 END_TOOL
 
