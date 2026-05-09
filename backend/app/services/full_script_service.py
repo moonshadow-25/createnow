@@ -1,4 +1,5 @@
-"""全剧本导入服务 — 分集 / 资产提取 / 串行流式分集并提取"""
+"""全剧本导入服务 — 分集 / 资产提取 / 分块并发分集并提取"""
+import asyncio
 import json
 import re
 import uuid
@@ -11,6 +12,11 @@ from app.services.asset_service import AssetService
 from app.services.global_prompt_service import get_prompt_content
 
 logger = logging.getLogger(__name__)
+
+# 分块参数
+CHUNK_SIZE = 10000       # 每块字符数
+OVERLAP = 1000            # 块间重叠字符数
+SHORT_LIMIT = 10000       # 短于此值走旧版单次 LLM
 
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -63,6 +69,26 @@ def _is_duplicate(name: str, existing: List[Dict]) -> bool:
         if asset.get("name", "").strip().lower() == normalized:
             return True
     return False
+
+
+def _build_existing_assets_summary(project_id: str) -> str:
+    """构建已有资产摘要文本，供 LLM 去重参考"""
+    characters = AssetService.list_assets(project_id, "character")
+    scenes = AssetService.list_assets(project_id, "scene")
+    props = AssetService.list_assets(project_id, "prop")
+
+    parts = []
+    if characters:
+        names = "、".join(c["name"] for c in characters)
+        parts.append(f"已有角色：{names}")
+    if scenes:
+        names = "、".join(s["name"] for s in scenes)
+        parts.append(f"已有场景：{names}")
+    if props:
+        names = "、".join(p["name"] for p in props)
+        parts.append(f"已有道具：{names}")
+
+    return "\n".join(parts) if parts else "（暂无已有资产）"
 
 
 async def _chat_json_streaming(
@@ -121,6 +147,60 @@ def _apply_split_parsed(project_id: str, parsed: Dict[str, Any]) -> Dict[str, An
     for ep_data in parsed.get("episodes", []) or []:
         ep_number = ep_data.get("episode_number", len(result_episodes) + 1)
         ep_title = str(ep_data.get("title") or f"第{ep_number}集").strip() or f"第{ep_number}集"
+        ep_content = ep_data.get("content", "")
+
+        if ep_number in existing_by_number:
+            existing_ep = existing_by_number[ep_number]
+            existing_ep["script"] = ep_content
+            existing_ep["name"] = ep_title
+            AssetService.save_asset(project_id, "episode", existing_ep)
+            episodes_updated += 1
+            result_episodes.append({
+                "episode_number": ep_number,
+                "title": ep_title,
+                "is_new": False,
+            })
+        else:
+            new_episode = {
+                "asset_id": str(uuid.uuid4()),
+                "name": ep_title,
+                "episode_number": ep_number,
+                "script": ep_content,
+                "created_at": now,
+            }
+            AssetService.save_asset(project_id, "episode", new_episode)
+            episodes_created += 1
+            result_episodes.append({
+                "episode_number": ep_number,
+                "title": ep_title,
+                "is_new": True,
+            })
+
+    return {
+        "episodes_created": episodes_created,
+        "episodes_updated": episodes_updated,
+        "total_episodes": len(result_episodes),
+        "episodes": result_episodes,
+    }
+
+
+def _apply_episodes_to_project(project_id: str, episodes: List[Dict]) -> Dict[str, Any]:
+    """将切片得到的 episodes 列表写入项目（与 _apply_split_parsed 同逻辑，但直接接受 list）"""
+    existing_episodes = AssetService.list_assets(project_id, "episode")
+    existing_by_number = {}
+    for ep in existing_episodes:
+        ep_num = ep.get("episode_number")
+        if ep_num is not None:
+            existing_by_number[ep_num] = ep
+
+    episodes_created = 0
+    episodes_updated = 0
+    result_episodes = []
+    now = datetime.now().isoformat()
+
+    for ep_data in episodes:
+        ep_number = ep_data.get("episode_number", len(result_episodes) + 1)
+        ep_title = str(ep_data.get("title") or f"第{ep_number}集").strip()
         ep_content = ep_data.get("content", "")
 
         if ep_number in existing_by_number:
@@ -291,17 +371,227 @@ async def split_and_extract(project_id: str, content: str, ai_config: Dict) -> D
     }
 
 
-# ── 新增：流式接口（用于前端分段反馈） ─────────────────────────────────────────
+# ── 分块工具 ──────────────────────────────────────────────────────────────────
 
-async def stream_split_and_extract(
-    project_id: str,
-    content: str,
-    ai_config: Dict,
-) -> AsyncIterator[Dict[str, Any]]:
+def _chunk_text(content: str) -> List[Dict[str, Any]]:
+    """将全文按字符数切分为重叠块"""
+    chunks = []
+    start = 0
+    while start < len(content):
+        end = min(start + CHUNK_SIZE, len(content))
+        chunks.append({
+            "index": len(chunks),
+            "text": content[start:end],
+            "start_offset": start,
+        })
+        if end >= len(content):
+            break
+        start = end - OVERLAP
+    return chunks
+
+
+def _extend_to_unique(full_text: str, pos: int, marker: str) -> str:
+    """向后扩展 marker 直到全文唯一命中。无法唯一时抛 ValueError。"""
+    base_len = len(marker)
+    for step in (50, 100, 150, 200, 300, 500):
+        end = min(pos + base_len + step, len(full_text))
+        candidate = full_text[pos:end]
+        if full_text.count(candidate) == 1:
+            return candidate
+    raise ValueError(f"Marker at {pos} cannot be made unique even at 500 chars extension")
+
+
+def _locate_boundaries(full_text: str, all_chunk_results: List[Dict]) -> List[Dict]:
+    """从各 chunk 结果中收集边界标记 → str.find() 定位 → 唯一性校验 → 去重 → 排序"""
+    markers = []
+    for cr in all_chunk_results:
+        for b in cr.get("boundaries", []) or []:
+            m = (b.get("start_marker") or "").strip()
+            if not m:
+                continue
+            markers.append({
+                "marker": m,
+                "title": b.get("title", ""),
+            })
+
+    if not markers:
+        return []
+
+    located = []
+    for m in markers:
+        pos = full_text.find(m["marker"])
+        if pos == -1:
+            pos = full_text.find(m["marker"][:100])
+        if pos == -1:
+            pos = full_text.find(m["marker"][:80])
+        if pos == -1:
+            logger.warning(f"无法定位标记: {m['marker'][:50]}...")
+            continue
+
+        count = full_text.count(m["marker"])
+        if count > 1:
+            try:
+                m["marker"] = _extend_to_unique(full_text, pos, m["marker"])
+            except ValueError:
+                logger.warning(f"标记无法唯一化，跳过: {m['marker'][:50]}...")
+                continue
+
+        m["position"] = pos
+        located.append(m)
+
+    located.sort(key=lambda x: x["position"])
+
+    # 去重：相邻边界距离 < 200 字符视为同一边界，保留 marker 更长的
+    deduped = []
+    for m in located:
+        if deduped and m["position"] - deduped[-1]["position"] < 200:
+            if len(m["marker"]) > len(deduped[-1]["marker"]):
+                deduped[-1] = m
+            continue
+        deduped.append(m)
+
+    return deduped
+
+
+def _slice_episodes(full_text: str, boundaries: List[Dict]) -> List[Dict]:
+    """根据边界位置从全文切片出每集内容。第一集始终从位置 0 开始。"""
+    if not boundaries:
+        return [{"episode_number": 1, "title": "第1集", "content": full_text.strip()}]
+
+    sorted_bounds = sorted(boundaries, key=lambda b: b["position"])
+    # 忽略开头附近的"边界"（< 50 字），那是第一集开头标记而非分集点
+    sorted_bounds = [b for b in sorted_bounds if b["position"] > 50]
+
+    if not sorted_bounds:
+        return [{"episode_number": 1, "title": "第1集", "content": full_text.strip()}]
+
+    episodes = []
+    prev_pos = 0
+    for i, bound in enumerate(sorted_bounds):
+        content = full_text[prev_pos:bound["position"]].strip()
+        if content:
+            episodes.append({
+                "episode_number": i + 1,
+                "title": f"第{i + 1}集",
+                "content": content,
+            })
+        prev_pos = bound["position"]
+
+    # 最后一集
+    content = full_text[prev_pos:].strip()
+    if content:
+        episodes.append({
+            "episode_number": len(episodes) + 1,
+            "title": f"第{len(episodes) + 1}集",
+            "content": content,
+        })
+
+    return episodes if episodes else [{"episode_number": 1, "title": "第1集", "content": full_text.strip()}]
+
+
+# ── 分块并发 LLM ──────────────────────────────────────────────────────────────
+
+async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str) -> Dict:
+    """单个块的 LLM 调用：边界 + 资产"""
     llm = get_ai_service(ai_config, "llm", project_id)
     try:
-        yield {"type": "status", "stage": "prepare", "content": "已创建处理任务，开始分集..."}
+        prompt = get_prompt_content("full_script_split_chunk", ai_config)
+        response = await llm.chat(
+            messages=[{"role": "user", "content": f"剧本片段：\n\n{chunk['text']}"}],
+            system_prompt=prompt,
+            temperature=0.1,
+            max_tokens=8192,
+            response_format={"type": "json_object"},
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        if response.get("error"):
+            raise RuntimeError(response.get("error"))
+        parsed = _extract_json(response.get("content", ""))
+        return {
+            "chunk_index": chunk["index"],
+            "boundaries": parsed.get("boundaries", []) or [],
+            "assets": parsed.get("assets", {"characters": [], "scenes": [], "props": []}) or {},
+        }
+    except Exception as e:
+        logger.error(f"[FullScriptService] chunk {chunk['index']} failed: {e}")
+        return {
+            "chunk_index": chunk["index"],
+            "boundaries": [],
+            "assets": {"characters": [], "scenes": [], "props": []},
+        }
+    finally:
+        await llm.close()
 
+
+async def _split_chunks_parallel(project_id: str, chunks: List[Dict], ai_config: Dict) -> List[Dict]:
+    """并发调用所有块的 LLM"""
+    results = await asyncio.gather(*[
+        _process_one_chunk(c, ai_config, project_id) for c in chunks
+    ])
+    return sorted(results, key=lambda r: r["chunk_index"])
+
+
+# ── 主资产去重合并 ────────────────────────────────────────────────────────────
+
+async def _merge_assets_master(project_id: str, all_chunk_results: List[Dict], ai_config: Dict) -> Dict:
+    """汇总所有 chunk 的原始资产，由主 LLM 去重合并"""
+    raw_characters = []
+    raw_scenes = []
+    raw_props = []
+
+    for cr in all_chunk_results:
+        assets = cr.get("assets", {}) or {}
+        for c in (assets.get("characters") or []):
+            if c.get("name"):
+                raw_characters.append(c)
+        for s in (assets.get("scenes") or []):
+            if s.get("name"):
+                raw_scenes.append(s)
+        for p in (assets.get("props") or []):
+            if p.get("name"):
+                raw_props.append(p)
+
+    if not raw_characters and not raw_scenes and not raw_props:
+        return {"characters": [], "scenes": [], "props": []}
+
+    existing_summary = _build_existing_assets_summary(project_id)
+    template = get_prompt_content("full_script_extract_merge", ai_config)
+    system_prompt = _safe_format(template, existing_assets_summary=existing_summary)
+
+    raw_json = json.dumps({
+        "characters": raw_characters,
+        "scenes": raw_scenes,
+        "props": raw_props,
+    }, ensure_ascii=False, indent=2)
+
+    llm = get_ai_service(ai_config, "llm", project_id)
+    try:
+        response = await llm.chat(
+            messages=[{"role": "user", "content": f"请将以下资产去重合并：\n\n{raw_json}"}],
+            system_prompt=system_prompt,
+            temperature=0.1,
+            max_tokens=8192,
+            response_format={"type": "json_object"},
+        )
+        if response.get("error"):
+            raise RuntimeError(response.get("error"))
+        parsed = _extract_json(response.get("content", ""))
+        if not parsed:
+            raise RuntimeError("合并结果无法解析为JSON")
+        return parsed
+    except Exception as e:
+        logger.error(f"[FullScriptService] asset merge failed: {e}")
+        raise RuntimeError(f"资产合并失败：{e}")
+    finally:
+        await llm.close()
+
+
+# ── 流式接口 ──────────────────────────────────────────────────────────────────
+
+async def _stream_split_single(project_id: str, content: str, ai_config: Dict) -> AsyncIterator[Dict[str, Any]]:
+    """短剧本降级：走原版单次 LLM 分集 + 提取"""
+    llm = get_ai_service(ai_config, "llm", project_id)
+    try:
         split_prompt = get_prompt_content("full_script_split", ai_config)
         split_parts: List[str] = []
         split_chunks = 0
@@ -374,7 +664,75 @@ async def stream_split_and_extract(
             "extract": extract_result,
         }
     except Exception as e:
-        logger.error(f"[FullScriptService] stream split-and-extract failed: {e}")
+        logger.error(f"[FullScriptService] single split failed: {e}")
         yield {"type": "error", "content": f"处理失败：{e}"}
     finally:
         await llm.close()
+
+
+async def stream_split_and_extract(
+    project_id: str,
+    content: str,
+    ai_config: Dict,
+) -> AsyncIterator[Dict[str, Any]]:
+    """AI 分集并提取：流式进度接口（SSE）。长剧本自动分块并发。"""
+    try:
+        yield {"type": "status", "stage": "prepare", "content": "已创建处理任务，开始分析剧本..."}
+
+        # 短剧本降级
+        if len(content) <= SHORT_LIMIT:
+            async for evt in _stream_split_single(project_id, content, ai_config):
+                yield evt
+            return
+
+        # ── 长剧本：分块并发 ──
+        chunks = _chunk_text(content)
+        yield {
+            "type": "status",
+            "stage": "split",
+            "content": f"剧本较长（{len(content)}字），已拆分为 {len(chunks)} 块，并发分析中...",
+        }
+
+        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config)
+
+        total_boundaries = sum(len(cr.get("boundaries", [])) for cr in chunk_results)
+        raw_char_count = sum(
+            len(cr.get("assets", {}).get("characters", [])) +
+            len(cr.get("assets", {}).get("scenes", [])) +
+            len(cr.get("assets", {}).get("props", []))
+            for cr in chunk_results
+        )
+        yield {
+            "type": "status",
+            "stage": "split",
+            "content": f"分块分析完成，发现 {total_boundaries} 个边界、{raw_char_count} 条原始资产",
+        }
+
+        # 边界定位 → 切片
+        boundaries = _locate_boundaries(content, chunk_results)
+        episodes = _slice_episodes(content, boundaries)
+        yield {
+            "type": "status",
+            "stage": "split",
+            "content": f"边界定位完成，共 {len(episodes)} 集",
+        }
+
+        split_result = _apply_episodes_to_project(project_id, episodes)
+        yield {"type": "split_done", "split": split_result}
+
+        # 资产去重合并
+        yield {"type": "status", "stage": "extract", "content": "开始汇总去重资产..."}
+
+        merged_assets = await _merge_assets_master(project_id, chunk_results, ai_config)
+        extract_result = _apply_extract_parsed(project_id, merged_assets)
+        yield {"type": "extract_done", "extract": extract_result}
+
+        yield {
+            "type": "done",
+            "split": split_result,
+            "extract": extract_result,
+        }
+
+    except Exception as e:
+        logger.error(f"[FullScriptService] stream split-and-extract failed: {e}")
+        yield {"type": "error", "content": f"处理失败：{e}"}

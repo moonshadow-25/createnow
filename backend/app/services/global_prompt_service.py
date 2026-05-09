@@ -46,19 +46,26 @@ def _resolve_content_files(data: Dict[str, Any]) -> None:
 
 
 def load_prompts() -> Dict[str, Any]:
-    """读取全局提示词（优先用户工作副本，回退出厂默认）"""
+    """读取全局提示词（内置默认作底，用户副本覆写；新模板从内置默认自动透出）"""
     global _cache
     if _cache is not None:
         return _cache
-    path = _get_json_path()
-    if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            _cache = json.load(f)
-    elif _BUILTIN_JSON_PATH.exists():
+
+    # 始终以内置出厂默认为底，确保新增模板自动可见
+    if _BUILTIN_JSON_PATH.exists():
         with open(_BUILTIN_JSON_PATH, "r", encoding="utf-8") as f:
             _cache = json.load(f)
     else:
         _cache = {}
+
+    # 用户工作副本覆写同名 key（保留用户自定义）
+    user_path = _get_json_path()
+    if user_path.exists():
+        with open(user_path, "r", encoding="utf-8") as f:
+            user_data = json.load(f)
+        for key, entry in user_data.items():
+            _cache[key] = entry
+
     _resolve_content_files(_cache)
     return _cache
 

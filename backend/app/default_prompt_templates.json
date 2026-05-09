@@ -344,6 +344,17 @@
       }
     }
   },
+  "full_script_split_chunk": {
+    "label": "全剧本分集（分块）",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "从剧本片段中识别分集边界，返回原文定位标记",
+        "content_file": "full_script_split_chunk/default.md"
+      }
+    }
+  },
   "full_script_extract": {
     "label": "全剧本资产提取",
     "category": "服务提示词",
@@ -353,6 +364,18 @@
         "description": "从全剧本文本提取角色/场景/道具",
         "variables": ["{existing_assets_summary}"],
         "content_file": "full_script_extract/default.md"
+      }
+    }
+  },
+  "full_script_extract_merge": {
+    "label": "全剧本资产去重合并",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "汇总多份资产列表，去重合并为统一资产集",
+        "variables": ["{existing_assets_summary}"],
+        "content_file": "full_script_extract_merge/default.md"
       }
     }
   },
