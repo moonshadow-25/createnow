@@ -440,7 +440,7 @@ def _extend_to_unique(full_text: str, pos: int, marker: str) -> str:
 
 
 def _locate_boundaries(full_text: str, all_chunk_results: List[Dict]) -> List[Dict]:
-    """从各 chunk 结果中收集边界标记 → str.find() 定位 → 唯一性校验 → 去重 → 排序"""
+    """从各 chunk 结果中收集边界标记 → str.find() 定位 → 行边界校验 → 去重 → 排序"""
     markers = []
     for cr in all_chunk_results:
         for b in cr.get("boundaries", []) or []:
@@ -457,55 +457,63 @@ def _locate_boundaries(full_text: str, all_chunk_results: List[Dict]) -> List[Di
 
     located = []
     for m in markers:
-        pos = full_text.find(m["marker"])
-        if pos == -1:
-            pos = full_text.find(m["marker"][:100])
-        if pos == -1:
-            pos = full_text.find(m["marker"][:80])
+        pos = _find_at_line_boundary(full_text, m["marker"])
         if pos == -1:
             logger.warning(f"无法定位标记: {m['marker'][:50]}...")
             continue
-
-        count = full_text.count(m["marker"])
-        if count > 1:
-            try:
-                m["marker"] = _extend_to_unique(full_text, pos, m["marker"])
-            except ValueError:
-                logger.warning(f"标记无法唯一化，跳过: {m['marker'][:50]}...")
-                continue
-
         m["position"] = pos
         located.append(m)
 
     located.sort(key=lambda x: x["position"])
 
-    # 去重：相邻边界距离 < 200 字符视为同一边界，保留 marker 更长的
+    # 去重：相邻边界距离 < 200 字符视为同一边界
     deduped = []
     for m in located:
         if deduped and m["position"] - deduped[-1]["position"] < 200:
-            if len(m["marker"]) > len(deduped[-1]["marker"]):
-                deduped[-1] = m
             continue
         deduped.append(m)
 
     return deduped
 
 
+def _find_at_line_boundary(full_text: str, marker: str) -> int:
+    """查找 marker，要求命中位置在行首（前一个字符是 \\n 或文本开头）"""
+    # 尝试 marker + 换行（最精确）
+    pos = full_text.find(marker + "\n")
+    if pos != -1 and (pos == 0 or full_text[pos - 1] == "\n"):
+        return pos
+    # 尝试不加换行
+    pos = full_text.find(marker)
+    if pos != -1 and (pos == 0 or full_text[pos - 1] == "\n"):
+        return pos
+    # marker 可能在行尾（最后一行没有尾随换行）
+    if full_text.endswith(marker):
+        pos = len(full_text) - len(marker)
+        if pos == 0 or full_text[pos - 1] == "\n":
+            return pos
+    return -1
+
+
 def _slice_episodes(full_text: str, boundaries: List[Dict]) -> List[Dict]:
-    """根据边界位置从全文切片出每集内容。第一集始终从位置 0 开始。"""
+    """根据边界位置从全文切片出每集内容。
+
+    第一个边界是 EPISODE 1 的位置，标记第一集正文开头。
+    第二个边界起才是分集切割点（EPISODE 2 开头 = 第一集结尾）。
+    """
     if not boundaries:
         return [{"episode_number": 1, "title": "第1集", "content": full_text.strip()}]
 
     sorted_bounds = sorted(boundaries, key=lambda b: b["position"])
-    # 忽略开头附近的"边界"（< 50 字），那是第一集开头标记而非分集点
-    sorted_bounds = [b for b in sorted_bounds if b["position"] > 50]
 
-    if not sorted_bounds:
+    # 跳过第一个边界——它是第一集开头标记，不是分集切割点
+    # 第一个有效切割点是第二个边界（第二集开头）
+    cut_points = sorted_bounds[1:]
+    if not cut_points:
         return [{"episode_number": 1, "title": "第1集", "content": full_text.strip()}]
 
     episodes = []
     prev_pos = 0
-    for i, bound in enumerate(sorted_bounds):
+    for i, bound in enumerate(cut_points):
         content = full_text[prev_pos:bound["position"]].strip()
         if content:
             episodes.append({
