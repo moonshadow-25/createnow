@@ -313,6 +313,14 @@ class LocalVideoAdapter(VideoAdapter):
                 "image": image_url  # 使用 image 而不是 input_reference
             }
 
+            payload_for_log = {
+                "model": model,
+                "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
+                "seconds": str(duration),
+                "size": resolution,
+                "image": image_url[:100] + "..." if len(image_url) > 100 else image_url
+            }
+
             start_time = datetime.now()
 
             try:
@@ -330,7 +338,7 @@ class LocalVideoAdapter(VideoAdapter):
                     operation="video_generate_json",
                     url=url,
                     method="POST",
-                    request_payload=payload,
+                    request_payload=payload_for_log,
                     response_data=result,
                     status_code=response.status_code,
                     duration_ms=duration_ms
@@ -352,7 +360,7 @@ class LocalVideoAdapter(VideoAdapter):
                     operation="video_generate_json",
                     url=url,
                     method="POST",
-                    request_payload=payload,
+                    request_payload=payload_for_log,
                     error=error_msg,
                     duration_ms=duration_ms
                 )

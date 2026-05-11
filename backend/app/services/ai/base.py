@@ -63,9 +63,9 @@ class AIService:
     def _truncate_base64(self, data: Any, max_length: int = 200) -> Any:
         """截断base64数据，避免日志过大"""
         if isinstance(data, str):
-            # 检测是否是base64字符串（通常很长且包含特定字符）
-            if len(data) > 500 and re.match(r'^[A-Za-z0-9+/=]+$', data):
-                return f"{data[:max_length]}...[truncated {len(data)} chars]...{data[-max_length:]}"
+            if len(data) > 500:
+                if re.match(r'^[A-Za-z0-9+/=]+$', data) or data.startswith("data:"):
+                    return f"{data[:max_length]}...[truncated {len(data)} chars]...{data[-max_length:]}"
             return data
         elif isinstance(data, dict):
             return {k: self._truncate_base64(v, max_length) for k, v in data.items()}

@@ -394,6 +394,15 @@ class DashScopeVideoAdapter(VideoAdapter):
             }
         }
 
+        payload_for_log = {
+            "model": model,
+            "input": {
+                "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
+                "img_url": image_url[:100] + "..." if len(image_url) > 100 else image_url
+            },
+            "parameters": payload["parameters"]
+        }
+
         request_info = {
             "url": self.api_url,
             "model": model,
@@ -430,7 +439,7 @@ class DashScopeVideoAdapter(VideoAdapter):
                     operation="video_generate",
                     url=self.api_url,
                     method="POST",
-                    request_payload=payload,
+                    request_payload=payload_for_log,
                     response_data=data,
                     error=f"DashScope API Error: {error_msg}",
                     status_code=response.status_code,
@@ -458,7 +467,7 @@ class DashScopeVideoAdapter(VideoAdapter):
                     operation="video_generate",
                     url=self.api_url,
                     method="POST",
-                    request_payload=payload,
+                    request_payload=payload_for_log,
                     response_data=data,
                     error="DashScope API did not return a task ID",
                     status_code=response.status_code,
@@ -484,7 +493,7 @@ class DashScopeVideoAdapter(VideoAdapter):
                 operation="video_generate",
                 url=self.api_url,
                 method="POST",
-                request_payload=payload,
+                request_payload=payload_for_log,
                 response_data=data,
                 status_code=response.status_code,
                 duration_ms=duration_ms
@@ -509,7 +518,7 @@ class DashScopeVideoAdapter(VideoAdapter):
                 operation="video_generate",
                 url=self.api_url,
                 method="POST",
-                request_payload=payload,
+                request_payload=payload_for_log,
                 error=error_msg,
                 duration_ms=duration_ms
             )
