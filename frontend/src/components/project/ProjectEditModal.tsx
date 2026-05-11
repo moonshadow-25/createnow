@@ -34,7 +34,7 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
   const [error, setError] = useState('');
 
   const actualSpent = stats != null
-    ? (stats.total_compute_spent ?? (0.4 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
+    ? (stats.total_compute_spent ?? (0.5 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
     : null;
 
   const handleSave = async () => {

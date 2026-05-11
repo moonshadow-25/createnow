@@ -26,14 +26,17 @@ interface Props {
   onEdit: () => void;
 }
 
-const IMAGE_POINTS_PER_ITEM = 100;
-const VIDEO_POINTS_PER_SECOND = 200;
+const POINTS_PER_YUAN = 200;
 
 function computePoints(stats: ProjectStats) {
-  const imagePoints = stats.total_images * IMAGE_POINTS_PER_ITEM;
-  const videoPoints = Math.round(stats.total_video_seconds * VIDEO_POINTS_PER_SECOND);
-  const totalPoints = imagePoints + videoPoints;
-  return { imagePoints, videoPoints, totalPoints };
+  const imageCost = 0.5 * stats.total_images;
+  const videoCost = stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds);
+  const totalCost = stats.total_compute_spent ?? (imageCost + videoCost);
+  return {
+    imagePoints: Math.round(imageCost * POINTS_PER_YUAN),
+    videoPoints: Math.round(videoCost * POINTS_PER_YUAN),
+    totalPoints: Math.round(totalCost * POINTS_PER_YUAN),
+  };
 }
 
 function computeMetrics(project: Project, stats: ProjectStats) {
@@ -64,7 +67,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
         )
       : 0;
 
-  const image_cost = 0.4 * total_images;
+  const image_cost = 0.5 * total_images;
   const video_cost = (stats.total_video_compute_units ?? (1 * total_video_seconds));
   const completed_episodes = greenPct * episode_count;
   const greenBarPct = total_episodes > 0 ? completed_episodes / total_episodes : 0;
@@ -127,7 +130,7 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
 
   if (isVipMode) {
     const totalCost = stats
-      ? (stats.total_compute_spent ?? (0.4 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
+      ? (stats.total_compute_spent ?? (0.5 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
       : 0;
     const isLocked = !!(project.budget_total != null && stats && totalCost >= project.budget_total);
     const videoMinutes = stats ? stats.total_video_seconds / 60 : 0;
@@ -206,7 +209,7 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
         <h3 className="text-xl font-semibold flex-1 mr-2 truncate">{project.name}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
           {!hideCost && project.budget_total != null && stats &&
-            ((stats.total_compute_spent ?? (0.4 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds)))) >= project.budget_total) && (
+            ((stats.total_compute_spent ?? (0.5 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds)))) >= project.budget_total) && (
             <span title="预算已超出，API已锁定" className="text-red-400">
               <Lock size={14} />
             </span>
@@ -266,7 +269,7 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
 }
 
 function CostOnlySection({ project, stats, hideCost, showPointsInHideMode }: { project: Project; stats: ProjectStats; hideCost?: boolean; showPointsInHideMode?: boolean }) {
-  const image_cost = 0.4 * stats.total_images;
+  const image_cost = 0.5 * stats.total_images;
   const video_cost = stats.total_video_compute_units ?? (1 * stats.total_video_seconds);
   const total_cost = stats.total_compute_spent ?? (image_cost + video_cost);
   const points = computePoints(stats);

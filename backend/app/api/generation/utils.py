@@ -88,7 +88,7 @@ def check_project_budget(project: dict) -> None:
                     v.get("resolution")
                 )
 
-    budget_spent = round(0.4 * total_images + total_video_cost, 2)
+    budget_spent = round(0.5 * total_images + total_video_cost, 2)
     if budget_spent >= budget_total:
         raise HTTPException(
             status_code=402,

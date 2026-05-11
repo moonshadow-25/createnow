@@ -48,7 +48,7 @@ def _build_project_stats(project_id: str) -> dict:
 
     total_images = len(ImageService.list_images(project_id))
     episodes = AssetService.list_assets(project_id, "episode")
-    total_compute_spent = round(0.4 * total_images + total_video_compute_units, 2)
+    total_compute_spent = round(0.5 * total_images + total_video_compute_units, 2)
 
     return {
         "episode_count": len(episodes),
@@ -285,7 +285,7 @@ async def get_stats_by_user():
                 except Exception:
                     continue
                 username = (img.get("created_by") or "").strip() or "__unknown__"
-                cost = 0.4
+                cost = 0.5
                 entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
                 entry["image_cost"] += cost
                 entry["total_cost"] += cost
