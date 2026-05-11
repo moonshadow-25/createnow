@@ -9,7 +9,6 @@ export interface PendingConfirmation {
 }
 
 export function useChat(projectId: string, options?: { label?: string; episodeId?: string; tabName?: string }) {
-  const removeSession = useVibeDramaStore(s => s.removeSession);
   const commitSession = useVibeDramaStore(s => s.commitSession);
   // 用 ref 包装，避免进入 useCallback 依赖数组导致 sendMessage 在流式传输途中被重建
   const commitSessionRef = useRef(commitSession);
@@ -361,12 +360,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     setError(null);
     setPendingConfirmation(null);
     localStorage.removeItem(storageKey);
-    // 同步从历史面板移除该 session 条目
-    const sessionKey = options?.episodeId
-      ? `${projectId}_${options.episodeId}`
-      : `${projectId}_${options?.tabName || ''}`;
-    removeSession(sessionKey);
-  }, [storageKey, projectId, options?.episodeId, options?.tabName, options?.label, removeSession]);
+  }, [storageKey]);
 
   return {
     messages,
