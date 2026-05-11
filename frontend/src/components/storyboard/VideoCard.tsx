@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Download, Trash2, Clock, CheckCircle, XCircle, Loader2, Play, Subtitles } from 'lucide-react';
 
 import { getVideoUrl } from './utils/mediaUtils';
+import { ExpandableText } from '@/components/common/ExpandableText';
 
 export interface VideoRecord {
   video_id: string;
@@ -167,9 +168,13 @@ export const VideoCard = memo(({
           )}
         </div>
 
-        <p className="text-xs font-medium line-clamp-2 mb-2 text-gray-300 leading-tight">
-          {video.prompt}
-        </p>
+        <div className="mb-2">
+          <ExpandableText
+            text={video.prompt}
+            maxLines={2}
+            className="text-xs font-medium text-gray-300 leading-tight"
+          />
+        </div>
 
         {/* 操作按钮 */}
         <div className="flex gap-1">

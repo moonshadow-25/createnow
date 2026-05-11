@@ -7,6 +7,7 @@ import { generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
+import { ExpandableText } from '@/components/common/ExpandableText';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
@@ -859,9 +860,13 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
             </div>
           )}
           {/* 提示词 */}
-          <span className="flex-1 text-sm text-gray-300 line-clamp-2 group-hover:text-white transition-colors">
-            {video.prompt}
-          </span>
+          <div className="flex-1">
+            <ExpandableText
+              text={video.prompt}
+              maxLines={2}
+              className="text-sm text-gray-300 group-hover:text-white transition-colors"
+            />
+          </div>
           {/* 状态 */}
           <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
             <VideoStatusIcon status={video.status} />
