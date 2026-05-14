@@ -77,6 +77,8 @@ class ProjectUpdate(BaseModel):
     minutes_per_episode: float = None
     compute_budget_per_minute: float = None
     project_duration_days: int = None
+    rating: float = None
+    review: str = None
 
 
 async def _get_active_api_key(request: Request) -> Optional[str]:
@@ -213,7 +215,7 @@ async def update_project(project_id: str, project: ProjectUpdate):
         update_data["description"] = project.description
     if project.ai_config is not None:
         update_data["ai_config"] = project.ai_config
-    for field in ["total_episodes", "minutes_per_episode", "compute_budget_per_minute", "project_duration_days"]:
+    for field in ["total_episodes", "minutes_per_episode", "compute_budget_per_minute", "project_duration_days", "rating", "review"]:
         val = getattr(project, field)
         if val is not None:
             update_data[field] = val

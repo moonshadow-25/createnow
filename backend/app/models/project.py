@@ -110,6 +110,10 @@ class Project:
         # 项目总预算
         self.budget_total: Optional[float] = None   # None = 无限制
 
+        # 项目评分与评论
+        self.rating: Optional[float] = None   # None = 未评分
+        self.review: str = ""
+
         # 项目级 AI 指令（类 CLAUDE.md），注入 system prompt
         self.ai_instructions: str = ""
 
@@ -156,6 +160,8 @@ class Project:
             "compute_budget_per_minute": self.compute_budget_per_minute,
             "project_duration_days": self.project_duration_days,
             "budget_total": self.budget_total,
+            "rating": self.rating,
+            "review": self.review,
         }
         metadata_path = self.project_dir / "metadata.json"
         with open(metadata_path, "w", encoding="utf-8") as f:
@@ -192,6 +198,8 @@ class Project:
         project.compute_budget_per_minute = metadata.get("compute_budget_per_minute", 0.0)
         project.project_duration_days = metadata.get("project_duration_days", 0)
         project.budget_total = metadata.get("budget_total", None)
+        project.rating = metadata.get("rating", None)
+        project.review = metadata.get("review", "")
 
         # 确保所有必要的子目录存在（兼容旧项目）
         (project_dir / "episodes").mkdir(exist_ok=True)
@@ -225,6 +233,8 @@ class Project:
             "compute_budget_per_minute": self.compute_budget_per_minute,
             "project_duration_days": self.project_duration_days,
             "budget_total": self.budget_total,
+            "rating": self.rating,
+            "review": self.review,
         }
 
 

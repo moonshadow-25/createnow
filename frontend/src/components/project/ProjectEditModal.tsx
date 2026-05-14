@@ -30,6 +30,10 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
   const [budgetTotal, setBudgetTotal] = useState<string>(
     project.budget_total != null ? String(project.budget_total) : ''
   );
+  const [rating, setRating] = useState<string>(
+    project.rating != null ? String(project.rating) : ''
+  );
+  const [review, setReview] = useState(project.review || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -52,6 +56,8 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
         minutes_per_episode: minutesPerEpisode,
         compute_budget_per_minute: computeBudget,
         project_duration_days: durationDays,
+        rating: rating.trim() === '' ? null : Number(rating),
+        review,
       });
       if (isAdmin) {
         const parsedBudget = budgetTotal.trim() === '' ? null : Number(budgetTotal);
@@ -140,6 +146,32 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
                 value={durationDays}
                 onChange={e => setDurationDays(Number(e.target.value))}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">评分</label>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={0.1}
+                placeholder="0-10"
+                value={rating}
+                onChange={e => setRating(e.target.value)}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">评论</label>
+              <textarea
+                value={review}
+                onChange={e => setReview(e.target.value)}
+                rows={2}
+                placeholder="项目评语或备注..."
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 resize-none"
               />
             </div>
           </div>

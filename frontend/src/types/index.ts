@@ -210,4 +210,6 @@ export interface Project {
   compute_budget_per_minute?: number;
   project_duration_days?: number;
   budget_total?: number;    // 项目总预算（compute units），管理员设置
+  rating?: number | null;   // 项目评分，0-10，null=未评分
+  review?: string;          // 项目评论/备注
 }
