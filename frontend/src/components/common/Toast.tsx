@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { CheckCircle, AlertCircle, Info, Copy } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { translateError } from '@/utils/errorMessages';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -15,7 +15,6 @@ interface Toast {
 interface ToastContextType {
   toasts: Toast[];
   toast: (message: string, type?: ToastType, duration?: number) => void;
-  toastError: (detail: string, fallback?: string) => void;
   removeToast: (id: string) => void;
 }
 
@@ -26,7 +25,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const addToast = (message: string, type: ToastType = 'info', duration = 3000, originalText?: string) => {
     const id = Date.now().toString();
-    const newToast: Toast = { id, message, type, duration, originalText };
+    let displayMessage = message;
+    let copyText = originalText;
+
+    if (type === 'error') {
+      const cn = translateError(message);
+      if (cn) {
+        displayMessage = cn;
+        copyText = message;
+      }
+      if (duration === 3000) duration = 5000;
+    }
+
+    const newToast: Toast = { id, message: displayMessage, type, duration, originalText: copyText };
 
     setToasts(prev => [...prev, newToast]);
 
@@ -37,21 +48,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const toastError = (detail: string, fallback = '操作失败') => {
-    const cn = translateError(detail);
-    if (cn) {
-      addToast(cn, 'error', 5000, detail);
-    } else {
-      addToast(detail || fallback, 'error', 4000);
-    }
-  };
-
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
   return (
-    <ToastContext.Provider value={{ toasts, toast: addToast, toastError, removeToast }}>
+    <ToastContext.Provider value={{ toasts, toast: addToast, removeToast }}>
       {children}
 
       <div className="fixed bottom-4 right-4 z-[999999] flex flex-col gap-2">
@@ -72,10 +74,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                     // fallback: ignore
                   }
                 }}
-                className="ml-1 p-1 rounded hover:bg-white/20 transition flex-shrink-0"
+                className="ml-1 px-1.5 py-0.5 rounded hover:bg-white/20 transition flex-shrink-0 text-xs"
                 title="复制原始错误信息"
               >
-                <Copy size={12} />
+                复制日志
               </button>
             )}
           </div>
