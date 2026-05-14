@@ -1,4 +1,4 @@
-import { FolderOpen, Trash2, Pencil, Lock } from 'lucide-react';
+import { FolderOpen, Trash2, Pencil, Lock, Star } from 'lucide-react';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
 
@@ -24,6 +24,7 @@ interface Props {
   onOpen: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onViewRating?: () => void;
 }
 
 const POINTS_PER_YUAN = 200;
@@ -123,7 +124,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
   };
 }
 
-export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPointsInHideMode = false, onOpen, onDelete, onEdit }: Props) {
+export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPointsInHideMode = false, onOpen, onDelete, onEdit, onViewRating }: Props) {
   const configured = (project.total_episodes ?? 0) > 0;
   const appearanceMode = useThemeStore(s => s.appearanceMode);
   const isVipMode = appearanceMode === 'vip';
@@ -150,6 +151,11 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
               <span title="预算已超出，API已锁定" className="text-red-400">
                 <Lock size={13} />
               </span>
+            )}
+            {onViewRating && (
+              <button onClick={e => { e.stopPropagation(); onViewRating(); }} className="text-yellow-400 hover:text-yellow-200 p-1" title="查看评分">
+                <Star size={13} />
+              </button>
             )}
             {isAdmin && (
               <button onClick={e => { e.stopPropagation(); onEdit(); }} className="text-gray-400 hover:text-yellow-200 p-1" title="编辑项目">
@@ -213,6 +219,15 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
             <span title="预算已超出，API已锁定" className="text-red-400">
               <Lock size={14} />
             </span>
+          )}
+          {onViewRating && (
+            <button
+              onClick={e => { e.stopPropagation(); onViewRating(); }}
+              className="text-yellow-400 hover:text-yellow-200 p-1"
+              title="查看评分"
+            >
+              <Star size={15} />
+            </button>
           )}
           {isAdmin && (
             <button

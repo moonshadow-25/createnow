@@ -10,6 +10,7 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
+import { ProjectRatingModal } from '@/components/project/ProjectRatingModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
 import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2 } from 'lucide-react';
 import { adminAuthApi, versionApi } from '@/services/api';
@@ -29,6 +30,7 @@ export default function HomePage() {
   const [showLogin, setShowLogin] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [viewingRatingProject, setViewingRatingProject] = useState<Project | null>(null);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
@@ -343,6 +345,7 @@ export default function HomePage() {
                   onOpen={() => handleOpenProject(project)}
                   onDelete={() => handleDeleteProject(project.project_id)}
                   onEdit={() => setEditingProject(project)}
+                  onViewRating={!isAdmin && !isSaasUser ? () => setViewingRatingProject(project) : undefined}
                 />
               ))}
             </div>
@@ -369,6 +372,12 @@ export default function HomePage() {
           stats={editingProject.stats}
           onClose={() => setEditingProject(null)}
           onSaved={handleEditSaved}
+        />
+      )}
+      {viewingRatingProject && (
+        <ProjectRatingModal
+          project={viewingRatingProject}
+          onClose={() => setViewingRatingProject(null)}
         />
       )}
       {showChangePwd && (

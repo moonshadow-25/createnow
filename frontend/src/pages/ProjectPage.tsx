@@ -1,11 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText, Star } from 'lucide-react';
+import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
-import { useAdminAuthStore } from '@/store/adminAuthStore';
-import { useSaasAuthStore } from '@/store/saasAuthStore';
 import { adminApi } from '@/services/api';
 import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
@@ -15,7 +13,6 @@ import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useThemeStore } from '@/store/themeStore';
 import { FullScriptImportModal } from '@/components/script/FullScriptImportModal';
-import { ProjectRatingModal } from '@/components/project/ProjectRatingModal';
 
 type TabType = 'chat' | 'assets' | 'storyboard' | 'generate';
 
@@ -27,10 +24,6 @@ export default function ProjectPage() {
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
-  const { role } = useAdminAuthStore();
-  const saasAuth = useSaasAuthStore();
-  const isAdmin = role === 'admin';
-  const isSaasUser = saasAuth.isAuthenticated;
   const isVipMode = appearanceMode === 'vip';
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
@@ -38,7 +31,6 @@ export default function ProjectPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [showFullScriptImport, setShowFullScriptImport] = useState(false);
-  const [showRating, setShowRating] = useState(false);
   // 项目没有分集时自动弹出导入弹框
   const autoImportTriggered = useRef(false);
   const [episodesInitLoaded, setEpisodesInitLoaded] = useState(false);
@@ -238,16 +230,6 @@ export default function ProjectPage() {
                 </div>
               )}
             </div>
-            {!isAdmin && !isSaasUser && (
-              <button
-                onClick={() => setShowRating(true)}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm transition ${isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-yellow-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600 text-yellow-400'}`}
-                title="查看评分"
-              >
-                <Star size={18} />
-                评分
-              </button>
-            )}
             <button
               onClick={handleOpenSettings}
               className={`px-4 py-2 rounded-lg flex items-center gap-2 text-sm transition ${isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'}`}
@@ -322,14 +304,6 @@ export default function ProjectPage() {
       {/* 设置弹框 */}
       {showSettings && projectId && (
         <SettingsModal projectId={projectId} onClose={() => setShowSettings(false)} />
-      )}
-
-      {/* 评分弹框（非管理员 selfhosted 用户只读查看） */}
-      {showRating && currentProject && (
-        <ProjectRatingModal
-          project={currentProject}
-          onClose={() => setShowRating(false)}
-        />
       )}
 
       {/* 全剧本导入弹框（始终挂载，关闭只是隐藏，保留状态） */}
