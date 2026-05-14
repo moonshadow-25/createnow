@@ -150,30 +150,28 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">评分</label>
-              <input
-                type="number"
-                min={0}
-                max={10}
-                step={0.1}
-                placeholder="0-10"
-                value={rating}
-                onChange={e => setRating(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">评论</label>
-              <textarea
-                value={review}
-                onChange={e => setReview(e.target.value)}
-                rows={4}
-                placeholder="项目评语或备注..."
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 resize-none"
-              />
-            </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">评分</label>
+            <input
+              type="number"
+              min={0}
+              max={10}
+              step={0.1}
+              placeholder="0-10"
+              value={rating}
+              onChange={e => setRating(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">评论</label>
+            <textarea
+              value={review}
+              onChange={e => setReview(e.target.value)}
+              rows={5}
+              placeholder="项目评语或备注..."
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 resize-none"
+            />
           </div>
 
           {isAdmin && (
