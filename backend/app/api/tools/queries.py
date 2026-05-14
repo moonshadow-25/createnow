@@ -244,10 +244,16 @@ async def handle_list_all_assets(project_id: str, parameters: Dict) -> Dict:
         result = {}
         for asset_type in ["character", "scene", "prop", "episode"]:
             assets = AssetService.list_assets(project_id, asset_type) or []
-            result[asset_type] = [
-                {"asset_id": a.get("asset_id"), "name": a.get("name"), "description": (a.get("description") or "")[:80]}
-                for a in assets
-            ]
+            items = []
+            for a in assets:
+                entry = {"asset_id": a.get("asset_id"), "name": a.get("name"), "description": (a.get("description") or "")[:80]}
+                if asset_type == "character":
+                    entry["voice_enabled"] = a.get("voice_enabled", True)
+                    entry["voice_audio_id"] = a.get("voice_audio_id")
+                    if a.get("voice_id"):
+                        entry["voice_id"] = a["voice_id"]
+                items.append(entry)
+            result[asset_type] = items
         return {"success": True, **result}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -297,13 +303,19 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
                         if matched:
                             ref = matched
                     review_status = ref.get("volcengine_asset_status")  # "Active" / "Processing" / None
-                items.append({
+                item = {
                     "asset_id": aid,
                     "name": a.get("name"),
                     "has_image_prompt": bool(a.get("image_prompt")),
                     "has_image": bool(a.get("image_id")),
                     "review_status": review_status,  # Active=审核通过, Processing=审核中, None=未提交
-                })
+                }
+                if asset_type == "character":
+                    item["voice_enabled"] = a.get("voice_enabled", True)
+                    item["voice_audio_id"] = a.get("voice_audio_id")
+                    if a.get("voice_id"):
+                        item["voice_id"] = a["voice_id"]
+                items.append(item)
             existing_assets[asset_type] = items
         # 同时返回已有分镜数量
         all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
