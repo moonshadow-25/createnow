@@ -313,7 +313,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
               {presets.map(preset => (
                 <button
                   key={preset.id}
-                  onClick={() => updateStyle(type, { preset_id: preset.id })}
+                  onClick={() => updateStyle(type, { preset_id: preset.id, custom_suffix: '', active_custom_id: '' })}
                   className={`px-2.5 py-0.5 text-xs rounded-full border transition-colors ${
                     styleConfig.preset_id === preset.id
                       ? `${accent} text-white border-transparent`

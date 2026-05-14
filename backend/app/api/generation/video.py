@@ -288,13 +288,10 @@ async def generate_video_prompt(project_id: str, request: VideoPromptRequest):
     style_suffix = ""
     if video_style.get("enabled", True):
         preset_id = video_style.get("preset_id", "none")
-        custom = video_style.get("custom_suffix", "")
         if preset_id == "custom":
-            style_suffix = custom
+            style_suffix = video_style.get("custom_suffix", "")
         elif preset_id != "none":
             style_suffix = get_video_style_suffix(preset_id, language)
-            if custom:
-                style_suffix = style_suffix + "，" + custom if style_suffix else custom
 
     # 记录请求日志
     request_log = {
@@ -369,13 +366,10 @@ async def generate_video_prompt_subagent(project_id: str, request: VideoPromptSu
     style_suffix = ""
     if video_style.get("enabled", True):
         preset_id = video_style.get("preset_id", "none")
-        custom = video_style.get("custom_suffix", "")
         if preset_id == "custom":
-            style_suffix = custom
+            style_suffix = video_style.get("custom_suffix", "")
         elif preset_id != "none":
             style_suffix = get_video_style_suffix(preset_id, language)
-            if custom:
-                style_suffix = style_suffix + "，" + custom if style_suffix else custom
 
     character_ids = storyboard.get("character_ids") or []
     scene_ids = storyboard.get("scene_ids") or ([storyboard["scene_id"]] if storyboard.get("scene_id") else [])

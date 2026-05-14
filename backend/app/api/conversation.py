@@ -97,9 +97,8 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
         if preset_id == "custom":
             return custom
         elif preset_id != "none":
-            base = get_suffix_fn(preset_id, language)
-            return (base + "，" + custom) if (base and custom) else (base or custom)
-        return custom
+            return get_suffix_fn(preset_id, language)
+        return ""
 
     video_style_text = _build_style_text(global_style_cfg.get("video_style", {}), get_video_style_suffix)
     image_style_text = _build_style_text(global_style_cfg.get("image_style", {}), get_image_style_suffix)

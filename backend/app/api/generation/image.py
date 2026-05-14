@@ -73,13 +73,10 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
     style_suffix = ""
     if image_style.get("enabled", True):
         preset_id = image_style.get("preset_id", "none")
-        custom = image_style.get("custom_suffix", "")
         if preset_id == "custom":
-            style_suffix = custom
+            style_suffix = image_style.get("custom_suffix", "")
         elif preset_id != "none":
             style_suffix = get_image_style_suffix(preset_id, language)
-            if custom:
-                style_suffix = style_suffix + "，" + custom if style_suffix else custom
 
     # 记录请求日志
     template_used = "image_prompt_template"
