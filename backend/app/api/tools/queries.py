@@ -178,7 +178,16 @@ async def handle_get_storyboard(project_id: str, parameters: Dict) -> Dict:
             result = []
             for aid in (ids or []):
                 asset = AssetService.load_asset(project_id, asset_type, aid)
-                result.append({"asset_id": aid, "name": asset.get("name", "") if asset else ""})
+                if not asset:
+                    result.append({"asset_id": aid, "name": ""})
+                    continue
+                entry = {"asset_id": aid, "name": asset.get("name", "")}
+                if asset_type == "character":
+                    entry["voice_enabled"] = asset.get("voice_enabled", True)
+                    entry["voice_audio_id"] = asset.get("voice_audio_id")
+                    if asset.get("voice_id"):
+                        entry["voice_id"] = asset["voice_id"]
+                result.append(entry)
             return result
 
         resolved_assets = {
