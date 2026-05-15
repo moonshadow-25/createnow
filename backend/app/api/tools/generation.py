@@ -268,11 +268,11 @@ async def handle_generate_storyboard_image(project_id: str, parameters: Dict) ->
 
 
 async def _generate_storyboard_video_prompt_subagent_single(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
-    """独立子代：为单个分镜生成并保存 video_prompt，附带资产顺序拦截与自动重试。"""
+    """独立子代：为单个分镜生成并保存 video_prompt 或 image_prompt，附带资产顺序拦截与自动重试。"""
     try:
         from app.services import ProjectService, get_ai_service
         from app.api.generation.template_helpers import get_active_template
-        from app.api.generation.style_presets import get_video_style_suffix
+        from app.api.generation.style_presets import get_video_style_suffix, get_image_style_suffix
 
         storyboard_id = parameters.get("storyboard_id")
         if not storyboard_id:
@@ -288,7 +288,75 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
         project_ai_config = ai_config or project.get("ai_config", {})
         llm = get_ai_service(project_ai_config, "llm", project_id)
+        prompt_type = parameters.get("prompt_type", "video")
 
+        # ── 图片提示词分支 ──────────────────────────────────────────────
+        if prompt_type == "image":
+            global_style_config = normalize_global_style_config(project_ai_config.get("global_style_config"))
+            language = global_style_config.get("prompt_language", "zh")
+            image_style = global_style_config.get("image_style", {})
+            style_suffix = ""
+            if image_style.get("enabled", True):
+                preset_id = image_style.get("preset_id", "none")
+                if preset_id == "custom":
+                    style_suffix = image_style.get("custom_suffix", "")
+                elif preset_id != "none":
+                    style_suffix = get_image_style_suffix(preset_id, language)
+
+            custom_template = get_active_template(project_ai_config, "storyboard_image_edit")
+
+            from app.services.global_prompt_service import get_prompt_content
+
+            episode = AssetService.load_asset(project_id, "episode", storyboard.get("episode_id", "")) if storyboard.get("episode_id") else None
+            script_content = (episode or {}).get("script", "")
+
+            # 构建角色/场景/道具信息文本
+            character_ids = storyboard.get("character_ids") or []
+            scene_ids = storyboard.get("scene_ids") or ([storyboard["scene_id"]] if storyboard.get("scene_id") else [])
+            prop_ids = storyboard.get("prop_ids") or []
+            ordered_assets = _build_ordered_assets(project_id, character_ids, scene_ids, prop_ids)
+
+            user_prompt = (
+                "你是图片提示词子代理执行器。你的任务是基于已提供上下文直接生成最终可用 image_prompt。\n\n"
+                "## 全局风格配置\n"
+                f"语言：{language}\n"
+                f"图片风格：{style_suffix or '默认'}\n\n"
+                "## 图片提示词模板（必须遵循）\n"
+                f"{custom_template or get_prompt_content('storyboard_image_edit', project_ai_config) or ''}\n\n"
+                "## 当前集完整剧本\n"
+                f"{script_content or '（无剧本）'}\n\n"
+                "## 当前分镜数据\n"
+                f"序号：{storyboard.get('sequence')}\n"
+                f"描述：{storyboard.get('description', '')}\n"
+                f"对白：{storyboard.get('dialogue', '')}\n\n"
+                "## 分镜关联资产\n"
+                f"{ordered_assets['assets_desc']}\n\n"
+                "现在直接输出最终 image_prompt。"
+            )
+
+            llm_result = await llm.chat([{"role": "user", "content": user_prompt}])
+            final_prompt = (llm_result.get("content", "") or "").strip()
+
+            storyboard["image_prompt"] = final_prompt
+            storyboard["updated_at"] = datetime.now().isoformat()
+            AssetService.save_asset(project_id, "storyboard", storyboard)
+
+            await llm.close()
+            return {
+                "success": True,
+                "storyboard_id": storyboard_id,
+                "sequence": storyboard.get("sequence"),
+                "prompt_type": "image",
+                "image_prompt": final_prompt,
+                "ordered_assets": {
+                    "expected_asset_lines": ordered_assets["expected_asset_lines"],
+                    "assets_desc": ordered_assets["assets_desc"],
+                    "audios_desc": ordered_assets["audios_desc"],
+                },
+                "saved": True,
+            }
+
+        # ── 视频提示词分支（原有逻辑）──────────────────────────────────
         # 统一来源：以分镜已保存资产顺序为准；缺失时允许参数覆盖
         character_ids = storyboard.get("character_ids") or parameters.get("character_ids") or []
         scene_ids = storyboard.get("scene_ids") or ([storyboard["scene_id"]] if storyboard.get("scene_id") else [])

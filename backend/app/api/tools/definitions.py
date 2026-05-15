@@ -452,20 +452,21 @@ TOOLS = [
     },
     {
         "name": "generate_storyboard_video_prompt_subagent",
-        "description": "独立子代生成：仅处理单个分镜并保存 video_prompt，强制校验 @图N 与分镜资产顺序一致。批量时请在同一轮发起多个该工具调用（每次一个 storyboard_id）。执行时无需确认。",
+        "description": "独立子代生成：为单个分镜生成并保存提示词。prompt_type='video' 生成视频提示词（含 @图N 资产顺序校验），prompt_type='image' 生成图片提示词。批量时请在同一轮发起多个该工具调用（每次一个 storyboard_id）。执行时无需确认。",
         "parameters": {
             "type": "object",
             "properties": {
                 "storyboard_id": {"type": "string", "description": "分镜ID（单次仅支持一个）"},
+                "prompt_type": {"type": "string", "enum": ["video", "image"], "description": "提示词类型：video=视频提示词，image=图片提示词。默认 video。"},
                 "storyboard_description": {"type": "string", "description": "可选：覆盖分镜 description 参与本次生成（不写回 description）"},
-                "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成"},
-                "action": {"type": "string", "description": "可选：覆盖分镜 action 参与本次生成"},
-                "shot_type": {"type": "string", "description": "可选：覆盖分镜 shot_type 参与本次生成"},
-                "camera_angle": {"type": "string", "description": "可选：覆盖分镜 camera_angle 参与本次生成"},
-                "duration": {"type": "integer", "description": "可选：覆盖分镜 duration 参与本次生成"},
-                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的角色顺序"},
-                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的场景顺序"},
-                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的道具顺序"},
+                "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成（仅 video）"},
+                "action": {"type": "string", "description": "可选：覆盖分镜 action 参与本次生成（仅 video）"},
+                "shot_type": {"type": "string", "description": "可选：覆盖分镜 shot_type 参与本次生成（仅 video）"},
+                "camera_angle": {"type": "string", "description": "可选：覆盖分镜 camera_angle 参与本次生成（仅 video）"},
+                "duration": {"type": "integer", "description": "可选：覆盖分镜 duration 参与本次生成（仅 video）"},
+                "character_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的角色顺序（仅 video）"},
+                "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的场景顺序（仅 video）"},
+                "prop_ids": {"type": "array", "items": {"type": "string"}, "description": "可选：覆盖本次生成的道具顺序（仅 video）"},
                 "description": {"type": "string", "description": "向用户说明此次生成意义（显示在确认弹窗中）"}
             },
             "required": ["storyboard_id"]

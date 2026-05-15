@@ -1272,7 +1272,7 @@ export default function StoryboardEditorPage() {
                   onClick={() => {
                     if (!storyboard) return;
                     setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
-                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成图片提示词，只更新这一个分镜，不要修改其他分镜。根据以下剧本原文生成：\n${editDescription}\n########` });
+                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `使用 generate_storyboard_video_prompt_subagent 工具为此分镜生成图片提示词。参数：storyboard_id='${storyboard.asset_id}', prompt_type='image'。注意：必须使用该子代理工具，禁止使用 update_storyboard。` });
                     openVibeDrama();
                   }}
                   disabled={getTaskStatus(storyboardId, 'prompt') === 'generating'}
@@ -1399,7 +1399,7 @@ export default function StoryboardEditorPage() {
                           if (!storyboard) return;
                           setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
                           openVibeDrama();
-                          setPendingMessage({ key: `${projectId}_${episodeId}`, message: `为分镜 ${storyboard.asset_id}（序号 #${storyboard.sequence}）生成视频提示词，只更新这一个分镜，不要修改其他分镜。根据以下剧本原文生成：\n${editDescription}\n########` });
+                          setPendingMessage({ key: `${projectId}_${episodeId}`, message: `使用 generate_storyboard_video_prompt_subagent 工具为此分镜生成视频提示词。参数：storyboard_id='${storyboard.asset_id}', prompt_type='video'。注意：必须使用该子代理工具，禁止使用 update_storyboard。` });
                         }}
                         disabled={getTaskStatus(storyboardId, 'video_prompt') === 'generating' || !editDescription}
                         className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"
