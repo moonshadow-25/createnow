@@ -67,6 +67,15 @@ def _compact_asset_line(s: str) -> str:
     return "".join(str(s or "").split()).replace("（", "(").replace("）", ")")
 
 
+def _strip_markdown_fence(text: str) -> str:
+    """去除 LLM 输出的 markdown 代码块包裹（```...```）"""
+    import re
+    text = text.strip()
+    text = re.sub(r'^```[\w-]*\s*\n?', '', text)
+    text = re.sub(r'\n?```\s*$', '', text)
+    return text.strip()
+
+
 def _build_expected_asset_lines(characters: List[Dict[str, Any]], scenes: List[Dict[str, Any]], props: List[Dict[str, Any]]) -> List[str]:
     expected: List[str] = []
     idx = 1
@@ -335,7 +344,7 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
             )
 
             llm_result = await llm.chat([{"role": "user", "content": user_prompt}])
-            final_prompt = (llm_result.get("content", "") or "").strip()
+            final_prompt = _strip_markdown_fence(llm_result.get("content", "") or "")
 
             storyboard["image_prompt"] = final_prompt
             storyboard["updated_at"] = datetime.now().isoformat()
@@ -462,7 +471,7 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
         first_user_prompt = build_subagent_user_prompt()
         first_llm_result = await llm.chat([{"role": "user", "content": first_user_prompt}])
-        first_prompt = (first_llm_result.get("content", "") or "").strip()
+        first_prompt = _strip_markdown_fence(first_llm_result.get("content", "") or "")
 
         first_guard = _evaluate_asset_order(first_prompt, expected_asset_lines)
         logger.info(
@@ -491,7 +500,7 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
         else:
             retry_user_prompt = build_subagent_user_prompt(extra_retry_instruction)
             second_llm_result = await llm.chat([{"role": "user", "content": retry_user_prompt}])
-            second_prompt = (second_llm_result.get("content", "") or "").strip()
+            second_prompt = _strip_markdown_fence(second_llm_result.get("content", "") or "")
 
             second_guard = _evaluate_asset_order(second_prompt, expected_asset_lines)
             logger.info(
