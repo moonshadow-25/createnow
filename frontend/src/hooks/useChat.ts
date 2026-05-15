@@ -195,7 +195,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                       toolResultsList.push(incomingResult);
                       setLiveToolResults(prev => [...prev, incomingResult]);
                     }
-                    if (name === 'update_storyboard' || name === 'create_storyboard' || name === 'generate_storyboard') {
+                    if (name === 'update_storyboard' || name === 'create_storyboard' || name === 'generate_storyboard' || name === 'generate_storyboard_video_prompt_subagent') {
                       const params = (toolCallId ? toolCallParamsCache[toolCallId] : null) as any;
                       const ids: string[] = [];
                       if (params?.asset_id) ids.push(params.asset_id);
