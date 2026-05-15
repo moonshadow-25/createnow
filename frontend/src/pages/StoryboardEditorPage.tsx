@@ -540,8 +540,20 @@ export default function StoryboardEditorPage() {
   const handleSubmitAsset = useCallback(async () => {
     const imageIds = [...orderedReferenceImageIds];
     const imageToLocalAsset: Record<string, string> = {};
+    for (const charId of selectedCharacters) {
+      const imageId = characters.find((c: any) => c.asset_id === charId)?.image_id;
+      if (imageId) imageToLocalAsset[imageId] = charId;
+    }
+    for (const sceneId of selectedScenes) {
+      const imageId = scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
+      if (imageId) imageToLocalAsset[imageId] = sceneId;
+    }
+    for (const propId of selectedProps) {
+      const imageId = props.find((p: any) => p.asset_id === propId)?.image_id;
+      if (imageId) imageToLocalAsset[imageId] = propId;
+    }
     for (const imageId of orderedReferenceImageIds) {
-      imageToLocalAsset[imageId] = imageId;
+      imageToLocalAsset[imageId] = imageToLocalAsset[imageId] || imageId;
     }
     if (imageIds.length === 0) { toast('没有可提交的图片', 'error'); return; }
     setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
@@ -591,13 +603,25 @@ export default function StoryboardEditorPage() {
     } catch {
       setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
     }
-  }, [projectId, trackingId, orderedReferenceImageIds, reloadStoryboard, reloadAssets, loadAssetImageStatuses, videoGen, storyboard, toast]);
+  }, [projectId, trackingId, orderedReferenceImageIds, selectedCharacters, selectedScenes, selectedProps, characters, scenes, props, reloadStoryboard, reloadAssets, loadAssetImageStatuses, videoGen, storyboard, toast]);
 
   const handleResubmitAsset = useCallback(async () => {
     const imageIds = [...orderedReferenceImageIds];
     const imageToLocalAsset: Record<string, string> = {};
+    for (const charId of selectedCharacters) {
+      const imageId = characters.find((c: any) => c.asset_id === charId)?.image_id;
+      if (imageId) imageToLocalAsset[imageId] = charId;
+    }
+    for (const sceneId of selectedScenes) {
+      const imageId = scenes.find((s: any) => s.asset_id === sceneId)?.image_id;
+      if (imageId) imageToLocalAsset[imageId] = sceneId;
+    }
+    for (const propId of selectedProps) {
+      const imageId = props.find((p: any) => p.asset_id === propId)?.image_id;
+      if (imageId) imageToLocalAsset[imageId] = propId;
+    }
     for (const imageId of orderedReferenceImageIds) {
-      imageToLocalAsset[imageId] = imageId;
+      imageToLocalAsset[imageId] = imageToLocalAsset[imageId] || imageId;
     }
     if (imageIds.length === 0) { toast('没有可提交的图片', 'error'); return; }
     setAssetSubmitting(prev => ({ ...prev, [trackingId]: true }));
@@ -643,7 +667,7 @@ export default function StoryboardEditorPage() {
     } catch {
       setAssetSubmitting(prev => ({ ...prev, [trackingId]: false }));
     }
-  }, [projectId, trackingId, orderedReferenceImageIds, reloadStoryboard, reloadAssets, videoGen, storyboard, toast]);
+  }, [projectId, trackingId, orderedReferenceImageIds, selectedCharacters, selectedScenes, selectedProps, characters, scenes, props, reloadStoryboard, reloadAssets, videoGen, storyboard, toast]);
 
   // ── Action handlers ────────────────────────────────────────────────────────
   const handleBack = () => navigate(`/project/${projectId}`, { state: { episodeId } });
