@@ -327,11 +327,20 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
             existing_image_prompt = storyboard.get("image_prompt", "") or ""
             user_request = parameters.get("user_request", "") or ""
+            is_modify = any(kw in user_request for kw in ["修改", "调整", "改成"])
+
+            # 仅修改模式注入已有提示词，其余均从零生成
+            existing_block = ""
+            if is_modify and existing_image_prompt:
+                existing_block = (
+                    "## ⚠️ 修改参考：分镜当前已有的 image_prompt（你必须在此文本基础上精准修改，保留未涉及的其他内容）\n"
+                    f"{existing_image_prompt}\n\n"
+                )
 
             user_prompt = (
                 "你是图片提示词子代理执行器。\n\n"
                 f"## 用户要求\n{user_request or '全新生成 image_prompt'}\n\n"
-                f"## 分镜当前已有的 image_prompt（如用户要求含'修改'/'调整'/'改成'，请在此文本基础上精准修改，保留未涉及的其他内容；如用户要求含'生成'/'重新生成'，请全新生成忽略此文本）\n{existing_image_prompt or '（无）'}\n\n"
+                f"{existing_block}"
                 "## 全局风格配置\n"
                 f"语言：{language}\n"
                 f"图片风格：{style_suffix or '默认'}\n\n"
@@ -449,13 +458,21 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
         existing_video_prompt = storyboard.get("video_prompt", "") or ""
         user_request = parameters.get("user_request", "") or ""
+        is_modify = any(kw in user_request for kw in ["修改", "调整", "改成"])
+
+        # 仅修改模式注入已有提示词，其余均从零生成
+        existing_block = ""
+        if is_modify and existing_video_prompt:
+            existing_block = (
+                "## ⚠️ 修改参考：分镜当前已有的 video_prompt（你必须在此文本基础上精准修改，保留未涉及的其他内容）\n"
+                f"{existing_video_prompt}\n\n"
+            )
 
         def build_subagent_user_prompt(extra_instruction: str = "") -> str:
             return (
                 "你是视频提示词子代理执行器。\n\n"
                 f"## 用户要求\n{user_request or '全新生成 video_prompt'}\n\n"
-                f"## 分镜当前已有的 video_prompt（如用户要求含'修改'/'调整'/'改成'，请在此文本基础上精准修改，保留未涉及的其他内容；如用户要求含'生成'/'重新生成'，请全新生成忽略此文本）\n{existing_video_prompt or '（无）'}\n\n"
-                "---\n\n"
+                f"{existing_block}"
                 f"{output_contract}\n"
                 f"{(extra_instruction or '').strip()}\n\n"
                 "## 全局风格配置\n"
