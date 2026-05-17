@@ -325,8 +325,13 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
             prop_ids = storyboard.get("prop_ids") or []
             ordered_assets = _build_ordered_assets(project_id, character_ids, scene_ids, prop_ids)
 
+            existing_image_prompt = storyboard.get("image_prompt", "") or ""
+            user_request = parameters.get("user_request", "") or ""
+
             user_prompt = (
-                "你是图片提示词子代理执行器。你的任务是基于已提供上下文直接生成最终可用 image_prompt。\n\n"
+                "你是图片提示词子代理执行器。\n\n"
+                f"## 用户要求\n{user_request or '全新生成 image_prompt'}\n\n"
+                f"## 分镜当前已有的 image_prompt（如用户要求含'修改'/'调整'/'改成'，请在此文本基础上精准修改，保留未涉及的其他内容；如用户要求含'生成'/'重新生成'，请全新生成忽略此文本）\n{existing_image_prompt or '（无）'}\n\n"
                 "## 全局风格配置\n"
                 f"语言：{language}\n"
                 f"图片风格：{style_suffix or '默认'}\n\n"
@@ -442,9 +447,15 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
         output_contract = base_part.replace("【BASE_CONTRACT】", "").strip()
         retry_instruction_from_template = retry_part.strip()
 
+        existing_video_prompt = storyboard.get("video_prompt", "") or ""
+        user_request = parameters.get("user_request", "") or ""
+
         def build_subagent_user_prompt(extra_instruction: str = "") -> str:
             return (
-                "你是视频提示词子代理执行器。你的任务是基于已提供上下文直接生成最终可用 video_prompt。\n"
+                "你是视频提示词子代理执行器。\n\n"
+                f"## 用户要求\n{user_request or '全新生成 video_prompt'}\n\n"
+                f"## 分镜当前已有的 video_prompt（如用户要求含'修改'/'调整'/'改成'，请在此文本基础上精准修改，保留未涉及的其他内容；如用户要求含'生成'/'重新生成'，请全新生成忽略此文本）\n{existing_video_prompt or '（无）'}\n\n"
+                "---\n\n"
                 f"{output_contract}\n"
                 f"{(extra_instruction or '').strip()}\n\n"
                 "## 全局风格配置\n"
