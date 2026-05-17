@@ -327,18 +327,20 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
             existing_image_prompt = storyboard.get("image_prompt", "") or ""
             user_request = parameters.get("user_request", "") or ""
-            is_modify = any(kw in user_request for kw in ["修改", "调整", "改成"])
 
-            # 仅修改模式注入已有提示词，其余均从零生成
             existing_block = ""
-            if is_modify and existing_image_prompt:
+            if existing_image_prompt:
                 existing_block = (
-                    "## ⚠️ 修改参考：分镜当前已有的 image_prompt（你必须在此文本基础上精准修改，保留未涉及的其他内容）\n"
+                    "## 分镜当前已有的 image_prompt\n"
                     f"{existing_image_prompt}\n\n"
                 )
 
             user_prompt = (
                 "你是图片提示词子代理执行器。\n\n"
+                "## ⚠️ 首要规则：由你自主判断用户意图\n"
+                "- 若用户要求涉及局部修改（添加/删减/调整/替换/补充/加强/削弱等），必须在已有 image_prompt 基础上精准操作，保留其余内容不变\n"
+                "- 若用户要求涉及全局重写（重新生成/重写/全新生成/新写/再来一次等），请从零创作\n"
+                "- 若无法判断，默认走修改模式\n\n"
                 f"## 用户要求\n{user_request or '全新生成 image_prompt'}\n\n"
                 f"{existing_block}"
                 "## 全局风格配置\n"
@@ -458,19 +460,21 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
         existing_video_prompt = storyboard.get("video_prompt", "") or ""
         user_request = parameters.get("user_request", "") or ""
-        is_modify = any(kw in user_request for kw in ["修改", "调整", "改成"])
 
-        # 仅修改模式注入已有提示词，其余均从零生成
         existing_block = ""
-        if is_modify and existing_video_prompt:
+        if existing_video_prompt:
             existing_block = (
-                "## ⚠️ 修改参考：分镜当前已有的 video_prompt（你必须在此文本基础上精准修改，保留未涉及的其他内容）\n"
+                "## 分镜当前已有的 video_prompt\n"
                 f"{existing_video_prompt}\n\n"
             )
 
         def build_subagent_user_prompt(extra_instruction: str = "") -> str:
             return (
                 "你是视频提示词子代理执行器。\n\n"
+                "## ⚠️ 首要规则：由你自主判断用户意图\n"
+                "- 若用户要求涉及局部修改（添加/删减/调整/替换/补充/加强/削弱等），必须在已有 video_prompt 基础上精准操作，保留其余内容不变\n"
+                "- 若用户要求涉及全局重写（重新生成/重写/全新生成/新写/再来一次等），请从零创作\n"
+                "- 若无法判断，默认走修改模式\n\n"
                 f"## 用户要求\n{user_request or '全新生成 video_prompt'}\n\n"
                 f"{existing_block}"
                 f"{output_contract}\n"
