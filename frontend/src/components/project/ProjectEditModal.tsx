@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import { projectApi } from '@/services/api';
 import { Project } from '@/types';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
@@ -37,6 +37,7 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
   const [review, setReview] = useState(project.review || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showReview, setShowReview] = useState(false);
 
   const actualSpent = stats != null
     ? (stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + (stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds))))
@@ -152,27 +153,41 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">评分</label>
-            <input
-              type="number"
-              min={0}
-              max={10}
-              step={0.1}
-              placeholder="0-10"
-              value={rating}
-              onChange={e => setRating(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">评论</label>
-            <textarea
-              value={review}
-              onChange={e => setReview(e.target.value)}
-              rows={5}
-              placeholder="项目评语或备注..."
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 resize-none"
-            />
+            <button
+              type="button"
+              onClick={() => setShowReview(!showReview)}
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-300 transition w-full"
+            >
+              {showReview ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              评分与评论
+            </button>
+            {showReview && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">评分</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.1}
+                    placeholder="0-10"
+                    value={rating}
+                    onChange={e => setRating(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">评论</label>
+                  <textarea
+                    value={review}
+                    onChange={e => setReview(e.target.value)}
+                    rows={4}
+                    placeholder="项目评语或备注..."
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 resize-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {isAdmin && (
