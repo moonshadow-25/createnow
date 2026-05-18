@@ -4,13 +4,11 @@ Generation API - 工具函数
 
 from fastapi import HTTPException
 from app.core.context import get_current_data_root
-
-
-VIDEO_RESOLUTION_PRICES = {
-    "480p": 0.7,
-    "720p": 1.0,
-    "1080p": 2.8,
-}
+from app.core.pricing import (
+    DEFAULT_IMAGE_COST,
+    DEFAULT_VIDEO_PRICES as VIDEO_RESOLUTION_PRICES,
+    ZERO_COST_MODELS,
+)
 
 LEGACY_RESOLUTION_MAP = {
     "854x480": "480p",
@@ -63,6 +61,27 @@ def _get_projects_dir():
     return settings.PROJECTS_DIR
 
 
+def get_image_cost(img: dict) -> float:
+    """计算单张图片的实际消耗（优先 actual_cost，回退到常量，不计费模型返回0）"""
+    actual = img.get("actual_cost")
+    if actual is not None:
+        return float(actual)
+    if img.get("model") in ZERO_COST_MODELS:
+        return 0
+    return DEFAULT_IMAGE_COST
+
+
+def get_video_cost(v: dict) -> float:
+    """计算单个视频的实际消耗（优先 actual_cost → estimated_cost → 常量计算）"""
+    actual = v.get("actual_cost")
+    if actual is not None:
+        return float(actual)
+    estimated = v.get("estimated_cost")
+    if estimated is not None:
+        return float(estimated)
+    return calc_video_compute_units(v.get("duration") or 0, v.get("resolution"))
+
+
 def check_project_budget(project: dict) -> None:
     """检查项目预算，超出时抛出 HTTP 402（实时扫描文件计算开销）"""
     budget_total = project.get("budget_total")
@@ -74,7 +93,12 @@ def check_project_budget(project: dict) -> None:
     project_dir = _get_projects_dir() / project_id
 
     images_dir = project_dir / "images"
-    total_images = len(list(images_dir.glob("*.json"))) if images_dir.exists() else 0
+    total_image_cost = 0.0
+    if images_dir.exists():
+        for img_file in images_dir.glob("*.json"):
+            with open(img_file, encoding="utf-8") as f:
+                img = _json.load(f)
+            total_image_cost += get_image_cost(img)
 
     videos_dir = project_dir / "videos"
     total_video_cost = 0.0
@@ -83,12 +107,9 @@ def check_project_budget(project: dict) -> None:
             with open(vf, encoding="utf-8") as f:
                 v = _json.load(f)
             if v.get("status") == "completed":
-                total_video_cost += calc_video_compute_units(
-                    v.get("duration") or 0,
-                    v.get("resolution")
-                )
+                total_video_cost += get_video_cost(v)
 
-    budget_spent = round(0.5 * total_images + total_video_cost, 2)
+    budget_spent = round(total_image_cost + total_video_cost, 2)
     if budget_spent >= budget_total:
         raise HTTPException(
             status_code=402,

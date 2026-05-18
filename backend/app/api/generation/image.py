@@ -25,6 +25,7 @@ from app.core.context import get_current_user
 from .templates import DEFAULT_PROMPT_TEMPLATES
 from .template_helpers import get_active_template
 from app.models.project import normalize_global_style_config
+from app.core.pricing import DEFAULT_IMAGE_COST
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +200,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                 "prompt": prompt, "negative_prompt": negative_prompt,
                 "width": width, "height": height, "image_path": image_url,
                 "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                "actual_cost": DEFAULT_IMAGE_COST,
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
             }
@@ -233,6 +235,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
             "prompt": prompt, "negative_prompt": negative_prompt,
             "width": width, "height": height, "image_path": image_url,
             "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+            "actual_cost": DEFAULT_IMAGE_COST,
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
         }
@@ -389,7 +392,8 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                 "asset_id": asset_id, "asset_type": asset_type,
                 "prompt": prompt, "negative_prompt": "",
                 "width": width, "height": height, "image_path": image_url,
-                "model": model, "created_at": datetime.now().isoformat(),
+                "model": model, "actual_cost": DEFAULT_IMAGE_COST,
+                "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
             }
             saved = ImageService.save_generation_record(project_id, record)
@@ -422,7 +426,8 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             "asset_id": asset_id, "asset_type": asset_type,
             "prompt": prompt, "negative_prompt": "",
             "width": width, "height": height, "image_path": image_url,
-            "model": model, "created_at": datetime.now().isoformat(),
+            "model": model, "actual_cost": DEFAULT_IMAGE_COST,
+            "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
         }
         saved = ImageService.save_generation_record(project_id, record)
@@ -729,6 +734,7 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
                 "height": height,
                 "image_path": image_url,
                 "model": model,
+                "actual_cost": DEFAULT_IMAGE_COST,
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
             }
@@ -809,6 +815,7 @@ async def upload_image(
             "prompt": prompt,
             "negative_prompt": "",
             "model": "manual_upload",
+            "actual_cost": 0,
             "width": 0,
             "height": 0,
             "image_path": str(request.base_url).rstrip("/") + f"/api/projects/{project_id}/images/files/{asset_type}/{filename}",
@@ -922,6 +929,7 @@ async def split_triple_grid_image(project_id: str, storyboard_id: str = Body(...
             "prompt": f"从三宫格拆解（{position_names[i]}）",
             "negative_prompt": "",
             "model": "split",
+            "actual_cost": 0,
             "width": 0,
             "height": 0,
             "image_path": None,

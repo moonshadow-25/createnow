@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { adminUserApi, projectApi } from '@/services/api';
 import { Project } from '@/types';
+import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 
 interface ProjectStats {
   total_images: number;
@@ -44,9 +45,11 @@ const COLORS = [
 
 function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost: number; total_cost: number } {
   if (!stats) return { image_cost: 0, video_cost: 0, total_cost: 0 };
-  const image_cost = 0.5 * (stats.total_images || 0);
-  const video_cost = stats.total_video_compute_units ?? (1.0 * (stats.total_video_seconds || 0));
-  const total_cost = stats.total_compute_spent ?? (image_cost + video_cost);
+  const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * (stats.total_video_seconds || 0));
+  const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * (stats.total_images || 0) + video_cost);
+  const image_cost = stats.total_compute_spent != null
+    ? total_cost - video_cost
+    : DEFAULT_IMAGE_COST * (stats.total_images || 0);
   return { image_cost, video_cost, total_cost };
 }
 

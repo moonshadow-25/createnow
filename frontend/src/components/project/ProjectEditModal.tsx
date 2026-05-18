@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { projectApi } from '@/services/api';
 import { Project } from '@/types';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 
 interface ProjectStats {
   total_images: number;
@@ -38,7 +39,7 @@ export function ProjectEditModal({ project, stats, onClose, onSaved }: Props) {
   const [error, setError] = useState('');
 
   const actualSpent = stats != null
-    ? (stats.total_compute_spent ?? (0.5 * stats.total_images + (stats.total_video_compute_units ?? (1.0 * stats.total_video_seconds))))
+    ? (stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + (stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds))))
     : null;
 
   const handleSave = async () => {

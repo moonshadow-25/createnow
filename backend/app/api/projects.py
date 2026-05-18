@@ -10,7 +10,7 @@ from app.services.auth_service import get_auth_state
 from app.services.user_service import get_user_by_username
 from app.core.config import settings
 from app.core.context import get_current_data_root
-from app.api.generation.utils import calc_video_compute_units
+from app.api.generation.utils import calc_video_compute_units, get_image_cost, get_video_cost
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -29,6 +29,8 @@ def _build_project_stats(project_id: str) -> dict:
     total_storyboards = len(storyboards)
     storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
 
+    from app.api.generation.utils import get_image_cost as _gic, get_video_cost as _gvc
+
     videos = VideoService.list_videos(project_id)
     completed_storyboard_ids: set = set()
     total_video_seconds = 0.0
@@ -38,7 +40,7 @@ def _build_project_stats(project_id: str) -> dict:
     for v in videos:
         if v.get("status") == "completed":
             duration = float(v.get("duration") or 0)
-            compute_units = calc_video_compute_units(duration, v.get("resolution"))
+            compute_units = _gvc(v)
             total_video_seconds += duration
             total_video_compute_units += compute_units
             if v.get("storyboard_id"):
@@ -46,9 +48,12 @@ def _build_project_stats(project_id: str) -> dict:
                 storyboard_video_compute_units += compute_units
                 completed_storyboard_ids.add(v["storyboard_id"])
 
-    total_images = len(ImageService.list_images(project_id))
+    # 图片消耗改为按记录遍历（尊重 actual_cost / ZERO_COST_MODELS）
+    images = ImageService.list_images(project_id)
+    total_image_cost = sum(_gic(img) for img in images)
+    total_images = len(images)
     episodes = AssetService.list_assets(project_id, "episode")
-    total_compute_spent = round(0.5 * total_images + total_video_compute_units, 2)
+    total_compute_spent = round(total_image_cost + total_video_compute_units, 2)
 
     return {
         "episode_count": len(episodes),
@@ -266,7 +271,7 @@ async def set_project_budget(project_id: str, body: SetBudgetRequest, request: R
 
 @router.get("/stats/by-user")
 async def get_stats_by_user():
-    """按用户汇总所有项目的实际消耗（基于 created_by 字段）"""
+    """按用户汇总所有项目的实际消耗（基于 created_by 字段，优先 actual_cost）"""
     import json as _json
     projects_dir = _get_projects_dir()
     user_costs: dict[str, dict] = {}  # username -> {image_cost, video_cost, total_cost}
@@ -287,7 +292,7 @@ async def get_stats_by_user():
                 except Exception:
                     continue
                 username = (img.get("created_by") or "").strip() or "__unknown__"
-                cost = 0.5
+                cost = get_image_cost(img)
                 entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
                 entry["image_cost"] += cost
                 entry["total_cost"] += cost
@@ -303,7 +308,7 @@ async def get_stats_by_user():
                 if v.get("status") != "completed":
                     continue
                 username = (v.get("created_by") or "").strip() or "__unknown__"
-                cost = calc_video_compute_units(v.get("duration") or 0, v.get("resolution"))
+                cost = get_video_cost(v)
                 entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
                 entry["video_cost"] += cost
                 entry["total_cost"] += cost

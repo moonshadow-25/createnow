@@ -23,6 +23,7 @@ from .template_helpers import get_active_template
 from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units
 from app.core.context import get_current_user
 from app.models.project import normalize_global_style_config
+from app.core.pricing import DEFAULT_SUBTITLE_REMOVAL_COST
 
 logger = logging.getLogger(__name__)
 
@@ -745,6 +746,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "resolution": request.resolution,
             "ratio": request.ratio,
             "estimated_cost": round(calc_video_compute_units(request.duration, request.resolution), 2),
+            "actual_cost": round(calc_video_compute_units(request.duration, request.resolution), 2),
             "model": ai_config.get("video", {}).get("model", "sora"),
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
@@ -822,6 +824,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
         "resolution": "",
         "ratio": "",
         "estimated_cost": 0,
+        "actual_cost": DEFAULT_SUBTITLE_REMOVAL_COST,
         "model": settings.CREATENOW_SUBTITLE_MODEL_ID,
         "created_at": datetime.now().isoformat(),
         "created_by": get_current_user() or "",
@@ -988,6 +991,12 @@ async def poll_video_status(project_id: str, video_id: str):
             video_record["video_path"] = poll_result.get("video_url")
             video_record["enhanced_prompt"] = poll_result.get("enhanced_prompt", "")
             video_record["error"] = None
+
+            # 若平台返回实际消耗，回填 actual_cost
+            raw = poll_result.get("raw_poll_response") or {}
+            platform_cost = raw.get("cost") or raw.get("usage", {}).get("cost") or raw.get("credits_consumed")
+            if platform_cost is not None:
+                video_record["actual_cost"] = float(platform_cost)
 
             # 【自动下载】视频生成完成后自动下载到本地
             from app.services.video_download_service import VideoDownloadService

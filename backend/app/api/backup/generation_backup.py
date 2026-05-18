@@ -1168,6 +1168,7 @@ async def upload_image(
             "prompt": prompt,
             "negative_prompt": "",
             "model": "manual_upload",
+            "actual_cost": 0,
             "width": 0,
             "height": 0,
             "image_path": None,  # 没有远程URL
