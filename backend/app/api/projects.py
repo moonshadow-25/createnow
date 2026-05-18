@@ -82,8 +82,8 @@ class ProjectUpdate(BaseModel):
     minutes_per_episode: float = None
     compute_budget_per_minute: float = None
     project_duration_days: int = None
-    rating: float = None
-    review: str = None
+    rating: Optional[float] = None
+    review: Optional[str] = None
 
 
 async def _get_active_api_key(request: Request) -> Optional[str]:
