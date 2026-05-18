@@ -59,7 +59,7 @@ class ImageDownloadService:
         """下载单个图片"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as response:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout), ssl=False) as response:
                     if response.status == 200:
                         content = await response.read()
                         save_path.write_bytes(content)

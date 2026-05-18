@@ -50,7 +50,7 @@ class VideoDownloadService:
         """下载单个视频（超时时间更长，因为视频文件较大）"""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as response:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout), ssl=False) as response:
                     if response.status == 200:
                         content = await response.read()
                         save_path.write_bytes(content)

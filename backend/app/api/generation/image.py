@@ -1043,7 +1043,7 @@ async def vlm_analyze(project_id: str, request: VLMAnalyzeRequest):
                     # 下载图片并转base64
                     import aiohttp
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(image_path) as resp:
+                        async with session.get(image_path, ssl=False) as resp:
                             if resp.status == 200:
                                 import base64
                                 img_data = await resp.read()
