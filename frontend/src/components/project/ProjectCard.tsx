@@ -69,8 +69,11 @@ function computeMetrics(project: Project, stats: ProjectStats) {
         )
       : 0;
 
-  const image_cost = DEFAULT_IMAGE_COST * total_images;
   const video_cost = (stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * total_video_seconds));
+  const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * total_images + video_cost);
+  const image_cost = stats.total_compute_spent != null
+    ? total_cost - video_cost
+    : DEFAULT_IMAGE_COST * total_images;
   const completed_episodes = greenPct * episode_count;
   const greenBarPct = total_episodes > 0 ? completed_episodes / total_episodes : 0;
   let cost_per_minute: number | null = null;
@@ -285,9 +288,11 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
 }
 
 function CostOnlySection({ project, stats, hideCost, showPointsInHideMode }: { project: Project; stats: ProjectStats; hideCost?: boolean; showPointsInHideMode?: boolean }) {
-  const image_cost = DEFAULT_IMAGE_COST * stats.total_images;
   const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds);
-  const total_cost = stats.total_compute_spent ?? (image_cost + video_cost);
+  const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + video_cost);
+  const image_cost = stats.total_compute_spent != null
+    ? total_cost - video_cost
+    : DEFAULT_IMAGE_COST * stats.total_images;
   const points = computePoints(stats);
   return (
     <div className="space-y-1 text-xs">
