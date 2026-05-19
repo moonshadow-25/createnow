@@ -392,11 +392,15 @@ END_TOOL
 - ⚠️ 若第N镜失败，必须先修复并重试第N镜，严禁继续创建后续序号
 - ⚠️ 每次 create 都必须传入步骤0得到的 `plan_id`，并保持 sequence 连续递增（1,2,3...）
 - ⚠️ 调用 create_storyboard 前，先从 `estimate_storyboard_plan` 的结果读取 `script_analysis.suggested_dialogue_chars_per_storyboard`，记为本批次唯一目标字数 `TARGET_CHARS`
-- ⚠️ 提交本镜前，必须先对 `dialogue_units` 做去空白计数，得到 `ACTUAL_CHARS`
-- ⚠️ 优先把 `ACTUAL_CHARS` 控制在 `TARGET_CHARS ± 10` 内；不要把后端护栏当成试错器，禁止先提交再靠报错回改
-- ⚠️ 每次调用 create_storyboard 时，必须显式传入：`plan_id`、`suggested_dialogue_chars = TARGET_CHARS`、`dialogue_chars_declared = ACTUAL_CHARS`
-- ⚠️ 若 `ACTUAL_CHARS` 明显偏离 `TARGET_CHARS`，先重切 `dialogue_units`，再生成 `video_prompt`，禁止先生成整镜内容后再赌护栏
 - ⚠️ 自动生成/重新生成流程中，create_storyboard 只上报 `script_line_start` / `script_line_end`
+- ⚠️🚨 **每镜必须按以下顺序执行，严禁跳步：**
+  步骤A：从 `line_numbered_script` 确定当前镜行范围 [start, end)
+  步骤B：提取行范围内所有对白行作为 dialogue_units（对白识别：`角色名：台词`、`角色名OS：台词`、`角色名（语气）：台词`）
+  步骤C：数字数（去空白，只计汉字和数字），得到 ACTUAL_CHARS
+  步骤D：若 ACTUAL_CHARS < TARGET - 10 或 ACTUAL_CHARS > TARGET + 10，回到步骤A调整 [start, end)，直到字数落在 [TARGET-10, TARGET+10] 内才可继续
+  步骤E：行范围和对白确认无误后，编写 video_prompt，调用 create_storyboard
+- ⚠️🚨 严禁在步骤D未通过时编写 video_prompt 或调用 create_storyboard
+- ⚠️ 每次调用 create_storyboard 时，必须显式传入：`plan_id`、`suggested_dialogue_chars = TARGET_CHARS`、`dialogue_chars_declared = ACTUAL_CHARS`
 - ⚠️ 先确定”当前镜要覆盖的完整原文片段”的行范围，从 `line_numbered_script` 中读取 start（含）/ end（不含）行号
 - ⚠️ 行范围必须使用左闭右开区间 `[start, end)`：start 是本镜第一行，end 是本镜最后一行的下一行
 - ⚠️ 相邻两个分镜的行范围必须首尾相接无间隙：第N镜的 end 等于第N+1镜的 start
