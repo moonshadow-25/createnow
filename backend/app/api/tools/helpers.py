@@ -396,12 +396,16 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
             "audit": _audit("reason_invalid"),
         }
 
-    if declared_count < min_allowed or declared_count > max_allowed:
-        if declared_count < min_allowed and short_reason == "SCENE_BOUNDARY_CONSTRAINT":
-            return {"ok": True, "audit": _audit("scene_boundary_exception")}
+    if actual_count > max_allowed:
         return {
             "ok": False,
-            "error": f"对白字数需在建议值浮动范围内（{min_allowed}-{max_allowed}），当前上报{declared_count}，校验{actual_count}",
+            "error": f"对白字数超过上限（{max_allowed}），实际{actual_count}字，请拆分或精简对白",
+            "audit": _audit("out_of_guardrail"),
+        }
+    if actual_count < min_allowed and short_reason != "SCENE_BOUNDARY_CONSTRAINT":
+        return {
+            "ok": False,
+            "error": f"对白字数低于建议范围下限（{min_allowed}），实际{actual_count}字，请补充 short_dialogue_reason 或扩充对白",
             "audit": _audit("out_of_guardrail"),
         }
 
