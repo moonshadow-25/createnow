@@ -273,7 +273,7 @@ def _get_scene_body_context(script: str, scene_label: str) -> Dict:
         return {"ok": False, "error": "当前剧本存在场次结构，必须填写 script_scene_label", "has_scene_structure": True}
 
     if scene_label not in scene_labels:
-        return {"ok": False, "error": f"script_scene_label 必须来自剧本中的场次行: {scene_label}", "has_scene_structure": True}
+        return _locate_scene_body_by_literal_label(text, scene_label, scene_labels)
 
     for block in _extract_scene_blocks(text):
         if block.get("label") != scene_label:
@@ -296,6 +296,47 @@ def _get_scene_body_context(script: str, scene_label: str) -> Dict:
         }
 
     return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
+
+
+def _locate_scene_body_by_literal_label(text: str, scene_label: str, scene_labels: list[str]) -> Dict:
+    """当 parser 未能识别场次行时，用字面量在剧本中定位场次正文。"""
+    idx = text.find(scene_label)
+    if idx < 0:
+        idx = _normalize_text_for_match(text).find(_normalize_text_for_match(scene_label))
+    if idx < 0:
+        return {"ok": False, "error": f"script_scene_label 在剧本中未找到: {scene_label}", "has_scene_structure": True}
+
+    # 场次正文从 label 所在行之后开始
+    line_end = text.find("\n", idx)
+    body_start = line_end + 1 if line_end >= 0 else len(text)
+
+    # 场次正文结束于下一个 parser 能识别的场次行，或剧本末尾
+    body_end = len(text)
+    for label in scene_labels:
+        label_idx = text.find(label, body_start)
+        if label_idx >= 0 and label_idx < body_end:
+            body_end = label_idx
+
+    trimmed_start, body_end_offset = _trim_span(text, body_start, body_end)
+    body_start_offset = _skip_scene_metadata(text, trimmed_start, body_end_offset)
+    body = text[body_start_offset:body_end_offset]
+
+    if not _normalize_text_for_match(body):
+        return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
+
+    extended_labels = list(scene_labels)
+    if scene_label not in extended_labels:
+        extended_labels.append(scene_label)
+
+    return {
+        "ok": True,
+        "has_scene_structure": True,
+        "scene_body": body,
+        "scene_labels": extended_labels,
+        "scene_label": scene_label,
+        "body_start_offset": body_start_offset,
+        "body_end_offset": body_end_offset,
+    }
 
 
 def _find_unique_anchor(text: str, anchor: str) -> Dict:
