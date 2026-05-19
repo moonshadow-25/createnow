@@ -506,8 +506,8 @@ def resolve_description_from_line_range(project_id: str, episode_id: str, line_s
         return {"ok": False, "error": "当前剧集缺少剧本文本，无法按行范围裁切 description"}
 
     lines = script.splitlines()
-    if line_end > len(lines):
-        return {"ok": False, "error": f"script_line_end({line_end}) 超出剧本总行数({len(lines)})"}
+    if line_end > len(lines) + 1:
+        return {"ok": False, "error": f"script_line_end({line_end}) 超出剧本合法行尾({len(lines) + 1})"}
 
     description = "\n".join(lines[line_start - 1:line_end - 1]).strip()
     if not description:
