@@ -371,8 +371,8 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
     short_reason = str(parameters.get("short_dialogue_reason") or "").strip()
     time_evidence = str(parameters.get("short_dialogue_time_evidence") or "").strip()
 
-    min_allowed = max(0, suggested - tolerance)
-    max_allowed = 90
+    min_allowed = max(0, suggested - 30)
+    max_allowed = 100
 
     def _audit(status: str) -> Dict:
         return {
