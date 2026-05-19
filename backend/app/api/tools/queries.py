@@ -322,10 +322,16 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         episode_storyboards = [sb for sb in all_storyboards if sb.get("episode_id") == episode_id]
         storyboard_count = len(episode_storyboards)
 
+        line_numbered_script = ""
+        if script:
+            numbered_lines = [f"{i + 1}\t{line}" for i, line in enumerate(script.splitlines())]
+            line_numbered_script = "\n".join(numbered_lines)
+
         return {
             "success": True,
             "episode_id": episode_id,
             "script": script or "（暂无剧本内容）",
+            "line_numbered_script": line_numbered_script or "（暂无剧本内容）",
             "existing_assets": existing_assets,
             "existing_storyboard_count": storyboard_count,
             "notice": f"⚠️ 已有资产见 existing_assets，已存在的直接用 asset_id，禁止重复创建。本集已有 {storyboard_count} 个分镜{'，自动生成本集时应跳过创建分镜步骤，继续后续的生图/审核/视频流程' if storyboard_count > 0 else '，需要创建分镜'}。"

@@ -108,10 +108,6 @@ SHORT_DIALOGUE_REASON_ENUM = {
 }
 
 
-def _normalize_line_text(text: str) -> str:
-    return "".join(str(text or "").replace("　", " ").split())
-
-
 def _normalize_text_for_match(text: str) -> str:
     return "".join(str(text or "").split())
 
@@ -121,16 +117,6 @@ def _load_episode_script(project_id: str, episode_id: str) -> str:
         return ""
     episode = AssetService.load_asset(project_id, "episode", episode_id) or {}
     return str(episode.get("script") or episode.get("script_content") or "")
-
-
-def _extract_storyboard_script_text(parameters: Dict, units: list[str]) -> str:
-    description = str(parameters.get("description") or "").strip()
-    if description:
-        lines = description.splitlines()
-        if len(lines) > 1:
-            return "\n".join(lines[1:]).strip()
-        return description
-    return "\n".join(units)
 
 
 def _extract_description_candidates(description: str) -> list[str]:
@@ -144,69 +130,6 @@ def _extract_description_candidates(description: str) -> list[str]:
 
     full_text = "\n".join(lines).strip()
     return [full_text]
-
-
-def _extract_scene_label_from_line(line: str) -> str:
-    text = str(line or "").strip().replace("　", " ")
-    compact = _normalize_line_text(text)
-    if not compact:
-        return ""
-    if compact.startswith("第") and "集" in compact:
-        return ""
-    if text.startswith("△") or text.startswith("▲"):
-        return ""
-    if "出场人物" in text or "人物表" in text:
-        return ""
-    if "：" in text or ":" in text:
-        return ""
-    has_time = any(token in text for token in ["日", "夜", "晨", "昏"])
-    has_space = any(token in text for token in ["内", "外"])
-    if not (has_time and has_space):
-        return ""
-    if len(compact) > 40:
-        return ""
-    return text
-
-
-def _build_scene_labels_from_script(script: str) -> list[str]:
-    labels = []
-    for raw_line in str(script or "").splitlines():
-        label = _extract_scene_label_from_line(raw_line)
-        if label and label not in labels:
-            labels.append(label)
-    return labels
-
-
-def _extract_scene_blocks(script: str) -> list[Dict]:
-    text = str(script or "")
-    lines = text.splitlines(keepends=True)
-    blocks: list[Dict] = []
-    current: Optional[Dict] = None
-    offset = 0
-
-    for raw_line in lines:
-        line_text = raw_line.rstrip("\r\n")
-        label = _extract_scene_label_from_line(line_text)
-        if label:
-            if current is not None:
-                current["body_end"] = offset
-                blocks.append(current)
-            label_offset = raw_line.find(label)
-            if label_offset < 0:
-                label_offset = 0
-            current = {
-                "label": label,
-                "body_start": offset + len(raw_line),
-                "label_start": offset + label_offset,
-                "label_end": offset + len(raw_line),
-            }
-        offset += len(raw_line)
-
-    if current is not None:
-        current["body_end"] = len(text)
-        blocks.append(current)
-
-    return blocks
 
 
 def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
@@ -243,22 +166,10 @@ def _skip_scene_metadata(text: str, start: int, end: int) -> int:
     return start + consumed
 
 
-def _extract_scene_body_by_label(script: str, label: str) -> str:
-    text = str(script or "")
-    if not label:
-        return ""
-    for block in _extract_scene_blocks(text):
-        if block.get("label") == label:
-            trimmed_start, trimmed_end = _trim_span(text, block["body_start"], block["body_end"])
-            content_start = _skip_scene_metadata(text, trimmed_start, trimmed_end)
-            return text[content_start:trimmed_end]
-    return ""
-
-
 def _get_scene_body_context(script: str, scene_label: str) -> Dict:
+    """用 scene_label 字面量在剧本中定位场次正文，不对 label 做任何格式校验。"""
     text = str(script or "")
-    scene_labels = _build_scene_labels_from_script(text)
-    if not scene_labels:
+    if not scene_label:
         body_start_offset, body_end_offset = _trim_span(text, 0, len(text))
         return {
             "ok": True,
@@ -269,53 +180,15 @@ def _get_scene_body_context(script: str, scene_label: str) -> Dict:
             "body_end_offset": body_end_offset,
         }
 
-    if not scene_label:
-        return {"ok": False, "error": "当前剧本存在场次结构，必须填写 script_scene_label", "has_scene_structure": True}
-
-    if scene_label not in scene_labels:
-        return _locate_scene_body_by_literal_label(text, scene_label, scene_labels)
-
-    for block in _extract_scene_blocks(text):
-        if block.get("label") != scene_label:
-            continue
-        trimmed_start, body_end_offset = _trim_span(text, block["body_start"], block["body_end"])
-        body_start_offset = _skip_scene_metadata(text, trimmed_start, body_end_offset)
-        body = text[body_start_offset:body_end_offset]
-        if not _normalize_text_for_match(body):
-            return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
-        return {
-            "ok": True,
-            "has_scene_structure": True,
-            "scene_body": body,
-            "scene_labels": scene_labels,
-            "scene_label": scene_label,
-            "body_start_offset": body_start_offset,
-            "body_end_offset": body_end_offset,
-            "raw_body_start_offset": block["body_start"],
-            "raw_body_end_offset": block["body_end"],
-        }
-
-    return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
-
-
-def _locate_scene_body_by_literal_label(text: str, scene_label: str, scene_labels: list[str]) -> Dict:
-    """当 parser 未能识别场次行时，用字面量在剧本中定位场次正文。"""
     idx = text.find(scene_label)
     if idx < 0:
         idx = _normalize_text_for_match(text).find(_normalize_text_for_match(scene_label))
     if idx < 0:
         return {"ok": False, "error": f"script_scene_label 在剧本中未找到: {scene_label}", "has_scene_structure": True}
 
-    # 场次正文从 label 所在行之后开始
     line_end = text.find("\n", idx)
     body_start = line_end + 1 if line_end >= 0 else len(text)
-
-    # 场次正文结束于下一个 parser 能识别的场次行，或剧本末尾
     body_end = len(text)
-    for label in scene_labels:
-        label_idx = text.find(label, body_start)
-        if label_idx >= 0 and label_idx < body_end:
-            body_end = label_idx
 
     trimmed_start, body_end_offset = _trim_span(text, body_start, body_end)
     body_start_offset = _skip_scene_metadata(text, trimmed_start, body_end_offset)
@@ -324,15 +197,11 @@ def _locate_scene_body_by_literal_label(text: str, scene_label: str, scene_label
     if not _normalize_text_for_match(body):
         return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
 
-    extended_labels = list(scene_labels)
-    if scene_label not in extended_labels:
-        extended_labels.append(scene_label)
-
     return {
         "ok": True,
         "has_scene_structure": True,
         "scene_body": body,
-        "scene_labels": extended_labels,
+        "scene_labels": [scene_label],
         "scene_label": scene_label,
         "body_start_offset": body_start_offset,
         "body_end_offset": body_end_offset,
@@ -359,28 +228,20 @@ def _find_unique_anchor(text: str, anchor: str) -> Dict:
     return {"ok": True, "index": positions[0]}
 
 
-def resolve_storyboard_description_from_text_anchors(project_id: str, episode_id: str, scene_label: str, start_text_raw, end_text_raw) -> Dict:
+def resolve_storyboard_description_from_text_anchors(project_id: str, episode_id: str, start_text_raw, end_text_raw) -> Dict:
     script = _load_episode_script(project_id, str(episode_id or "").strip())
     if not script:
         return {"ok": False, "error": "当前剧集缺少剧本文本，无法按首尾文字裁切 description"}
-
-    context = _get_scene_body_context(script, str(scene_label or "").strip())
-    if not context.get("ok"):
-        return context
 
     start_text = str(start_text_raw or "").strip()
     end_text = str(end_text_raw or "").strip()
     if not start_text or not end_text:
         return {"ok": False, "error": "自动生成/重新生成分镜时，必须同时提供 description_start_text 和 description_end_text"}
 
-    scene_body = str(context.get("scene_body") or "")
-    if not scene_body:
-        return {"ok": False, "error": "当前剧本文本为空，无法按首尾文字裁切 description"}
-
-    start_match = _find_unique_anchor(scene_body, start_text)
+    start_match = _find_unique_anchor(script, start_text)
     if not start_match.get("ok"):
         return start_match
-    end_match = _find_unique_anchor(scene_body, end_text)
+    end_match = _find_unique_anchor(script, end_text)
     if not end_match.get("ok"):
         return end_match
 
@@ -389,80 +250,13 @@ def resolve_storyboard_description_from_text_anchors(project_id: str, episode_id
     if start_idx >= end_idx:
         return {"ok": False, "error": "description_start_text 必须出现在 description_end_text 之前"}
 
-    description = scene_body[start_idx:end_idx].strip()
+    description = script[start_idx:end_idx].strip()
     if not description:
         return {"ok": False, "error": "按首尾文字裁切后的 description 为空，请检查锚点文本"}
-
-    normalized_description = _normalize_text_for_match(description)
-    for label in context.get("scene_labels") or []:
-        if _normalize_text_for_match(label) in normalized_description:
-            return {"ok": False, "error": "裁切结果中包含场次行，请改为只截取场次正文"}
-
-    body_start_offset = int(context.get("body_start_offset") or 0)
-    body_end_offset = int(context.get("body_end_offset") or 0)
 
     return {
         "ok": True,
         "description": description,
-        "has_scene_structure": context.get("has_scene_structure", False),
-        "scene_body": scene_body,
-        "is_scene_tail": end_idx == len(scene_body),
-        "body_start_offset": body_start_offset,
-        "body_end_offset": body_end_offset,
-    }
-
-
-def _is_scene_tail_fragment(scene_body: str, description: str, min_tail_ratio: float = 0.95) -> bool:
-    body_norm = _normalize_text_for_match(scene_body)
-    desc_norm = _normalize_text_for_match(description)
-    if not body_norm or not desc_norm:
-        return False
-    idx = body_norm.rfind(desc_norm)
-    if idx < 0:
-        return False
-    end_pos = idx + len(desc_norm)
-    return (end_pos / max(len(body_norm), 1)) >= min_tail_ratio
-
-
-def validate_storyboard_scene_membership(project_id: str, episode_id: str, scene_label: str, description: str, scene_tail_override=None) -> Dict:
-    script = _load_episode_script(project_id, str(episode_id or "").strip())
-    if not script:
-        return {"ok": False, "error": "当前剧集缺少剧本文本，无法校验场次字段"}
-
-    context = _get_scene_body_context(script, scene_label)
-    if not context.get("ok"):
-        return context
-    if not context.get("has_scene_structure"):
-        return {"ok": True, "has_scene_structure": False}
-
-    normalized_description = _normalize_text_for_match(description)
-    scene_labels = context.get("scene_labels") or []
-    for label in scene_labels:
-        if label != scene_label and _normalize_text_for_match(label) in normalized_description:
-            return {"ok": False, "error": f"description 出现了其他场次行「{label}」，禁止跨场", "has_scene_structure": True}
-
-    if _normalize_text_for_match(scene_label) in normalized_description:
-        return {"ok": False, "error": "description 中不允许包含场次行，场次必须填写在 script_scene_label 字段", "has_scene_structure": True}
-
-    body = str(context.get("scene_body") or "")
-    desc_norm = _normalize_text_for_match(description)
-    body_norm = _normalize_text_for_match(body)
-    if not desc_norm:
-        return {"ok": False, "error": "description 不能为空", "has_scene_structure": True}
-    if not body_norm:
-        return {"ok": False, "error": f"无法定位场次正文: {scene_label}", "has_scene_structure": True}
-    if desc_norm not in body_norm:
-        return {"ok": False, "error": f"description 必须属于场次「{scene_label}」的正文范围，禁止跨场", "has_scene_structure": True}
-
-    is_scene_tail = _is_scene_tail_fragment(body, description)
-    if scene_tail_override is not None:
-        is_scene_tail = bool(scene_tail_override)
-
-    return {
-        "ok": True,
-        "has_scene_structure": True,
-        "scene_body": body,
-        "is_scene_tail": is_scene_tail,
     }
 
 
@@ -580,15 +374,6 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
     min_allowed = max(0, suggested - tolerance)
     max_allowed = 90
 
-    scene_label = str(parameters.get("script_scene_label") or "").strip()
-    scene_check = validate_storyboard_scene_membership(
-        project_id,
-        episode_id,
-        scene_label,
-        parameters.get("description", ""),
-        parameters.get("_scene_is_tail") if scene_label else None,
-    ) if scene_label else {"ok": True, "has_scene_structure": False, "is_scene_tail": False}
-
     def _audit(status: str) -> Dict:
         return {
             "status": status,
@@ -612,7 +397,7 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
         }
 
     if declared_count < min_allowed or declared_count > max_allowed:
-        if declared_count < min_allowed and short_reason == "SCENE_BOUNDARY_CONSTRAINT" and scene_check.get("ok") and scene_check.get("is_scene_tail"):
+        if declared_count < min_allowed and short_reason == "SCENE_BOUNDARY_CONSTRAINT":
             return {"ok": True, "audit": _audit("scene_boundary_exception")}
         return {
             "ok": False,
@@ -658,6 +443,73 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
             }
 
     return {"ok": True, "audit": _audit("ok")}
+
+
+def _parse_line_range(raw) -> Optional[int]:
+    """将原始值解析为行号，允许None/空字符串，非整数报错。行号从1开始。"""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        val = int(s)
+    except (ValueError, TypeError):
+        return None
+    if val < 1:
+        return None
+    return val
+
+
+def validate_script_line_range(project_id: str, episode_id: str, line_start: Optional[int], line_end: Optional[int], exclude_storyboard_id: Optional[str] = None) -> Dict:
+    """校验行范围不与同集已有分镜重叠。返回 {ok, error}。"""
+    if line_start is None or line_end is None:
+        return {"ok": True}
+    if line_start >= line_end:
+        return {"ok": False, "error": f"script_line_start({line_start}) 必须小于 script_line_end({line_end})"}
+
+    all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
+    for sb in all_storyboards:
+        if sb.get("episode_id") != episode_id:
+            continue
+        if exclude_storyboard_id and sb.get("asset_id") == exclude_storyboard_id:
+            continue
+        ex_start = sb.get("script_line_start")
+        ex_end = sb.get("script_line_end")
+        if ex_start is None or ex_end is None:
+            continue
+        if line_start < ex_end and line_end > ex_start:
+            return {
+                "ok": False,
+                "error": f"行范围 [{line_start}, {line_end}) 与第{sb.get('sequence', '?')}镜的行范围 [{ex_start}, {ex_end}) 存在重叠，剧本每行只能属于一个分镜"
+            }
+    return {"ok": True}
+
+
+def resolve_description_from_line_range(project_id: str, episode_id: str, line_start_raw, line_end_raw) -> Dict:
+    """根据行范围从剧本中裁切 description。返回 {ok, description, error}。"""
+    line_start = _parse_line_range(line_start_raw)
+    line_end = _parse_line_range(line_end_raw)
+    if line_start is None or line_end is None:
+        return {"ok": True, "description": None, "skipped": True}
+    if line_start >= line_end:
+        return {"ok": False, "error": f"script_line_start({line_start}) 必须小于 script_line_end({line_end})"}
+
+    script = _load_episode_script(project_id, str(episode_id or "").strip())
+    if not script:
+        return {"ok": False, "error": "当前剧集缺少剧本文本，无法按行范围裁切 description"}
+
+    lines = script.splitlines()
+    if line_end > len(lines):
+        return {"ok": False, "error": f"script_line_end({line_end}) 超出剧本总行数({len(lines)})"}
+
+    description = "\n".join(lines[line_start - 1:line_end - 1]).strip()
+    if not description:
+        return {"ok": False, "error": "按行范围裁切后的 description 为空，请检查行号"}
+
+    return {"ok": True, "description": description}
 
 
 KEY_ALIASES = {
