@@ -161,6 +161,8 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/video-reverse-prompt`, data),
   generateVideo: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/video`, data),
+  generateAllStoryboardVideos: (projectId: string, episodeId: string) =>
+    api.post(`/projects/${projectId}/generate/all-storyboard-videos`, { episode_id: episodeId }),
   generateVideoMultiImage: (projectId: string, data: {
     storyboard_id: string;
     episode_id: string;

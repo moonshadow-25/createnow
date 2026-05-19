@@ -111,6 +111,11 @@ class VideoGenerateRequest(BaseModel):
         return v
 
 
+class VideoBatchGenerateRequest(BaseModel):
+    """批量生成分镜视频请求（后端自动从分镜关联资产收集图片）"""
+    episode_id: str
+
+
 class VideoSubtitleRemovalRequest(BaseModel):
     """视频字幕擦除请求"""
     source_video_url: str

@@ -18,7 +18,7 @@ from app.services.ai.adapters.byteseed import ASSET_UNSUPPORTED_MODELS
 from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
-from .models import VideoPromptRequest, VideoPromptSubagentRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest
+from .models import VideoPromptRequest, VideoPromptSubagentRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest, VideoBatchGenerateRequest
 from .template_helpers import get_active_template
 from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units
 from app.core.context import get_current_user
@@ -550,6 +550,15 @@ async def generate_video_reverse_prompt(project_id: str, request: VideoReversePr
         await vlm.close()
         logger.error(f"[反推提示词] 生成失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/all-storyboard-videos")
+async def generate_all_storyboard_videos_endpoint(project_id: str, request: VideoBatchGenerateRequest):
+    """批量生成剧集下所有有视频提示词的分镜视频（后端自动收集关联资产图片）"""
+    from app.api.tools.generation import handle_generate_all_storyboard_videos
+
+    result = await handle_generate_all_storyboard_videos(project_id, {"episode_id": request.episode_id})
+    return result
 
 
 @router.post("/video")

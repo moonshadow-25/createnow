@@ -1297,29 +1297,19 @@ export function StoryboardDetail({
                       <button
                         onClick={() => {
                           setShowMoreMenu(false);
+                          if (!selectedEpisode?.asset_id) { toast('请先选择剧集', 'error'); return; }
                           const eligible = storyboards.filter(sb => !sb.primary_video_url && sb.video_prompt);
                           if (eligible.length === 0) { toast('暂无可生成的分镜（请先为分镜添加视频提示词）', 'info'); return; }
                           if (!confirm(`共 ${eligible.length} 个分镜有视频提示词，将生成 ${eligible.length} 个视频，确认？`)) return;
                           (async () => {
-                            let ok = 0, fail = 0;
-                            const batches = Array.from({ length: Math.ceil(eligible.length / 5) }, (_, i) =>
-                              eligible.slice(i * 5, i * 5 + 5)
-                            );
-                            for (const batch of batches) {
-                              await Promise.allSettled(batch.map(async (sb: any) => {
-                                try {
-                                  await generationApi.generateVideo(projectId, {
-                                    storyboard_id: sb.asset_id,
-                                    episode_id: selectedEpisode!.asset_id,
-                                    prompt: sb.video_prompt,
-                                    duration: sb.duration || 5,
-                                    resolution: sb.resolution || '1920x1080',
-                                  });
-                                  ok++;
-                                } catch { fail++; }
-                              }));
-                            }
-                            toast(fail > 0 ? `视频生成任务已提交: ${ok} 成功, ${fail} 失败` : `已提交 ${ok} 个视频生成任务`, fail > 0 ? 'info' : 'success');
+                            try {
+                              const res = await generationApi.generateAllStoryboardVideos(projectId, selectedEpisode!.asset_id);
+                              const data = res.data;
+                              const msg = data.skipped_names?.length
+                                ? `已提交 ${data.generated} 个视频生成任务，跳过 ${data.skipped} 个分镜`
+                                : `已提交 ${data.generated} 个视频生成任务`;
+                              toast(msg, 'success');
+                            } catch { toast('批量视频生成失败', 'error'); }
                           })();
                         }}
                         disabled={storyboards.length === 0}
