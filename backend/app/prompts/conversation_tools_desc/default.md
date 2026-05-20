@@ -6,7 +6,7 @@
 2. create_scene - 创建场景（需要：name, description, location）
 3. create_prop - 创建道具（需要：name, description）- 仅重要道具
 4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence、`description`（LLM 直接从剧本分段复制原文片段，禁止改写）、`script_scene_label`（剧本存在场次结构时必填）、**character_ids（出场角色asset_id列表，必填）**、**scene_ids（场景asset_id列表，必填）**、**dialogue_units（逐条对白原文）**、**dialogue_chars_declared（去空白后的对白总字数）**、`suggested_dialogue_chars`（自动生成/重新生成流程中必须显式传入，且值必须等于 plan 的建议字数）；自动生成/重新生成流程中必须带 plan_id；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；若原因为 TIMECODE_CONSTRAINT 还需提供 short_dialogue_time_evidence）
+5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence、`description`（LLM 直接从剧本分段复制原文片段，禁止改写）、`script_scene_label`（剧本存在场次结构时必填）、**character_ids（出场角色asset_id列表，必填）**、**scene_ids（场景asset_id列表，必填）**、**dialogue_units（逐条对白原文）**、**dialogue_chars_declared（去空白后的对白总字数）**、`suggested_dialogue_chars`（自动生成/重新生成流程中必须显式传入，且值必须等于 plan 的建议字数）；自动生成/重新生成流程中必须带 plan_id；short_dialogue_reason 仅在遇到场次边界或剧本结尾无法继续扩展时必须填写 SCENE_BOUNDARY_CONSTRAINT；若因剧本原文含明确时间约束（如"3秒"）导致分段受限，填写 TIMECODE_CONSTRAINT 并附带 short_dialogue_time_evidence）
 
 
 **资产更新工具（重要！）：**
@@ -14,7 +14,7 @@
 7. update_scene - 更新现有场景（需要：name用于查找；可选：description/location/time_of_day/weather/mood/image_prompt生图提示词）
 8. update_prop - 更新现有道具（需要：name用于查找；可选：description/category/era/material/image_prompt生图提示词）
 9. update_episode - 更新现有剧集（需要：episode_number用于查找，其他字段可选）
-10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description、script_scene_label、video_prompt视频提示词、image_prompt分镜生图提示词、character_ids、scene_ids、prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）⚠️ **无论更新什么字段，都必须先调用 get_storyboard 读取该分镜完整信息，再将 character_ids、scene_ids、prop_ids 原样回传，禁止凭空编造或省略**
+10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description、script_scene_label、video_prompt视频提示词、image_prompt分镜生图提示词、character_ids、scene_ids、prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；short_dialogue_reason 仅在遇到场次边界或剧本结尾时填写 SCENE_BOUNDARY_CONSTRAINT，或因时间约束填写 TIMECODE_CONSTRAINT）⚠️ **无论更新什么字段，都必须先调用 get_storyboard 读取该分镜完整信息，再将 character_ids、scene_ids、prop_ids 原样回传，禁止凭空编造或省略**
 
 **删除工具：**
 11. delete_storyboard - 删除单个分镜（需要：storyboard_id或episode_id+sequence，confirmed=true）
@@ -22,7 +22,7 @@
     ⚠️ **重新生成分镜时必须用此工具**，一次确认删全部，不要逐个调用 delete_storyboard
 
 **插入工具：**
-12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description, `script_scene_label`（剧本存在场次结构时必填）, dialogue_units, dialogue_chars_declared；对白偏短时建议提供 short_dialogue_reason。reason 可选：REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT / SCENE_BOUNDARY_CONSTRAINT；TIMECODE_CONSTRAINT 还需 short_dialogue_time_evidence）
+12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description, `script_scene_label`（剧本存在场次结构时必填）, dialogue_units, dialogue_chars_declared；short_dialogue_reason 仅在遇到场次边界或剧本结尾无法继续扩展时必须填写 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填写 TIMECODE_CONSTRAINT）
 
 **剧本创作工具：**
 13. create_script - 创建新剧本（需要：title）
@@ -115,8 +115,8 @@ TOOL: create_storyboard
   "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
   "dialogue_chars_declared": 58,
   "suggested_dialogue_chars": 58,
-  "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
-  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
+  "short_dialogue_reason": "（遇到场次边界或剧本结尾时填 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填 TIMECODE_CONSTRAINT，否则不填）",
+  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
 }
 END_TOOL
 
@@ -135,8 +135,8 @@ TOOL: update_storyboard
   "scene_ids": ["场景asset_id"],
   "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
   "dialogue_chars_declared": 62,
-  "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
-  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
+  "short_dialogue_reason": "（遇到场次边界或剧本结尾时填 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填 TIMECODE_CONSTRAINT，否则不填）",
+  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
 }
 END_TOOL
 
@@ -185,8 +185,8 @@ TOOL: insert_storyboard
   "description": "对应场内的原文片段本体",
   "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
   "dialogue_chars_declared": 56,
-  "short_dialogue_reason": "（对白偏短时建议填写，必须是 REACTION_SHOT / TIMECODE_CONSTRAINT / SOURCE_TEXT_SHORT 之一）",
-  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填，逐字引用剧本中的时间数字原文，如'站着不动3秒'）"
+  "short_dialogue_reason": "（遇到场次边界或剧本结尾时填 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填 TIMECODE_CONSTRAINT，否则不填）",
+  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
 }
 END_TOOL
 
@@ -393,13 +393,17 @@ END_TOOL
 - ⚠️ 调用 create_storyboard 前，先从 `estimate_storyboard_plan` 的结果读取 `script_analysis.suggested_dialogue_chars_per_storyboard`，记为本批次唯一目标字数 `TARGET_CHARS`
 - ⚠️🚨 **每镜必须按以下顺序执行，严禁跳步：**
   步骤A：从剧本中选定一段连续原文，直接复制到 `description`
+         ⚠️ 硬约束：一个分镜只能属于一个场次。选定原文时到下一个"场N"行必须立即停止，严禁跨场拼接。
+         ⚠️ 上一镜 `description` 结尾处即为本镜自然起点，确保分段首尾相接、整集无遗漏。
   步骤B：从 `description` 中提取所有对白行作为 `dialogue_units`（对白识别：`角色名：台词`、`角色名OS：台词`、`角色名（语气）：台词`）
   步骤C：数字数（去空白，只计汉字和数字），得到 ACTUAL_CHARS
-  步骤D：若 ACTUAL_CHARS < TARGET - 10 或 ACTUAL_CHARS > TARGET + 10，回到步骤A调整分段范围（扩大或缩小选文），直到字数落在 [TARGET-10, TARGET+10] 内才可继续
+  步骤D：若 ACTUAL_CHARS 偏离 TARGET ± 10，回到步骤A调整分段范围
+         ⚠️ 若因遇到场次边界或剧本结尾而无法继续扩展，立即停止调整，
+            填写 short_dialogue_reason = SCENE_BOUNDARY_CONSTRAINT，然后跳到步骤E。
+            严禁跨场借对白凑字数。
   步骤E：分段和对白确认无误后，编写 video_prompt，调用 create_storyboard
-- ⚠️🚨 严禁在步骤D未通过时编写 video_prompt 或调用 create_storyboard
+- ⚠️🚨 严禁在步骤D未通过或未填写边界理由时编写 video_prompt 或调用 create_storyboard
 - ⚠️ 每次调用 create_storyboard 时，必须显式传入：`plan_id`、`suggested_dialogue_chars = TARGET_CHARS`、`dialogue_chars_declared = ACTUAL_CHARS`
-- ⚠️ 上一镜的 `description` 结尾处即为下一镜的自然起点，确保分段首尾相接、整集无遗漏
 - 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
 - 同时填写每个分镜的 image_prompt 和 video_prompt
 - ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**
