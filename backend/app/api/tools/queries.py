@@ -9,6 +9,28 @@ from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES, count_dialogue_chars
 
 
+def _extract_json_object(raw: str) -> Optional[Dict]:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    code_block_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    if code_block_match:
+        text = code_block_match.group(1).strip()
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        pass
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
 def _validate_segments(script: str, segments: list, suggested_chars: int, existing_storyboard_ids: list) -> Dict:
     """校验分段方案：场次边界、字数、连贯性、完整性。纯 Python，不涉及 LLM。"""
     if not segments or not isinstance(segments, list):
