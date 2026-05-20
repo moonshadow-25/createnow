@@ -183,7 +183,7 @@ async def handle_get_storyboard(project_id: str, parameters: Dict) -> Dict:
                     continue
                 entry = {"asset_id": aid, "name": asset.get("name", "")}
                 if asset_type == "character":
-                    entry["voice_enabled"] = asset.get("voice_enabled", True)
+                    entry["voice_enabled"] = bool(asset.get("voice_enabled", True) and (asset.get("voice_audio_id") or asset.get("voice_id")))
                     entry["voice_audio_id"] = asset.get("voice_audio_id")
                     if asset.get("voice_id"):
                         entry["voice_id"] = asset["voice_id"]
@@ -248,7 +248,7 @@ async def handle_list_all_assets(project_id: str, parameters: Dict) -> Dict:
             for a in assets:
                 entry = {"asset_id": a.get("asset_id"), "name": a.get("name"), "description": (a.get("description") or "")[:80]}
                 if asset_type == "character":
-                    entry["voice_enabled"] = a.get("voice_enabled", True)
+                    entry["voice_enabled"] = bool(a.get("voice_enabled", True) and (a.get("voice_audio_id") or a.get("voice_id")))
                     entry["voice_audio_id"] = a.get("voice_audio_id")
                     if a.get("voice_id"):
                         entry["voice_id"] = a["voice_id"]
@@ -311,7 +311,7 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
                     "review_status": review_status,  # Active=审核通过, Processing=审核中, None=未提交
                 }
                 if asset_type == "character":
-                    item["voice_enabled"] = a.get("voice_enabled", True)
+                    item["voice_enabled"] = bool(a.get("voice_enabled", True) and (a.get("voice_audio_id") or a.get("voice_id")))
                     item["voice_audio_id"] = a.get("voice_audio_id")
                     if a.get("voice_id"):
                         item["voice_id"] = a["voice_id"]
