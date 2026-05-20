@@ -316,13 +316,13 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
     if actual_count > max_allowed:
         return {
             "ok": False,
-            "error": f"对白字数超过上限（{max_allowed}），实际{actual_count}字，请拆分或精简对白",
+            "error": f"对白字数超过上限（{max_allowed}），实际{actual_count}字，请回到步骤A缩小分段范围，减少本镜覆盖的对白行数",
             "audit": _audit("out_of_guardrail"),
         }
     if actual_count < min_allowed and short_reason != "SCENE_BOUNDARY_CONSTRAINT":
         return {
             "ok": False,
-            "error": f"对白字数低于建议范围下限（{min_allowed}），实际{actual_count}字，请补充 short_dialogue_reason 或扩充对白",
+            "error": f"对白字数低于建议范围下限（{min_allowed}），实际{actual_count}字，请回到步骤A扩大分段范围；若遇到场次边界或剧本结尾无法扩展，填写 SCENE_BOUNDARY_CONSTRAINT",
             "audit": _audit("out_of_guardrail"),
         }
 
