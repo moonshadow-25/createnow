@@ -1,6 +1,5 @@
 """查询工具执行逻辑"""
 import json
-import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Optional
@@ -9,8 +8,8 @@ from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES, count_dialogue_chars
 
 
-def _validate_segments(script: str, segments: list, suggested_chars: int, existing_storyboard_ids: list) -> Dict:
-    """校验分段方案：场次边界、字数、连贯性、完整性。纯 Python，不涉及 LLM。"""
+def _validate_segments(script: str, segments: list) -> Dict:
+    """校验分段方案：字数上限、末段完整性。纯 Python，不涉及 LLM。"""
     if not segments or not isinstance(segments, list):
         return {"ok": False, "error": "segments 为空或格式错误"}
 
@@ -20,10 +19,6 @@ def _validate_segments(script: str, segments: list, suggested_chars: int, existi
         return {"ok": False, "error": "剧本为空"}
 
     max_allowed = 100
-    min_allowed = max(0, suggested_chars - 30)
-
-    prev_end = None
-    prev_scene_label = None
 
     for i, seg in enumerate(segments):
         seq = seg.get("sequence", i + 1)
@@ -43,40 +38,12 @@ def _validate_segments(script: str, segments: list, suggested_chars: int, existi
         if not description:
             return {"ok": False, "error": f"第{seq}段 description 为空"}
 
-        # 连贯性：必须首尾相接
-        if prev_end is not None and start != prev_end:
-            return {"ok": False, "error": f"第{seq}段 line_start({start}) 与上一段 line_end({prev_end}) 不接"}
-        prev_end = end
-
-        # 场次边界：同一场次内 scene_label 应一致，跨场次 scene_label 应不同
-        if scene_label:
-            if prev_scene_label and scene_label != prev_scene_label:
-                pass  # 场次切换，允许
-
-        prev_scene_label = scene_label or prev_scene_label
-
         # 字数校验
         if not isinstance(dialogue_units, list):
             return {"ok": False, "error": f"第{seq}段 dialogue_units 必须是数组"}
         actual = count_dialogue_chars(dialogue_units)
         if actual > max_allowed:
             return {"ok": False, "error": f"第{seq}段对白{actual}字超过上限({max_allowed})，请缩小分段范围"}
-
-        # 下限检查：低于下限但非最后一段、非场次切换段，需要警告
-        # 注：场次边界豁免由 create_storyboard 时的 short_dialogue_reason 处理
-
-    # 完整性：首段必须从第一行开始
-    first_start = segments[0].get("line_start", 0)
-    if first_start > 1:
-        # 允许第一行是标题/空行，找第一个有效行
-        valid_start = 1
-        for idx, line in enumerate(lines, 1):
-            stripped = line.strip()
-            if stripped and not stripped.startswith("《"):
-                valid_start = idx
-                break
-        if first_start > valid_start:
-            return {"ok": False, "error": f"首段 line_start({first_start}) 应从剧本正文首行({valid_start})开始"}
 
     # 完整性：末段必须覆盖到剧本末行
     last_end = segments[-1].get("line_end", 0)
@@ -390,9 +357,7 @@ async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_
         return {"success": False, "error": "suggested_dialogue_chars 必须大于0"}
 
     # 校验
-    all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
-    existing_ids = [sb.get("asset_id") for sb in all_storyboards if sb.get("episode_id") == episode_id]
-    validation = _validate_segments(script, segments, suggested, existing_ids)
+    validation = _validate_segments(script, segments)
     if not validation.get("ok"):
         return {
             "success": False,
