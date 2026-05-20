@@ -9,28 +9,6 @@ from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES, count_dialogue_chars
 
 
-def _extract_json_object(raw: str) -> Optional[Dict]:
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    code_block_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
-    if code_block_match:
-        text = code_block_match.group(1).strip()
-    try:
-        parsed = json.loads(text)
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        pass
-    match = re.search(r"\{[\s\S]*\}", text)
-    if not match:
-        return None
-    try:
-        parsed = json.loads(match.group(0))
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:
-        return None
-
-
 def _validate_segments(script: str, segments: list, suggested_chars: int, existing_storyboard_ids: list) -> Dict:
     """校验分段方案：场次边界、字数、连贯性、完整性。纯 Python，不涉及 LLM。"""
     if not segments or not isinstance(segments, list):
@@ -147,114 +125,6 @@ def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, se
     AssetService.save_asset(project_id, "episode", episode)
 
     return {"success": True, "created": created, "count": len(created)}
-
-
-async def _build_script_analysis_with_llm(project_id: str, episode_id: str, script: str) -> Dict:
-    project = ProjectService.get_project(project_id)
-    if not project:
-        return {"success": False, "error": "项目不存在"}
-
-    ai_config = project.get("ai_config", {})
-    llm = get_ai_service(ai_config, "llm", project_id)
-
-    from app.services.global_prompt_service import get_prompt_content
-    estimate_template = get_prompt_content("storyboard_plan_estimate", ai_config)
-    if not estimate_template:
-        return {"success": False, "error": "缺少提示词模板: storyboard_plan_estimate"}
-
-    # 构建带行号的剧本
-    numbered_lines = [f"{i + 1}\t{line}" for i, line in enumerate(script.splitlines())]
-    line_numbered_script = "\n".join(numbered_lines)
-    prompt = estimate_template.replace("{script}", (script or ""))
-    prompt += f"\n\n## 带行号的剧本（用于确定 line_start / line_end）\n\n{line_numbered_script}"
-
-    try:
-        result = await llm.chat([{"role": "user", "content": prompt}])
-        content = result.get("content", "")
-        parsed = _extract_json_object(content)
-        if not parsed:
-            return {"success": False, "error": "分镜规划解析失败：LLM未返回有效JSON"}
-
-        dialogue_chars_total = int(parsed.get("dialogue_chars_total") or 0)
-        estimated_storyboard_count = int(parsed.get("estimated_storyboard_count") or 0)
-        suggested_dialogue_chars_per_storyboard = int(parsed.get("suggested_dialogue_chars_per_storyboard") or 0)
-
-        if dialogue_chars_total <= 0 or estimated_storyboard_count <= 0 or suggested_dialogue_chars_per_storyboard <= 0:
-            return {"success": False, "error": "分镜规划解析失败：关键字段必须大于0"}
-
-        basis = parsed.get("estimation_basis") if isinstance(parsed.get("estimation_basis"), dict) else {}
-        scenes = parsed.get("scenes") if isinstance(parsed.get("scenes"), list) else []
-        normalized_scenes = []
-        for item in scenes:
-            if isinstance(item, dict):
-                label = str(item.get("label") or "").strip()
-                if label:
-                    normalized_scenes.append({"label": label})
-        has_scene_structure = bool(parsed.get("has_scene_structure")) or bool(normalized_scenes)
-        scene_count = int(parsed.get("scene_count") or len(normalized_scenes) or 0)
-
-        segments = parsed.get("segments") if isinstance(parsed.get("segments"), list) else []
-
-        script_analysis = {
-            "dialogue_chars_total": dialogue_chars_total,
-            "estimated_storyboard_count": estimated_storyboard_count,
-            "suggested_dialogue_chars_per_storyboard": suggested_dialogue_chars_per_storyboard,
-            "has_scene_structure": has_scene_structure,
-            "scene_count": scene_count,
-            "scenes": normalized_scenes,
-            "estimation_basis": {
-                "has_explicit_storyboard_count": bool(basis.get("has_explicit_storyboard_count")),
-                "explicit_storyboard_count": basis.get("explicit_storyboard_count"),
-                "has_explicit_duration_seconds": bool(basis.get("has_explicit_duration_seconds")),
-                "explicit_duration_seconds": basis.get("explicit_duration_seconds"),
-                "rule_used": str(basis.get("rule_used") or "llm_estimate"),
-                "default_seconds_per_storyboard": 15,
-            },
-        }
-
-        plan_id = str(uuid.uuid4())
-
-        # 校验 segments
-        segment_validation = None
-        batch_result = None
-        if segments:
-            all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
-            existing_ids = [sb.get("asset_id") for sb in all_storyboards if sb.get("episode_id") == episode_id]
-            segment_validation = _validate_segments(script, segments, suggested_dialogue_chars_per_storyboard, existing_ids)
-            if segment_validation.get("ok"):
-                batch_result = _batch_create_storyboards_from_segments(project_id, episode_id, segments, plan_id)
-                if batch_result.get("success"):
-                    script_analysis["segments"] = segments
-                    script_analysis["batch_created"] = batch_result.get("created", [])
-                    script_analysis["batch_count"] = batch_result.get("count", 0)
-
-        plan_record = {
-            "asset_id": plan_id,
-            "episode_id": episode_id,
-            "script_analysis": script_analysis,
-            "created_at": datetime.now().isoformat(),
-            "expires_at": (datetime.now() + timedelta(hours=2)).isoformat(),
-        }
-        AssetService.save_asset(project_id, "storyboard_plan", plan_record)
-
-        response = {"success": True, "plan_id": plan_id, "script_analysis": script_analysis}
-        if segment_validation and not segment_validation.get("ok"):
-            response["segment_validation_error"] = segment_validation.get("error")
-            response["notice"] = "分段校验未通过，请修正后重新调用 estimate_storyboard_plan。校验不通过时不创建分镜。"
-        elif batch_result and batch_result.get("success"):
-            response["batch_result"] = batch_result
-            response["notice"] = f"已批量创建 {batch_result.get('count', 0)} 个分镜，可直接进入视频提示词生成阶段。"
-        elif not segments:
-            response["notice"] = "未返回 segments，仅完成字数估算。请使用 create_storyboard 逐镜创建。"
-
-        return response
-    except Exception as e:
-        return {"success": False, "error": f"分镜规划失败: {str(e)}"}
-    finally:
-        try:
-            await llm.close()
-        except Exception:
-            pass
 
 
 async def handle_list_assets(project_id: str, parameters: Dict) -> Dict:
@@ -491,9 +361,15 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
 
 
 async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_config: Optional[Dict] = None) -> Dict:
+    """接收 LLM 规划的 segments，后端校验 + 批量创建。纯后端操作，不调 LLM。"""
     episode_id = parameters.get("episode_id")
+    segments = parameters.get("segments") if isinstance(parameters.get("segments"), list) else []
+    suggested_chars_raw = parameters.get("suggested_dialogue_chars")
+
     if not episode_id:
         return {"success": False, "error": "缺少必需字段: episode_id"}
+    if not segments:
+        return {"success": False, "error": "缺少必需字段: segments（LLM 必须先调 get_episode_script 规划分段方案）"}
 
     episode = AssetService.load_asset(project_id, "episode", episode_id)
     if not episode:
@@ -501,6 +377,53 @@ async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_
 
     script = str(episode.get("script") or "").strip()
     if not script:
-        return {"success": False, "error": "剧本为空，无法进行分镜规划估算"}
+        return {"success": False, "error": "剧本为空"}
 
-    return await _build_script_analysis_with_llm(project_id, episode_id, script)
+    # 建议字数：优先用 LLM 传入值，否则从已有 plan 读取，否则默认 65
+    suggested = 65
+    if suggested_chars_raw is not None:
+        try:
+            suggested = int(suggested_chars_raw)
+        except Exception:
+            return {"success": False, "error": "suggested_dialogue_chars 必须是整数"}
+    if suggested <= 0:
+        return {"success": False, "error": "suggested_dialogue_chars 必须大于0"}
+
+    # 校验
+    all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
+    existing_ids = [sb.get("asset_id") for sb in all_storyboards if sb.get("episode_id") == episode_id]
+    validation = _validate_segments(script, segments, suggested, existing_ids)
+    if not validation.get("ok"):
+        return {
+            "success": False,
+            "error": validation.get("error", "分段校验未通过"),
+            "notice": "请根据错误信息修正 segments 后重新调用。校验不通过时不创建分镜。"
+        }
+
+    # 校验通过 → 批量创建
+    plan_id = str(uuid.uuid4())
+    batch_result = _batch_create_storyboards_from_segments(project_id, episode_id, segments, plan_id)
+    if not batch_result.get("success"):
+        return {"success": False, "error": batch_result.get("error", "批量创建分镜失败")}
+
+    # 存 plan
+    plan_record = {
+        "asset_id": plan_id,
+        "episode_id": episode_id,
+        "script_analysis": {
+            "suggested_dialogue_chars_per_storyboard": suggested,
+            "segments": segments,
+            "batch_created": batch_result.get("created", []),
+            "batch_count": batch_result.get("count", 0),
+        },
+        "created_at": datetime.now().isoformat(),
+        "expires_at": (datetime.now() + timedelta(hours=2)).isoformat(),
+    }
+    AssetService.save_asset(project_id, "storyboard_plan", plan_record)
+
+    return {
+        "success": True,
+        "plan_id": plan_id,
+        "batch_result": batch_result,
+        "notice": f"已批量创建 {batch_result.get('count', 0)} 个分镜，可直接进入视频提示词生成阶段。"
+    }

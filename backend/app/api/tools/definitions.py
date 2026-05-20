@@ -391,13 +391,15 @@ TOOLS = [
     },
     {
         "name": "estimate_storyboard_plan",
-        "description": "在自动生成或重新生成分镜前，使用LLM对当前剧本进行显式规划，返回plan_id和分镜建议字数。手工单镜头创建不要调用此工具。",
+        "description": "接收 LLM 规划的分段方案 segments，后端四重校验（场次/字数/连贯性/完整性），校验通过后批量创建分镜。调用前必须先调 get_episode_script 获取剧本+资产上下文。",
         "parameters": {
             "type": "object",
             "properties": {
-                "episode_id": {"type": "string", "description": "剧集ID（UUID格式，工具内部会据此读取完整剧本）"}
+                "episode_id": {"type": "string", "description": "剧集ID（UUID格式）"},
+                "suggested_dialogue_chars": {"type": "integer", "description": "LLM 自算的对白建议字数（单镜目标，整数）"},
+                "segments": {"type": "array", "items": {"type": "object"}, "description": "LLM 产出的分段方案数组，每项含：sequence, scene_label, line_start, line_end, description, dialogue_units, character_ids, scene_ids"}
             },
-            "required": ["episode_id"]
+            "required": ["episode_id", "segments"]
         }
     },
     {

@@ -371,26 +371,31 @@ END_TOOL
 **步骤0（必须最先执行，单独一轮）**：
 - 调用 `get_episode_script`
 - **必须等工具结果返回后**，才能进行下一步
-- 直接使用返回的 `existing_assets` 分析：哪些角色/场景已存在，哪些需要新建（不要再调用 list_all_assets）
-- 然后调用 `estimate_storyboard_plan`（仅传 episode_id）生成本轮 plan_id
-- 后续本轮自动创建分镜时，所有 `create_storyboard` 都必须携带该 `plan_id`
+- 得到 `line_numbered_script`（带行号）、`script`（原文）、`existing_assets`（角色/场景/道具，含真实 asset_id + name）
+- 直接使用 `existing_assets` 分析：哪些角色/场景已存在，哪些需要新建
 
 **步骤1a（第二轮，基于步骤0的结果）**：
 - 若没有剧集，先调用 create_episode 创建剧集
 - 已存在的角色/场景：有 image_prompt 则**完全跳过**；无 image_prompt 则调用 update 补全
 - 不存在的角色/场景：才调用 create 新建（含 image_prompt）
-- **绝对禁止对已存在的资产调用 create，无论名字是否完全相同**
-- ⚠️ **只为剧本中有姓名、有台词、有特写镜头的主要角色/场景建立资产**；路人、龙套、无名侍卫、无名宫女等无名或一次性出场角色**严禁创建**
-- ⚠️ **这一轮先停下来**，等待工具结果返回（结果中包含每个资产的 asset_id）
+- **绝对禁止对已存在的资产调用 create**
+- ⚠️ **只为有姓名、有台词或有特写镜头的主要角色/场景建立资产**；龙套路人**严禁创建**
+- ⚠️ **这一轮先停下来**，等待工具结果返回
 
 **步骤1b（分镜规划与批量创建）**：
 - ⚠️ **先调用 get_episode_storyboards 检查是否已有分镜**
-- 已有分镜（哪怕只有1个）→ **跳过创建分镜，直接进入步骤1c**（除非用户明确要求”重新生成分镜”）
-- 没有分镜 → 调用 `estimate_storyboard_plan`（传入 episode_id）
-- ⚠️ estimate_storyboard_plan 会自动完成：分段规划 → 后端四重校验（场次/字数/连贯性/完整性）→ 校验通过后批量创建分镜
-- 若返回 `segment_validation_error`：分段校验失败，查看错误信息修正后重新调用 estimate_storyboard_plan
-- 若返回 `batch_result`：分镜已全部创建完毕，`batch_count` 个分镜已入库
-- ⚠️ 批量创建后分镜仅有 description 和 dialogue_units，尚无 video_prompt
+- 已有分镜（哪怕只有1个）→ **跳过创建分镜，直接进入步骤1c**（除非用户要求”重新生成分镜”）
+- 没有分镜 → LLM **自己规划 segments**，然后调 `estimate_storyboard_plan` 提交：
+  1. 读 `line_numbered_script`（每行带 `行号\t内容`）
+  2. 识别场次边界（”场N ...”行），到下一场次行必须停，禁止跨场
+  3. 按对白量均衡划分为 N 段，每段确定 `[line_start, line_end)`（左闭右开，首尾相接）
+  4. 每段从剧本原文复制 `description`，提取 `dialogue_units`
+  5. 数字数（去空白） → 不超 100，尽量在建议字数附近
+  6. 从 `existing_assets` 中匹配角色/场景 → 填入**真实 asset_id（UUID）**，严禁编造
+  7. 调 `estimate_storyboard_plan`，传入 `episode_id` + `segments` 数组 + `suggested_dialogue_chars`
+- 校验失败 → 按错误信息修正 segments 后重新提交
+- 校验通过 → 后端自动批量创建所有分镜，返回 `batch_result`
+- ⚠️ 批量创建后分镜仅有 description / dialogue_units / 资产匹配，尚无 video_prompt
 - ⚠️ **”自动生成本集”的目标是继续完成未完成的工作，不是重新从头来过**
 
 **步骤1c（生成分镜 video_prompt）**：
