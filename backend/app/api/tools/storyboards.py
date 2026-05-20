@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict
 from app.services import AssetService
-from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue, validate_storyboard_description_origin, resolve_storyboard_description_from_text_anchors, validate_script_line_range, resolve_description_from_line_range
+from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue
 
 
 def _validate_dialogue_payload(project_id: str, parameters: Dict) -> Dict:
@@ -27,10 +27,7 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
         return {"success": False, "error": "缺少必需字段: sequence"}
     if "duration" not in parameters:
         parameters["duration"] = 15
-
-    has_line_range = parameters.get("script_line_start") is not None or parameters.get("script_line_end") is not None
-    has_text_slice = parameters.get("description_start_text") is not None or parameters.get("description_end_text") is not None
-    if not has_line_range and not has_text_slice and not str(parameters.get("description") or "").strip():
+    if not str(parameters.get("description") or "").strip():
         return {"success": False, "error": "缺少必需字段: description（必须填写剧本原文片段）"}
 
     episode_id, ep_err = _resolve_episode_id(project_id, parameters["episode_id"])
@@ -41,34 +38,6 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     episode = AssetService.load_asset(project_id, "episode", episode_id)
     if not episode:
         return {"success": False, "error": "剧集不存在"}
-
-    script_line_start = parameters.get("script_line_start")
-    script_line_end = parameters.get("script_line_end")
-
-    if has_line_range:
-        parameters.pop("description", None)
-        line_check = resolve_description_from_line_range(project_id, episode_id, script_line_start, script_line_end)
-        if not line_check.get("ok"):
-            return {"success": False, "error": line_check.get("error", "行范围裁切 description 失败")}
-        parameters["description"] = line_check.get("description", "")
-        overlap_check = validate_script_line_range(project_id, episode_id, script_line_start, script_line_end)
-        if not overlap_check.get("ok"):
-            return {"success": False, "error": overlap_check.get("error", "行范围重叠校验失败")}
-    elif has_text_slice:
-        parameters.pop("description", None)
-        slice_check = resolve_storyboard_description_from_text_anchors(
-            project_id,
-            episode_id,
-            parameters.get("description_start_text"),
-            parameters.get("description_end_text"),
-        )
-        if not slice_check.get("ok"):
-            return {"success": False, "error": slice_check.get("error", "description 首尾文字裁切失败")}
-        parameters["description"] = slice_check.get("description", "")
-    else:
-        desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
-        if not desc_check.get("ok"):
-            return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
 
     ref_err = validate_asset_refs(
         project_id,
@@ -84,9 +53,6 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if not dialogue_check.get("success"):
         return dialogue_check
     dialogue_audit = dialogue_check.get("dialogue_audit")
-
-    parameters.pop("description_start_text", None)
-    parameters.pop("description_end_text", None)
 
     result = AssetService.save_asset(project_id, "storyboard", parameters)
     existing_ids = episode.get("storyboard_ids", [])
@@ -277,19 +243,6 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         key=lambda x: x.get("sequence", 0)
     )
 
-    script_line_start = parameters.get("script_line_start")
-    script_line_end = parameters.get("script_line_end")
-    has_line_range = script_line_start is not None or script_line_end is not None
-
-    if has_line_range:
-        line_check = resolve_description_from_line_range(project_id, episode_id, script_line_start, script_line_end)
-        if not line_check.get("ok"):
-            return {"success": False, "error": line_check.get("error", "行范围裁切 description 失败")}
-        parameters["description"] = line_check.get("description", "")
-        overlap_check = validate_script_line_range(project_id, episode_id, script_line_start, script_line_end)
-        if not overlap_check.get("ok"):
-            return {"success": False, "error": overlap_check.get("error", "行范围重叠校验失败")}
-
     moved_count = 0
     for sb in episode_storyboards:
         if sb.get("sequence", 0) >= insert_at:
@@ -297,10 +250,6 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
             sb["updated_at"] = datetime.now().isoformat()
             AssetService.save_asset(project_id, "storyboard", sb)
             moved_count += 1
-
-    desc_check = validate_storyboard_description_origin(project_id, episode_id, parameters.get("description", ""))
-    if not desc_check.get("ok"):
-        return {"success": False, "error": desc_check.get("error", "description 原文校验失败")}
 
     ref_err = validate_asset_refs(
         project_id,
@@ -354,10 +303,6 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         new_storyboard["short_dialogue_reason"] = parameters.get("short_dialogue_reason")
     if parameters.get("short_dialogue_time_evidence") is not None:
         new_storyboard["short_dialogue_time_evidence"] = parameters.get("short_dialogue_time_evidence")
-    if has_line_range:
-        new_storyboard["script_line_start"] = script_line_start
-        new_storyboard["script_line_end"] = script_line_end
-
     result = AssetService.save_asset(project_id, "storyboard", new_storyboard)
 
     existing_ids = episode.get("storyboard_ids", [])

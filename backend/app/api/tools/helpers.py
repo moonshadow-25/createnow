@@ -119,18 +119,6 @@ def _load_episode_script(project_id: str, episode_id: str) -> str:
     return str(episode.get("script") or episode.get("script_content") or "")
 
 
-def _extract_description_candidates(description: str) -> list[str]:
-    raw = str(description or "").strip()
-    if not raw:
-        return []
-
-    lines = [line.rstrip() for line in raw.splitlines() if line.strip()]
-    if not lines:
-        return []
-
-    full_text = "\n".join(lines).strip()
-    return [full_text]
-
 
 def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
     raw = str(text or "")[start:end]
@@ -208,77 +196,6 @@ def _get_scene_body_context(script: str, scene_label: str) -> Dict:
     }
 
 
-def _find_unique_anchor(text: str, anchor: str) -> Dict:
-    source = str(text or "")
-    needle = str(anchor or "")
-    if not needle:
-        return {"ok": False, "error": "description_start_text / description_end_text 不能为空"}
-    positions = []
-    cursor = 0
-    while True:
-        idx = source.find(needle, cursor)
-        if idx < 0:
-            break
-        positions.append(idx)
-        cursor = idx + 1
-    if not positions:
-        return {"ok": False, "error": f"锚点文本未在当前场正文中命中: {needle}"}
-    if len(positions) > 1:
-        return {"ok": False, "error": f"锚点文本在当前场正文中命中{len(positions)}次，请扩展文本直到唯一: {needle}"}
-    return {"ok": True, "index": positions[0]}
-
-
-def resolve_storyboard_description_from_text_anchors(project_id: str, episode_id: str, start_text_raw, end_text_raw) -> Dict:
-    script = _load_episode_script(project_id, str(episode_id or "").strip())
-    if not script:
-        return {"ok": False, "error": "当前剧集缺少剧本文本，无法按首尾文字裁切 description"}
-
-    start_text = str(start_text_raw or "").strip()
-    end_text = str(end_text_raw or "").strip()
-    if not start_text or not end_text:
-        return {"ok": False, "error": "自动生成/重新生成分镜时，必须同时提供 description_start_text 和 description_end_text"}
-
-    start_match = _find_unique_anchor(script, start_text)
-    if not start_match.get("ok"):
-        return start_match
-    end_match = _find_unique_anchor(script, end_text)
-    if not end_match.get("ok"):
-        return end_match
-
-    start_idx = int(start_match.get("index") or 0)
-    end_idx = int(end_match.get("index") or 0) + len(end_text)
-    if start_idx >= end_idx:
-        return {"ok": False, "error": "description_start_text 必须出现在 description_end_text 之前"}
-
-    description = script[start_idx:end_idx].strip()
-    if not description:
-        return {"ok": False, "error": "按首尾文字裁切后的 description 为空，请检查锚点文本"}
-
-    return {
-        "ok": True,
-        "description": description,
-    }
-
-
-def validate_storyboard_description_origin(project_id: str, episode_id: str, description: str) -> Dict:
-    desc = str(description or "").strip()
-    if not desc:
-        return {"ok": False, "error": "description 不能为空，必须填写剧本原文片段"}
-
-    script = _load_episode_script(project_id, str(episode_id or "").strip())
-    script_norm = _normalize_text_for_match(script)
-    if not script_norm:
-        return {"ok": False, "error": "当前剧集缺少剧本文本，无法校验 description 是否为原文片段"}
-
-    candidates = _extract_description_candidates(desc)
-    if not candidates:
-        return {"ok": False, "error": "description 不能为空，必须填写剧本原文片段"}
-
-    for text in candidates:
-        if _normalize_text_for_match(text) in script_norm:
-            return {"ok": True}
-
-    return {"ok": False, "error": "description 必须来自当前剧集剧本原文，禁止改写或摘要"}
 
 
 def _has_time_literal(text: str) -> bool:
@@ -447,73 +364,6 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
             }
 
     return {"ok": True, "audit": _audit("ok")}
-
-
-def _parse_line_range(raw) -> Optional[int]:
-    """将原始值解析为行号，允许None/空字符串，非整数报错。行号从1开始。"""
-    if raw is None:
-        return None
-    if isinstance(raw, bool):
-        return None
-    s = str(raw).strip()
-    if not s:
-        return None
-    try:
-        val = int(s)
-    except (ValueError, TypeError):
-        return None
-    if val < 1:
-        return None
-    return val
-
-
-def validate_script_line_range(project_id: str, episode_id: str, line_start: Optional[int], line_end: Optional[int], exclude_storyboard_id: Optional[str] = None) -> Dict:
-    """校验行范围不与同集已有分镜重叠。返回 {ok, error}。"""
-    if line_start is None or line_end is None:
-        return {"ok": True}
-    if line_start >= line_end:
-        return {"ok": False, "error": f"script_line_start({line_start}) 必须小于 script_line_end({line_end})"}
-
-    all_storyboards = AssetService.list_assets(project_id, "storyboard") or []
-    for sb in all_storyboards:
-        if sb.get("episode_id") != episode_id:
-            continue
-        if exclude_storyboard_id and sb.get("asset_id") == exclude_storyboard_id:
-            continue
-        ex_start = sb.get("script_line_start")
-        ex_end = sb.get("script_line_end")
-        if ex_start is None or ex_end is None:
-            continue
-        if line_start < ex_end and line_end > ex_start:
-            return {
-                "ok": False,
-                "error": f"行范围 [{line_start}, {line_end}) 与第{sb.get('sequence', '?')}镜的行范围 [{ex_start}, {ex_end}) 存在重叠，剧本每行只能属于一个分镜"
-            }
-    return {"ok": True}
-
-
-def resolve_description_from_line_range(project_id: str, episode_id: str, line_start_raw, line_end_raw) -> Dict:
-    """根据行范围从剧本中裁切 description。返回 {ok, description, error}。"""
-    line_start = _parse_line_range(line_start_raw)
-    line_end = _parse_line_range(line_end_raw)
-    if line_start is None or line_end is None:
-        return {"ok": True, "description": None, "skipped": True}
-    if line_start >= line_end:
-        return {"ok": False, "error": f"script_line_start({line_start}) 必须小于 script_line_end({line_end})"}
-
-    script = _load_episode_script(project_id, str(episode_id or "").strip())
-    if not script:
-        return {"ok": False, "error": "当前剧集缺少剧本文本，无法按行范围裁切 description"}
-
-    lines = script.splitlines()
-    if line_end > len(lines) + 1:
-        return {"ok": False, "error": f"script_line_end({line_end}) 超出剧本合法行尾({len(lines) + 1})"}
-
-    description = "\n".join(lines[line_start - 1:line_end - 1]).strip()
-    if not description:
-        return {"ok": False, "error": "按行范围裁切后的 description 为空，请检查行号"}
-
-    return {"ok": True, "description": description}
 
 
 KEY_ALIASES = {
