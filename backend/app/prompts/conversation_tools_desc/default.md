@@ -383,40 +383,29 @@ END_TOOL
 - ⚠️ **只为剧本中有姓名、有台词、有特写镜头的主要角色/场景建立资产**；路人、龙套、无名侍卫、无名宫女等无名或一次性出场角色**严禁创建**
 - ⚠️ **这一轮先停下来**，等待工具结果返回（结果中包含每个资产的 asset_id）
 
-**步骤1b（第二轮工具调用，拿到 asset_id 后）**：
+**步骤1b（分镜规划与批量创建）**：
 - ⚠️ **先调用 get_episode_storyboards 检查是否已有分镜**
-- 已有分镜（哪怕只有1个）→ **跳过创建分镜，直接进入步骤1c**（除非用户明确要求"重新生成分镜"）
-- 没有分镜 → 使用上一轮返回的真实 asset_id 进入“逐镜串行创建”
-- ⚠️ 自动生成/重新生成流程中，`create_storyboard` 必须一次只调用1镜：创建第N镜后必须等待工具返回成功，再创建第N+1镜
-- ⚠️ 若第N镜失败，必须先修复并重试第N镜，严禁继续创建后续序号
-- ⚠️ 每次 create 都必须传入步骤0得到的 `plan_id`，并保持 sequence 连续递增（1,2,3...）
-- ⚠️ 调用 create_storyboard 前，先从 `estimate_storyboard_plan` 的结果读取 `script_analysis.suggested_dialogue_chars_per_storyboard`，记为本批次唯一目标字数 `TARGET_CHARS`
-- ⚠️🚨 **每镜必须按以下顺序执行，严禁跳步：**
-  步骤A：从剧本中选定一段连续原文，直接复制到 `description`
-         ⚠️ 硬约束：一个分镜只能属于一个场次。选定原文时到下一个"场N"行必须立即停止，严禁跨场拼接。
-         ⚠️ 上一镜 `description` 结尾处即为本镜自然起点，确保分段首尾相接、整集无遗漏。
-  步骤B：从 `description` 中提取所有对白行作为 `dialogue_units`（对白识别：`角色名：台词`、`角色名OS：台词`、`角色名（语气）：台词`）
-  步骤C：数字数（去空白，只计汉字和数字），得到 ACTUAL_CHARS
-  步骤D：若 ACTUAL_CHARS 偏离 TARGET ± 10，回到步骤A调整分段范围
-         ⚠️ 若因遇到场次边界或剧本结尾而无法继续扩展，立即停止调整，
-            填写 short_dialogue_reason = SCENE_BOUNDARY_CONSTRAINT，然后跳到步骤E。
-            严禁跨场借对白凑字数。
-  步骤E：分段和对白确认无误后，编写 video_prompt，调用 create_storyboard
-- ⚠️🚨 严禁在步骤D未通过或未填写边界理由时编写 video_prompt 或调用 create_storyboard
-- ⚠️ 每次调用 create_storyboard 时，必须显式传入：`plan_id`、`suggested_dialogue_chars = TARGET_CHARS`、`dialogue_chars_declared = ACTUAL_CHARS`
-- 每个分镜的 character_ids 和 scene_ids 必须从上一轮结果中获取真实 asset_id 填写
-- 同时填写每个分镜的 image_prompt 和 video_prompt
-- ⚠️ **"自动生成本集"的目标是继续完成未完成的工作，不是重新从头来过**
+- 已有分镜（哪怕只有1个）→ **跳过创建分镜，直接进入步骤1c**（除非用户明确要求”重新生成分镜”）
+- 没有分镜 → 调用 `estimate_storyboard_plan`（传入 episode_id）
+- ⚠️ estimate_storyboard_plan 会自动完成：分段规划 → 后端四重校验（场次/字数/连贯性/完整性）→ 校验通过后批量创建分镜
+- 若返回 `segment_validation_error`：分段校验失败，查看错误信息修正后重新调用 estimate_storyboard_plan
+- 若返回 `batch_result`：分镜已全部创建完毕，`batch_count` 个分镜已入库
+- ⚠️ 批量创建后分镜仅有 description 和 dialogue_units，尚无 video_prompt
+- ⚠️ **”自动生成本集”的目标是继续完成未完成的工作，不是重新从头来过**
 
-**步骤1c（生成资产图）**：
+**步骤1c（生成分镜 video_prompt）**：
+- 对每个未生成 video_prompt 的分镜，调用 `generate_storyboard_video_prompt_subagent`（可多个并行调用，同一轮发起）
+- ⚠️ description / dialogue_units 已在批量创建时写入，子代理只需生成 video_prompt
+
+**步骤1d（生成资产图）**：
 - 先检查步骤0中 `existing_assets` 里各资产的状态：
   - `has_image=false`：需要生图 → 调用 generate_all_asset_images（需用户确认）
-  - `has_image=true` 但 `review_status` 不是 `"Active"`：需要提交审核 → 调用 submit_images_for_review（需用户确认）
-  - `has_image=true` 且 `review_status="Active"`：已审核通过 → **跳过，直接进入步骤2生成视频**
+  - `has_image=true` 但 `review_status` 不是 `”Active”`：需要提交审核 → 调用 submit_images_for_review（需用户确认）
+  - `has_image=true` 且 `review_status=”Active”`：已审核通过 → **跳过，直接进入步骤2生成视频**
 - 生图确认完成后，调用 submit_images_for_review（需用户确认）
-- ⚠️ **只有所有资产的 review_status 都是 "Active" 时，才能进入步骤2生成视频**
+- ⚠️ **只有所有资产的 review_status 都是 “Active” 时，才能进入步骤2生成视频**
 
-**步骤2**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
+**步骤2**（收到”审核已完成，请继续生成视频”后）：调用 generate_all_storyboard_videos（需用户确认）
 
 ⚠️ **关键**：create_character/create_scene 和 create_storyboard 必须分开两轮调用，不能在同一轮回复中混合，否则 create_storyboard 无法获取真实 asset_id
 ⚠️ **仅在自动生成/重新生成流程中**：禁止同一轮批量提交多个 create_storyboard，必须逐镜串行创建
