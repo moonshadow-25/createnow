@@ -19,36 +19,61 @@ def _validate_segments(script: str, segments: list) -> Dict:
         return {"ok": False, "error": "剧本为空"}
 
     max_allowed = 100
+    char_details = []  # 收集所有段字数
+    has_error = False
+    error_lines = []   # 逐行错误（单一 fatal error 用）
+    last_end = 0
 
     for i, seg in enumerate(segments):
         seq = seg.get("sequence", i + 1)
         start = seg.get("line_start")
         end = seg.get("line_end")
-        scene_label = str(seg.get("scene_label") or "").strip()
-        description = str(seg.get("description") or "").strip()
         dialogue_units = seg.get("dialogue_units")
 
         # 基本合法性
         if not isinstance(start, int) or not isinstance(end, int) or start < 1:
-            return {"ok": False, "error": f"第{seq}段 line_start 无效: {start}"}
-        if start >= end:
-            return {"ok": False, "error": f"第{seq}段 line_start({start}) >= line_end({end})"}
-        if end > total_lines + 1:
-            return {"ok": False, "error": f"第{seq}段 line_end({end}) 超出剧本行尾({total_lines + 1})"}
-        if not description:
-            return {"ok": False, "error": f"第{seq}段 description 为空"}
+            error_lines.append(f"第{seq}段 line_start 无效: {start}")
+            has_error = True
+            continue
+        if start > end:
+            error_lines.append(f"第{seq}段 line_start({start}) > line_end({end})")
+            has_error = True
+            continue
+        if end > total_lines:
+            error_lines.append(f"第{seq}段 line_end({end}) 超出剧本总行数({total_lines})")
+            has_error = True
+            continue
+
+        last_end = end
 
         # 字数校验
         if not isinstance(dialogue_units, list):
-            return {"ok": False, "error": f"第{seq}段 dialogue_units 必须是数组"}
+            error_lines.append(f"第{seq}段 dialogue_units 必须是数组")
+            has_error = True
+            continue
         actual = count_dialogue_chars(dialogue_units)
-        if actual > max_allowed:
-            return {"ok": False, "error": f"第{seq}段对白{actual}字超过上限({max_allowed})，请缩小分段范围"}
+        ok = actual <= max_allowed
+        char_details.append({"seq": seq, "chars": actual, "ok": ok})
+        if not ok:
+            has_error = True
 
-    # 完整性：末段必须覆盖到剧本末行
-    last_end = segments[-1].get("line_end", 0)
-    if last_end < total_lines + 1:
-        return {"ok": False, "error": f"末段 line_end({last_end}) 未覆盖剧本末行({total_lines + 1})，有{total_lines + 1 - last_end}行遗漏"}
+    if error_lines:
+        return {"ok": False, "error": "; ".join(error_lines)}
+
+    # 末段完整性（闭区间）
+    if last_end < total_lines:
+        has_error = True
+        char_details.append({"seq": "末段", "chars": 0, "ok": False, "note": f"line_end({last_end}) 未覆盖剧本末行({total_lines})，有{total_lines - last_end}行遗漏"})
+
+    if has_error:
+        detail_str = "\n".join(
+            f"  第{d['seq']}段: {d['chars']}字 {'✅' if d.get('ok') else '❌ 超限'}" + (f" ({d.get('note')})" if d.get('note') else "")
+            for d in char_details
+        )
+        return {
+            "ok": False,
+            "error": f"各段对白字数（上限{max_allowed}字）：\n{detail_str}\n请根据以上各段实际字数，整体重新规划 segments，确保每段 ≤{max_allowed}。",
+        }
 
     return {"ok": True}
 
@@ -61,16 +86,23 @@ def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, se
     if not episode:
         return {"success": False, "error": "剧集不存在"}
 
+    script = str(episode.get("script") or "").strip()
+    lines = script.splitlines()
+
     existing_ids = list(episode.get("storyboard_ids", []))
 
     for seg in segments:
+        start = seg.get("line_start")
+        end = seg.get("line_end")
+        # 后端按行号裁切 description（闭区间 [start, end]）
+        description = "\n".join(lines[start - 1:end])
         sb_data = {
             "asset_id": str(uuid.uuid4()),
             "episode_id": episode_id,
             "plan_id": plan_id,
             "sequence": seg.get("sequence"),
             "script_scene_label": seg.get("scene_label", ""),
-            "description": seg.get("description", ""),
+            "description": description,
             "dialogue_units": seg.get("dialogue_units", []),
             "dialogue_chars_declared": count_dialogue_chars(seg.get("dialogue_units", [])),
             "character_ids": seg.get("character_ids", []),

@@ -389,9 +389,9 @@ END_TOOL
   1. 读 `line_numbered_script`（每行带 `行号\t内容`）
   2. 统计全剧对白总字数 D（去空白，识别所有对白行），按规则算建议字数 S = round(D / N)，使 S 尽量落在 50-70 区间
   3. 识别场次边界（”场N ...”行），到下一场次行必须停，禁止跨场
-  4. 将对白均衡划分为 N 段，每段 `[line_start, line_end)`（左闭右开，首尾相接），每段对白尽量控制在 [S-10, S+10] 字且 ≤100
-  5. 每段从剧本原文复制 `description`，提取 `dialogue_units`
-  6. **提交前自检**：逐段数字数，若某段 >100 或超出 [S-10, S+10] 过多，回到步骤4调整分段后再提交
+  4. 将对白均衡划分为 N 段，每段 `[line_start, line_end)`（都闭区间）。`line_end` = 该段最后一行行号，不需要 +1
+  5. 从行范围内提取 `dialogue_units`，数字数。`description` 不需要填——后端自动按行范围从剧本裁切
+  6. **提交前自检**：逐段数字数，若某段 >100 或偏离 S 过多，回到步骤4整体重新规划后再提交
   7. 从 `existing_assets` 中匹配角色/场景 → 填入**真实 asset_id（UUID）**，严禁编造
   8. 调 `estimate_storyboard_plan`，传入 `episode_id` + `segments` 数组 + `suggested_dialogue_chars = S`
 - 校验失败 → 按错误信息修正 segments 后重新提交
