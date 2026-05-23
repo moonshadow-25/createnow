@@ -29,7 +29,6 @@ const GENERATION_KEY_ORDER = [
 
 const BASIC_KEYS = new Set([
   'image', 'video', 'storyboard_image_edit',
-  'storyboard', 'storyboard_image',
 ]);
 
 // ── 组件 ──────────────────────────────────────────────────────────────────────
