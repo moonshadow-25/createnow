@@ -5,15 +5,13 @@
 1. create_character - 创建角色（需要：name, description）
 2. create_scene - 创建场景（需要：name, description, location）
 3. create_prop - 创建道具（需要：name, description）- 仅重要道具
-4. create_episode - 创建剧集（必须包含：script剧本内容）
-5. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence、`description`（LLM 直接从剧本分段复制原文片段，禁止改写）、`script_scene_label`（剧本存在场次结构时必填）、**character_ids（出场角色asset_id列表，必填）**、**scene_ids（场景asset_id列表，必填）**、**dialogue_units（逐条对白原文）**、**dialogue_chars_declared（去空白后的对白总字数）**、`suggested_dialogue_chars`（自动生成/重新生成流程中必须显式传入，且值必须等于 plan 的建议字数）；自动生成/重新生成流程中必须带 plan_id；short_dialogue_reason 仅在遇到场次边界或剧本结尾无法继续扩展时必须填写 SCENE_BOUNDARY_CONSTRAINT；若因剧本原文含明确时间约束（如"3秒"）导致分段受限，填写 TIMECODE_CONSTRAINT 并附带 short_dialogue_time_evidence）
+4. create_storyboard - 创建单个分镜镜头（需要：episode_id, sequence、`description`（LLM 直接从剧本分段复制原文片段，禁止改写）、`script_scene_label`（剧本存在场次结构时必填）、**character_ids（出场角色asset_id列表，必填）**、**scene_ids（场景asset_id列表，必填）**、**dialogue_units（逐条对白原文）**、**dialogue_chars_declared（去空白后的对白总字数）**、`suggested_dialogue_chars`（自动生成/重新生成流程中必须显式传入，且值必须等于 plan 的建议字数）；自动生成/重新生成流程中必须带 plan_id；short_dialogue_reason 仅在遇到场次边界或剧本结尾无法继续扩展时必须填写 SCENE_BOUNDARY_CONSTRAINT；若因剧本原文含明确时间约束（如"3秒"）导致分段受限，填写 TIMECODE_CONSTRAINT 并附带 short_dialogue_time_evidence）
 
 
 **资产更新工具（重要！）：**
 6. update_character - 更新现有角色（需要：name用于查找；可选：description/gender/age/appearance/personality/background/image_prompt生图提示词）
 7. update_scene - 更新现有场景（需要：name用于查找；可选：description/location/time_of_day/weather/mood/image_prompt生图提示词）
 8. update_prop - 更新现有道具（需要：name用于查找；可选：description/category/era/material/image_prompt生图提示词）
-9. update_episode - 更新现有剧集（需要：episode_number用于查找，其他字段可选）
 10. update_storyboard - 更新现有分镜（需要：storyboard_id或episode_id+sequence；可选：description、script_scene_label、video_prompt视频提示词、image_prompt分镜生图提示词、character_ids、scene_ids、prop_ids；若修改video_prompt必须同时上报 dialogue_units、dialogue_chars_declared；short_dialogue_reason 仅在遇到场次边界或剧本结尾时填写 SCENE_BOUNDARY_CONSTRAINT，或因时间约束填写 TIMECODE_CONSTRAINT）⚠️ **无论更新什么字段，都必须先调用 get_storyboard 读取该分镜完整信息，再将 character_ids、scene_ids、prop_ids 原样回传，禁止凭空编造或省略**
 
 **删除工具：**
@@ -23,12 +21,6 @@
 
 **插入工具：**
 12. insert_storyboard - 在指定位置插入新分镜，自动处理后续分镜序号（需要：episode_id, insert_at_sequence, description, `script_scene_label`（剧本存在场次结构时必填）, dialogue_units, dialogue_chars_declared；short_dialogue_reason 仅在遇到场次边界或剧本结尾无法继续扩展时必须填写 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填写 TIMECODE_CONSTRAINT）
-
-**剧本创作工具：**
-13. create_script - 创建新剧本（需要：title）
-14. import_script_content - 导入格式化剧本内容到剧本系统（需要：script_id, content）
-15. add_script_character - 添加剧本人物（需要：script_id, name）
-16. add_script_scene - 添加剧本场景（需要：script_id, episode_number, location, content）
 
 ⚠️ **关键规则**：
 - 当用户说"修改"、"更新"、"完善"、"补充"、"调整"等词汇时，**必须使用update工具**，不要创建新资产！
@@ -93,12 +85,6 @@ TOOL: update_prop
   "name": "要修改的道具名（用于查找）",
   "description": "新的描述（必须包含原有特征+修改内容，不得只写修改部分）",
   "image_prompt": "生图提示词（可选）"
-}
-END_TOOL
-
-TOOL: create_episode
-{
-  "script": "完整的剧本内容，必须包含场景、人物、对白等"
 }
 END_TOOL
 
@@ -189,51 +175,6 @@ TOOL: insert_storyboard
   "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
 }
 END_TOOL
-
-**剧本创作工具示例：**
-
-## 剧本创作工作流程（小说转剧本）
-
-当用户提供小说、故事或长篇文本要求创建剧本时：
-1. 分析文本，提取主要角色、场景划分、剧情节点
-2. 按照下面的剧本格式规范，将内容转换为剧本格式
-3. 调用 create_script，同时传入转换后的完整剧本内容
-
-## 剧本格式规范（严格遵守）
-
-```
-《剧本名称》
-人物表：
-角色名：年龄，性别，描述
-角色名：描述
-
-第1集
-一、场景名  日  外
-△ 【视觉描述】：镜头内容
-角色名（语气）：台词内容
-角色名（OS）：画外音台词
-```
-
-**格式要求检查清单**：
-- ✅ 标题：使用书名号《剧本名》
-- ✅ 人物表：有"人物表："行
-- ✅ 集数：使用"第1集"、"第2集"格式
-- ✅ 场景头：使用中文数字序号"一、场景名  日/夜  内/外"（空格分隔）
-  - 支持"1. 场景名 日 外"容错格式
-  - 支持"场景1：场景名 日 外"容错格式
-- ✅ 视觉镜头：使用"△"开头，如"△ 【视觉开场】：镜头描述"
-  - 支持"[视觉]:镜头描述"容错格式
-- ✅ 对话：使用"角色名（语气）：台词"或"角色名（OS）：台词"
-  - 冒号前不要有空格，冒号后要有空格
-
-## 示例：创建剧本
-
-TOOL: create_script
-{
-  "title": "小阁老"
-}
-END_TOOL
-
 
 ## 项目配置读写工具（17-23）
 
@@ -375,7 +316,6 @@ END_TOOL
 - 直接使用 `existing_assets` 分析：哪些角色/场景已存在，哪些需要新建
 
 **步骤1a（第二轮，基于步骤0的结果）**：
-- 若没有剧集，先调用 create_episode 创建剧集
 - 已存在的角色/场景：有 image_prompt 则**完全跳过**；无 image_prompt 则调用 update 补全
 - 不存在的角色/场景：才调用 create 新建（含 image_prompt）
 - **绝对禁止对已存在的资产调用 create**
