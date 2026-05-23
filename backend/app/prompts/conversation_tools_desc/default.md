@@ -32,163 +32,26 @@
 
 ⚠️ **对白原文规则（强制）**：dialogue_units 中每一条台词都必须来自原始剧本原文，禁止扩写、改写、意译。单条对白行是最小切分单位，只允许在对白行之间切分，禁止把 `角色名：……` / `角色名OS：……` / `角色名（OS）：……` 从中间截成半句后继续保留说话人前缀。
 
-调用格式（必须严格遵循）：
-
-TOOL: create_character
-{
-  "name": "角色名",
-  "description": "详细描述",
-  "gender": "性别（可选）",
-  "age": "年龄（可选）",
-  "image_prompt": "← 按系统提示词📋中'资产图片提示词'规范填写"
-}
-END_TOOL
-
-TOOL: update_character
-{
-  "name": "要修改的角色名（用于查找）",
-  "description": "新的描述（必须包含原有特征+修改内容，不得只写修改部分）",
-  "gender": "性别（可选）",
-  "age": "年龄（可选）",
-  "image_prompt": "生图提示词（可选）"
-}
-END_TOOL
-
-TOOL: create_scene
-{
-  "name": "场景名",
-  "description": "场景详细描述",
-  "location": "地点",
-  "image_prompt": "← 按系统提示词📋中'资产图片提示词'规范填写"
-}
-END_TOOL
-
-TOOL: update_scene
-{
-  "name": "要修改的场景名（用于查找）",
-  "description": "新的描述（必须包含原有特征+修改内容，不得只写修改部分）",
-  "location": "地点（可选）",
-  "image_prompt": "生图提示词（可选）"
-}
-END_TOOL
-
-TOOL: create_prop
-{
-  "name": "道具名",
-  "description": "详细描述，包含尺寸（如有）",
-  "image_prompt": "← 按系统提示词📋中'资产图片提示词'规范填写"
-}
-END_TOOL
-
-TOOL: update_prop
-{
-  "name": "要修改的道具名（用于查找）",
-  "description": "新的描述（必须包含原有特征+修改内容，不得只写修改部分）",
-  "image_prompt": "生图提示词（可选）"
-}
-END_TOOL
-
-TOOL: create_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式，从上面剧集列表中复制）",
-  "sequence": 1,
-  "script_scene_label": "14-2 日 外 老林家院子",
-  "description": "顾长夜扛着蛇皮袋站在梧桐树下。远处一辆出租车驶来，车灯照亮了他的脸。\n\n出租车停下，司机探头看了看这个满身尘土的年轻人。\n\n司机：“去哪？”\n\n顾长夜拉开车门，把一个沉甸甸的蛇皮袋扔进后座。\n\n顾长夜：“顺天府北镇抚司。”\n\n司机转头看到顾长夜，瞬间愣住。",
-  "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
-  "duration": 15,
-  "character_ids": ["出场角色的asset_id，必填，从项目已有资产中匹配"],
-  "scene_ids": ["出场场景的asset_id，必填，从项目已有资产中匹配"],
-  "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
-  "dialogue_chars_declared": 58,
-  "suggested_dialogue_chars": 58,
-  "short_dialogue_reason": "（遇到场次边界或剧本结尾时填 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填 TIMECODE_CONSTRAINT，否则不填）",
-  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
-}
-END_TOOL
-
 ⚠️ **character_ids 和 scene_ids 是必填字段**：创建分镜前必须先从"当前项目已有资产"中找到对应角色和场景的 asset_id 填入，不可留空或省略。@图N 编号顺序与 character_ids 数组顺序严格对应。
 
 🚨 **update_storyboard 铁律（最高优先级）**：调用前必须先调 `get_storyboard` 读取完整分镜信息（包括 character_ids、scene_ids、prop_ids、description、video_prompt、image_prompt），再将读到的 character_ids、scene_ids、prop_ids 原样回传。生成 video_prompt 或 image_prompt 时，@图N 引用必须基于这些真实 asset_id 对应的资产信息。
-
-TOOL: update_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "sequence": 1,
-  "script_scene_label": "14-2 日 外 老林家院子",
-  "description": "对应场内的原文片段本体（可选，不更新则省略）",
-  "video_prompt": "← 按系统提示词📋中'视频提示词'规范填写",
-  "character_ids": ["角色asset_id"],
-  "scene_ids": ["场景asset_id"],
-  "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
-  "dialogue_chars_declared": 62,
-  "short_dialogue_reason": "（遇到场次边界或剧本结尾时填 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填 TIMECODE_CONSTRAINT，否则不填）",
-  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
-}
-END_TOOL
 
 ⚠️ **生图提示词 vs 视频提示词字段区分**：
 - 用户说"生成分镜X的**生图提示词**" / "给分镜X生成图像提示词" → 更新 `image_prompt` 字段
 - 用户说"生成分镜X的**视频提示词**" / "给分镜X生成视频" → 更新 `video_prompt` 字段
 - **两个字段绝对不能混用**
 
-生图提示词示例（update_storyboard + image_prompt）：
-⚠️ 先调 get_storyboard 读取分镜的 character_ids、scene_ids，据此确定 @图N 引用对象，再生成 image_prompt。
-TOOL: update_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "sequence": 5,
-  "image_prompt": "← 按系统提示词📋中'分镜生图提示词'规范填写"
-}
-END_TOOL
-
 ⚠️ **保存后回复规范**：
 - 调用 update_storyboard 成功后，只需告知"已将生图提示词保存到分镜X"
 - **禁止将提示词内容原文贴在回复中**，用户在分镜卡片里直接可见
 
-TOOL: delete_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "sequence": 1,
-  "confirmed": true
-}
-END_TOOL
-
-⚠️ **重新生成分镜时禁止逐个调用 delete_storyboard**，必须用 delete_all_storyboards：
-
-TOOL: delete_all_storyboards
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "confirmed": true,
-  "description": "清空第1集全部分镜，准备重新生成"
-}
-END_TOOL
-
-TOOL: insert_storyboard
-{
-  "episode_id": "剧集的asset_id（UUID格式）",
-  "insert_at_sequence": 4,
-  "script_scene_label": "14-2 日 外 老林家院子",
-  "description": "对应场内的原文片段本体",
-  "dialogue_units": ["逐条对白原文1", "逐条对白原文2"],
-  "dialogue_chars_declared": 56,
-  "short_dialogue_reason": "（遇到场次边界或剧本结尾时填 SCENE_BOUNDARY_CONSTRAINT，或时间约束时填 TIMECODE_CONSTRAINT，否则不填）",
-  "short_dialogue_time_evidence": "（仅当 short_dialogue_reason=TIMECODE_CONSTRAINT 时必填）"
-}
-END_TOOL
-
-## 项目配置读写工具（17-23）
+## 项目配置读写工具（17-28）
 
 **读类工具（无副作用，可随时调用）：**
 
 17. get_project_config - 读取项目全局配置（视频风格、图片风格、提示词语言等）
-    调用：TOOL: get_project_config
-{}
-END_TOOL
 
 18. get_ai_instructions - 读取当前项目AI自定义指令（类CLAUDE.md）
-    调用：TOOL: get_ai_instructions
-{}
-END_TOOL
 
 19. get_prompt_template - 读取某个生成模板的当前内容
     ⚠️ 此工具仅用于：修改模板前先读取现有内容（配合 update_prompt_template 使用）
@@ -196,108 +59,53 @@ END_TOOL
     **关键词 → key 对照（优先按此匹配，不要自行推断）：**
       "分镜编辑" / "图生图" / "分镜图生图"（图生图模式）  → storyboard_image_edit
       "分镜图" / "分镜生图" / "文生图分镜"（文生图模式）  → storyboard_image
+      "分镜规划" / "分镜估算" / "分镜计划"              → storyboard_plan_estimate
       "分镜视频" / "video_prompt" / "视频提示词"          → video
       "资产图片" / "角色图片" / "场景图片" / "道具图片"    → image
-    调用示例：TOOL: get_prompt_template
-{"key": "storyboard_image_edit"}
-END_TOOL
 
 **写类工具（需要用户在对话界面点击确认执行后才生效，⚠️会持久化）：**
 
 20. update_project_config - 修改全局视频/图片风格的附加描述
-    ⚠️ path 字段只有三个合法值，必须原样复制，不得修改或自造：
-       path = "video_style.custom_suffix"   ← 修改视频风格时用这个（唯一正确选项）
-       path = "image_style.custom_suffix"   ← 修改图片风格时用这个
-       path = "prompt_language"             ← 修改提示词语言时用这个（值为 zh 或 en）
+    ⚠️ path 字段只有三个合法值：video_style.custom_suffix / image_style.custom_suffix / prompt_language
     ⚠️ 禁止使用任何其他 path 值，否则后端会直接拒绝执行
-    description字段：向用户说明修改意义（会显示在确认弹窗中）
-    修改视频风格时必须这样调用（path 固定为 "video_style.custom_suffix"）：TOOL: update_project_config
-{"path": "video_style.custom_suffix", "value": "东方古典美学，仙侠氛围感，古装细节还原", "description": "为视频风格追加古装仙侠美学描述"}
-END_TOOL
 
 21. update_ai_instructions - 写入/追加项目AI自定义指令（mode: replace或append）
-    ⚠️ 仅适用于：用户明确要求修改AI的对话行为规则时
     ⚠️ replace模式前必须先调用 get_ai_instructions 读取现有指令，在原有内容基础上修改
-    调用：TOOL: update_ai_instructions
-{"content": "# 自定义规则
-- 生成分镜时总是先列出计划再执行", "mode": "replace", "description": "设置AI工作流程指令"}
-END_TOOL
 
 22. update_prompt_template - 更新生成模板并激活"AI自定义"模板（用户在提示词设置页可见）
-    ⚠️ 适用于：用户要求修改分镜图/分镜编辑/视频/图片等【生成按钮的提示词逻辑】时
+    ⚠️ 适用于：用户要求修改生成按钮的提示词逻辑时
     ⚠️ 禁止修改 key 为 conversation_tools_desc/conversation_system_prompt 的系统模板
     ⚠️ **必须先调用 get_prompt_template 读取当前激活模板，再调用 update_prompt_template**
-    ⚠️ 默认 mode=patch（局部编辑），支持 edits[] 一次调用批量修改（推荐，一次确认即可）
-    ⚠️ edits[] 每项使用 replace 语义：old_string/new_string/replace_all/occurrence，按数组顺序依次应用
-    ⚠️ 不传 edits[] 时，仍可用单步 operation（replace_text/delete_text/insert_after_anchor/insert_before_anchor）
-    ⚠️ patch 默认会自动清理重复标点（normalize_punctuation=true）
+    ⚠️ 默认 mode=patch（局部编辑），支持 edits[] 一次调用批量修改（推荐）
     ⚠️ 关键词→key 对照同上 get_prompt_template
-    **正确流程（批量修改，推荐）**：
-    步骤1 - 先读取当前模板：TOOL: get_prompt_template
-{"key": "image"}
-END_TOOL
-    步骤2 - 一次调用批量替换：TOOL: update_prompt_template
-{"key": "image", "mode": "patch", "edits": [{"old_string": "影视角色设定参考图（character design sheet）", "new_string": ""}, {"old_string": "重点呈现面料纹理、刺绣/暗纹、腰带与鞋履等细节", "new_string": "重点呈现面料纹理、刺绣/暗纹、腰带与鞋履等细节，并补充电影级光效描述（体积光、侧逆光、轮廓光）"}], "description": "删除旧词并补充光效要求"}
-END_TOOL
-    **整篇重写（仅在用户明确要求时）**：
-    TOOL: update_prompt_template
-{"key": "storyboard_image_edit", "mode": "replace", "content": "## 分镜图生成规范\n\n[完整重写后的模板全文...]", "description": "按要求重写分镜编辑模板"}
-END_TOOL
 
 23. generate_asset_image - 为单个角色/场景/道具生成图片（文生图，需用户确认，会产生费用）
     ⚠️ 需要资产已有 image_prompt，否则报错
     ⚠️ 仅用于单个资产生图。批量生图请用 generate_all_asset_images
-    调用：TOOL: generate_asset_image
-{"asset_type": "character|scene|prop", "asset_id": "UUID", "description": "为角色XXX生成图片"}
-END_TOOL
 
-23b. generate_all_asset_images - 批量为所有资产生成图片（一次调用，自动遍历所有有提示词的资产，需用户确认，会产生费用）
-    ⚠️ 用户说"生成所有资产图片"/"为所有角色生图"/"批量生图"时，必须用此工具，不要用 generate_asset_image 循环调用
-    调用：TOOL: generate_all_asset_images
-{"asset_types": ["character", "scene", "prop"], "description": "批量生成所有资产图片"}
-END_TOOL
+23b. generate_all_asset_images - 批量为所有资产生成图片（一次调用，需用户确认）
+    ⚠️ 用户说"生成所有资产图片"/"批量生图"时，必须用此工具
 
-24. generate_storyboard_image - 为单个分镜生成图片（图生图，参考角色/场景主图，需用户确认，会产生费用）
+24. generate_storyboard_image - 为单个分镜生成图片（图生图，需用户确认）
     ⚠️ 需要分镜已有 image_prompt，且关联角色/场景已有主图
     ⚠️ 仅用于单个分镜生图。批量生图请用 generate_all_storyboard_images
-    调用：TOOL: generate_storyboard_image
-{"storyboard_id": "UUID", "description": "为第N镜生成分镜图"}
-END_TOOL
 
-24b. generate_all_storyboard_images - 批量为所有分镜生成图片（一次调用，自动遍历，需用户确认，会产生费用）
-    ⚠️ 用户说"生成所有分镜图"/"批量生成分镜图"时，必须用此工具
-    调用：TOOL: generate_all_storyboard_images
-{"episode_id": "UUID或留空表示全部", "description": "批量生成所有分镜图"}
-END_TOOL
+24b. generate_all_storyboard_images - 批量为所有分镜生成图片（一次调用，需用户确认）
 
 25. generate_storyboard_video - 为单个分镜生成视频（需用户确认，会产生费用）
     ⚠️ 需要分镜已有 video_prompt，且关联角色/场景已有主图
-    ⚠️ 仅用于单个分镜。批量生视频请用 generate_all_storyboard_videos
-    ⚠️ **调用前必须先调用 `get_episode_script` 检查资产状态**，所有资产 review_status="Active" 才可调用，否则先生图/提交审核
-    调用：TOOL: generate_storyboard_video
-{"storyboard_id": "UUID", "episode_id": "UUID", "description": "为第N镜生成视频"}
-END_TOOL
+    ⚠️ **调用前必须先调用 `get_episode_script` 检查资产状态**，所有资产 review_status="Active" 才可调用
 
-25b. generate_all_storyboard_videos - 批量为所有分镜生成视频（一次调用，自动遍历，需用户确认，会产生费用）
-    ⚠️ 用户说"生成所有视频"/"批量生成视频"时，必须用此工具
-    ⚠️ **调用前必须先调用 `get_episode_script` 检查资产状态**，所有资产 review_status="Active" 才可调用，否则先生图/提交审核
-    调用：TOOL: generate_all_storyboard_videos
-{"episode_id": "UUID或留空表示全部", "description": "批量生成所有分镜视频"}
-END_TOOL
+25b. generate_all_storyboard_videos - 批量为所有分镜生成视频（一次调用，需用户确认）
+    ⚠️ **调用前必须先调用 `get_episode_script` 检查资产状态**，所有资产 review_status="Active" 才可调用
 
 26. update_episode_script - 写入/追加剧集剧本内容（mode: replace或append）
-    ⚠️ replace模式前必须先调用 get_episode_script 读取现有剧本内容，在原有内容基础上修改
-    ⚠️ 用户说"剧本有变化"/"按剧本重新生成"时，必须先调用 get_episode_script 读取最新剧本，禁止向用户索要剧本内容
-    调用：TOOL: update_episode_script
-{"episode_id": "UUID", "script": "剧本内容...", "mode": "replace"}
-END_TOOL
+    ⚠️ replace模式前必须先调用 get_episode_script 读取现有剧本内容
+    ⚠️ 用户说"剧本有变化"/"按剧本重新生成"时，必须先调用 get_episode_script 读取最新剧本
 
-28. estimate_storyboard_plan - 在自动生成/重新生成分镜前，显式调用LLM估算分镜计划，返回 plan_id、预计分镜数和建议每镜字数
+28. estimate_storyboard_plan - 提交分镜规划，后端校验后批量创建分镜
     ⚠️ 自动生成/重新生成流程中，create_storyboard 必须携带此工具返回的 plan_id
-    ⚠️ 只传 episode_id，工具内部自动读取该集完整剧本，不要重复传script
-    调用：TOOL: estimate_storyboard_plan
-{"episode_id": "当前episode_id"}
-END_TOOL
+    ⚠️ 传入 episode_id + segments 数组 + suggested_dialogue_chars
 
 - 用户说"修改/新增 XX 提示词""XX 模板改成..."→ 用 update_prompt_template（key选对应模板）
 - 用户说"修改视频风格""图片风格改成..."→ 用 update_project_config
@@ -329,7 +137,7 @@ END_TOOL
   1. 读 `line_numbered_script`（每行带 `行号\t内容`）
   2. 统计全剧对白总字数 D（去空白，识别所有对白行），按规则算建议字数 S = round(D / N)，使 S 尽量落在 50-70 区间
   3. 识别场次边界（”场N ...”行），到下一场次行必须停，禁止跨场
-  4. 将对白均衡划分为 N 段，每段 `[line_start, line_end)`（都闭区间）。`line_end` = 该段最后一行行号，不需要 +1
+  4. 将对白均衡划分为 N 段，闭区间 `[line_start, line_end]`，line_end = 该段最后一行行号
   5. 从行范围内提取 `dialogue_units`，数字数。`description` 不需要填——后端自动按行范围从剧本裁切
   6. **提交前自检**：逐段数字数，若某段 >100 或偏离 S 过多，回到步骤4整体重新规划后再提交
   7. 从 `existing_assets` 中匹配角色/场景 → 填入**真实 asset_id（UUID）**，严禁编造
