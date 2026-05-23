@@ -48,6 +48,12 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if ref_err:
         return {"success": False, "error": ref_err}
 
+    # 检查 sequence 重复
+    all_sbs = AssetService.list_assets(project_id, "storyboard") or []
+    ep_seqs = [sb.get("sequence") for sb in all_sbs if sb.get("episode_id") == episode_id]
+    if parameters["sequence"] in ep_seqs:
+        return {"success": False, "error": f"sequence {parameters['sequence']} 已存在，请调用 get_episode_storyboards 查看当前分镜列表后重试"}
+
     dialogue_audit = None
     dialogue_check = _validate_dialogue_payload(project_id, parameters)
     if not dialogue_check.get("success"):
