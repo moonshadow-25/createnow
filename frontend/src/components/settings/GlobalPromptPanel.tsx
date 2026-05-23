@@ -20,6 +20,19 @@ interface PromptEntry {
 
 type PromptsData = Record<string, PromptEntry>;
 
+// 生成模板：默认只显示龙虾对话调用的，其余点"高级"展开
+const GENERATION_KEY_ORDER = [
+  'image', 'video', 'storyboard', 'storyboard_image_edit', 'storyboard_image',
+  'storyboard_plan_estimate',
+  'nine_grid_combined_prompts', 'character_sheet', 'multi_scene_video',
+  'triple_grid', 'image_edit', 'video_reverse', 'vlm',
+];
+
+const BASIC_KEYS = new Set([
+  'image', 'video', 'storyboard_image_edit',
+  'storyboard', 'storyboard_image', 'storyboard_plan_estimate',
+]);
+
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 
 export function GlobalPromptPanel() {
@@ -29,6 +42,7 @@ export function GlobalPromptPanel() {
   const [resetting, setResetting] = useState(false);
   const [data, setData] = useState<PromptsData | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // 当前选中的 category tab
   const [activeCategory, setActiveCategory] = useState<string>('');
@@ -49,9 +63,10 @@ export function GlobalPromptPanel() {
       if (categories.length > 0 && !activeCategory) {
         const firstCat = categories[0];
         setActiveCategory(firstCat);
-        const firstKey = getKeysForCategory(prompts, firstCat)[0] ?? '';
+        const keys = getKeysForCategory(prompts, firstCat, showAdvanced);
+        const firstKey = keys[0] ?? '';
         setActiveKey(firstKey);
-        setActivePreset('default');
+        setActivePreset(Object.keys(prompts[firstKey]?.presets ?? {})[0] ?? 'default');
       }
     } catch {
       toast('加载全局提示词失败', 'error');
@@ -62,6 +77,17 @@ export function GlobalPromptPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 切换高级模式时，若当前 key 不在过滤后的列表中，重置为第一个
+  useEffect(() => {
+    if (!data) return;
+    const keys = getKeysForCategory(data, activeCategory, showAdvanced);
+    if (activeKey && !keys.includes(activeKey)) {
+      const first = keys[0] ?? '';
+      setActiveKey(first);
+      setActivePreset(Object.keys(data[first]?.presets ?? {})[0] ?? 'default');
+    }
+  }, [showAdvanced]);
+
   // 工具函数：从 data 中提取分类列表（按固定顺序）
   const getCategories = (prompts: PromptsData): string[] => {
     const order = ['生成模板', '服务提示词', '系统提示词'];
@@ -70,16 +96,26 @@ export function GlobalPromptPanel() {
   };
 
   // 工具函数：某分类下的所有 key
-  const getKeysForCategory = (prompts: PromptsData, category: string): string[] =>
-    Object.entries(prompts)
+  const getKeysForCategory = (prompts: PromptsData, category: string, advanced: boolean = false): string[] => {
+    const keys = Object.entries(prompts)
       .filter(([, v]) => v.category === category)
       .map(([k]) => k);
+    if (category === '生成模板') {
+      const filtered = advanced ? keys : keys.filter(k => BASIC_KEYS.has(k));
+      return filtered.sort((a, b) => {
+        const ai = GENERATION_KEY_ORDER.indexOf(a);
+        const bi = GENERATION_KEY_ORDER.indexOf(b);
+        return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+      });
+    }
+    return keys;
+  };
 
   // 切换 category
   const handleCategoryChange = (cat: string) => {
     if (!data) return;
     setActiveCategory(cat);
-    const keys = getKeysForCategory(data, cat);
+    const keys = getKeysForCategory(data, cat, showAdvanced);
     const first = keys[0] ?? '';
     setActiveKey(first);
     setActivePreset(Object.keys(data[first]?.presets ?? {})[0] ?? 'default');
@@ -151,7 +187,7 @@ export function GlobalPromptPanel() {
   if (!data) return null;
 
   const categories = getCategories(data);
-  const keysForCategory = getKeysForCategory(data, activeCategory);
+  const keysForCategory = getKeysForCategory(data, activeCategory, showAdvanced);
   const currentEntry = data[activeKey];
   const presetIds = currentEntry ? Object.keys(currentEntry.presets) : [];
   const currentContent = currentEntry?.presets[activePreset]?.content ?? '';
@@ -170,19 +206,31 @@ export function GlobalPromptPanel() {
         修改此处将影响所有项目的出厂默认值，请谨慎操作
       </div>
 
-      {/* 一级 Tab：分类 */}
-      <div className="flex border-b border-gray-700 shrink-0 px-4 pt-3 gap-1">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => handleCategoryChange(cat)}
-            className={`px-3 py-1.5 text-sm rounded-t ${
-              activeCategory === cat ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
+      {/* 一级 Tab：分类 + 高级按钮 */}
+      <div className="flex items-center border-b border-gray-700 shrink-0 px-4 pt-3 gap-1">
+        <div className="flex gap-1 flex-1">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => handleCategoryChange(cat)}
+              className={`px-3 py-1.5 text-sm rounded-t ${
+                activeCategory === cat ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className={`px-2 py-1 text-xs rounded transition mb-0.5 ${
+            showAdvanced
+              ? 'text-purple-400 hover:text-purple-300'
+              : 'text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          {showAdvanced ? '收起 ▴' : '高级 ▾'}
+        </button>
       </div>
 
       {/* 二级 Tab：该分类下的提示词 */}
