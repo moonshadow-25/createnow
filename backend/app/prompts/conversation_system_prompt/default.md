@@ -62,7 +62,6 @@
     **关键词 → key 对照：**
       "分镜编辑" / "图生图" / "分镜图生图"  → storyboard_image_edit
       "分镜图" / "分镜生图" / "文生图分镜"    → storyboard_image
-      "分镜规划" / "分镜估算" / "分镜计划"    → storyboard_plan_estimate
       "分镜视频" / "video_prompt" / "视频提示词" → video
       "资产图片" / "角色图片" / "场景图片"    → image
 

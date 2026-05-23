@@ -45,7 +45,7 @@ const GENERATION_KEY_ORDER = [
 ];
 
 // 普通模式下默认显示的 key（其余需点"高级"展开）
-const BASIC_KEYS = new Set(['image', 'video', 'storyboard_image_edit', 'storyboard', 'storyboard_image', 'storyboard_plan_estimate']);
+const BASIC_KEYS = new Set(['image', 'video', 'storyboard_image_edit', 'storyboard', 'storyboard_image']);
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 

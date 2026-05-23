@@ -23,14 +23,13 @@ type PromptsData = Record<string, PromptEntry>;
 // 生成模板：默认只显示龙虾对话调用的，其余点"高级"展开
 const GENERATION_KEY_ORDER = [
   'image', 'video', 'storyboard', 'storyboard_image_edit', 'storyboard_image',
-  'storyboard_plan_estimate',
   'nine_grid_combined_prompts', 'character_sheet', 'multi_scene_video',
   'triple_grid', 'image_edit', 'video_reverse', 'vlm',
 ];
 
 const BASIC_KEYS = new Set([
   'image', 'video', 'storyboard_image_edit',
-  'storyboard', 'storyboard_image', 'storyboard_plan_estimate',
+  'storyboard', 'storyboard_image',
 ]);
 
 // ── 组件 ──────────────────────────────────────────────────────────────────────

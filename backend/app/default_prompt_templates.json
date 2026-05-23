@@ -388,19 +388,5 @@
         "content_file": "video_subagent_contract/default.md"
       }
     }
-  },
-  "storyboard_plan_estimate": {
-    "label": "分镜规划估算",
-    "category": "生成模板",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "description": "基于完整剧本估算对白总字数、分镜数和建议每镜字数",
-        "variables": [
-          "{script}"
-        ],
-        "content_file": "storyboard_plan_estimate/default.md"
-      }
-    }
   }
 }
