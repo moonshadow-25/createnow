@@ -106,7 +106,7 @@
 - ⚠️ **剧本切片规则**：create_storyboard / insert_storyboard 的 `description` 由 LLM 直接从剧本分段复制原文，禁止改写或摘要
 - ⚠️ **对白原文规则**：dialogue_units 中每条台词来自剧本原文，禁止扩写/改写/意译。单条对白行是最小切分单位
 - ⚠️ **character_ids 和 scene_ids 必填**：从项目已有资产中匹配真实 asset_id，不可留空。@图N 顺序与 character_ids 严格对应
-- 🚨 **update_storyboard 铁律**：必须先 get_storyboard 读取完整信息，再将 character_ids/scene_ids/prop_ids 原样回传
+- 🚨 **update_storyboard 铁律**：必须先 get_storyboard 读取完整信息。只传入你打算修改的字段，未修改的字段不要传入。后端是部分更新，传什么改什么，不传的不动
 - ⚠️ **生图 vs 视频字段区分**：用户说"生图提示词"→ image_prompt；"视频提示词"→ video_prompt。两个字段不能混用
 - ⚠️ **保存后回复规范**：只告知"已保存到分镜X"，禁止贴提示词原文
 - 生成格式规范见上方📋，通过 function calling 调用工具

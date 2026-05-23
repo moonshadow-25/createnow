@@ -49,6 +49,7 @@ export default function StoryboardEditorPage() {
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const openVibeDrama = useVibeDramaStore(s => s.open);
   const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
+  const setMessagePrefix = useVibeDramaStore(s => s.setMessagePrefix);
   const currentProject = useProjectStore(s => s.currentProject);
   const appearanceMode = useThemeStore(s => s.appearanceMode);
 
@@ -670,7 +671,10 @@ export default function StoryboardEditorPage() {
   }, [projectId, trackingId, orderedReferenceImageIds, selectedCharacters, selectedScenes, selectedProps, characters, scenes, props, reloadStoryboard, reloadAssets, videoGen, storyboard, toast]);
 
   // ── Action handlers ────────────────────────────────────────────────────────
-  const handleBack = () => navigate(`/project/${projectId}`, { state: { episodeId } });
+  const handleBack = () => {
+    setMessagePrefix(null);
+    navigate(`/project/${projectId}`, { state: { episodeId } });
+  };
 
   const handleGenerateImage = async () => {
     if (!mergedStoryboard) return;
@@ -947,6 +951,7 @@ export default function StoryboardEditorPage() {
                     onClick={() => {
                       if (!storyboard) return;
                       setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
+                      setMessagePrefix(`当前分镜：分镜 #${storyboard.sequence}，storyboard_id='${storyboard.asset_id}'`);
                       openVibeDrama();
                       setPendingMessage({ key: `${projectId}_${episodeId}`, message: '自动匹配资产' });
                     }}
@@ -1272,8 +1277,9 @@ export default function StoryboardEditorPage() {
                   onClick={() => {
                     if (!storyboard) return;
                     setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
-                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `使用 generate_storyboard_video_prompt_subagent 工具为此分镜生成图片提示词。参数：storyboard_id='${storyboard.asset_id}', prompt_type='image'。注意：必须使用该子代理工具，禁止使用 update_storyboard。` });
+                    setMessagePrefix(`当前分镜：分镜 #${storyboard.sequence}，storyboard_id='${storyboard.asset_id}'`);
                     openVibeDrama();
+                    setPendingMessage({ key: `${projectId}_${episodeId}`, message: `使用 generate_storyboard_video_prompt_subagent 为此分镜生成图片提示词。参数：storyboard_id='${storyboard.asset_id}', prompt_type='image'。` });
                   }}
                   disabled={getTaskStatus(storyboardId, 'prompt') === 'generating'}
                   className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"
@@ -1398,8 +1404,9 @@ export default function StoryboardEditorPage() {
                         onClick={() => {
                           if (!storyboard) return;
                           setVibeDramaContext({ projectId, projectName: currentProject?.name || '', episodeId, tabName: 'storyboard', label: `分镜 #${storyboard.sequence}` });
+                          setMessagePrefix(`当前分镜：分镜 #${storyboard.sequence}，storyboard_id='${storyboard.asset_id}'`);
                           openVibeDrama();
-                          setPendingMessage({ key: `${projectId}_${episodeId}`, message: `使用 generate_storyboard_video_prompt_subagent 工具为此分镜生成视频提示词。参数：storyboard_id='${storyboard.asset_id}', prompt_type='video'。注意：必须使用该子代理工具，禁止使用 update_storyboard。` });
+                          setPendingMessage({ key: `${projectId}_${episodeId}`, message: `使用 generate_storyboard_video_prompt_subagent 为此分镜生成视频提示词。参数：storyboard_id='${storyboard.asset_id}', prompt_type='video'。` });
                         }}
                         disabled={getTaskStatus(storyboardId, 'video_prompt') === 'generating' || !editDescription}
                         className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:text-gray-600"

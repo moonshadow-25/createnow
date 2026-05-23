@@ -10,6 +10,7 @@ export interface PendingConfirmation {
 
 export function useChat(projectId: string, options?: { label?: string; episodeId?: string; tabName?: string }) {
   const commitSession = useVibeDramaStore(s => s.commitSession);
+  const messagePrefix = useVibeDramaStore(s => s.messagePrefix);
   // 用 ref 包装，避免进入 useCallback 依赖数组导致 sendMessage 在流式传输途中被重建
   const commitSessionRef = useRef(commitSession);
   useEffect(() => { commitSessionRef.current = commitSession; }, [commitSession]);
@@ -290,9 +291,10 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
     async (content: string) => {
       // 首次发消息时将当前上下文提升为正式历史 session
       commitSessionRef.current();
-      await _fetchStream(content, true);
+      const prefixed = messagePrefix ? `[${messagePrefix}] ${content}` : content;
+      await _fetchStream(prefixed, true);
     },
-    [_fetchStream]
+    [_fetchStream, messagePrefix]
   );
 
   // 内部方法：发送不显示在历史中的控制消息（确认/取消）
