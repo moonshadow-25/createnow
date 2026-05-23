@@ -138,7 +138,7 @@ TOOLS = [
     },
     {
         "name": "update_storyboard",
-        "description": "更新现有分镜的信息。当用户要求修改、完善或补充分镜信息时调用。⚠️ 必须先调用 get_storyboard 读取该分镜的当前完整信息（包括 description、video_prompt、image_prompt），再在原有内容基础上做修改，不得凭空覆盖。必须提供 storyboard_id 或同时提供 episode_id 和 sequence。\n\n🚫 严禁擅自更新 description：仅当用户明确要求\"修改描述\"\"更新描述\"\"改一下描述\"等时才可传入 description 字段。以下场景绝对不要传 description：生成/修改 video_prompt、生成/修改 image_prompt、匹配/调整角色(character_ids)、匹配/调整场景(scene_ids)、匹配/调整道具(prop_ids)、修改对白/动作/镜头参数。",
+        "description": "更新现有分镜的信息。⚠️ 必须先调 get_storyboard 读取完整信息，再在原有基础上修改。必须提供 storyboard_id 或同时提供 episode_id 和 sequence。\n\n🚨 只传要改的字段：需要改哪个就传哪个，不改的不要传。\n🚨 清空字段：传空字符串 \"\"（如 video_prompt: \"\" 即删除视频提示词，image_prompt: \"\" 即删除图片提示词）。\n\n🚫 严禁传入不改的字段。特别是 character_ids、scene_ids、prop_ids、dialogue_units、dialogue_chars_declared、description、duration、shot_type、camera_angle —— 除非用户明确要求修改它们，否则不要传。",
         "parameters": {
             "type": "object",
             "properties": {
