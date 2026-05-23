@@ -199,6 +199,7 @@ export default function StoryboardEditorPage() {
       tabName: 'storyboard',
       label: `分镜 #${storyboard.sequence}`,
     });
+    setMessagePrefix(`当前分镜：分镜 #${storyboard.sequence}，storyboard_id='${storyboard.asset_id}'`);
   }, [storyboard?.asset_id, storyboard?.sequence, projectId, currentProject?.name]);
 
   useEffect(() => {
