@@ -460,7 +460,7 @@ TOOLS = [
             "properties": {
                 "storyboard_id": {"type": "string", "description": "分镜ID（单次仅支持一个）"},
                 "prompt_type": {"type": "string", "enum": ["video", "image"], "description": "提示词类型：video=视频提示词，image=图片提示词。默认 video。"},
-                "user_request": {"type": "string", "description": "生成指令（如'重新生成视频提示词，强化光影'）。仅用于全新生成，不含修改语义。"},
+                "user_request": {"type": "string", "description": "生成指令（如'生成视频提示词'、'重新生成图片提示词'）。仅用于生成/重新生成，不含修改。"},
                 "storyboard_description": {"type": "string", "description": "可选：覆盖分镜 description 参与本次生成（不写回 description）"},
                 "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成（仅 video）"},
                 "action": {"type": "string", "description": "可选：覆盖分镜 action 参与本次生成（仅 video）"},
