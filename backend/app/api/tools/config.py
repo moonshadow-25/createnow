@@ -79,7 +79,7 @@ async def handle_update_prompt_template(project_id: str, parameters: Dict) -> Di
     try:
         SYSTEM_TEMPLATE_BLACKLIST = {
             "conversation_tools_desc", "conversation_tools_desc_assets",
-            "conversation_system_prompt", "script_analysis_system_prompt", "script_parse",
+            "conversation_system_prompt", "script_parse",
         }
 
         def _to_bool(value, default=False):
