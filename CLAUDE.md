@@ -1,0 +1,16 @@
+# CreateNow 项目规则
+
+## 工具调用
+
+本项目使用 OpenAI 原生 Function Calling（`tools=` 参数），LLM 通过 JSON schema 定义的工具直接发起函数调用。
+
+- **禁止在提示词中手写 TOOL:/END_TOOL 格式**。这是史前遗留的虚拟 function call 做法，本项目已全面切换到原生 tools 注入。
+- 工具描述（`tools_desc`）只需保留跨工具规则、工作流编排、行为约束——这些是 `tools=` 参数无法表达的。工具参数 schema 本身不需要在提示词中复述，LLM 从 `tools=` 获取。
+- `conversation_tools_desc` 中不应出现 TOOL: / END_TOOL 格式示例。
+
+## 对话系统提示词职责
+
+| 文件 | 职责 | 不应包含 |
+|------|------|---------|
+| `conversation_system_prompt` | AI 角色 + 铁律（违反则系统崩溃） | 工具使用细节、工作流步骤 |
+| `conversation_tools_desc` | 跨工具规则 + 工作流 + 行为约束 | TOOL: 格式示例、工具参数复述 |
