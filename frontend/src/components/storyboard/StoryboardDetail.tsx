@@ -220,14 +220,14 @@ export function StoryboardDetail({
   const [editingScript, setEditingScript] = useState('');
 
   // 分镜编辑相关状态
-  const [editingStoryboard, setEditingStoryboard] = useState<any>(null);
-
+  const [editingStoryboard, _setEditingStoryboard] = useState<any>(null);
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [selectedScenes, setSelectedScenes] = useState<string[]>([]);
   const [selectedProps, setSelectedProps] = useState<string[]>([]);
-  const [generatedPrompt, setGeneratedPrompt] = useState('');
 
   // 从 store 获取任务状态方法
+  const [generatedPrompt, _setGeneratedPrompt] = useState('');
+
   const getTaskStatus = useStoryboardGenerationStore(state => state.getTaskStatus);
   const [storyboardImages, setStoryboardImages] = useState<any[]>([]);
   const [imageGalleryStoryboard, setImageGalleryStoryboard] = useState<any>(null);
@@ -239,8 +239,7 @@ export function StoryboardDetail({
     editDialogue,
     editAction,
     editShotType,
-    editCameraAngle,
-    resetEditState
+    editCameraAngle
   } = contentEdit;
 
   // 保存成功提示状态
@@ -688,7 +687,6 @@ export function StoryboardDetail({
     loadStoryboards
   });
   const {
-    setEditingStoryboardId,
     handleSetPrimaryStoryboardImage: handleSetPrimaryStoryboardImageBase,
   } = imageManagement;
 
@@ -881,22 +879,22 @@ export function StoryboardDetail({
     }
   };
 
-  const handleAddStoryboard = () => {
+  const handleAddStoryboard = async () => {
     if (!selectedEpisode) {
       toast('请先选择剧集', 'error');
       return;
     }
-    setEditingStoryboard(null);
-    setEditingStoryboardId(null); // 状态隔离：创建模式无ID
-    editingStoryboardIdRef.current = null; // 保持兼容性
-    // 重置表单
-    setSelectedCharacters([]);
-    setSelectedScenes([]);
-    setSelectedProps([]);
-    setGeneratedPrompt('');
-    resetEditState(); // 使用 hook 的重置函数
-    setStoryboardImages([]);
-    navigate(`/project/${projectId}/storyboard/new/edit`);
+    try {
+      await storyboardApi.create(projectId, {
+        episode_id: selectedEpisode.asset_id,
+        sequence: storyboards.length + 1,
+        description: '',
+      });
+      toast('已添加分镜', 'success');
+      loadStoryboards();
+    } catch (error: any) {
+      toast(`添加失败: ${error.response?.data?.detail || error.message}`, 'error');
+    }
   };
 
   const handleEditStoryboard = (storyboard: any) => {
