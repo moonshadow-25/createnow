@@ -18,7 +18,6 @@ router = APIRouter()
 # 注意：全局提示词管理接口（GlobalPromptPanel）仍保持对这些 key 的完整访问。
 _HIDDEN_KEYS = {
     "conversation_tools_desc",
-    "conversation_tools_desc_assets",
 }
 
 

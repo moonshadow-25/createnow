@@ -35,7 +35,7 @@ interface TemplatesResponse {
 const CATEGORY_ORDER = ['生成模板', '服务提示词', '系统提示词'];
 
 // 工具调用 schema 类模板，不向用户展示
-const HIDDEN_KEYS = new Set(['conversation_tools_desc', 'conversation_tools_desc_assets']);
+const HIDDEN_KEYS = new Set(['conversation_tools_desc']);
 
 // 生成模板内的 key 显示顺序
 const GENERATION_KEY_ORDER = [
@@ -45,7 +45,7 @@ const GENERATION_KEY_ORDER = [
 ];
 
 // 普通模式下默认显示的 key（其余需点"高级"展开）
-const BASIC_KEYS = new Set(['image', 'video', 'storyboard_image_edit', 'character_sheet']);
+const BASIC_KEYS = new Set(['image', 'video', 'storyboard_image_edit', 'storyboard', 'storyboard_image', 'storyboard_plan_estimate']);
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 

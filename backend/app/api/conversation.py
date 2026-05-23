@@ -39,10 +39,7 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
     is_storyboard_tab = bool(episode_id)
 
     # 工具描述
-    tools_desc_key = "conversation_tools_desc" if is_storyboard_tab else "conversation_tools_desc_assets"
-    tools_desc = (get_prompt_content(tools_desc_key, ai_config)
-                  or get_prompt_content("conversation_tools_desc", ai_config)
-                  or "")
+    tools_desc = get_prompt_content("conversation_tools_desc", ai_config) or ""
 
     # ai_formats_context：三类格式规范
     _prompts_data = _load_prompts()
