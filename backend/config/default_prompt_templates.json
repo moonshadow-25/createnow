@@ -328,33 +328,6 @@
       }
     }
   },
-  "full_script_split": {
-    "label": "全剧本分集",
-    "category": "服务提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "description": "将完整剧本自动分集，保留原始文本",
-        "content_file": "full_script_split/default.md",
-        "content": "你是剧本分集工具。用户会给你一份完整剧本，你必须将它切割为若干集，直接输出JSON，不要输出任何其他文字。\n\n## 分集规则\n\n1. 优先使用剧本中已有的分集标记（\"第一集\"、\"第1集\"、\"EP01\"等）。\n2. 若无明确标记，根据时间跳跃、剧情段落、叙事转换等信号推断分集边界，每集内容量大致均衡。\n3. 剧本较短（少于3000字）时整体作为第1集。\n\n## 关键要求\n\n- content 必须是原始剧本文本，一字不差，不要改写、不要删减、不要概括。\n- 所有集的 content 拼接后必须等于原始剧本全文。\n- title 用不超过20字概括该集主线。\n\n## 输出示例\n\n```json\n{\n  \"episodes\": [\n    {\n      \"episode_number\": 1,\n      \"title\": \"逆行入境\",\n      \"content\": \"第一集的完整原始剧本文本...\"\n    },\n    {\n      \"episode_number\": 2,\n      \"title\": \"火线孤勇\",\n      \"content\": \"第二集的完整原始剧本文本...\"\n    }\n  ]\n}\n```\n\n再次强调：只输出JSON，不要输出分析、方案说明、表格或任何非JSON内容。\n"
-      }
-    }
-  },
-  "full_script_extract": {
-    "label": "全剧本资产提取",
-    "category": "服务提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "description": "从全剧本文本提取角色/场景/道具",
-        "variables": [
-          "{existing_assets_summary}"
-        ],
-        "content_file": "full_script_extract/default.md",
-        "content": "你是剧本资产提取工具。用户会给你一份完整剧本，你必须从中提取角色、场景地点、道具，直接输出JSON，不要输出任何其他文字。\n\n## 提取原则：只提取重要的、关键的资产\n\n- **角色**：只提取有名字、有台词、有重要戏份的主要角色。不要提取路人、群众演员、无台词的龙套小角色\n- **场景**：只提取剧情发生的主要场景。多个本质相同的场景合并为一个（如\"客厅\"和\"沙发旁\"归为同一场景）\n- **道具**：只提取对剧情推动有重要作用的关键道具。不要提取普通家具、日常用品等无关紧要的物品\n- 同一角色/地点有不同称呼时合并为一条\n- description 侧重视觉特征（用于AI生成图像和视频）\n- 所有描述基于剧本文本，不要臆造\n\n## 输出示例\n\n```json\n{\n  \"characters\": [\n    {\n      \"name\": \"郑文昊\",\n      \"age\": \"30\",\n      \"gender\": \"男\",\n      \"description\": \"30岁左右，中国人，坚毅果敢，穿战术背心...\"\n    }\n  ],\n  \"scenes\": [\n    {\n      \"name\": \"波乌边境检查站\",\n      \"description\": \"混乱的边境口岸，难民排成长队，铁丝网和水泥路障...\",\n      \"time_of_day\": \"日\"\n    }\n  ],\n  \"props\": [\n    {\n      \"name\": \"中国护照\",\n      \"description\": \"红色封面的中华人民共和国护照，关键时刻用于表明身份...\"\n    }\n  ]\n}\n```\n\n再次强调：只输出JSON，不要输出分析说明或任何非JSON内容。\n\n## 已有资产（请勿重复提取）\n\n以下资产已存在于当前项目中，请跳过这些资产：\n\n{existing_assets_summary}\n"
-      }
-    }
-  },
   "video_subagent_contract": {
     "label": "视频子代理约束",
     "category": "系统提示词",

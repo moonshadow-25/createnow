@@ -31,6 +31,14 @@ const BASIC_KEYS = new Set([
   'image', 'video', 'storyboard_image_edit',
 ]);
 
+// 服务提示词：只显示全剧本导入相关的四个
+const SERVICE_KEYS = new Set([
+  'full_script_split_chunk',
+  'full_script_split_chunk_boundary',
+  'full_script_extract_chunk',
+  'full_script_extract_merge',
+]);
+
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 
 export function GlobalPromptPanel() {
@@ -95,7 +103,7 @@ export function GlobalPromptPanel() {
 
   // 工具函数：某分类下的所有 key
   const getKeysForCategory = (prompts: PromptsData, category: string, advanced: boolean = false): string[] => {
-    const keys = Object.entries(prompts)
+    let keys = Object.entries(prompts)
       .filter(([, v]) => v.category === category)
       .map(([k]) => k);
     if (category === '生成模板') {
@@ -105,6 +113,9 @@ export function GlobalPromptPanel() {
         const bi = GENERATION_KEY_ORDER.indexOf(b);
         return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
       });
+    }
+    if (category === '服务提示词') {
+      keys = keys.filter(k => SERVICE_KEYS.has(k));
     }
     return keys;
   };

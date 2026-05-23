@@ -303,17 +303,6 @@
       }
     }
   },
-  "full_script_split": {
-    "label": "全剧本分集",
-    "category": "服务提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "description": "将完整剧本自动分集，保留原始文本",
-        "content_file": "full_script_split/default.md"
-      }
-    }
-  },
   "full_script_split_chunk": {
     "label": "全剧本分集并提取（分块）",
     "category": "服务提示词",
@@ -344,20 +333,6 @@
         "name": "默认",
         "description": "从剧本片段中仅提取资产，不识别分集边界",
         "content_file": "full_script_extract_chunk/default.md"
-      }
-    }
-  },
-  "full_script_extract": {
-    "label": "全剧本资产提取",
-    "category": "服务提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "description": "从全剧本文本提取角色/场景/道具",
-        "variables": [
-          "{existing_assets_summary}"
-        ],
-        "content_file": "full_script_extract/default.md"
       }
     }
   },
