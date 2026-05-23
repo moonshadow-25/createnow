@@ -39,7 +39,7 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
     is_storyboard_tab = bool(episode_id)
 
     # 工具描述
-    tools_desc = get_prompt_content("conversation_tools_desc", ai_config) or ""
+    tools_desc = ""  # 已合并到 conversation_system_prompt 中，保留变量兼容性
 
     # ai_formats_context：三类格式规范
     _prompts_data = _load_prompts()

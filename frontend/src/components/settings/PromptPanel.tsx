@@ -35,7 +35,7 @@ interface TemplatesResponse {
 const CATEGORY_ORDER = ['生成模板', '服务提示词', '系统提示词'];
 
 // 工具调用 schema 类模板，不向用户展示
-const HIDDEN_KEYS = new Set(['conversation_tools_desc']);
+const HIDDEN_KEYS = new Set<string>();
 
 // 生成模板内的 key 显示顺序
 const GENERATION_KEY_ORDER = [

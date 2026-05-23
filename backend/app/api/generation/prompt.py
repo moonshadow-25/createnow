@@ -16,9 +16,7 @@ router = APIRouter()
 # 这些模板是 AI agent 工具调用 schema，是底层脚手架，不开放给用户自定义。
 # 用户覆盖这些模板会破坏 AI 工具调用机制。
 # 注意：全局提示词管理接口（GlobalPromptPanel）仍保持对这些 key 的完整访问。
-_HIDDEN_KEYS = {
-    "conversation_tools_desc",
-}
+_HIDDEN_KEYS: set = set()
 
 
 @router.get("/prompt-templates")

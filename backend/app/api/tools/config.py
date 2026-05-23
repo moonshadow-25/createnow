@@ -78,7 +78,6 @@ async def handle_update_ai_instructions(project_id: str, parameters: Dict) -> Di
 async def handle_update_prompt_template(project_id: str, parameters: Dict) -> Dict:
     try:
         SYSTEM_TEMPLATE_BLACKLIST = {
-            "conversation_tools_desc",
             "conversation_system_prompt", "script_parse",
         }
 

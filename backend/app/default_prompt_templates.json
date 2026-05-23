@@ -303,16 +303,6 @@
       }
     }
   },
-  "conversation_tools_desc": {
-    "label": "工具调用说明",
-    "category": "系统提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "content_file": "conversation_tools_desc/default.md"
-      }
-    }
-  },
   "full_script_split": {
     "label": "全剧本分集",
     "category": "服务提示词",
