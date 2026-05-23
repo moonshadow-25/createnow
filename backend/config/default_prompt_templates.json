@@ -94,7 +94,7 @@
     }
   },
   "storyboard_image_edit": {
-    "label": "分镜编辑",
+    "label": "分镜主图",
     "category": "生成模板",
     "presets": {
       "default_ai": {
