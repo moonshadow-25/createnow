@@ -454,13 +454,13 @@ TOOLS = [
     },
     {
         "name": "generate_storyboard_video_prompt_subagent",
-        "description": "独立子代：为单个分镜生成或修改提示词。prompt_type='video' 生成/修改视频提示词（含 @图N 资产顺序校验），prompt_type='image' 生成/修改图片提示词。user_request 描述用户意图（含'生成'/'重新生成'则全新生成，含'修改'/'调整'/'改成'则在现有提示词基础上精准修改）。批量时请在同一轮发起多个该工具调用（每次一个 storyboard_id）。执行时无需确认。",
+        "description": "独立子代理：为单个分镜从零生成提示词。prompt_type='video' 生成视频提示词（含 @图N 资产顺序校验），prompt_type='image' 生成图片提示词。⚠️ 仅用于纯生成/重新生成，禁止用于修改已有提示词。修改请用 update_storyboard。批量并发时可同一轮发起多个调用（每次一个 storyboard_id），执行时无需确认。",
         "parameters": {
             "type": "object",
             "properties": {
                 "storyboard_id": {"type": "string", "description": "分镜ID（单次仅支持一个）"},
                 "prompt_type": {"type": "string", "enum": ["video", "image"], "description": "提示词类型：video=视频提示词，image=图片提示词。默认 video。"},
-                "user_request": {"type": "string", "description": "用户本次的原始要求（如'重新生成视频提示词'、'把蓝色衣服改成红色，其余不变'）。子代理据此判断：含'生成'/'重新生成'则全新生成忽略已有；含'修改'/'调整'/'改成'则在现有提示词基础上精准修改，保留未涉及部分。"},
+                "user_request": {"type": "string", "description": "生成指令（如'重新生成视频提示词，强化光影'）。仅用于全新生成，不含修改语义。"},
                 "storyboard_description": {"type": "string", "description": "可选：覆盖分镜 description 参与本次生成（不写回 description）"},
                 "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成（仅 video）"},
                 "action": {"type": "string", "description": "可选：覆盖分镜 action 参与本次生成（仅 video）"},
