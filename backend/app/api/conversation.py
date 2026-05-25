@@ -90,7 +90,8 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
         if not style_cfg.get("enabled", True):
             return ""
         preset_id = style_cfg.get("preset_id", "none")
-        custom = style_cfg.get("custom_suffix", "").strip()
+        custom_suffix = style_cfg.get("custom_suffix", "")
+        custom = custom_suffix.strip() if isinstance(custom_suffix, str) else ""
         if preset_id == "custom":
             return custom
         elif preset_id != "none":

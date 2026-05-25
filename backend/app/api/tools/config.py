@@ -18,6 +18,8 @@ async def handle_update_project_config(project_id: str, parameters: Dict) -> Dic
         ALLOWED_PATHS = {"video_style.custom_suffix", "image_style.custom_suffix", "global_style", "prompt_language"}
         if path not in ALLOWED_PATHS:
             return {"success": False, "error": f"不允许修改路径 '{path}'，只允许：{', '.join(sorted(ALLOWED_PATHS))}"}
+        if not isinstance(value, str):
+            return {"success": False, "error": f"value 必须是字符串，实际收到类型: {type(value).__name__}。请直接将风格描述写成自然语言字符串，不要用 JSON 对象。"}
         ai_cfg = proj.get("ai_config", {})
         global_style = normalize_global_style_config(ai_cfg.get("global_style_config"))
 

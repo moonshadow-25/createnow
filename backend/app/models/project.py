@@ -49,6 +49,8 @@ def normalize_global_style_config(raw: Any) -> Dict[str, Any]:
             base["custom_presets"] = []
         if not isinstance(base.get("active_custom_id"), str):
             base["active_custom_id"] = ""
+        if not isinstance(base.get("custom_suffix"), str):
+            base["custom_suffix"] = ""
         normalized[key] = base
 
     if not isinstance(normalized.get("prompt_language"), str) or not normalized["prompt_language"].strip():
