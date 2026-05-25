@@ -44,7 +44,11 @@ function DebugPromptModal({ projectId, episodeId, tabName, onClose }: DebugPromp
     fetch(`/api/projects/${projectId}/chat/debug-prompt?${params}`, {
       headers: _token ? { Authorization: `Bearer ${_token}` } : {},
     })
-      .then(r => r.json())
+      .then(async r => {
+        const text = await r.text();
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${text}`);
+        return JSON.parse(text);
+      })
       .then(d => { setData(d); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, [projectId, episodeId, tabName]);

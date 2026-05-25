@@ -570,5 +570,9 @@ async def debug_prompt(project_id: str, episode_id: Optional[str] = None, tab_na
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     ai_config = project.get("ai_config", {})
-    system_prompt, tools_desc = _build_system_prompt(project, ai_config, episode_id)
+    try:
+        system_prompt, tools_desc = _build_system_prompt(project, ai_config, episode_id)
+    except Exception as e:
+        logger.exception(f"debug-prompt failed for project={project_id}")
+        raise HTTPException(status_code=500, detail=f"构建提示词失败: {type(e).__name__}: {e}")
     return {"system_prompt": system_prompt, "tools_desc": tools_desc}
