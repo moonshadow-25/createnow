@@ -95,7 +95,7 @@ function DebugPromptModal({ projectId, episodeId, tabName, onClose }: DebugPromp
         </div>
         <div className="flex-1 overflow-auto p-4 min-h-0">
           {loading && <p className="text-gray-400 text-sm">加载中...</p>}
-          {error && <p className="text-red-400 text-sm">错误: {error}</p>}
+          {error && <pre className="text-xs text-red-400 whitespace-pre-wrap font-mono leading-relaxed">错误: {error}</pre>}
           {content && (
             <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">{content}</pre>
           )}

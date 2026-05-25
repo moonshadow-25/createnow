@@ -573,6 +573,8 @@ async def debug_prompt(project_id: str, episode_id: Optional[str] = None, tab_na
     try:
         system_prompt, tools_desc = _build_system_prompt(project, ai_config, episode_id)
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         logger.exception(f"debug-prompt failed for project={project_id}")
-        raise HTTPException(status_code=500, detail=f"构建提示词失败: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"构建提示词失败: {type(e).__name__}: {e}\n\n{tb}")
     return {"system_prompt": system_prompt, "tools_desc": tools_desc}
