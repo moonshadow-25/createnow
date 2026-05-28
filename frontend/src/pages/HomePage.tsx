@@ -11,12 +11,23 @@ import { AdminUserPanel } from '@/components/auth/AdminUserPanel';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { ProjectEditModal } from '@/components/project/ProjectEditModal';
 import { ProjectRatingModal } from '@/components/project/ProjectRatingModal';
+import { ProjectParticipantsModal } from '@/components/project/ProjectParticipantsModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
 import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2 } from 'lucide-react';
-import { adminAuthApi, versionApi } from '@/services/api';
+import { adminAuthApi, adminUserApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
 import { CostDashboard } from '@/components/dashboard/CostDashboard';
+
+interface ParticipantUser {
+  id: string;
+  username: string;
+  role: string;
+  display_name: string;
+  last_login_at: string | null;
+  assigned_project_ids: string[];
+  readonly?: boolean;
+}
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -31,12 +42,14 @@ export default function HomePage() {
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewingRatingProject, setViewingRatingProject] = useState<Project | null>(null);
+  const [participantsProject, setParticipantsProject] = useState<Project | null>(null);
+  const [participants, setParticipants] = useState<ParticipantUser[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsError, setParticipantsError] = useState('');
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
-  const [deployMode, setDeployMode] = useState<'selfhosted' | 'saas'>('selfhosted');
-  const [hideCostForSubaccounts, setHideCostForSubaccounts] = useState(false);
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -75,23 +88,6 @@ export default function HomePage() {
       fetchProjects();
     }
   }, [saasAuth.isAuthenticated, isAuthenticated, fetchProjects]);
-
-  useEffect(() => {
-    versionApi.getFrontendConfig()
-      .then((r) => {
-        const mode = r.data?.deploy_mode === 'saas' ? 'saas' : 'selfhosted';
-        setDeployMode(mode);
-        setHideCostForSubaccounts(!!r.data?.hide_cost_for_subaccounts);
-      })
-      .catch(() => {
-        setDeployMode('selfhosted');
-        setHideCostForSubaccounts(false);
-      });
-  }, []);
-
-  const isSubaccount = !isSaasUser && adminRole === 'user';
-  const shouldHideCost = isSaasUser || (deployMode === 'selfhosted' && isSubaccount && hideCostForSubaccounts);
-  const shouldShowPointsInHideMode = deployMode === 'selfhosted' && isSubaccount && hideCostForSubaccounts;
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -171,6 +167,31 @@ export default function HomePage() {
   const handleEditSaved = async () => {
     setEditingProject(null);
     fetchProjects();
+  };
+
+  const handleViewParticipants = async (project: Project) => {
+    setParticipantsProject(project);
+    setParticipants([]);
+    setParticipantsError('');
+    setParticipantsLoading(true);
+    try {
+      const response = await adminUserApi.list();
+      const users = (response.data as ParticipantUser[]).filter((user) =>
+        (user.assigned_project_ids || []).includes(project.project_id)
+      );
+      setParticipants(users);
+    } catch {
+      setParticipantsError('加载参与者失败');
+    } finally {
+      setParticipantsLoading(false);
+    }
+  };
+
+  const handleCloseParticipants = () => {
+    setParticipantsProject(null);
+    setParticipants([]);
+    setParticipantsError('');
+    setParticipantsLoading(false);
   };
 
   return (
@@ -340,11 +361,10 @@ export default function HomePage() {
                   project={project}
                   stats={project.stats}
                   isAdmin={isAdmin}
-                  hideCost={shouldHideCost}
-                  showPointsInHideMode={shouldShowPointsInHideMode}
                   onOpen={() => handleOpenProject(project)}
                   onDelete={() => handleDeleteProject(project.project_id)}
                   onEdit={() => setEditingProject(project)}
+                  onViewParticipants={isAdmin && !isSaasUser ? () => handleViewParticipants(project) : undefined}
                   onViewRating={!isAdmin && !isSaasUser ? () => setViewingRatingProject(project) : undefined}
                 />
               ))}
@@ -378,6 +398,15 @@ export default function HomePage() {
         <ProjectRatingModal
           project={viewingRatingProject}
           onClose={() => setViewingRatingProject(null)}
+        />
+      )}
+      {participantsProject && (
+        <ProjectParticipantsModal
+          project={participantsProject}
+          participants={participants}
+          loading={participantsLoading}
+          error={participantsError}
+          onClose={handleCloseParticipants}
         />
       )}
       {showChangePwd && (

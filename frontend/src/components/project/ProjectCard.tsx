@@ -1,7 +1,7 @@
-import { FolderOpen, Trash2, Pencil, Lock, Star } from 'lucide-react';
+import { FolderOpen, Trash2, Pencil, Lock, Star, Users } from 'lucide-react';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
-import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC, toPoints } from '@/constants/pricing';
+import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 
 interface ProjectStats {
   episode_count: number;
@@ -20,25 +20,11 @@ interface Props {
   project: Project;
   stats: ProjectStats | null | undefined;
   isAdmin: boolean;
-  hideCost?: boolean;
-  showPointsInHideMode?: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onEdit: () => void;
   onViewRating?: () => void;
-}
-
-function computePoints(stats: ProjectStats) {
-  const videoCost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds);
-  const totalCost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + videoCost);
-  const imageCost = stats.total_compute_spent != null
-    ? totalCost - videoCost
-    : DEFAULT_IMAGE_COST * stats.total_images;
-  return {
-    imagePoints: toPoints(imageCost),
-    videoPoints: toPoints(videoCost),
-    totalPoints: toPoints(totalCost),
-  };
+  onViewParticipants?: () => void;
 }
 
 function computeMetrics(project: Project, stats: ProjectStats) {
@@ -128,7 +114,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
   };
 }
 
-export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPointsInHideMode = false, onOpen, onDelete, onEdit, onViewRating }: Props) {
+export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit, onViewRating, onViewParticipants }: Props) {
   const configured = (project.total_episodes ?? 0) > 0;
   const appearanceMode = useThemeStore(s => s.appearanceMode);
   const isVipMode = appearanceMode === 'vip';
@@ -140,8 +126,8 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
     const isLocked = !!(project.budget_total != null && stats && totalCost >= project.budget_total);
     const videoMinutes = stats ? stats.total_video_seconds / 60 : 0;
     const budgetText = project.budget_total != null
-      ? `${totalCost.toFixed(0)}元/${project.budget_total.toFixed(0)}元`
-      : `${totalCost.toFixed(0)}元`;
+      ? `${Math.round(totalCost)}积分/${Math.round(project.budget_total)}积分`
+      : `${Math.round(totalCost)}积分`;
 
     return (
       <div className="min-h-[236px] rounded-2xl px-4 py-4 flex flex-col relative overflow-hidden border border-[#786135]/45 shadow-[0_18px_40px_rgba(0,0,0,0.55)] bg-[linear-gradient(155deg,#14171d_0%,#11141a_48%,#1a1710_100%)]">
@@ -159,6 +145,11 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
             {onViewRating && (
               <button onClick={e => { e.stopPropagation(); onViewRating(); }} className="text-yellow-400 hover:text-yellow-200 p-1" title="查看评分">
                 <Star size={13} />
+              </button>
+            )}
+            {isAdmin && onViewParticipants && (
+              <button onClick={e => { e.stopPropagation(); onViewParticipants(); }} className="text-gray-400 hover:text-cyan-300 p-1" title="查看参与者">
+                <Users size={13} />
               </button>
             )}
             {isAdmin && (
@@ -192,11 +183,8 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
         <div className="relative z-10 mt-auto flex items-end justify-between gap-3 pt-4">
           <div className="space-y-1">
             <div className="text-[11px] text-gray-400">{new Date(project.created_at).toLocaleDateString()}</div>
-            {!hideCost && stats && (
+            {stats && (
               <div className={`text-xs font-mono ${isLocked ? 'text-red-300' : 'text-[#e8cc87]'}`}>{budgetText}</div>
-            )}
-            {hideCost && showPointsInHideMode && stats && (
-              <div className="text-xs font-mono text-[#e8cc87]">{computePoints(stats).totalPoints}积分</div>
             )}
           </div>
           <button
@@ -218,7 +206,7 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
       <div className="flex justify-between items-start">
         <h3 className="text-xl font-semibold flex-1 mr-2 truncate">{project.name}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {!hideCost && project.budget_total != null && stats &&
+          {project.budget_total != null && stats &&
             ((stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + (stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds)))) >= project.budget_total) && (
             <span title="预算已超出，API已锁定" className="text-red-400">
               <Lock size={14} />
@@ -231,6 +219,15 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
               title="查看评分"
             >
               <Star size={15} />
+            </button>
+          )}
+          {isAdmin && onViewParticipants && (
+            <button
+              onClick={e => { e.stopPropagation(); onViewParticipants(); }}
+              className="text-gray-400 hover:text-cyan-300 p-1"
+              title="查看参与者"
+            >
+              <Users size={15} />
             </button>
           )}
           {isAdmin && (
@@ -263,14 +260,14 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
         ) : stats === null ? (
           <p className="text-xs text-red-400">统计加载失败</p>
         ) : (
-          <StatsSection project={project} stats={stats} hideCost={hideCost} showPointsInHideMode={showPointsInHideMode} />
+          <StatsSection project={project} stats={stats} />
         )
       ) : (
         <>
           {stats === undefined ? (
             <div className="h-3 bg-gray-700 rounded animate-pulse w-1/2" />
           ) : stats ? (
-            <CostOnlySection project={project} stats={stats} hideCost={hideCost} showPointsInHideMode={showPointsInHideMode} />
+            <CostOnlySection project={project} stats={stats} />
           ) : null}
           <span className="text-xs text-gray-500 italic">未配置项目参数</span>
         </>
@@ -287,38 +284,20 @@ export function ProjectCard({ project, stats, isAdmin, hideCost = false, showPoi
   );
 }
 
-function CostOnlySection({ project, stats, hideCost, showPointsInHideMode }: { project: Project; stats: ProjectStats; hideCost?: boolean; showPointsInHideMode?: boolean }) {
+function CostOnlySection({ project, stats }: { project: Project; stats: ProjectStats }) {
   const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds);
   const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + video_cost);
   const image_cost = stats.total_compute_spent != null
     ? total_cost - video_cost
     : DEFAULT_IMAGE_COST * stats.total_images;
-  const points = computePoints(stats);
   return (
     <div className="space-y-1 text-xs">
       <div className="flex justify-between text-gray-500">
-        {hideCost ? (
-          showPointsInHideMode ? (
-            <>
-              <span>图片 {points.imagePoints}积分</span>
-              <span>视频 {points.videoPoints}积分</span>
-              <span className="font-mono">共 {points.totalPoints}积分</span>
-            </>
-          ) : (
-            <>
-              <span>图片 {stats.total_images}张</span>
-              <span>视频 {Math.round(stats.total_video_seconds)}秒</span>
-            </>
-          )
-        ) : (
-          <>
-            <span>图片 {stats.total_images}张: {Math.round(image_cost)}元</span>
-            <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}元</span>
-            <span className="font-mono">共 {total_cost.toFixed(2)}元</span>
-          </>
-        )}
+        <span>图片 {stats.total_images}张: {Math.round(image_cost)}积分</span>
+        <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}积分</span>
+        <span className="font-mono">共 {Math.round(total_cost)}积分</span>
       </div>
-      {!hideCost && project.budget_total != null && (() => {
+      {project.budget_total != null && (() => {
         const spent = total_cost;
         const total = project.budget_total;
         const pct = Math.min(spent / total, 1);
@@ -328,7 +307,7 @@ function CostOnlySection({ project, stats, hideCost, showPointsInHideMode }: { p
             <div className="flex justify-between text-gray-400">
               <span>预算</span>
               <span className={isLocked ? 'text-red-400 font-semibold' : ''}>
-                {spent.toFixed(2)} / {total.toFixed(2)}
+                {Math.round(spent)} / {Math.round(total)}
                 {isLocked && ' · 已锁定'}
               </span>
             </div>
@@ -344,9 +323,8 @@ function CostOnlySection({ project, stats, hideCost, showPointsInHideMode }: { p
     </div>
   );
 }
-function StatsSection({ project, stats, hideCost, showPointsInHideMode }: { project: Project; stats: ProjectStats; hideCost?: boolean; showPointsInHideMode?: boolean }) {
+function StatsSection({ project, stats }: { project: Project; stats: ProjectStats }) {
   const m = computeMetrics(project, stats);
-  const points = computePoints(stats);
 
   return (
     <div className="space-y-2 text-xs">
@@ -376,30 +354,15 @@ function StatsSection({ project, stats, hideCost, showPointsInHideMode }: { proj
         </div>
       </div>
 
-      {hideCost ? (
-        showPointsInHideMode ? (
-          <div className="flex justify-between text-gray-500">
-            <span>图片 {points.imagePoints}积分</span>
-            <span>视频 {points.videoPoints}积分</span>
-            <span className="font-mono">共 {points.totalPoints}积分</span>
-          </div>
-        ) : (
-          <div className="flex justify-between text-gray-500">
-            <span>图片 {m.total_images}张</span>
-            <span>视频 {Math.round(m.total_video_seconds)}秒</span>
-          </div>
-        )
-      ) : (
-        <div className="flex justify-between text-gray-500">
-          <span>图片 {m.total_images}张: {Math.round(m.image_cost)}元</span>
-          <span>视频 {Math.round(m.total_video_seconds)}秒: {Math.round(m.video_cost)}元</span>
-          <span className={`font-mono ${m.costColor}`}>
-            {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}元/分钟` : '—'}
-          </span>
-        </div>
-      )}
+      <div className="flex justify-between text-gray-500">
+        <span>图片 {m.total_images}张: {Math.round(m.image_cost)}积分</span>
+        <span>视频 {Math.round(m.total_video_seconds)}秒: {Math.round(m.video_cost)}积分</span>
+        <span className={`font-mono ${m.costColor}`}>
+          {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}积分/分钟` : '—'}
+        </span>
+      </div>
 
-      {!hideCost && project.budget_total != null && (() => {
+      {project.budget_total != null && (() => {
         const spent = m.image_cost + m.video_cost;
         const total = project.budget_total;
         const pct = Math.min(spent / total, 1);
@@ -409,7 +372,7 @@ function StatsSection({ project, stats, hideCost, showPointsInHideMode }: { proj
             <div className="flex justify-between text-gray-400">
               <span>预算</span>
               <span className={isLocked ? 'text-red-400 font-semibold' : ''}>
-                {spent.toFixed(2)} / {total.toFixed(2)}
+                {Math.round(spent)} / {Math.round(total)}
                 {isLocked && ' · 已锁定'}
               </span>
             </div>
