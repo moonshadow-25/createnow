@@ -10,10 +10,12 @@ interface ProjectStats {
   storyboards_with_video: number;
   total_images: number;
   generated_images?: number;
+  total_image_cost?: number;
   total_video_seconds: number;
   storyboard_video_seconds: number;
   total_video_compute_units?: number;
   storyboard_video_compute_units?: number;
+  other_cost?: number;
   total_compute_spent?: number;
 }
 
@@ -26,6 +28,10 @@ interface Props {
   onEdit: () => void;
   onViewRating?: () => void;
   onViewParticipants?: () => void;
+}
+
+function formatWanCredits(n: number) {
+  return `${(n / 10000).toFixed(2)}万积分`;
 }
 
 function computeMetrics(project: Project, stats: ProjectStats) {
@@ -57,11 +63,9 @@ function computeMetrics(project: Project, stats: ProjectStats) {
         )
       : 0;
 
-  const video_cost = (stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * total_video_seconds));
-  const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * total_images + video_cost);
-  const image_cost = stats.total_compute_spent != null
-    ? total_cost - video_cost
-    : DEFAULT_IMAGE_COST * total_images;
+  const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * total_video_seconds);
+  const image_cost = stats.total_image_cost ?? (DEFAULT_IMAGE_COST * total_images);
+  const other_cost = stats.other_cost ?? 0;
   const completed_episodes = greenPct * episode_count;
   const greenBarPct = total_episodes > 0 ? completed_episodes / total_episodes : 0;
   let cost_per_minute: number | null = null;
@@ -110,6 +114,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     total_episodes,
     image_cost,
     video_cost,
+    other_cost,
     completed_minutes,
     total_images,
     generated_images,
@@ -288,17 +293,17 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit,
 }
 
 function CostOnlySection({ project, stats }: { project: Project; stats: ProjectStats }) {
-  const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds);
-  const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * stats.total_images + video_cost);
-  const image_cost = stats.total_compute_spent != null
-    ? total_cost - video_cost
-    : DEFAULT_IMAGE_COST * stats.total_images;
+  const total_cost = stats.total_compute_spent ?? (
+    (stats.total_image_cost ?? (DEFAULT_IMAGE_COST * stats.total_images)) +
+    (stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds)) +
+    (stats.other_cost ?? 0)
+  );
   return (
     <div className="space-y-1 text-xs">
       <div className="flex justify-between text-gray-500">
-        <span>生成图 {stats.generated_images ?? stats.total_images}张: {Math.round(image_cost)}积分</span>
-        <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}积分</span>
-        <span className="font-mono">共 {Math.round(total_cost)}积分</span>
+        <span>生成图 {stats.generated_images ?? stats.total_images}张: {formatWanCredits(stats.total_image_cost ?? (DEFAULT_IMAGE_COST * stats.total_images))}</span>
+        <span>视频 {Math.round(stats.total_video_seconds)}秒: {formatWanCredits(stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * stats.total_video_seconds))}</span>
+        <span>其他: {formatWanCredits(stats.other_cost ?? 0)}</span>
       </div>
       {project.budget_total != null && (() => {
         const spent = total_cost;
@@ -358,11 +363,9 @@ function StatsSection({ project, stats }: { project: Project; stats: ProjectStat
       </div>
 
       <div className="flex justify-between text-gray-500">
-        <span>生成图 {m.generated_images}张: {Math.round(m.image_cost)}积分</span>
-        <span>视频 {Math.round(m.total_video_seconds)}秒: {Math.round(m.video_cost)}积分</span>
-        <span className={`font-mono ${m.costColor}`}>
-          {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}积分/分钟` : '—'}
-        </span>
+        <span>生成图 {m.generated_images}张: {formatWanCredits(m.image_cost)}</span>
+        <span>视频 {Math.round(m.total_video_seconds)}秒: {formatWanCredits(m.video_cost)}</span>
+        <span>其他: {formatWanCredits(m.other_cost)}</span>
       </div>
 
       {project.budget_total != null && (() => {

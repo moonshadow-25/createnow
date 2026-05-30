@@ -74,6 +74,7 @@ def _build_project_stats(project_id: str) -> dict:
         "storyboards_with_video": len(completed_storyboard_ids),
         "total_images": total_images,
         "generated_images": generated_images,
+        "total_image_cost": round(total_image_cost, 2),
         "total_video_seconds": total_video_seconds,
         "storyboard_video_seconds": storyboard_video_seconds,
         "total_video_compute_units": total_video_compute_units,
