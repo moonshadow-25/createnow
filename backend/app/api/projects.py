@@ -224,7 +224,7 @@ async def create_project(request: Request, project: ProjectCreate):
     return result
 
 
-@router.get("", response_model=List[dict])
+@router.get("")
 async def list_projects(request: Request, include_stats: bool = Query(False)):
     """列出所有项目"""
     # SaaS 模式：只列出当前用户的项目
