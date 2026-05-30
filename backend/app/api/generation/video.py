@@ -23,7 +23,7 @@ from .template_helpers import get_active_template
 from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units, resolve_credits
 from app.core.context import get_current_user
 from app.models.project import normalize_global_style_config
-from app.core.pricing import DEFAULT_SUBTITLE_REMOVAL_COST
+from app.core.pricing import SUBTITLE_REMOVAL_COST_PER_SECOND
 
 logger = logging.getLogger(__name__)
 
@@ -834,7 +834,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
         "resolution": "",
         "ratio": "",
         "estimated_cost": 0,
-        "actual_cost": DEFAULT_SUBTITLE_REMOVAL_COST,
+        "actual_cost": 0,
         "model": settings.CREATENOW_SUBTITLE_MODEL_ID,
         "created_at": datetime.now().isoformat(),
         "created_by": get_current_user() or "",
@@ -1001,6 +1001,15 @@ async def poll_video_status(project_id: str, video_id: str):
             video_record["video_path"] = poll_result.get("video_url")
             video_record["enhanced_prompt"] = poll_result.get("enhanced_prompt", "")
             video_record["error"] = None
+
+            if operation_type == "subtitle_removal":
+                source_duration = video_record.get("duration") or 0
+                poll_duration = poll_result.get("duration") or poll_result.get("video_duration") or 0
+                resolved_duration = float(poll_duration or source_duration or 0)
+                video_record["duration"] = resolved_duration
+                video_record["estimated_cost"] = round(resolved_duration * SUBTITLE_REMOVAL_COST_PER_SECOND, 2)
+                video_record["actual_cost"] = round(resolved_duration * SUBTITLE_REMOVAL_COST_PER_SECOND, 2)
+                video_record["credits_consumed"] = round(resolved_duration * SUBTITLE_REMOVAL_COST_PER_SECOND, 2)
 
             # 若平台返回实际消耗，回填 actual_cost
             platform_credits = poll_result.get("credits_consumed")
