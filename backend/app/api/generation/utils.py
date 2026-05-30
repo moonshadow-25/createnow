@@ -8,6 +8,7 @@ from app.core.pricing import (
     DEFAULT_IMAGE_COST,
     DEFAULT_VIDEO_PRICES as VIDEO_RESOLUTION_PRICES,
     ZERO_COST_MODELS,
+    LEGACY_RMB_TO_CREDITS,
 )
 
 LEGACY_RESOLUTION_MAP = {
@@ -53,6 +54,12 @@ def calc_video_compute_units(duration: float, resolution: str | None) -> float:
     return float(duration or 0) * get_video_unit_price(resolution)
 
 
+def resolve_credits(result: dict, default: float) -> int:
+    """从生成结果中提取平台积分（x-credits-consumed 响应头），无则返回默认值"""
+    cc = result.get("credits_consumed")
+    return int(cc) if cc is not None else int(default)
+
+
 def _get_projects_dir():
     from app.core.config import settings
     data_root = get_current_data_root()
@@ -62,23 +69,37 @@ def _get_projects_dir():
 
 
 def get_image_cost(img: dict) -> float:
-    """计算单张图片的实际消耗（优先 actual_cost，回退到常量，不计费模型返回0）"""
+    """计算单张图片的实际消耗（积分）。
+
+    优先级：credits_consumed（新记录，已是积分）→ actual_cost×200（旧记录RMB）→ 常量
+    """
+    cc = img.get("credits_consumed")
+    if cc is not None:
+        return float(cc)
     actual = img.get("actual_cost")
     if actual is not None:
-        return float(actual)
+        if img.get("model") in ZERO_COST_MODELS:
+            return 0
+        return float(actual) * LEGACY_RMB_TO_CREDITS
     if img.get("model") in ZERO_COST_MODELS:
         return 0
-    return DEFAULT_IMAGE_COST
+    return float(DEFAULT_IMAGE_COST)
 
 
 def get_video_cost(v: dict) -> float:
-    """计算单个视频的实际消耗（优先 actual_cost → estimated_cost → 常量计算）"""
+    """计算单个视频的实际消耗（积分）。
+
+    优先级：credits_consumed（新记录）→ actual_cost×200（旧记录RMB）→ estimated_cost×200 → 常量计算
+    """
+    cc = v.get("credits_consumed")
+    if cc is not None:
+        return float(cc)
     actual = v.get("actual_cost")
     if actual is not None:
-        return float(actual)
+        return float(actual) * LEGACY_RMB_TO_CREDITS
     estimated = v.get("estimated_cost")
     if estimated is not None:
-        return float(estimated)
+        return float(estimated) * LEGACY_RMB_TO_CREDITS
     return calc_video_compute_units(v.get("duration") or 0, v.get("resolution"))
 
 
@@ -106,8 +127,7 @@ def check_project_budget(project: dict) -> None:
         for vf in videos_dir.glob("*.json"):
             with open(vf, encoding="utf-8") as f:
                 v = _json.load(f)
-            if v.get("status") == "completed":
-                total_video_cost += get_video_cost(v)
+            total_video_cost += get_video_cost(v)
 
     budget_spent = round(total_image_cost + total_video_cost, 2)
     if budget_spent >= budget_total:

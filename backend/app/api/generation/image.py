@@ -20,7 +20,7 @@ from .models import (
     FusionImageRequest,
     VLMAnalyzeRequest,
 )
-from .utils import parse_size, check_project_budget
+from .utils import parse_size, check_project_budget, resolve_credits
 from app.core.context import get_current_user
 from .templates import DEFAULT_PROMPT_TEMPLATES
 from .template_helpers import get_active_template
@@ -200,7 +200,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                 "prompt": prompt, "negative_prompt": negative_prompt,
                 "width": width, "height": height, "image_path": image_url,
                 "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-                "actual_cost": DEFAULT_IMAGE_COST,
+                "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
             }
@@ -235,7 +235,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
             "prompt": prompt, "negative_prompt": negative_prompt,
             "width": width, "height": height, "image_path": image_url,
             "model": ai_config.get("image", {}).get("model", "dall-e-3"),
-            "actual_cost": DEFAULT_IMAGE_COST,
+            "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
         }
@@ -392,7 +392,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                 "asset_id": asset_id, "asset_type": asset_type,
                 "prompt": prompt, "negative_prompt": "",
                 "width": width, "height": height, "image_path": image_url,
-                "model": model, "actual_cost": DEFAULT_IMAGE_COST,
+                "model": model, "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
             }
@@ -426,7 +426,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             "asset_id": asset_id, "asset_type": asset_type,
             "prompt": prompt, "negative_prompt": "",
             "width": width, "height": height, "image_path": image_url,
-            "model": model, "actual_cost": DEFAULT_IMAGE_COST,
+            "model": model, "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
         }
@@ -734,7 +734,7 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
                 "height": height,
                 "image_path": image_url,
                 "model": model,
-                "actual_cost": DEFAULT_IMAGE_COST,
+                "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
             }

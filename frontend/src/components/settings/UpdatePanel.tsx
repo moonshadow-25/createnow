@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { versionApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { useThemeStore } from '@/store/themeStore';
-import { useAdminAuthStore } from '@/store/adminAuthStore';
 
 interface VersionInfo {
   version: string;
@@ -15,30 +14,15 @@ type State = 'idle' | 'checking' | 'up_to_date' | 'has_update' | 'updating' | 'e
 export function UpdatePanel() {
   const { toast } = useToast();
   const { appearanceMode, toggleAppearanceMode } = useThemeStore();
-  const { role } = useAdminAuthStore();
   const [state, setState] = useState<State>('idle');
   const [localVersion, setLocalVersion] = useState<string>('');
   const [remoteInfo, setRemoteInfo] = useState<VersionInfo | null>(null);
   const [error, setError] = useState<string>('');
-  const [deployMode, setDeployMode] = useState<'selfhosted' | 'saas' | null>(null);
-  const [hideCostForSubaccounts, setHideCostForSubaccounts] = useState(false);
-  const [savingCostVisibility, setSavingCostVisibility] = useState(false);
 
   useEffect(() => {
     versionApi.getLocalVersion()
       .then(r => setLocalVersion(r.data.version || 'unknown'))
       .catch(() => setLocalVersion('unknown'));
-
-    versionApi.getFrontendConfig()
-      .then(r => {
-        const mode = r.data?.deploy_mode === 'saas' ? 'saas' : 'selfhosted';
-        setDeployMode(mode);
-        setHideCostForSubaccounts(!!r.data?.hide_cost_for_subaccounts);
-      })
-      .catch(() => {
-        setDeployMode('selfhosted');
-        setHideCostForSubaccounts(false);
-      });
   }, []);
 
   const handleCheck = async () => {
@@ -68,21 +52,6 @@ export function UpdatePanel() {
     }
   };
 
-  const handleToggleCostVisibility = async () => {
-    const next = !hideCostForSubaccounts;
-    setSavingCostVisibility(true);
-    try {
-      await versionApi.updateUiConfig({ hide_cost_for_subaccounts: next });
-      setHideCostForSubaccounts(next);
-      toast(next ? '已隐藏子账号花费' : '已恢复子账号花费可见', 'success');
-    } catch (e: any) {
-      toast(e?.response?.data?.detail || '保存失败', 'error');
-    } finally {
-      setSavingCostVisibility(false);
-    }
-  };
-
-  const canManageCostVisibility = role === 'admin' && deployMode === 'selfhosted';
 
   return (
     <div className="p-6 flex flex-col gap-5 max-w-lg">
@@ -101,28 +70,6 @@ export function UpdatePanel() {
           {appearanceMode === 'classic' ? 'Classic' : 'VIP'}
         </button>
       </div>
-
-      {canManageCostVisibility && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-xs text-gray-400 mb-2">子账号花费可见性</div>
-          <button
-            onClick={handleToggleCostVisibility}
-            disabled={savingCostVisibility}
-            className={`px-3 py-1.5 rounded text-sm transition disabled:opacity-50 ${
-              hideCostForSubaccounts
-                ? 'bg-yellow-700 hover:bg-yellow-600 text-white'
-                : 'bg-green-700 hover:bg-green-600 text-white'
-            }`}
-          >
-            {savingCostVisibility
-              ? '保存中...'
-              : (hideCostForSubaccounts ? '当前：子账号隐藏花费（点击改为可见）' : '当前：子账号可见花费（点击改为隐藏）')}
-          </button>
-          <p className="text-xs text-gray-500 mt-2">
-            关闭后，子账号首页展示将与 SaaS 模式一致，仅显示时间与图片/视频数量。
-          </p>
-        </div>
-      )}
 
       <div className="flex flex-col gap-3">
         {state !== 'updating' && (

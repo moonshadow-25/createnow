@@ -14,6 +14,12 @@ from app.services.ai.utils.image_processor import ImageProcessor
 logger = logging.getLogger(__name__)
 
 
+def _get_dict(d: dict, key: str) -> dict:
+    v = d.get(key)
+    return v if isinstance(v, dict) else {}
+
+
+
 class DashScopeImageAdapter(ImageAdapter):
     """阿里百炼图像生成适配器"""
 
@@ -110,11 +116,11 @@ class DashScopeImageAdapter(ImageAdapter):
                 }
 
             # DashScope返回格式: output.results[0].url
-            image_url = data.get("output", {}).get("results", [{}])[0].get("url")
+            image_url = _get_dict(data, "output").get("results", [{}])[0].get("url")
 
             if not image_url:
                 # 可能是异步任务，返回task_id
-                task_id = data.get("output", {}).get("task_id")
+                task_id = _get_dict(data, "output").get("task_id")
                 if task_id:
                     return {
                         "success": True,
@@ -142,7 +148,8 @@ class DashScopeImageAdapter(ImageAdapter):
                 "success": True,
                 "image_url": image_url,
                 "revised_prompt": prompt,
-                "raw_response": data
+                "raw_response": data,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
             }
 
         except Exception as e:
@@ -321,7 +328,8 @@ class DashScopeImageAdapter(ImageAdapter):
                 "success": True,
                 "image_url": image_url,
                 "revised_prompt": prompt,
-                "response": response_json
+                "response": response_json,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
             }
 
         except Exception as e:
@@ -432,7 +440,7 @@ class DashScopeVideoAdapter(VideoAdapter):
 
             # 检测错误
             if "error" in data or data.get("code"):
-                error_msg = data.get("message") or data.get("error", {}).get("message", "Unknown error")
+                error_msg = data.get("message") or _get_dict(data, "error").get("message", "Unknown error")
                 logger.error(f"DashScope video API returned error: code={data.get('code')}, message={error_msg}")
 
                 self._log(
@@ -457,8 +465,8 @@ class DashScopeVideoAdapter(VideoAdapter):
                 }
 
             # DashScope响应格式: output.task_id, output.task_status
-            task_id = data.get("output", {}).get("task_id")
-            task_status = data.get("output", {}).get("task_status")
+            task_id = _get_dict(data, "output").get("task_id")
+            task_status = _get_dict(data, "output").get("task_status")
 
             if not task_id:
                 logger.error(f"DashScope video API returned no task_id: {data}")
@@ -503,6 +511,7 @@ class DashScopeVideoAdapter(VideoAdapter):
                 "success": True,
                 "task_id": task_id,
                 "status": normalized_status,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
                 "raw_create_response": {
                     "request": request_info,
                     "api_response": data
@@ -571,7 +580,7 @@ class DashScopeVideoAdapter(VideoAdapter):
             data = response.json()
 
             # DashScope状态: PENDING, RUNNING, SUCCEEDED, FAILED
-            output = data.get("output", {})
+            output = _get_dict(data, "output")
             task_status = output.get("task_status", "PENDING")
 
             logger.info(f"DashScope poll video task {task_id}: status={task_status}")
@@ -593,6 +602,7 @@ class DashScopeVideoAdapter(VideoAdapter):
                     "status": "completed",
                     "video_url": video_url,
                     "task_id": task_id,
+                    "credits_consumed": response.headers.get("x-credits-consumed"),
                     "raw_poll_response": data
                 }
             elif task_status == "FAILED":

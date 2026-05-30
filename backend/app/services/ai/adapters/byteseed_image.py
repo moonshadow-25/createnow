@@ -151,7 +151,8 @@ class ByteSeedImageAdapter(ImageAdapter):
                 "success": True,
                 "image_url": images[0]["url"],  # 第一张图（向后兼容）
                 "revised_prompt": prompt,
-                "raw_response": data
+                "raw_response": data,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
             }
 
             # 如果有多张图，添加 images 字段
@@ -316,7 +317,8 @@ class ByteSeedImageAdapter(ImageAdapter):
                 "success": True,
                 "image_url": images[0]["url"],  # 第一张图（向后兼容）
                 "revised_prompt": prompt,
-                "raw_response": data
+                "raw_response": data,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
             }
 
             # 如果有多张图，添加 images 字段

@@ -123,8 +123,13 @@ def _slice_episodes_by_lines(full_text: str, boundary_lines: List[int], line_pos
     prev_pos = line_positions[boundary_lines[0]]
 
     episodes = []
+    skipped = 0
     for i, cut_ln in enumerate(cut_lines):
-        cut_pos = line_positions[cut_ln]
+        cut_pos = line_positions.get(cut_ln)
+        if cut_pos is None:
+            logger.warning(f"[FullScriptService] line_positions missing key={cut_ln}")
+            skipped += 1
+            continue
         content = full_text[prev_pos:cut_pos].strip()
         if content:
             episodes.append({
@@ -132,7 +137,13 @@ def _slice_episodes_by_lines(full_text: str, boundary_lines: List[int], line_pos
                 "title": f"第{i + 1}集",
                 "content": content,
             })
+        else:
+            logger.warning(f"[FullScriptService] empty episode at i={i} cut_ln={cut_ln} prev_pos={prev_pos} cut_pos={cut_pos}")
+            skipped += 1
         prev_pos = cut_pos
+
+    if skipped:
+        logger.warning(f"[FullScriptService] skipped {skipped} episodes, kept {len(episodes)}")
 
     # 最后一集
     content = full_text[prev_pos:].strip()
@@ -335,7 +346,7 @@ async def split_and_extract(project_id: str, content: str, ai_config: Dict) -> D
 
 # ── 分块并发 LLM ──────────────────────────────────────────────────────────────
 
-async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str, prompt_key: str = "full_script_split_chunk") -> Dict:
+async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str, prompt_key: str = "full_script_split_chunk_boundary") -> Dict:
     """单个块的 LLM 调用。"""
     llm = get_ai_service(ai_config, "llm", project_id)
     try:
@@ -344,7 +355,7 @@ async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str, prom
             messages=[{"role": "user", "content": f"剧本片段：\n\n{chunk['text']}"}],
             system_prompt=prompt,
             temperature=0.1,
-            max_tokens=8192,
+            max_tokens=32768,
             extra_body={"thinking": {"type": "disabled"}},
         )
         if response.get("error"):
@@ -366,7 +377,7 @@ async def _process_one_chunk(chunk: Dict, ai_config: Dict, project_id: str, prom
         await llm.close()
 
 
-async def _split_chunks_parallel(project_id: str, chunks: List[Dict], ai_config: Dict, prompt_key: str = "full_script_split_chunk") -> List[Dict]:
+async def _split_chunks_parallel(project_id: str, chunks: List[Dict], ai_config: Dict, prompt_key: str = "full_script_split_chunk_boundary") -> List[Dict]:
     results = await asyncio.gather(*[
         _process_one_chunk(c, ai_config, project_id, prompt_key) for c in chunks
     ])
@@ -445,19 +456,18 @@ async def stream_split_and_extract(
             "content": f"剧本共 {len(content)} 字，拆分为 {len(chunks)} 块，并发分析中...",
         }
 
-        chunk_results = await _split_chunks_parallel(project_id, chunks, ai_config)
+        chunk_results = await _split_chunks_parallel(
+            project_id,
+            chunks,
+            ai_config,
+            prompt_key="full_script_split_chunk_boundary",
+        )
 
         total_boundaries = sum(len(cr.get("boundaries", [])) for cr in chunk_results)
-        raw_char_count = sum(
-            len(cr.get("assets", {}).get("characters", [])) +
-            len(cr.get("assets", {}).get("scenes", [])) +
-            len(cr.get("assets", {}).get("props", []))
-            for cr in chunk_results
-        )
         yield {
             "type": "status",
             "stage": "split",
-            "content": f"分块分析完成，发现 {total_boundaries} 个边界、{raw_char_count} 条原始资产",
+            "content": f"分块分析完成，发现 {total_boundaries} 个边界",
         }
 
         boundary_lines = _collect_boundaries(chunk_results)
@@ -471,9 +481,28 @@ async def stream_split_and_extract(
         split_result = _apply_episodes_to_project(project_id, episodes)
         yield {"type": "split_done", "split": split_result}
 
-        yield {"type": "status", "stage": "extract", "content": "开始汇总去重资产..."}
+        yield {"type": "status", "stage": "extract", "content": "开始提取资产..."}
 
-        merged_assets = await _merge_assets_master(project_id, chunk_results, ai_config)
+        extract_chunks = _chunk_text(content)
+        extract_chunk_results = await _split_chunks_parallel(
+            project_id,
+            extract_chunks,
+            ai_config,
+            prompt_key="full_script_extract_chunk",
+        )
+        raw_asset_count = sum(
+            len(cr.get("assets", {}).get("characters", [])) +
+            len(cr.get("assets", {}).get("scenes", [])) +
+            len(cr.get("assets", {}).get("props", []))
+            for cr in extract_chunk_results
+        )
+        yield {
+            "type": "status",
+            "stage": "extract",
+            "content": f"资产分块提取完成，发现 {raw_asset_count} 条原始资产，开始去重合并...",
+        }
+
+        merged_assets = await _merge_assets_master(project_id, extract_chunk_results, ai_config)
         extract_result = _apply_extract_parsed(project_id, merged_assets)
         yield {"type": "extract_done", "extract": extract_result}
 

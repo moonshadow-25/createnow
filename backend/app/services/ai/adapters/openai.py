@@ -16,6 +16,12 @@ from app.services.ai.utils.image_processor import ImageProcessor
 logger = logging.getLogger(__name__)
 
 
+def _get_dict(d: dict, key: str) -> dict:
+    v = d.get(key)
+    return v if isinstance(v, dict) else {}
+
+
+
 class OpenAIImageAdapter(ImageAdapter):
     """OpenAI 图像生成适配器"""
 
@@ -105,7 +111,8 @@ class OpenAIImageAdapter(ImageAdapter):
                 "success": True,
                 "image_url": image_url,
                 "revised_prompt": revised_prompt,
-                "raw_response": data
+                "raw_response": data,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
             }
 
         except Exception as e:
@@ -244,7 +251,8 @@ class OpenAIImageAdapter(ImageAdapter):
                 "success": True,
                 "image_url": image_url,
                 "revised_prompt": revised_prompt,
-                "raw_response": data
+                "raw_response": data,
+                "credits_consumed": response.headers.get("x-credits-consumed"),
             }
 
         except Exception as e:
@@ -351,7 +359,7 @@ class OpenAIVideoAdapter(VideoAdapter):
 
             # 检测API响应中是否包含错误
             if "error" in data:
-                error_msg = data.get("error", {}).get("message", "Unknown error")
+                error_msg = _get_dict(data, "error").get("message", "Unknown error")
                 self._log(
                     operation="video_generate_json",
                     url=url,
@@ -408,6 +416,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 "success": True,
                 "task_id": task_id,
                 "status": data.get("status", "pending"),
+                "credits_consumed": response.headers.get("x-credits-consumed"),
                 "raw_create_response": {
                     "request": {"url": url, "method": "POST", "content_type": "application/json", "payload": payload},
                     "api_response": data
@@ -491,7 +500,7 @@ class OpenAIVideoAdapter(VideoAdapter):
 
             # 检测错误
             if "error" in result:
-                error_msg = result.get("error", {}).get("message", "Unknown error")
+                error_msg = _get_dict(result, "error").get("message", "Unknown error")
                 self._log(
                     operation="video_generate_multipart",
                     url=url,
@@ -550,6 +559,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 "success": True,
                 "task_id": task_id,
                 "status": result.get("status", "pending"),
+                "credits_consumed": response.headers.get("x-credits-consumed"),
                 "raw_create_response": {
                     "request": {"url": url, "method": "POST", "content_type": "multipart/form-data", "params": request_params, "form_data": data},
                     "api_response": result
@@ -620,7 +630,7 @@ class OpenAIVideoAdapter(VideoAdapter):
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
 
             if "error" in data:
-                error_msg = data.get("error", {}).get("message", "Unknown error")
+                error_msg = _get_dict(data, "error").get("message", "Unknown error")
                 self._log(
                     operation="video_generate_json_multi",
                     url=url,
@@ -677,6 +687,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 "success": True,
                 "task_id": task_id,
                 "status": data.get("status", "pending"),
+                "credits_consumed": response.headers.get("x-credits-consumed"),
                 "raw_create_response": {
                     "request": {"url": url, "method": "POST", "payload": {**payload, "input_reference": f"[{len(image_urls)} images]"}},
                     "api_response": data
@@ -768,7 +779,7 @@ class OpenAIVideoAdapter(VideoAdapter):
 
             # 检测错误
             if "error" in result:
-                error_msg = result.get("error", {}).get("message", "Unknown error")
+                error_msg = _get_dict(result, "error").get("message", "Unknown error")
                 self._log(
                     operation="video_generate_multipart_multi",
                     url=url,
@@ -827,6 +838,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                 "success": True,
                 "task_id": task_id,
                 "status": result.get("status", "pending"),
+                "credits_consumed": response.headers.get("x-credits-consumed"),
                 "raw_create_response": {
                     "request": {"url": url, "method": "POST", "content_type": "multipart/form-data", "params": request_params, "form_data": data},
                     "api_response": result
@@ -976,6 +988,7 @@ class OpenAIVideoAdapter(VideoAdapter):
                     "video_url": video_url,
                     "task_id": task_id,
                     "enhanced_prompt": detail.get("enhanced_prompt", "") or result.get("enhanced_prompt", ""),
+                    "credits_consumed": response.headers.get("x-credits-consumed"),
                     "raw_poll_response": result
                 }
             elif status == "failed":

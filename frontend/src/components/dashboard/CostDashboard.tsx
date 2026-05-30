@@ -53,11 +53,13 @@ function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost:
   return { image_cost, video_cost, total_cost };
 }
 
-const fmt = (n: number) => n.toFixed(2);
+const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 
 export function CostDashboard({ projects, projectStats, isAdmin, onClose }: CostDashboardProps) {
   const [userCosts, setUserCosts] = useState<UserCost[]>([]);
   const [unknownCost, setUnknownCost] = useState(0);
+  const [creditsPerYuan, setCreditsPerYuan] = useState(200);
+  const [rateInput, setRateInput] = useState('200');
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -95,6 +97,18 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
   const totalImageCost = projectCosts.reduce((s, p) => s + p.image_cost, 0);
   const totalVideoCost = projectCosts.reduce((s, p) => s + p.video_cost, 0);
 
+  const fmty = (n: number) => (n / creditsPerYuan).toFixed(2) + '元';
+
+  const handleRateBlur = () => {
+    const v = parseFloat(rateInput);
+    if (v > 0 && !isNaN(v)) {
+      setCreditsPerYuan(v);
+      setRateInput(String(v));
+    } else {
+      setRateInput(String(creditsPerYuan));
+    }
+  };
+
   // 饼图数据（最多显示前12个，其余合并为"其他"）
   const TOP_N = 12;
   let pieData = projectCosts.slice(0, TOP_N).map(p => ({
@@ -111,9 +125,25 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
       <div className="bg-gray-800 rounded-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-          <div className="flex items-center gap-2">
-            <BarChart2 size={20} className="text-blue-400" />
-            <h2 className="text-lg font-semibold">消耗看板</h2>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <BarChart2 size={20} className="text-blue-400" />
+              <h2 className="text-lg font-semibold">消耗看板</h2>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-400">1元 =</span>
+              <input
+                type="number"
+                value={rateInput}
+                onChange={e => setRateInput(e.target.value)}
+                onBlur={handleRateBlur}
+                onKeyDown={e => { if (e.key === 'Enter') handleRateBlur(); }}
+                className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-center text-sm"
+                min="1"
+                step="1"
+              />
+              <span className="text-gray-400">积分</span>
+            </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition">
             <X size={20} />
@@ -122,11 +152,12 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
 
         <div className="p-6 space-y-6">
           {/* 汇总卡片 */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             {[
-              { label: '总消耗', value: `¥${fmt(totalCost)}`, color: 'text-white' },
-              { label: '图片费用', value: `¥${fmt(totalImageCost)}`, color: 'text-blue-400' },
-              { label: '视频费用', value: `¥${fmt(totalVideoCost)}`, color: 'text-green-400' },
+              { label: '总消耗', value: `${fmt(totalCost)}`, color: 'text-white' },
+              { label: '图片费用', value: `${fmt(totalImageCost)}`, color: 'text-blue-400' },
+              { label: '视频费用', value: `${fmt(totalVideoCost)}`, color: 'text-green-400' },
+              { label: '预估费用', value: fmty(totalCost), color: 'text-yellow-400' },
             ].map(c => (
               <div key={c.label} className="bg-gray-700 rounded-lg p-4 text-center">
                 <div className={`text-2xl font-bold ${c.color}`}>{c.value}</div>
@@ -163,7 +194,7 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v) => [`¥${fmt(Number(v))}`, '消耗']} />
+                    <Tooltip formatter={(v) => [`${fmt(Number(v))}`, '消耗']} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -179,6 +210,7 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                         <th className="text-left py-2 pr-4">项目名称</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
                         <th className="text-right py-2 pr-4">视频费用</th>
+                        <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">总计</th>
                       </tr>
                     </thead>
@@ -192,18 +224,20 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                             />
                             {p.name}
                           </td>
-                          <td className="text-right py-2 pr-4 text-blue-400">¥{fmt(p.image_cost)}</td>
-                          <td className="text-right py-2 pr-4 text-green-400">¥{fmt(p.video_cost)}</td>
-                          <td className="text-right py-2 font-medium">¥{fmt(p.total_cost)}</td>
+                          <td className="text-right py-2 pr-4 text-blue-400">{fmt(p.image_cost)}</td>
+                          <td className="text-right py-2 pr-4 text-green-400">{fmt(p.video_cost)}</td>
+                          <td className="text-right py-2 pr-4 text-yellow-400">{fmty(p.total_cost)}</td>
+                          <td className="text-right py-2 font-medium">{fmt(p.total_cost)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="text-gray-300 font-semibold">
                         <td className="py-2 pr-4">合计</td>
-                        <td className="text-right py-2 pr-4 text-blue-400">¥{fmt(totalImageCost)}</td>
-                        <td className="text-right py-2 pr-4 text-green-400">¥{fmt(totalVideoCost)}</td>
-                        <td className="text-right py-2">¥{fmt(totalCost)}</td>
+                        <td className="text-right py-2 pr-4 text-blue-400">{fmt(totalImageCost)}</td>
+                        <td className="text-right py-2 pr-4 text-green-400">{fmt(totalVideoCost)}</td>
+                        <td className="text-right py-2 pr-4 text-yellow-400">{fmty(totalCost)}</td>
+                        <td className="text-right py-2">{fmt(totalCost)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -221,6 +255,7 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                           <th className="text-left py-2 pr-4">用户名</th>
                           <th className="text-right py-2 pr-4">图片费用</th>
                           <th className="text-right py-2 pr-4">视频费用</th>
+                          <th className="text-right py-2 pr-4">预估费用</th>
                           <th className="text-right py-2">实际消耗</th>
                         </tr>
                       </thead>
@@ -230,16 +265,17 @@ export function CostDashboard({ projects, projectStats, isAdmin, onClose }: Cost
                             <td className="py-2 pr-4">
                               {u.display_name && u.display_name !== u.username ? `${u.display_name} (${u.username})` : u.username}
                             </td>
-                            <td className="text-right py-2 pr-4 text-blue-400">¥{fmt(u.image_cost)}</td>
-                            <td className="text-right py-2 pr-4 text-green-400">¥{fmt(u.video_cost)}</td>
-                            <td className="text-right py-2 font-medium">¥{fmt(u.total_cost)}</td>
+                            <td className="text-right py-2 pr-4 text-blue-400">{fmt(u.image_cost)}</td>
+                            <td className="text-right py-2 pr-4 text-green-400">{fmt(u.video_cost)}</td>
+                            <td className="text-right py-2 pr-4 text-yellow-400">{fmty(u.total_cost)}</td>
+                            <td className="text-right py-2 font-medium">{fmt(u.total_cost)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                   {unknownCost > 0 && (
-                    <p className="text-xs text-gray-500 mt-2">* 历史记录（无归属）：¥{fmt(unknownCost)}，已从各用户消耗中排除</p>
+                    <p className="text-xs text-gray-500 mt-2">* 历史记录（无归属）：{fmt(unknownCost)}，已从各用户消耗中排除</p>
                   )}
                 </div>
               )}

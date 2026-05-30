@@ -13,6 +13,13 @@ from app.services.ai.adapters.base import VideoAdapter
 
 logger = logging.getLogger(__name__)
 
+
+def _get_dict(d: dict, key: str) -> dict:
+    """安全获取嵌套 dict 值——key 存在但非 dict 时返回 {}，避免 'str' object has no attribute 'get'"""
+    v = d.get(key)
+    return v if isinstance(v, dict) else {}
+
+
 # 分辨率配置：key 为前端值，value 为 (API resolution 参数, ratio 参数)
 # 主路径只使用新格式（480p/720p/1080p），保留少量老值用于历史记录兼容
 RESOLUTION_CONFIG = {
@@ -327,7 +334,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
 
             # 检查API错误响应
             if "error" in data:
-                error_msg = data.get("error", {}).get("message", "Unknown error")
+                error_msg = _get_dict(data, "error").get("message", "Unknown error")
                 self._log(
                     operation="video_generate",
                     url=url,
@@ -382,6 +389,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "success": True,
                 "task_id": task_id,
                 "status": "pending",
+                "credits_consumed": response.headers.get("x-credits-consumed"),
                 "raw_create_response": data
             }
 
@@ -460,7 +468,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
 
             # 检查API错误响应
             if "error" in data:
-                error_msg = data.get("error", {}).get("message", "Unknown error")
+                error_msg = _get_dict(data, "error").get("message", "Unknown error")
                 self._log(
                     operation="video_poll",
                     url=url,
@@ -497,10 +505,10 @@ class ByteSeedVideoAdapter(VideoAdapter):
             # 根据状态返回不同结果
             if status == "completed":
                 video_url = (
-                    data.get("content", {}).get("video_url")
+                    _get_dict(data, "content").get("video_url")
                     or data.get("video_url")
-                    or data.get("output", {}).get("video_url")
-                    or data.get("result", {}).get("video_url")
+                    or _get_dict(data, "output").get("video_url")
+                    or _get_dict(data, "result").get("video_url")
                 )
                 if not video_url:
                     return {
@@ -517,6 +525,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
                     "status": "completed",
                     "video_url": video_url,
                     "task_id": task_id,
+                    "credits_consumed": response.headers.get("x-credits-consumed"),
                     "raw_poll_response": data
                 }
 
@@ -609,7 +618,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
             for item in truncated["content"]:
                 item_copy = item.copy()
                 if item.get("type") == "image_url":
-                    url = item.get("image_url", {}).get("url", "")
+                    url = _get_dict(item, "image_url").get("url", "")
                     if url.startswith("data:image") and len(url) > 200:
                         # 截断base64
                         item_copy["image_url"] = {

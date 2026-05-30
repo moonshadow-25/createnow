@@ -52,12 +52,15 @@ def get_ai_service(project_config: Dict, service_type: str, project_id: Optional
     model = config.get("model") or getattr(settings, f"DEFAULT_{service_type.upper()}_MODEL")
     api_type = config.get("api_type", "openai")  # 默认使用OpenAI格式
 
-    # CreateNow 官方接口：强制使用官方 URL，从 global.json 读取 API Key
+    # CreateNow 官方接口：强制使用官方 URL；SaaS 优先项目 key，selfhosted 保持 global.json 优先
     if api_type == "createnow":
         from app.services.auth_service import get_auth_state
         api_url = settings.CREATENOW_BASE_URL
         auth_state = get_auth_state()
-        api_key = auth_state.get("api_key") or api_key
+        if settings.DEPLOY_MODE == "saas":
+            api_key = api_key or auth_state.get("api_key")
+        else:
+            api_key = auth_state.get("api_key") or api_key
         # 只有视频服务区分全能参考（走 CreatenowVideoAdapter），其余服务始终走 OpenAI 兼容接口
         if service_type == "video":
             multimodal_reference = config.get("multimodal_reference", False)
