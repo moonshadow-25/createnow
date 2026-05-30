@@ -32,8 +32,16 @@ interface ParticipantUser {
 export default function HomePage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { projects, loading, fetchProjects, createProject, deleteProject, setCurrentProject } =
-    useProjectStore();
+  const {
+    projects,
+    dashboardUserCosts,
+    dashboardUnknownCost,
+    loading,
+    fetchProjects,
+    createProject,
+    deleteProject,
+    setCurrentProject,
+  } = useProjectStore();
   const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
   const { username: adminUsername, role: adminRole, logout: adminLogout, isAuthenticated } = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
@@ -381,6 +389,8 @@ export default function HomePage() {
         <CostDashboard
           projects={projects}
           projectStats={Object.fromEntries(projects.map(p => [p.project_id, p.stats ?? null]))}
+          userCosts={dashboardUserCosts}
+          unknownCost={dashboardUnknownCost}
           isAdmin={isAdmin}
           onClose={() => setShowDashboard(false)}
         />

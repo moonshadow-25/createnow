@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { X, BarChart2 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { adminUserApi, projectApi } from '@/services/api';
 import { Project } from '@/types';
 import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 
@@ -18,6 +17,8 @@ interface ProjectStats {
 interface CostDashboardProps {
   projects: Project[];
   projectStats: Record<string, ProjectStats | null>;
+  userCosts: UserCost[];
+  unknownCost: number;
   isAdmin: boolean;
   onClose: () => void;
 }
@@ -58,33 +59,9 @@ function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost:
 
 const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 
-export function CostDashboard({ projects, projectStats, isAdmin, onClose }: CostDashboardProps) {
-  const [userCosts, setUserCosts] = useState<UserCost[]>([]);
-  const [unknownCost, setUnknownCost] = useState(0);
+export function CostDashboard({ projects, projectStats, userCosts, unknownCost, isAdmin, onClose }: CostDashboardProps) {
   const [creditsPerYuan, setCreditsPerYuan] = useState(200);
   const [rateInput, setRateInput] = useState('200');
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    (async () => {
-      const [usersRes, statsRes] = await Promise.all([
-        adminUserApi.list().then(r => r.data || []).catch(() => [] as any[]),
-        projectApi.getStatsByUser().then(r => r.data).catch(() => ({ users: [], unknown_cost: 0 })),
-      ]);
-      setUnknownCost(statsRes.unknown_cost || 0);
-      const merged: UserCost[] = (statsRes.users || []).map((u: any) => {
-        const adminUser = usersRes.find((au: any) => au.username === u.username);
-        return {
-          username: u.username,
-          display_name: adminUser?.display_name || u.username,
-          image_cost: u.image_cost,
-          video_cost: u.video_cost,
-          total_cost: u.total_cost,
-        };
-      }).sort((a: UserCost, b: UserCost) => b.total_cost - a.total_cost);
-      setUserCosts(merged);
-    })();
-  }, [isAdmin]);
 
   // 计算每个项目费用
   const projectCosts: ProjectCost[] = projects

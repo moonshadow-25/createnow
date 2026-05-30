@@ -4,8 +4,18 @@ import { projectApi } from '@/services/api';
 
 let fetchProjectsInFlight: Promise<void> | null = null;
 
+interface DashboardUserCost {
+  username: string;
+  display_name?: string;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+}
+
 interface ProjectState {
   projects: Project[];
+  dashboardUserCosts: DashboardUserCost[];
+  dashboardUnknownCost: number;
   currentProject: Project | null;
   loading: boolean;
   error: string | null;
@@ -19,6 +29,8 @@ interface ProjectState {
 
 export const useProjectStore = create<ProjectState>()((set) => ({
   projects: [],
+  dashboardUserCosts: [],
+  dashboardUnknownCost: 0,
   currentProject: null,
   loading: false,
   error: null,
@@ -30,7 +42,15 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       set({ loading: true, error: null });
       try {
         const response = await projectApi.list(true);
-        set({ projects: response.data, loading: false });
+        const payload = response.data;
+        const projects = Array.isArray(payload) ? payload : (payload.projects || []);
+        const userSummary = Array.isArray(payload) ? { users: [], unknown_cost: 0 } : (payload.user_summary || { users: [], unknown_cost: 0 });
+        set({
+          projects,
+          dashboardUserCosts: userSummary.users || [],
+          dashboardUnknownCost: userSummary.unknown_cost || 0,
+          loading: false,
+        });
       } catch (error: any) {
         set({ error: error.message, loading: false });
       } finally {

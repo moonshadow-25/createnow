@@ -84,6 +84,45 @@ def _build_project_stats(project_id: str) -> dict:
     }
 
 
+def _build_user_cost_summary(projects: list[dict]) -> dict:
+    """基于已加载项目列表按用户汇总实际消耗（复用内存缓存，不扫磁盘）"""
+    user_costs: dict[str, dict] = {}
+
+    for project in projects:
+        project_id = project.get("project_id")
+        if not project_id:
+            continue
+
+        for img in ImageService.list_images(project_id):
+            username = (img.get("created_by") or "").strip() or "__unknown__"
+            cost = get_image_cost(img)
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry["image_cost"] += cost
+            entry["total_cost"] += cost
+
+        for video in VideoService.list_videos(project_id):
+            username = (video.get("created_by") or "").strip() or "__unknown__"
+            cost = get_video_cost(video)
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry["video_cost"] += cost
+            entry["total_cost"] += cost
+
+    unknown = user_costs.pop("__unknown__", {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+    users = []
+    for username, costs in sorted(user_costs.items(), key=lambda x: x[1]["total_cost"], reverse=True):
+        user = get_user_by_username(username)
+        users.append({
+            "username": username,
+            "display_name": user.get("display_name") if user else username,
+            **costs,
+        })
+
+    return {
+        "users": users,
+        "unknown_cost": round(unknown["total_cost"], 2),
+    }
+
+
 class ProjectCreate(BaseModel):
     name: str
     description: str = ""
@@ -199,6 +238,10 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
             if include_stats:
                 for p in projects:
                     p["stats"] = _build_project_stats(p["project_id"])
+                return {
+                    "projects": projects,
+                    "user_summary": _build_user_cost_summary(projects),
+                }
             return projects
         return []
 
@@ -212,6 +255,10 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
     if include_stats:
         for p in projects:
             p["stats"] = _build_project_stats(p["project_id"])
+        return {
+            "projects": projects,
+            "user_summary": _build_user_cost_summary(projects),
+        }
 
     return projects
 
