@@ -9,7 +9,7 @@ from app.core.pricing import (
     DEFAULT_VIDEO_PRICES as VIDEO_RESOLUTION_PRICES,
     ZERO_COST_MODELS,
     LEGACY_RMB_TO_CREDITS,
-    SUBTITLE_REMOVAL_COST_PER_SECOND,
+    SUBTITLE_REMOVAL_COST,
 )
 
 LEGACY_RESOLUTION_MAP = {
@@ -93,8 +93,7 @@ def get_video_cost(v: dict) -> float:
     优先级：字幕擦除固定规则 → credits_consumed（新记录）→ actual_cost×200（旧记录RMB）→ estimated_cost×200 → 常量计算
     """
     if v.get("operation_type") == "subtitle_removal":
-        duration = float(v.get("duration") or 0)
-        return duration * SUBTITLE_REMOVAL_COST_PER_SECOND
+        return SUBTITLE_REMOVAL_COST
     cc = v.get("credits_consumed")
     if cc is not None:
         return float(cc)

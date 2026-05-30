@@ -15,8 +15,8 @@ DEFAULT_VIDEO_PRICES = {
     "1080p": 560,  # 原 2.8 RMB × 200
 }
 
-# 去字幕成本（积分/秒）
-SUBTITLE_REMOVAL_COST_PER_SECOND = 20
+# 去字幕成本（积分/条）
+SUBTITLE_REMOVAL_COST = 300
 
 # 不计费模型（手动上传、三宫格拆解）
 ZERO_COST_MODELS = {"manual_upload", "split"}
