@@ -9,6 +9,7 @@ interface ProjectStats {
   storyboards_with_image: number;
   storyboards_with_video: number;
   total_images: number;
+  generated_images?: number;
   total_video_seconds: number;
   storyboard_video_seconds: number;
   total_video_compute_units?: number;
@@ -44,6 +45,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     total_video_seconds,
     storyboard_video_seconds,
   } = stats;
+  const generated_images = stats.generated_images ?? total_images;
 
   const yellowPct = total_episodes > 0 ? Math.min(episode_count / total_episodes, 1) : 0;
   const storyboards_with_image_only = storyboards_with_image - storyboards_with_video;
@@ -110,6 +112,7 @@ function computeMetrics(project: Project, stats: ProjectStats) {
     video_cost,
     completed_minutes,
     total_images,
+    generated_images,
     total_video_seconds,
   };
 }
@@ -173,7 +176,7 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit,
                 <span className="text-[34px] leading-none font-semibold text-[#f3d589]">{videoMinutes.toFixed(1)}</span>
                 <span className="text-sm text-[#d4bc85] mb-1">分钟</span>
               </div>
-              <div className="mt-2 text-xs text-gray-300">{stats.episode_count}/{project.total_episodes || 0} 集 · {stats.total_images} 图</div>
+              <div className="mt-2 text-xs text-gray-300">{stats.episode_count}/{project.total_episodes || 0} 集 · {stats.generated_images ?? stats.total_images} 生成图</div>
             </>
           ) : (
             <div className="text-sm text-gray-400">等待数据</div>
@@ -293,7 +296,7 @@ function CostOnlySection({ project, stats }: { project: Project; stats: ProjectS
   return (
     <div className="space-y-1 text-xs">
       <div className="flex justify-between text-gray-500">
-        <span>图片 {stats.total_images}张: {Math.round(image_cost)}积分</span>
+        <span>生成图 {stats.generated_images ?? stats.total_images}张: {Math.round(image_cost)}积分</span>
         <span>视频 {Math.round(stats.total_video_seconds)}秒: {Math.round(video_cost)}积分</span>
         <span className="font-mono">共 {Math.round(total_cost)}积分</span>
       </div>
@@ -355,7 +358,7 @@ function StatsSection({ project, stats }: { project: Project; stats: ProjectStat
       </div>
 
       <div className="flex justify-between text-gray-500">
-        <span>图片 {m.total_images}张: {Math.round(m.image_cost)}积分</span>
+        <span>生成图 {m.generated_images}张: {Math.round(m.image_cost)}积分</span>
         <span>视频 {Math.round(m.total_video_seconds)}秒: {Math.round(m.video_cost)}积分</span>
         <span className={`font-mono ${m.costColor}`}>
           {m.cost_per_minute !== null ? `${Math.round(m.cost_per_minute)}积分/分钟` : '—'}

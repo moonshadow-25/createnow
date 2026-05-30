@@ -38,20 +38,24 @@ def _build_project_stats(project_id: str) -> dict:
     total_video_compute_units = 0.0
     storyboard_video_compute_units = 0.0
     for v in videos:
+        # 费用：所有视频都计入（平台在提交任务时已扣积分）
+        compute_units = _gvc(v)
+        total_video_compute_units += compute_units
+        if v.get("storyboard_id"):
+            storyboard_video_compute_units += compute_units
+        # UI 指标：仅已完成视频
         if v.get("status") == "completed":
             duration = float(v.get("duration") or 0)
-            compute_units = _gvc(v)
             total_video_seconds += duration
-            total_video_compute_units += compute_units
             if v.get("storyboard_id"):
                 storyboard_video_seconds += duration
-                storyboard_video_compute_units += compute_units
                 completed_storyboard_ids.add(v["storyboard_id"])
 
     # 图片消耗改为按记录遍历（尊重 actual_cost / ZERO_COST_MODELS）
     images = ImageService.list_images(project_id)
     total_image_cost = sum(_gic(img) for img in images)
     total_images = len(images)
+    generated_images = sum(1 for img in images if img.get("model") not in {"manual_upload", "split"})
     episodes = AssetService.list_assets(project_id, "episode")
     total_compute_spent = round(total_image_cost + total_video_compute_units, 2)
 
@@ -61,6 +65,7 @@ def _build_project_stats(project_id: str) -> dict:
         "storyboards_with_image": storyboards_with_image,
         "storyboards_with_video": len(completed_storyboard_ids),
         "total_images": total_images,
+        "generated_images": generated_images,
         "total_video_seconds": total_video_seconds,
         "storyboard_video_seconds": storyboard_video_seconds,
         "total_video_compute_units": total_video_compute_units,
@@ -297,15 +302,13 @@ async def get_stats_by_user():
                 entry["image_cost"] += cost
                 entry["total_cost"] += cost
 
-        # 扫描视频记录
+        # 扫描视频记录（所有状态都计入，平台在提交任务时已扣积分）
         videos_dir = project_dir / "videos"
         if videos_dir.exists():
             for vf in videos_dir.glob("*.json"):
                 try:
                     v = _json.loads(vf.read_text(encoding="utf-8"))
                 except Exception:
-                    continue
-                if v.get("status") != "completed":
                     continue
                 username = (v.get("created_by") or "").strip() or "__unknown__"
                 cost = get_video_cost(v)
