@@ -64,7 +64,7 @@ def _build_project_stats(project_id: str) -> dict:
     scenes = AssetService.list_assets(project_id, "scene")
     props = AssetService.list_assets(project_id, "prop")
     total_assets = len(characters) + len(scenes) + len(props)
-    other_cost = subtitle_removal_cost
+    other_cost = total_storyboards * 40 + total_assets * 4 + subtitle_removal_cost
     total_compute_spent = round(total_image_cost + total_video_compute_units + other_cost, 2)
 
     return {
