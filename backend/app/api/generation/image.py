@@ -29,6 +29,24 @@ from app.core.pricing import DEFAULT_IMAGE_COST
 
 logger = logging.getLogger(__name__)
 
+SQUARE_IMAGE_SCOPE = "square_generate"
+SQUARE_IMAGE_ASSET_TYPE = "generate"
+SQUARE_IMAGE_ASSET_ID = "square-generate"
+
+
+def _is_square_image_record(image: dict) -> bool:
+    return (
+        image.get("generation_scope") == SQUARE_IMAGE_SCOPE
+        or (
+            image.get("asset_type") == SQUARE_IMAGE_ASSET_TYPE
+            and image.get("asset_id") == SQUARE_IMAGE_ASSET_ID
+        )
+    )
+
+
+def _is_virtual_image_asset(asset_type: str, asset_id: str) -> bool:
+    return asset_type == SQUARE_IMAGE_ASSET_TYPE and asset_id == SQUARE_IMAGE_ASSET_ID
+
 
 def _get_projects_dir():
     from app.core.config import settings
@@ -153,7 +171,8 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
 
 
 async def generate_image_core(project_id: str, asset_id: str, asset_type: str, prompt: str,
-                              negative_prompt: str = "", size: str = None, ai_config: dict = None) -> dict:
+                              negative_prompt: str = "", size: str = None, ai_config: dict = None,
+                              generation_scope: str = None) -> dict:
     """可复用的生图核心逻辑（供 HTTP handler 和对话工具共同调用）
 
     返回第一张保存的图片记录 dict，失败时抛出异常。
@@ -203,12 +222,14 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                 "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
+                "generation_scope": generation_scope,
             }
             saved = ImageService.save_generation_record(project_id, record)
             saved_images.append(saved)
             if i == 0:
                 ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
-                AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+                if not _is_virtual_image_asset(asset_type, asset_id):
+                    AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
             if image_url.startswith(("http://", "https://")):
                 try:
                     await ImageDownloadService.download_and_save_image(
@@ -238,12 +259,14 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
             "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
+            "generation_scope": generation_scope,
         }
         saved = ImageService.save_generation_record(project_id, record)
         images = ImageService.list_images(project_id, asset_id)
         if len(images) == 1:
             ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
-            AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+            if not _is_virtual_image_asset(asset_type, asset_id):
+                AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
         if image_url and image_url.startswith(("http://", "https://")):
             try:
                 await ImageDownloadService.download_and_save_image(
@@ -285,6 +308,7 @@ async def generate_image(project_id: str, request: ImageGenerateRequest):
             negative_prompt=request.negative_prompt,
             size=request.size,
             ai_config=ai_config,
+            generation_scope=request.generation_scope,
         )
         return saved
     except HTTPException:
@@ -334,7 +358,8 @@ async def generate_image_edit_prompt(project_id: str, request: ImageEditPromptRe
 
 
 async def edit_image_core(project_id: str, asset_id: str, asset_type: str, prompt: str,
-                          reference_image_paths: list, size: str = None, ai_config: dict = None) -> dict:
+                          reference_image_paths: list, size: str = None, ai_config: dict = None,
+                          generation_scope: str = None) -> dict:
     """可复用的图生图核心逻辑（供 HTTP handler 和对话工具共同调用）
 
     reference_image_paths: 已解析好的图片路径列表（base64 data URL 或 http URL）
@@ -395,12 +420,14 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                 "model": model, "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
+                "generation_scope": generation_scope,
             }
             saved = ImageService.save_generation_record(project_id, record)
             saved_images.append(saved)
             if i == 0:
                 ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
-                AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+                if not _is_virtual_image_asset(asset_type, asset_id):
+                    AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
             if image_url.startswith(("http://", "https://")):
                 try:
                     await ImageDownloadService.download_and_save_image(
@@ -429,12 +456,14 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             "model": model, "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
+            "generation_scope": generation_scope,
         }
         saved = ImageService.save_generation_record(project_id, record)
         images = ImageService.list_images(project_id, asset_id)
         if len(images) == 1:
             ImageService.set_primary_image(project_id, asset_id, saved["image_id"])
-            AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
+            if not _is_virtual_image_asset(asset_type, asset_id):
+                AssetService.update_asset_image(project_id, asset_type, asset_id, saved["image_id"])
         if image_url and image_url.startswith(("http://", "https://")):
             try:
                 await ImageDownloadService.download_and_save_image(
@@ -465,9 +494,10 @@ async def edit_image(project_id: str, request: ImageEditRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     # 验证资产存在
-    asset = AssetService.load_asset(project_id, request.asset_type, request.asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
+    if not _is_virtual_image_asset(request.asset_type, request.asset_id):
+        asset = AssetService.load_asset(project_id, request.asset_type, request.asset_id)
+        if not asset:
+            raise HTTPException(status_code=404, detail="Asset not found")
 
     ai_config = project.get("ai_config", {})
 
@@ -546,6 +576,7 @@ async def edit_image(project_id: str, request: ImageEditRequest):
             reference_image_paths=reference_image_paths,
             size=request.size,
             ai_config=ai_config,
+            generation_scope=SQUARE_IMAGE_SCOPE if _is_virtual_image_asset(request.asset_type, request.asset_id) else None,
         )
         return saved
     except ValueError as e:
@@ -769,6 +800,17 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
     except Exception as e:
         await image_service.close()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/images/library")
+async def list_library_images(project_id: str, mine: bool = False):
+    """列出广场生图历史"""
+    images = [img for img in ImageService.list_images(project_id) if _is_square_image_record(img)]
+    if mine:
+        current_user = get_current_user() or ""
+        images = [img for img in images if (img.get("created_by") or "") == current_user]
+    images.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return images
 
 
 @router.get("/images/{asset_id}")

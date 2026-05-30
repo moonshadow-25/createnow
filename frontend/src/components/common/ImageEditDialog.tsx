@@ -10,6 +10,7 @@ interface ImageEditDialogProps {
   assetType: string;
   assetName: string;
   images: any[]; // 当前资产的图片列表
+  initialSelectedImageIds?: string[];
   onCompleted: () => void; // 编辑完成后的回调
   onClose: () => void;
 }
@@ -20,6 +21,7 @@ export function ImageEditDialog({
   assetType,
   assetName,
   images,
+  initialSelectedImageIds = [],
   onCompleted,
   onClose
 }: ImageEditDialogProps) {
@@ -54,13 +56,16 @@ export function ImageEditDialog({
   };
 
   // 选中的图片ID
-  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>(initialSelectedImageIds);
   // 输入的URL
   const [imageUrls, setImageUrls] = useState('');
   // 提示词
   const [prompt, setPrompt] = useState('');
 
-  // 总参考图数量（选中的图片 + URL）
+  useEffect(() => {
+    setSelectedImageIds(initialSelectedImageIds);
+  }, [initialSelectedImageIds]);
+
   const totalReferences = selectedImageIds.length + parseUrls(imageUrls).length;
 
   const isGenerating = getTaskStatus(assetId, 'image_edit') === 'generating';

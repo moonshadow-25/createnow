@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';import {
   Upload, X, Film, Plus, ChevronDown, Loader2, Play,
-  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music
+  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music, Wand2
 } from 'lucide-react';
 import { useAssetStore } from '@/store/assetStore';
 import { generationApi } from '@/services/api';
@@ -8,6 +8,7 @@ import { useToast } from '@/components/common/Toast';
 import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
+import { ImageEditDialog } from '@/components/common/ImageEditDialog';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
@@ -39,6 +40,18 @@ interface VideoRecord {
   error?: string;
   generate_audio?: boolean | null;
   reference_media?: RefMedia[];
+}
+
+interface ImageRecord {
+  image_id: string;
+  asset_id: string;
+  asset_type: string;
+  prompt: string;
+  image_path?: string | null;
+  local_path?: string;
+  created_at: string;
+  created_by?: string;
+  is_primary?: boolean;
 }
 
 interface GenerateTabProps {
@@ -105,17 +118,27 @@ function getThumbnailUrl(url?: string): string {
   return url.replace('/images/files/', '/thumbnails/');
 }
 
+function getImageRecordUrl(projectId: string, image: ImageRecord): string {
+  if (image.local_path) {
+    return `/api/projects/${projectId}/images/files/${image.local_path}`;
+  }
+  return image.image_path || '';
+}
+
 export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabProps) {
   const { toast } = useToast();
   const { characters, scenes, props } = useAssetStore();
 
   const [prompt, setPrompt] = useState('');
+  const [mode, setMode] = useState<'video' | 'image'>('video');
+  const [onlyMine, setOnlyMine] = useState(false);
   const [duration, setDuration] = useState(6);
   const [resolution, setResolution] = useState('720p');
   const [ratio, setRatio] = useState('16:9');
   const [generateAudio, setGenerateAudio] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<RefMedia[]>([]);
   const [videos, setVideos] = useState<VideoRecord[]>([]);
+  const [images, setImages] = useState<ImageRecord[]>([]);
   const [visibleCount, setVisibleCount] = useState(0);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -126,6 +149,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showImageEditDialog, setShowImageEditDialog] = useState(false);
+  const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -150,7 +175,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   // 加载视频库
   const loadLibraryVideos = useCallback(async () => {
     try {
-      const res = await generationApi.listLibraryVideos(projectId);
+      const res = await generationApi.listLibraryVideos(projectId, onlyMine);
       const list: VideoRecord[] = res.data || [];
       // 保持时间顺序：旧 -> 新（最新在底部）
       const asc = [...list].reverse();
@@ -161,7 +186,15 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
       shouldStickToBottomRef.current = true;
       historyReadyRef.current = false;
     } catch { /* ignore */ }
-  }, [projectId]);
+  }, [projectId, onlyMine]);
+
+  const loadLibraryImages = useCallback(async () => {
+    try {
+      const res = await generationApi.listLibraryImages(projectId, onlyMine);
+      const list: ImageRecord[] = res.data || [];
+      setImages(list);
+    } catch { /* ignore */ }
+  }, [projectId, onlyMine]);
 
   const visibleVideos = useMemo(() => {
     if (visibleCount <= 0) return [];
@@ -186,11 +219,19 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     });
   }, [hasMoreHistory, isLoadingHistory, videos.length]);
 
-  useEffect(() => { loadLibraryVideos(); }, [loadLibraryVideos]);
+  useEffect(() => {
+    if (mode === 'video') {
+      loadLibraryVideos();
+    } else {
+      loadLibraryImages();
+    }
+  }, [mode, loadLibraryVideos, loadLibraryImages]);
 
   useEffect(() => {
-    setHasMoreHistory(videos.length > visibleCount);
-  }, [videos.length, visibleCount]);
+    if (mode === 'image') {
+      setSelectedMedia(prev => prev.filter(item => item.type === 'image'));
+    }
+  }, [mode]);
 
   // 视频加载/新增后滚动到底部（仅在用户停留底部时）
   useEffect(() => {
@@ -258,8 +299,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
   // 生成视频
   const handleGenerate = async () => {
-    if (!prompt.trim()) { toast('请输入视频提示词', 'error'); return; }
-    if (selectedMedia.length === 0) { toast('请至少选择一个参考素材', 'error'); return; }
+    if (!prompt.trim()) { toast(mode === 'video' ? '请输入视频提示词' : '请输入图片提示词', 'error'); return; }
 
     const imageItems = selectedMedia.filter(m => m.type === 'image' && m.id);
     const videoItems = selectedMedia.filter(m => m.type === 'video');
@@ -275,33 +315,47 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
     setIsGenerating(true);
     try {
-      const res = await generationApi.generateVideo(projectId, {
-        storyboard_id: null,
-        episode_id: null,
-        image_ids: imageItems.map(m => m.id!),
-        video_urls: resolvedVideoUrls.length > 0 ? resolvedVideoUrls : undefined,
-        audio_urls: audioItems.length > 0 ? audioItems.map(m => m.url) : undefined,
-        prompt: prompt.trim(),
-        duration,
-        resolution,
-        ratio,
-        generate_audio: generateAudio,
-        reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
-      });
-      const newVideo: VideoRecord = res.data;
-      setVideos(prev => [...prev, newVideo]);
-      setVisibleCount(prev => {
-        const base = prev > 0 ? prev : Math.min(HISTORY_PAGE_SIZE, videos.length + 1);
-        return Math.min(videos.length + 1, base + 1);
-      });
-      shouldStickToBottomRef.current = true;
-      startPolling(newVideo.video_id);
-      const estimatedCost = typeof newVideo.estimated_cost === 'number'
-        ? newVideo.estimated_cost
-        : newVideo.duration;
-      toast(`视频生成任务已提交（预计消耗 ${estimatedCost} 元）`, 'success');
+      if (mode === 'image') {
+        const imageRes = imageItems.length > 0
+          ? await generationApi.editSquareImage(projectId, {
+              prompt: prompt.trim(),
+              referenceImageIds: imageItems.map(m => m.id!),
+            })
+          : await generationApi.generateSquareImage(projectId, {
+              prompt: prompt.trim(),
+            });
+        const newImage: ImageRecord = imageRes.data;
+        setImages(prev => [newImage, ...prev]);
+        toast(imageItems.length > 0 ? '图片编辑成功' : '图片生成成功', 'success');
+      } else {
+        const res = await generationApi.generateVideo(projectId, {
+          storyboard_id: null,
+          episode_id: null,
+          image_ids: imageItems.map(m => m.id!),
+          video_urls: resolvedVideoUrls.length > 0 ? resolvedVideoUrls : undefined,
+          audio_urls: audioItems.length > 0 ? audioItems.map(m => m.url) : undefined,
+          prompt: prompt.trim(),
+          duration,
+          resolution,
+          ratio,
+          generate_audio: generateAudio,
+          reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
+        });
+        const newVideo: VideoRecord = res.data;
+        setVideos(prev => [...prev, newVideo]);
+        setVisibleCount(prev => {
+          const base = prev > 0 ? prev : Math.min(HISTORY_PAGE_SIZE, videos.length + 1);
+          return Math.min(videos.length + 1, base + 1);
+        });
+        shouldStickToBottomRef.current = true;
+        startPolling(newVideo.video_id);
+        const estimatedCost = typeof newVideo.estimated_cost === 'number'
+          ? newVideo.estimated_cost
+          : newVideo.duration;
+        toast(`视频生成任务已提交（预计消耗 ${estimatedCost} 元）`, 'success');
+      }
     } catch (e: any) {
-      toast(e?.response?.data?.detail || '生成失败，请检查配置', 'error');
+      toast(e?.response?.data?.detail || (mode === 'video' ? '生成失败，请检查配置' : '图片生成失败，请检查配置'), 'error');
     } finally {
       setIsGenerating(false);
     }
@@ -314,14 +368,20 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     setResolution(normalizeResolutionValue(video.resolution));
     setRatio(inferRatioFromVideo(video));
     if (video.generate_audio != null) setGenerateAudio(video.generate_audio);
-    if (video.reference_media && video.reference_media.length > 0) {
-      setSelectedMedia(video.reference_media);
-      // 清空审核状态，让用户重新触发（若需要）
-      setAssetStatuses({});
-    }
+    setSelectedMedia(video.reference_media || []);
+    // 清空审核状态，让用户重新触发（若需要）
+    setAssetStatuses({});
   };
 
-  // 从项目资产添加参考图
+  const handleOpenImageEdit = useCallback((image: ImageRecord) => {
+    setEditingImageId(image.image_id);
+    setShowImageEditDialog(true);
+  }, []);
+
+  const handleImageEditCompleted = useCallback(async () => {
+    await loadLibraryImages();
+  }, [loadLibraryImages]);
+
   const handleAddAsset = (asset: any) => {
     const imgId = asset.image_id;
     if (!imgId) { toast('该资产暂无主图', 'error'); return; }
@@ -372,6 +432,10 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         }
       } catch { toast('图片上传失败', 'error'); } finally { setIsUploading(false); }
     } else if (fileType.startsWith('video/') || fileType.startsWith('audio/')) {
+      if (mode === 'image') {
+        toast('图片模式只支持上传图片', 'error');
+        return;
+      }
       setIsUploading(true);
       try {
         const res = await generationApi.uploadMedia(projectId, file);
@@ -490,42 +554,107 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
   const ratioLabel = RATIO_OPTIONS.find(r => r.value === ratio)?.label || ratio;
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
+  const editingImage = images.find(image => image.image_id === editingImageId) || null;
+  const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
   return (
     <div className="flex flex-col h-full bg-gray-900 text-white">
-      {/* 视频库（正序：最旧在上，最新在下，默认滚到底部） */}
-      <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
-        {videos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
-            <Film size={48} className="opacity-30" />
-            <p className="text-lg">视频库为空</p>
-            <p className="text-sm">选择参考素材并输入提示词，点击"生成"开始创作</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {hasMoreHistory && (
-              <div className="flex justify-center py-1">
-                <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
-              </div>
-            )}
-            {visibleVideos.map(video => (
-              <VideoItem
-                key={video.video_id}
-                video={video}
-                projectId={projectId}
-                isPolling={pollingIds.has(video.video_id)}
-                isPlaying={playingVideoId === video.video_id}
-                onPlay={() => setPlayingVideoId(playingVideoId === video.video_id ? null : video.video_id)}
-                onRegenerate={() => handleRegenerate(video)}
-                onRetryPoll={() => startPolling(video.video_id)}
-              />
-            ))}
-          </div>
-        )}
+      <div className="border-b border-gray-800 px-4 py-3 flex items-center justify-between gap-3 bg-gray-900/80">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMode('video')}
+            className={`px-3 py-1.5 rounded-lg text-sm transition ${mode === 'video' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+          >
+            视频
+          </button>
+          <button
+            onClick={() => setMode('image')}
+            className={`px-3 py-1.5 rounded-lg text-sm transition ${mode === 'image' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+          >
+            图片
+          </button>
+        </div>
+        <button
+          onClick={() => setOnlyMine(prev => !prev)}
+          className={`px-3 py-1.5 rounded-lg text-sm transition ${onlyMine ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+        >
+          {onlyMine ? '只看自己' : '查看全部'}
+        </button>
       </div>
 
-      {/* 底部输入区 */}
+      {mode === 'video' ? (
+        <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
+          {videos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
+              <Film size={48} className="opacity-30" />
+              <p className="text-lg">视频库为空</p>
+              <p className="text-sm">可直接纯文生，也可添加图片/视频/音频参考后生成</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {hasMoreHistory && (
+                <div className="flex justify-center py-1">
+                  <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
+                </div>
+              )}
+              {visibleVideos.map(video => (
+                <VideoItem
+                  key={video.video_id}
+                  video={video}
+                  projectId={projectId}
+                  isPolling={pollingIds.has(video.video_id)}
+                  isPlaying={playingVideoId === video.video_id}
+                  onPlay={() => setPlayingVideoId(playingVideoId === video.video_id ? null : video.video_id)}
+                  onRegenerate={() => handleRegenerate(video)}
+                  onRetryPoll={() => startPolling(video.video_id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-4">
+          {images.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
+              <Image size={48} className="opacity-30" />
+              <p className="text-lg">图片库为空</p>
+              <p className="text-sm">输入提示词直接文生图，或加参考图做图生图</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+              {images.map(image => {
+                const imageUrl = getImageRecordUrl(projectId, image);
+                return (
+                  <button
+                    key={image.image_id}
+                    onClick={() => handleOpenImageEdit(image)}
+                    className="text-left bg-gray-800 border border-gray-700 rounded-lg overflow-hidden hover:border-blue-500 transition"
+                    title="点击快捷编辑"
+                  >
+                    <div className="aspect-square bg-gray-900 overflow-hidden">
+                      {imageUrl ? (
+                        <img src={getThumbnailUrl(imageUrl)} alt={image.prompt} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-500">
+                          <Image size={24} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <ExpandableText text={image.prompt || '未命名图片'} maxLines={2} className="text-sm text-gray-200" />
+                      <div className="flex items-center justify-between text-xs text-gray-500 gap-2">
+                        <span>{new Date(image.created_at).toLocaleString('zh-CN')}</span>
+                        <span className="inline-flex items-center gap-1 text-blue-400"><Wand2 size={12} />快捷编辑</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="border-t border-gray-700 bg-gray-800 p-4 space-y-3">
-        {/* 参考素材区 */}
         <div className="flex flex-wrap gap-2 items-center min-h-[44px]">
           {selectedMedia.map((item, idx) => {
             const statusKey = getAssetStatusKey(item);
@@ -541,11 +670,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                         <Image size={16} className="text-gray-400" />
                       </div>
                     )}
-                    {/* 审核状态角标 */}
-                    {showAssetSubmit && volStatus && (
-                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center
-                        ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`}
-                      />
+                    {mode === 'video' && showAssetSubmit && volStatus && (
+                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
                     )}
                   </div>
                 ) : item.type === 'video' ? (
@@ -553,10 +679,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                     <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
                       <Film size={16} className="text-blue-400" />
                     </div>
-                    {showAssetSubmit && volStatus && (
-                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center
-                        ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`}
-                      />
+                    {mode === 'video' && showAssetSubmit && volStatus && (
+                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
                     )}
                   </div>
                 ) : (
@@ -575,12 +699,11 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
             );
           })}
 
-          {/* 从项目资产选择 */}
           <div className="relative" ref={assetPickerRef}>
             <button
               onClick={() => setShowAssetPicker(!showAssetPicker)}
               className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
-              title="从项目资产选择"
+              title={mode === 'video' ? '从项目资产选择参考图' : '选择项目图片作为图生图参考'}
             >
               <Plus size={18} className="text-gray-400" />
             </button>
@@ -626,16 +749,15 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
             )}
           </div>
 
-          {/* 上传本地文件（图片/视频/音频自动识别） */}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
             className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors disabled:opacity-50"
-            title="上传图片、视频或音频"
+            title={mode === 'video' ? '上传图片、视频或音频' : '上传图片作为图生图参考'}
           >
             {isUploading ? <Loader2 size={16} className="text-gray-400 animate-spin" /> : <Upload size={16} className="text-gray-400" />}
           </button>
-          <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" multiple className="hidden"
+          <input ref={fileInputRef} type="file" accept={mode === 'video' ? 'image/*,video/*,audio/*' : 'image/*'} multiple className="hidden"
             onChange={async e => {
               const files = Array.from(e.target.files || []);
               e.target.value = '';
@@ -643,8 +765,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
             }}
           />
 
-          {/* 提交审核按钮 */}
-          {showSubmitButton && (
+          {mode === 'video' && showSubmitButton && (
             isSubmittingAssets || anyProcessing ? (
               <span className="text-xs text-yellow-400 flex items-center gap-1 ml-1">
                 <Loader2 size={12} className="animate-spin" />审核中...
@@ -662,123 +783,126 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
               </button>
             ) : null
           )}
+
+          {mode === 'image' && (
+            <span className="text-xs text-gray-400 ml-1">已选参考图 {imageSelectedCount} 张，0 张时直接文生图</span>
+          )}
         </div>
 
-        {/* 提示词输入 */}
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          placeholder="输入视频提示词，描述画面内容、动作、氛围..."
+          placeholder={mode === 'video' ? '输入视频提示词，描述画面内容、动作、氛围...' : '输入图片提示词，0 张参考图时文生图，已选参考图时图生图'}
           className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-500 placeholder-gray-500"
           rows={5}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
         />
 
-        {/* 设置行 */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* 时长（上拉选择） */}
-          <div className="relative">
-            <button
-              onClick={() => setShowDurationMenu(!showDurationMenu)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-            >
-              <Clock size={14} />
-              {duration}s
-              <ChevronDown size={12} />
-            </button>
-            {showDurationMenu && (
-              <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
-                {Array.from({ length: 12 }, (_, i) => i + 4).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => { setDuration(s); setShowDurationMenu(false); }}
-                    className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${s === duration ? 'text-blue-400' : ''}`}
-                  >
-                    {s}s
-                  </button>
-                ))}
+          {mode === 'video' && (
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => setShowDurationMenu(!showDurationMenu)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                >
+                  <Clock size={14} />
+                  {duration}s
+                  <ChevronDown size={12} />
+                </button>
+                {showDurationMenu && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
+                    {Array.from({ length: 12 }, (_, i) => i + 4).map(s => (
+                      <button
+                        key={s}
+                        onClick={() => { setDuration(s); setShowDurationMenu(false); }}
+                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${s === duration ? 'text-blue-400' : ''}`}
+                      >
+                        {s}s
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* 比例 */}
-          <div className="relative">
-            <button
-              onClick={() => setShowRatioMenu(!showRatioMenu)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-            >
-              <Film size={14} />
-              {ratioLabel}
-              <ChevronDown size={12} />
-            </button>
-            {showRatioMenu && (
-              <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                {RATIO_OPTIONS.map(r => (
-                  <button
-                    key={r.value}
-                    onClick={() => { setRatio(r.value); setShowRatioMenu(false); }}
-                    className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === ratio ? 'text-blue-400' : ''}`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
+              <div className="relative">
+                <button
+                  onClick={() => setShowRatioMenu(!showRatioMenu)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                >
+                  <Film size={14} />
+                  {ratioLabel}
+                  <ChevronDown size={12} />
+                </button>
+                {showRatioMenu && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                    {RATIO_OPTIONS.map(r => (
+                      <button
+                        key={r.value}
+                        onClick={() => { setRatio(r.value); setShowRatioMenu(false); }}
+                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === ratio ? 'text-blue-400' : ''}`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* 分辨率 */}
-          <div className="relative">
-            <button
-              onClick={() => setShowResolutionMenu(!showResolutionMenu)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-            >
-              <Film size={14} />
-              {resolutionLabel}
-              <ChevronDown size={12} />
-            </button>
-            {showResolutionMenu && (
-              <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                {RESOLUTION_OPTIONS.map(r => (
-                  <button
-                    key={r.value}
-                    onClick={() => { setResolution(r.value); setShowResolutionMenu(false); }}
-                    className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === resolution ? 'text-blue-400' : ''}`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
+              <div className="relative">
+                <button
+                  onClick={() => setShowResolutionMenu(!showResolutionMenu)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                >
+                  <Film size={14} />
+                  {resolutionLabel}
+                  <ChevronDown size={12} />
+                </button>
+                {showResolutionMenu && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                    {RESOLUTION_OPTIONS.map(r => (
+                      <button
+                        key={r.value}
+                        onClick={() => { setResolution(r.value); setShowResolutionMenu(false); }}
+                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === resolution ? 'text-blue-400' : ''}`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* 声音开关 */}
-          <button
-            onClick={() => setGenerateAudio(!generateAudio)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${generateAudio ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'}`}
-            title={generateAudio ? '已开启声音' : '已关闭声音'}
-          >
-            {generateAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
-            {generateAudio ? '有声' : '无声'}
-          </button>
+              <button
+                onClick={() => setGenerateAudio(!generateAudio)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${generateAudio ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'}`}
+                title={generateAudio ? '已开启声音' : '已关闭声音'}
+              >
+                {generateAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                {generateAudio ? '有声' : '无声'}
+              </button>
+            </>
+          )}
 
           <div className="flex-1" />
 
-          <button
-            onClick={() => setShowLibrary(true)}
-            className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-          >
-            <Film size={14} />
-            视频库
-          </button>
+          {mode === 'video' && (
+            <button
+              onClick={() => setShowLibrary(true)}
+              className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+            >
+              <Film size={14} />
+              视频库
+            </button>
+          )}
 
-          {/* 生成按钮 */}
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !prompt.trim() || selectedMedia.length === 0}
+            disabled={isGenerating || !prompt.trim()}
             className="flex items-center gap-2 px-5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition"
           >
             {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            生成
+            {mode === 'video' ? '生成视频' : (imageSelectedCount > 0 ? '图生图' : '文生图')}
           </button>
         </div>
       </div>
@@ -789,6 +913,22 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           onClose={() => setShowLibrary(false)}
           libraryOnly
           initialVideos={videos}
+        />
+      )}
+
+      {showImageEditDialog && editingImage && (
+        <ImageEditDialog
+          projectId={projectId}
+          assetId="square-generate"
+          assetType="generate"
+          assetName="广场图片"
+          images={images}
+          initialSelectedImageIds={[editingImage.image_id]}
+          onCompleted={handleImageEditCompleted}
+          onClose={() => {
+            setShowImageEditDialog(false);
+            setEditingImageId(null);
+          }}
         />
       )}
     </div>

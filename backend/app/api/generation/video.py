@@ -622,8 +622,6 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
     # 使用 image_ids（已由 validator 自动转换）
     image_ids = list(request.image_ids) if request.image_ids else []
-    if not image_ids and not has_multimodal:
-        raise HTTPException(status_code=400, detail="No images provided")
 
     multimodal_reference = ai_config.get("video", {}).get("multimodal_reference", False)
 
@@ -704,8 +702,8 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         logger.info(f"[视频生成] 传输格式: {'multipart/form-data' if use_multipart else 'JSON'}")
 
         # 调用视频生成服务
-        if has_multimodal or (multimodal_reference and len(image_urls) > 1):
-            # 多模态路径（Seedance 2.0 / 全能参考）
+        if has_multimodal or not image_urls or (multimodal_reference and len(image_urls) > 1):
+            # 多模态路径（Seedance 2.0 / 全能参考），也承载纯文本视频生成
             logger.info(f"[视频生成] 多模态模式: images={len(image_urls)}, videos={len(request.video_urls or [])}, audios={len(request.audio_urls or [])}")
             result = await video_service.generate_multimodal(
                 prompt=request.prompt,
@@ -860,12 +858,13 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
 
 
 @router.get("/videos")
-async def list_videos(project_id: str, episode_id: str = None, library: bool = False):
+async def list_videos(project_id: str, episode_id: str = None, library: bool = False, mine: bool = False):
     """列出项目的所有视频记录"""
     videos_dir = _get_projects_dir() / project_id / "videos"
     if not videos_dir.exists():
         return []
 
+    current_user = get_current_user() or ""
     videos = []
     for video_file in videos_dir.glob("*.json"):
         try:
@@ -879,6 +878,8 @@ async def list_videos(project_id: str, episode_id: str = None, library: bool = F
                     # 按 episode_id 过滤
                     if video.get("episode_id") != episode_id:
                         continue
+                if mine and (video.get("created_by") or "") != current_user:
+                    continue
                 videos.append(video)
         except Exception as e:
             logger.error(f"Error reading video file {video_file}: {e}")

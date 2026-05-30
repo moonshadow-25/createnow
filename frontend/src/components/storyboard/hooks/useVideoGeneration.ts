@@ -162,7 +162,6 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     if (!videoPrompt.trim()) { toast('请输入或生成视频提示词', 'error'); return; }
 
     const allImageIds = collectSelectedReferenceImageIds(storyboard);
-    if (allImageIds.length === 0) { toast('请选择引用图后再生成视频', 'error'); return; }
 
     let prompts: string[];
     try {
@@ -202,7 +201,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         await generationApi.generateVideoMultimodal(projectId, {
           storyboard_id: storyboard.asset_id,
           episode_id: episodeId,
-          image_ids: allImageIds,
+          image_ids: allImageIds.length > 0 ? allImageIds : undefined,
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
@@ -217,11 +216,11 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           resolution: editResolution,
         });
       } else {
-        // 无主图但有资产：用 multimodal 接口
+        // 无主图时允许纯文生或多参考图 multimodal
         await generationApi.generateVideoMultimodal(projectId, {
           storyboard_id: storyboard.asset_id,
           episode_id: episodeId,
-          image_ids: allImageIds,
+          image_ids: allImageIds.length > 0 ? allImageIds : undefined,
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
@@ -253,7 +252,6 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     }
 
     const allImageIds = collectSelectedReferenceImageIds(storyboard);
-    if (allImageIds.length === 0) { toast('请选择引用图后再生成视频', 'error'); return; }
 
     const segmentPrompt = prompts[segmentIndex];
     if (!segmentPrompt?.trim()) { toast('该段提示词为空', 'error'); return; }
@@ -276,7 +274,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       await generationApi.generateVideoMultimodal(projectId, {
         storyboard_id: storyboard.asset_id,
         episode_id: episodeId,
-        image_ids: allImageIds,
+        image_ids: allImageIds.length > 0 ? allImageIds : undefined,
         prompt: segmentPrompt,
         duration: 15,
         resolution: editResolution,

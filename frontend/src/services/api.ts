@@ -117,13 +117,28 @@ export const chatApi = {
 };
 
 // 生成相关API
+const SQUARE_GENERATE_ASSET_ID = 'square-generate';
+const SQUARE_GENERATE_ASSET_TYPE = 'generate';
+const SQUARE_GENERATE_SCOPE = 'square_generate';
+
 export const generationApi = {
   generateImagePrompt: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/image-prompt`, data),
   generateImage: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/image`, data),
+  generateSquareImage: (projectId: string, data: { prompt: string; negative_prompt?: string; size?: string }) =>
+    api.post(`/projects/${projectId}/generate/image`, {
+      asset_id: SQUARE_GENERATE_ASSET_ID,
+      asset_type: SQUARE_GENERATE_ASSET_TYPE,
+      prompt: data.prompt,
+      negative_prompt: data.negative_prompt || '',
+      ...(data.size ? { size: data.size } : {}),
+      generation_scope: SQUARE_GENERATE_SCOPE,
+    }),
   listImages: (projectId: string, assetId: string) =>
     api.get(`/projects/${projectId}/generate/images/${assetId}`),
+  listLibraryImages: (projectId: string, onlyMine: boolean = false) =>
+    api.get(`/projects/${projectId}/generate/images/library`, { params: { mine: onlyMine } }),
   setPrimaryImage: (projectId: string, assetId: string, imageId: string) =>
     api.post(`/projects/${projectId}/generate/images/${imageId}/set-primary`, {
       asset_id: assetId,
@@ -193,10 +208,10 @@ export const generationApi = {
   }) =>
     api.post(`/projects/${projectId}/generate/video`, data),
   // 视频列表和查询
-  listVideos: (projectId: string, episodeId?: string) =>
-    api.get(`/projects/${projectId}/generate/videos`, { params: { episode_id: episodeId } }),
-  listLibraryVideos: (projectId: string) =>
-    api.get(`/projects/${projectId}/generate/videos`, { params: { library: true } }),
+  listVideos: (projectId: string, episodeId?: string, onlyMine: boolean = false) =>
+    api.get(`/projects/${projectId}/generate/videos`, { params: { episode_id: episodeId, mine: onlyMine } }),
+  listLibraryVideos: (projectId: string, onlyMine: boolean = false) =>
+    api.get(`/projects/${projectId}/generate/videos`, { params: { library: true, mine: onlyMine } }),
   getVideo: (projectId: string, videoId: string) =>
     api.get(`/projects/${projectId}/generate/videos/${videoId}`),
   pollVideo: (projectId: string, videoId: string) =>
@@ -255,6 +270,20 @@ export const generationApi = {
       reference_image_ids: data.referenceImageIds || [],
       reference_image_urls: data.referenceImageUrls || [],
       ...(data.template && { template: data.template }),  // 只有明确提供时才发送 template
+    }),
+  editSquareImage: (projectId: string, data: {
+    prompt: string,
+    size?: string,
+    referenceImageIds?: string[],
+    referenceImageUrls?: string[]
+  }) =>
+    api.post(`/projects/${projectId}/generate/image-edit`, {
+      asset_id: SQUARE_GENERATE_ASSET_ID,
+      asset_type: SQUARE_GENERATE_ASSET_TYPE,
+      prompt: data.prompt,
+      ...(data.size && { size: data.size }),
+      reference_image_ids: data.referenceImageIds || [],
+      reference_image_urls: data.referenceImageUrls || [],
     }),
   // VLM图片分析（统一接口）
   analyzeWithVLM: (projectId: string, data: {
