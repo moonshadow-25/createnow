@@ -126,13 +126,14 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/image-prompt`, data),
   generateImage: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/image`, data),
-  generateSquareImage: (projectId: string, data: { prompt: string; negative_prompt?: string; size?: string }) =>
+  generateSquareImage: (projectId: string, data: { prompt: string; negative_prompt?: string; size?: string; model?: string }) =>
     api.post(`/projects/${projectId}/generate/image`, {
       asset_id: SQUARE_GENERATE_ASSET_ID,
       asset_type: SQUARE_GENERATE_ASSET_TYPE,
       prompt: data.prompt,
       negative_prompt: data.negative_prompt || '',
       ...(data.size ? { size: data.size } : {}),
+      ...(data.model ? { model: data.model } : {}),
       generation_scope: SQUARE_GENERATE_SCOPE,
     }),
   listImages: (projectId: string, assetId: string) =>
@@ -275,7 +276,8 @@ export const generationApi = {
     prompt: string,
     size?: string,
     referenceImageIds?: string[],
-    referenceImageUrls?: string[]
+    referenceImageUrls?: string[],
+    model?: string
   }) =>
     api.post(`/projects/${projectId}/generate/image-edit`, {
       asset_id: SQUARE_GENERATE_ASSET_ID,
@@ -284,6 +286,7 @@ export const generationApi = {
       ...(data.size && { size: data.size }),
       reference_image_ids: data.referenceImageIds || [],
       reference_image_urls: data.referenceImageUrls || [],
+      ...(data.model ? { model: data.model } : {}),
     }),
   // VLM图片分析（统一接口）
   analyzeWithVLM: (projectId: string, data: {

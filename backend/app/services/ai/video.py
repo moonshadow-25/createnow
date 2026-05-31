@@ -167,6 +167,7 @@ class VideoGenService(AIService):
         resolution: str = "1920x1080",
         ratio: str = None,
         use_web_search: bool = False,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """生成视频（多模态模式，支持图片+视频+音频参考）"""
         adapter = self._get_adapter()
@@ -179,6 +180,7 @@ class VideoGenService(AIService):
             resolution=resolution,
             ratio=ratio,
             use_web_search=use_web_search,
+            model=model,
         )
 
     async def poll_video_task(self, task_id: str) -> Dict[str, Any]:

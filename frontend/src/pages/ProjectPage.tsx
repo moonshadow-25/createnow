@@ -294,6 +294,8 @@ export default function ProjectPage() {
                 <GenerateTab
                   projectId={projectId!}
                   showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
+                  imageApiType={currentProject?.ai_config?.image?.api_type || ''}
+                  videoApiType={currentProject?.ai_config?.video?.api_type || ''}
                 />
               </div>
             </div>

@@ -645,7 +645,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
     try:
         # 处理所有图片，转换为URL或base64
         image_urls = []
-        video_model = ai_config.get("video", {}).get("model", "")
+        video_model = request.model or ai_config.get("video", {}).get("model", "")
         skip_asset = video_model in ASSET_UNSUPPORTED_MODELS
 
         for image_id in (image_ids or []):
@@ -714,6 +714,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 resolution=request.resolution,
                 ratio=request.ratio,
                 use_web_search=request.use_web_search,
+                model=request.model,
             )
         elif len(image_urls) == 1:
             # 单图模式
@@ -723,6 +724,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 duration=request.duration,
                 resolution=request.resolution,
                 ratio=request.ratio,
+                model=request.model,
                 use_multipart=use_multipart
             )
         else:
@@ -733,6 +735,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 duration=request.duration,
                 resolution=request.resolution,
                 ratio=request.ratio,
+                model=request.model,
                 use_multipart=use_multipart
             )
 
@@ -755,7 +758,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "estimated_cost": round(calc_video_compute_units(request.duration, request.resolution), 2),
             "actual_cost": resolve_credits(result, calc_video_compute_units(request.duration, request.resolution)),
             "credits_consumed": resolve_credits(result, calc_video_compute_units(request.duration, request.resolution)),
-            "model": ai_config.get("video", {}).get("model", "sora"),
+            "model": request.model or ai_config.get("video", {}).get("model", "sora"),
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
             "task_id": result.get("task_id", ""),

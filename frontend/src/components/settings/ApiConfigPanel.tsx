@@ -34,14 +34,14 @@ const API_TYPE_OPTIONS = [
   { value: 'local', label: '本地API' }
 ];
 
-type ApiConfigType = 'llm' | 'vlm' | 'image' | 'video' | 'tts';
+export type ApiConfigType = 'llm' | 'vlm' | 'image' | 'video' | 'tts';
 
-type CreatenowModelSuggestion = {
+export type CreatenowModelSuggestion = {
   label: string;
   model: string;
 };
 
-const CREATENOW_MODEL_SUGGESTIONS: Partial<Record<ApiConfigType, CreatenowModelSuggestion[]>> = {
+export const CREATENOW_MODEL_SUGGESTIONS: Partial<Record<ApiConfigType, CreatenowModelSuggestion[]>> = {
   image: [
     { label: 'image2', model: 'nova-max' },
     { label: 'nano2', model: 'nova-pro' },

@@ -172,7 +172,7 @@ async def generate_image_prompt(project_id: str, request: ImagePromptRequest):
 
 async def generate_image_core(project_id: str, asset_id: str, asset_type: str, prompt: str,
                               negative_prompt: str = "", size: str = None, ai_config: dict = None,
-                              generation_scope: str = None) -> dict:
+                              generation_scope: str = None, model_override: str = None) -> dict:
     """可复用的生图核心逻辑（供 HTTP handler 和对话工具共同调用）
 
     返回第一张保存的图片记录 dict，失败时抛出异常。
@@ -195,7 +195,8 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
     try:
         result = await image_service.generate(
             prompt=prompt, negative_prompt=negative_prompt,
-            width=width, height=height, size_str=size_str
+            width=width, height=height, size_str=size_str,
+            model=model_override
         )
         await image_service.close()
     except Exception:
@@ -218,7 +219,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                 "asset_id": asset_id, "asset_type": asset_type,
                 "prompt": prompt, "negative_prompt": negative_prompt,
                 "width": width, "height": height, "image_path": image_url,
-                "model": ai_config.get("image", {}).get("model", "dall-e-3"),
+                "model": model_override or ai_config.get("image", {}).get("model", "dall-e-3"),
                 "actual_cost": resolve_credits(result, DEFAULT_IMAGE_COST), "credits_consumed": resolve_credits(result, DEFAULT_IMAGE_COST),
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
@@ -319,6 +320,7 @@ async def generate_image(project_id: str, request: ImageGenerateRequest):
             size=request.size,
             ai_config=ai_config,
             generation_scope=request.generation_scope,
+            model_override=request.model,
         )
         return saved
     except HTTPException:
@@ -371,7 +373,8 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                           reference_image_paths: list, size: str = None, ai_config: dict = None,
                           generation_scope: str = None,
                           reference_image_ids: list = None,
-                          reference_image_urls: list = None) -> dict:
+                          reference_image_urls: list = None,
+                          model_override: str = None) -> dict:
     """可复用的图生图核心逻辑（供 HTTP handler 和对话工具共同调用）
 
     reference_image_paths: 已解析好的图片路径列表（base64 data URL 或 http URL）
@@ -395,7 +398,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
     width, height = parse_size(size_str)
 
     image_config = ai_config.get("image", {})
-    model = image_config.get("image_edit_model") or image_config.get("model", "")
+    model = model_override or image_config.get("image_edit_model") or image_config.get("model", "")
 
     image_service = get_ai_service(ai_config, "image", project_id)
     try:
@@ -601,6 +604,7 @@ async def edit_image(project_id: str, request: ImageEditRequest):
             generation_scope=SQUARE_IMAGE_SCOPE if _is_virtual_image_asset(request.asset_type, request.asset_id) else None,
             reference_image_ids=request.reference_image_ids,
             reference_image_urls=request.reference_image_urls,
+            model_override=request.model,
         )
         return saved
     except ValueError as e:

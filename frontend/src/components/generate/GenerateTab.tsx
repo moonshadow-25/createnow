@@ -10,6 +10,7 @@ import { useToast } from '@/components/common/Toast';
 import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
+import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
@@ -67,6 +68,8 @@ interface ImageRecord {
 interface GenerateTabProps {
   projectId: string;
   showAssetSubmit?: boolean;
+  imageApiType?: string;
+  videoApiType?: string;
 }
 
 const HISTORY_PAGE_SIZE = 60;
@@ -152,7 +155,7 @@ function getImageRecordUrl(projectId: string, image: ImageRecord): string {
   return image.image_path || '';
 }
 
-export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabProps) {
+export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, videoApiType }: GenerateTabProps) {
   const { toast } = useToast();
   const { characters, scenes, props } = useAssetStore();
   const adminUsername = useAdminAuthStore(state => state.username);
@@ -160,6 +163,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<'video' | 'image'>('video');
+  const [selectedImageModel, setSelectedImageModel] = useState(CREATENOW_MODEL_SUGGESTIONS.image?.[0]?.model || '');
+  const [selectedVideoModel, setSelectedVideoModel] = useState(CREATENOW_MODEL_SUGGESTIONS.video?.[0]?.model || '');
   const [onlyMine, setOnlyMine] = useState(false);
   const [duration, setDuration] = useState(6);
   const [resolution, setResolution] = useState('720p');
@@ -180,6 +185,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
   const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
@@ -481,10 +487,12 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                 size: imageSize,
                 referenceImageIds,
                 referenceImageUrls,
+                model: imageApiType === 'createnow' ? selectedImageModel : undefined,
               })
             : generationApi.generateSquareImage(projectId, {
                 prompt: trimmedPrompt,
                 size: imageSize,
+                model: imageApiType === 'createnow' ? selectedImageModel : undefined,
               }));
           const savedImage: ImageRecord = response.data;
           setAllImages(prev => prev.map(image => image.image_id === placeholder.image_id ? savedImage : image));
@@ -517,6 +525,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
         ratio,
         generate_audio: generateAudio,
         reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
+        model: videoApiType === 'createnow' ? selectedVideoModel : undefined,
       });
       const newVideo: VideoRecord = res.data;
       setAllVideos(prev => [...prev, newVideo]);
@@ -724,6 +733,19 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
   const imageSizeLabel = IMAGE_RATIO_OPTIONS.find(option => option.value === imageSize)?.label || imageSize;
   const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
+  const showCreatenowModelSelect = mode === 'image' ? imageApiType === 'createnow' : videoApiType === 'createnow';
+  const activeModelSuggestions = mode === 'image'
+    ? (CREATENOW_MODEL_SUGGESTIONS.image || [])
+    : (CREATENOW_MODEL_SUGGESTIONS.video || []);
+  const selectedModelOverride = mode === 'image' ? selectedImageModel : selectedVideoModel;
+  const selectedModelLabel = activeModelSuggestions.find(option => option.model === selectedModelOverride)?.label || '选择模型';
+  const handleModelOverrideChange = (model: string) => {
+    if (mode === 'image') {
+      setSelectedImageModel(model);
+    } else {
+      setSelectedVideoModel(model);
+    }
+  };
   return (
     <div className="flex flex-col h-full bg-gray-900 text-white">
       <div className="border-b border-gray-800 px-4 py-3 flex items-center justify-between gap-3 bg-gray-900/80">
@@ -1065,6 +1087,34 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
                 )}
               </div>
             </>
+          )}
+
+          {showCreatenowModelSelect && activeModelSuggestions.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowModelMenu(!showModelMenu)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                title={`当前模型：${selectedModelOverride}`}
+              >
+                {mode === 'image' ? <Image size={14} /> : <Film size={14} />}
+                {selectedModelLabel}
+                <ChevronDown size={12} />
+              </button>
+              {showModelMenu && (
+                <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[160px]">
+                  {activeModelSuggestions.map(option => (
+                    <button
+                      key={`${option.label}-${option.model}`}
+                      onClick={() => { handleModelOverrideChange(option.model); setShowModelMenu(false); }}
+                      className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedModelOverride ? 'text-blue-400' : ''}`}
+                      title={option.model}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="flex-1" />
