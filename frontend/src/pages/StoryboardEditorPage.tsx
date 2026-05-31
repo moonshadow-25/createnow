@@ -55,6 +55,7 @@ export default function StoryboardEditorPage() {
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [storyboard, setStoryboard] = useState<any>(null);
+  const [storyboardList, setStoryboardList] = useState<any[]>([]);
   const [episodeId, setEpisodeId] = useState(searchParams.get('episodeId') || '');
   const [loading, setLoading] = useState(true);
   const [characters, setCharacters] = useState<any[]>([]);
@@ -245,6 +246,17 @@ export default function StoryboardEditorPage() {
         setStoryboard(sb);
         const ep = sb?.episode_id || searchParams.get('episodeId') || '';
         setEpisodeId(ep);
+        if (ep) {
+          try {
+            const listRes = await storyboardApi.list(projectId, ep);
+            const sortedStoryboards = (listRes.data || []).sort((a: any, b: any) => Number(a.sequence || 0) - Number(b.sequence || 0));
+            setStoryboardList(sortedStoryboards);
+          } catch {
+            setStoryboardList([]);
+          }
+        } else {
+          setStoryboardList([]);
+        }
         setCharacters(charRes.data || []);
         setScenes(sceneRes.data || []);
         setProps(propRes.data || []);
@@ -677,6 +689,12 @@ export default function StoryboardEditorPage() {
     navigate(`/project/${projectId}`, { state: { episodeId } });
   };
 
+  const handleSwitchStoryboard = (nextStoryboardId: string) => {
+    if (!nextStoryboardId || nextStoryboardId === storyboardId) return;
+    setMessagePrefix(null);
+    navigate(`/project/${projectId}/storyboard/${nextStoryboardId}/edit${episodeId ? `?episodeId=${episodeId}` : ''}`);
+  };
+
   const handleGenerateImage = async () => {
     if (!mergedStoryboard) return;
     await imageManagement.handleGenerateImageFromEdit(
@@ -830,6 +848,11 @@ export default function StoryboardEditorPage() {
   const allActive = allStatuses.length > 0 && allStatuses.every(s => s === 'Active');
   const isGenerating = hasRunningTask(storyboardId);
   const visibleImages = useMemo(() => storyboardImages.filter(img => !hiddenImageIds.has(img.image_id)), [storyboardImages, hiddenImageIds]);
+  const currentStoryboardIndex = storyboardList.findIndex(sb => sb.asset_id === storyboardId);
+  const previousStoryboard = currentStoryboardIndex > 0 ? storyboardList[currentStoryboardIndex - 1] : null;
+  const nextStoryboard = currentStoryboardIndex >= 0 && currentStoryboardIndex < storyboardList.length - 1
+    ? storyboardList[currentStoryboardIndex + 1]
+    : null;
 
   // ── Video segments ─────────────────────────────────────────────────────────
   const videoSegments = useMemo(() => {
@@ -896,6 +919,41 @@ export default function StoryboardEditorPage() {
           </button>
           <span className="text-gray-600">|</span>
           <span className="text-sm font-medium text-gray-200">分镜 #{storyboard.sequence}</span>
+          <div className="flex items-center gap-1.5 ml-1">
+            <button
+              type="button"
+              onClick={() => previousStoryboard && handleSwitchStoryboard(previousStoryboard.asset_id)}
+              disabled={!previousStoryboard}
+              className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed rounded transition"
+              title={previousStoryboard ? `切换到分镜 #${previousStoryboard.sequence}` : '已经是第一个分镜'}
+            >
+              上一个
+            </button>
+            <select
+              value={storyboardId}
+              onChange={(e) => handleSwitchStoryboard(e.target.value)}
+              disabled={storyboardList.length <= 1}
+              className="max-w-[220px] bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
+              title="快速切换分镜"
+            >
+              {storyboardList.length === 0 ? (
+                <option value={storyboardId}>分镜 #{storyboard.sequence}</option>
+              ) : storyboardList.map((item) => (
+                <option key={item.asset_id} value={item.asset_id}>
+                  分镜 #{item.sequence}{item.script_scene_label ? ` · ${item.script_scene_label}` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => nextStoryboard && handleSwitchStoryboard(nextStoryboard.asset_id)}
+              disabled={!nextStoryboard}
+              className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed rounded transition"
+              title={nextStoryboard ? `切换到分镜 #${nextStoryboard.sequence}` : '已经是最后一个分镜'}
+            >
+              下一个
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* Save status */}
