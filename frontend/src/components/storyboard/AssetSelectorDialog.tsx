@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Plus, Check, X, Loader2, Upload, Image } from 'lucide-react';
+import { Plus, Check, X, Loader2, Upload, Image, ZoomIn } from 'lucide-react';
 import { assetApi, generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 
@@ -27,14 +27,19 @@ function getAssetThumbnailUrl(asset: any): string | null {
   return url ? url.replace('/images/files/', '/thumbnails/') : null;
 }
 
+function getAssetImageUrl(asset: any): string | null {
+  return asset.primary_image_url || asset.image_url || null;
+}
+
 interface AssetGridItemProps {
   asset: any;
   selected: boolean;
   onToggle: () => void;
+  onPreview: () => void;
   color: 'blue' | 'green' | 'purple';
 }
 
-function AssetGridItem({ asset, selected, onToggle, color }: AssetGridItemProps) {
+function AssetGridItem({ asset, selected, onToggle, onPreview, color }: AssetGridItemProps) {
   const borderColor = {
     blue: selected ? 'border-blue-400' : 'border-transparent hover:border-blue-600',
     green: selected ? 'border-green-400' : 'border-transparent hover:border-green-600',
@@ -42,14 +47,15 @@ function AssetGridItem({ asset, selected, onToggle, color }: AssetGridItemProps)
   }[color];
 
   const thumbnailUrl = getAssetThumbnailUrl(asset);
+  const imageUrl = getAssetImageUrl(asset);
   const initial = (asset.name || '?')[0].toUpperCase();
 
   return (
     <div
       onClick={onToggle}
-      className={`relative w-24 flex-shrink-0 flex flex-col items-center gap-1 p-2 rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600 border-2 transition ${borderColor}`}
+      className={`relative group w-24 flex-shrink-0 flex flex-col items-center gap-1 p-2 rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600 border-2 transition ${borderColor}`}
     >
-      <div className="w-16 h-16 rounded overflow-hidden bg-gray-600 flex items-center justify-center flex-shrink-0">
+      <div className="relative w-16 h-16 rounded overflow-hidden bg-gray-600 flex items-center justify-center flex-shrink-0">
         {thumbnailUrl ? (
           <img
             src={thumbnailUrl}
@@ -59,6 +65,20 @@ function AssetGridItem({ asset, selected, onToggle, color }: AssetGridItemProps)
           />
         ) : (
           <span className="text-2xl font-bold text-gray-400">{initial}</span>
+        )}
+        {imageUrl && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview();
+            }}
+            className="absolute inset-0 m-auto w-8 h-8 rounded-full bg-black/65 hover:bg-black/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+            title="查看大图"
+            aria-label={`查看${asset.name || '资产'}大图`}
+          >
+            <ZoomIn size={16} />
+          </button>
         )}
       </div>
       <span className="text-xs text-center truncate w-full text-gray-200">{asset.name}</span>
@@ -215,6 +235,7 @@ export function AssetSelectorDialog({
 }: AssetSelectorDialogProps) {
   const [activeTab, setActiveTab] = useState<AssetTab>('character');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<any | null>(null);
 
   if (!show) return null;
 
@@ -337,6 +358,7 @@ export function AssetSelectorDialog({
                   asset={asset}
                   selected={isSelected(asset.asset_id)}
                   onToggle={() => onToggle(asset.asset_id)}
+                  onPreview={() => setPreviewAsset(asset)}
                   color={tabColor[activeTab]}
                 />
               ))}
@@ -359,6 +381,34 @@ export function AssetSelectorDialog({
           </div>
         </div>
       </div>
+
+      {previewAsset && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-6"
+          onClick={() => setPreviewAsset(null)}
+        >
+          <div className="relative max-w-[92vw] max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewAsset(null)}
+              className="absolute -top-10 right-0 text-gray-300 hover:text-white"
+              aria-label="关闭大图预览"
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={getAssetImageUrl(previewAsset) || ''}
+              alt={previewAsset.name || '资产大图'}
+              className="max-w-[92vw] max-h-[86vh] object-contain rounded-lg shadow-2xl bg-gray-900"
+            />
+            {previewAsset.name && (
+              <div className="absolute left-0 right-0 bottom-0 bg-black/60 text-white text-sm px-3 py-2 rounded-b-lg truncate">
+                {previewAsset.name}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
