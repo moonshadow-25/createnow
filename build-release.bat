@@ -37,15 +37,6 @@ if errorlevel 2 (
 echo Output : %OUTPUT_ZIP%
 echo.
 
-REM ── 检查前端是否已编译 ─────────────────────────────────────
-if not exist "%SOURCE_DIR%frontend\dist\index.html" (
-    echo [ERROR] Frontend build not found!
-    echo Please run: cd frontend ^&^& npm run build
-    echo.
-    pause
-    exit /b 1
-)
-
 if /I "%PACKAGE_MODE%"=="full" (
     if not exist "%SOURCE_DIR%env\" (
         echo [ERROR] Python environment not found: %SOURCE_DIR%env\
@@ -57,6 +48,25 @@ if /I "%PACKAGE_MODE%"=="full" (
 REM ── 自增版本号 ────────────────────────────────────────────
 echo Updating version.json...
 powershell -NoProfile -Command "$f = '%SOURCE_DIR%version.json'; $v = (Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json); $today = Get-Date -Format 'yyyy.M.d'; $parts = $v.version -split '\.'; if ($parts.Length -eq 4 -and ($parts[0]+'.'+$parts[1]+'.'+$parts[2]) -eq $today) { $n = [int]$parts[3] + 1 } else { $n = 1 }; $v.version = $today + '.' + $n; $v.release_date = Get-Date -Format 'yyyy-MM-dd'; $json = $v | ConvertTo-Json; [System.IO.File]::WriteAllText($f, $json, [System.Text.UTF8Encoding]::new($false)); Write-Host ('  Version: ' + $v.version)"
+
+REM ── 构建前端（必须在版本号更新后执行）────────────────────
+echo Building frontend...
+pushd "%SOURCE_DIR%frontend"
+call npm run build
+if errorlevel 1 (
+    echo [ERROR] Frontend build failed!
+    popd
+    pause
+    exit /b 1
+)
+popd
+
+REM ── 检查前端构建产物 ─────────────────────────────────────
+if not exist "%SOURCE_DIR%frontend\dist\index.html" (
+    echo [ERROR] Frontend build output not found!
+    pause
+    exit /b 1
+)
 
 REM ── Step 1: 创建临时暂存目录 ──────────────────────────────
 echo [1/5] Creating staging directory...

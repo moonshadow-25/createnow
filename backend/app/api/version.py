@@ -12,6 +12,8 @@ from pathlib import Path
 import aiohttp
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -54,6 +56,15 @@ def _has_update(local: str, remote: str) -> bool:
     return parse(remote) > parse(local)
 
 
+def _require_selfhosted_admin(request: Request):
+    """仅 selfhosted 管理员可检查并执行本地更新。"""
+    if settings.DEPLOY_MODE == "saas":
+        raise HTTPException(status_code=403, detail="SaaS 模式不支持本地更新")
+    admin_user = getattr(request.state, "admin_user", None)
+    if not admin_user or admin_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可检查和执行更新")
+
+
 # ── 端点 ──────────────────────────────────────────────────────────────────────
 
 @router.get("/version")
@@ -63,8 +74,9 @@ async def get_local_version():
 
 
 @router.get("/version/check")
-async def check_for_update():
+async def check_for_update(request: Request):
     """请求远程 version.json，与本地对比，返回是否有更新"""
+    _require_selfhosted_admin(request)
     local = _read_local_version()
     remote_url = _get_remote_version_url()
     if not remote_url:
@@ -94,8 +106,9 @@ async def _self_exit():
 
 
 @router.post("/version/update")
-async def trigger_update(background_tasks: BackgroundTasks):
+async def trigger_update(request: Request, background_tasks: BackgroundTasks):
     """启动 update.bat（新窗口），然后主进程自杀释放文件锁"""
+    _require_selfhosted_admin(request)
     if not UPDATE_SCRIPT.exists():
         raise HTTPException(status_code=404, detail="update.bat 不存在，请确认安装目录完整")
 

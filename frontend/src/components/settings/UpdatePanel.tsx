@@ -15,6 +15,8 @@ export function UpdatePanel() {
   const { toast } = useToast();
   const { appearanceMode, toggleAppearanceMode } = useThemeStore();
   const [state, setState] = useState<State>('idle');
+  const frontendVersion = __APP_VERSION__;
+  const frontendReleaseDate = __APP_RELEASE_DATE__;
   const [localVersion, setLocalVersion] = useState<string>('');
   const [remoteInfo, setRemoteInfo] = useState<VersionInfo | null>(null);
   const [error, setError] = useState<string>('');
@@ -55,10 +57,25 @@ export function UpdatePanel() {
 
   return (
     <div className="p-6 flex flex-col gap-5 max-w-lg">
-      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-        <div className="text-xs text-gray-400 mb-1">当前版本</div>
-        <div className="text-base font-mono text-gray-100">{localVersion || '...'}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <div className="text-xs text-gray-400 mb-1">当前前端版本</div>
+          <div className="text-base font-mono text-gray-100">{frontendVersion || 'unknown'}</div>
+          {frontendReleaseDate && (
+            <div className="text-xs text-gray-500 mt-1">{frontendReleaseDate}</div>
+          )}
+        </div>
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+          <div className="text-xs text-gray-400 mb-1">当前后端版本</div>
+          <div className="text-base font-mono text-gray-100">{localVersion || '...'}</div>
+        </div>
       </div>
+
+      {localVersion && localVersion !== 'unknown' && frontendVersion !== 'unknown' && localVersion !== frontendVersion && (
+        <div className="bg-yellow-900/30 border border-yellow-600/40 text-yellow-200 rounded-lg px-4 py-3 text-xs">
+          前端运行版本与后端安装版本不一致，可能是浏览器仍在使用旧缓存。更新完成后请强制刷新页面。
+        </div>
+      )}
 
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
         <div className="text-xs text-gray-400 mb-2">界面模式</div>
