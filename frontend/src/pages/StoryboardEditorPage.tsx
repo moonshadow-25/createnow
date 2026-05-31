@@ -848,11 +848,6 @@ export default function StoryboardEditorPage() {
   const allActive = allStatuses.length > 0 && allStatuses.every(s => s === 'Active');
   const isGenerating = hasRunningTask(storyboardId);
   const visibleImages = useMemo(() => storyboardImages.filter(img => !hiddenImageIds.has(img.image_id)), [storyboardImages, hiddenImageIds]);
-  const currentStoryboardIndex = storyboardList.findIndex(sb => sb.asset_id === storyboardId);
-  const previousStoryboard = currentStoryboardIndex > 0 ? storyboardList[currentStoryboardIndex - 1] : null;
-  const nextStoryboard = currentStoryboardIndex >= 0 && currentStoryboardIndex < storyboardList.length - 1
-    ? storyboardList[currentStoryboardIndex + 1]
-    : null;
 
   // ── Video segments ─────────────────────────────────────────────────────────
   const videoSegments = useMemo(() => {
@@ -919,40 +914,26 @@ export default function StoryboardEditorPage() {
           </button>
           <span className="text-gray-600">|</span>
           <span className="text-sm font-medium text-gray-200">分镜 #{storyboard.sequence}</span>
-          <div className="flex items-center gap-1.5 ml-1">
-            <button
-              type="button"
-              onClick={() => previousStoryboard && handleSwitchStoryboard(previousStoryboard.asset_id)}
-              disabled={!previousStoryboard}
-              className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed rounded transition"
-              title={previousStoryboard ? `切换到分镜 #${previousStoryboard.sequence}` : '已经是第一个分镜'}
-            >
-              上一个
-            </button>
-            <select
-              value={storyboardId}
-              onChange={(e) => handleSwitchStoryboard(e.target.value)}
-              disabled={storyboardList.length <= 1}
-              className="max-w-[220px] bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed"
-              title="快速切换分镜"
-            >
-              {storyboardList.length === 0 ? (
-                <option value={storyboardId}>分镜 #{storyboard.sequence}</option>
-              ) : storyboardList.map((item) => (
-                <option key={item.asset_id} value={item.asset_id}>
-                  分镜 #{item.sequence}{item.script_scene_label ? ` · ${item.script_scene_label}` : ''}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => nextStoryboard && handleSwitchStoryboard(nextStoryboard.asset_id)}
-              disabled={!nextStoryboard}
-              className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed rounded transition"
-              title={nextStoryboard ? `切换到分镜 #${nextStoryboard.sequence}` : '已经是最后一个分镜'}
-            >
-              下一个
-            </button>
+          <div className="flex items-center gap-1 ml-1 max-w-[46vw] overflow-x-auto py-1">
+            {(storyboardList.length > 0 ? storyboardList : [storyboard]).map((item) => {
+              const isActiveStoryboard = item.asset_id === storyboardId;
+              return (
+                <button
+                  key={item.asset_id}
+                  type="button"
+                  onClick={() => handleSwitchStoryboard(item.asset_id)}
+                  disabled={isActiveStoryboard}
+                  className={`min-w-7 h-7 px-2 rounded text-xs font-medium transition ${
+                    isActiveStoryboard
+                      ? 'bg-blue-600 text-white cursor-default'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+                  }`}
+                  title={item.script_scene_label ? `分镜 #${item.sequence} · ${item.script_scene_label}` : `切换到分镜 #${item.sequence}`}
+                >
+                  {item.sequence}
+                </button>
+              );
+            })}
           </div>
         </div>
         <div className="flex items-center gap-3">
