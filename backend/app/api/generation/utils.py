@@ -161,22 +161,22 @@ def parse_size(size_str: str) -> tuple[int, int]:
 
         # 如果是比例格式（如 1x1, 16x9），转换为实际像素
         if w_ratio < 100 or h_ratio < 100:
-            # 特殊比例映射
             ratio_key = f"{int(w_ratio)}:{int(h_ratio)}"
             special_ratios = {
-                "6:19": (576, 1824),   # 三宫格竖图
-                "19:6": (1824, 576),   # 三宫格横图
+                "1:1": (1536, 1536),
+                "16:9": (2048, 1152),
+                "9:16": (1152, 2048),
+                "4:3": (1536, 1152),
+                "3:4": (1152, 1536),
             }
             if ratio_key in special_ratios:
                 return special_ratios[ratio_key]
 
-            # 1x1 -> 1536x1536
-            # 16x9 -> 2048x1152
-            if abs(w_ratio - h_ratio) < 0.01:  # 正方形
+            if abs(w_ratio - h_ratio) < 0.01:
                 return 1536, 1536
-            elif w_ratio > h_ratio:  # 横向 (如16x9)
+            elif w_ratio > h_ratio:
                 return 2048, 1152
-            else:  # 纵向
+            else:
                 return 1152, 2048
         else:
             # 直接是像素值

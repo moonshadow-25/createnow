@@ -137,8 +137,8 @@ export const generationApi = {
     }),
   listImages: (projectId: string, assetId: string) =>
     api.get(`/projects/${projectId}/generate/images/${assetId}`),
-  listLibraryImages: (projectId: string, onlyMine: boolean = false) =>
-    api.get(`/projects/${projectId}/generate/images/library`, { params: { mine: onlyMine } }),
+  listLibraryImages: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/images/library`),
   setPrimaryImage: (projectId: string, assetId: string, imageId: string) =>
     api.post(`/projects/${projectId}/generate/images/${imageId}/set-primary`, {
       asset_id: assetId,
@@ -210,8 +210,8 @@ export const generationApi = {
   // 视频列表和查询
   listVideos: (projectId: string, episodeId?: string, onlyMine: boolean = false) =>
     api.get(`/projects/${projectId}/generate/videos`, { params: { episode_id: episodeId, mine: onlyMine } }),
-  listLibraryVideos: (projectId: string, onlyMine: boolean = false) =>
-    api.get(`/projects/${projectId}/generate/videos`, { params: { library: true, mine: onlyMine } }),
+  listLibraryVideos: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/videos`, { params: { library: true } }),
   getVideo: (projectId: string, videoId: string) =>
     api.get(`/projects/${projectId}/generate/videos/${videoId}`),
   pollVideo: (projectId: string, videoId: string) =>

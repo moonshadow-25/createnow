@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';import {
   Upload, X, Film, Plus, ChevronDown, Loader2, Play,
-  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music, Wand2
+  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music
 } from 'lucide-react';
 import { useAssetStore } from '@/store/assetStore';
+import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { useSaasAuthStore } from '@/store/saasAuthStore';
 import { generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
-import { ImageEditDialog } from '@/components/common/ImageEditDialog';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
@@ -33,6 +34,7 @@ interface VideoRecord {
   model: string;
   status: string;
   created_at: string;
+  created_by?: string;
   task_id?: string;
   poll_count?: number;
   last_poll_time?: string | null;
@@ -49,9 +51,17 @@ interface ImageRecord {
   prompt: string;
   image_path?: string | null;
   local_path?: string;
+  width?: number;
+  height?: number;
   created_at: string;
   created_by?: string;
   is_primary?: boolean;
+  status?: 'pending' | 'completed' | 'failed';
+  error?: string;
+  isPlaceholder?: boolean;
+  size?: string;
+  reference_image_ids?: string[];
+  reference_image_urls?: string[];
 }
 
 interface GenerateTabProps {
@@ -65,6 +75,14 @@ const RATIO_OPTIONS = [
   { label: '16:9 横版', value: '16:9' },
   { label: '9:16 竖版', value: '9:16' },
   { label: '21:9 超宽', value: '21:9' },
+];
+
+const IMAGE_RATIO_OPTIONS = [
+  { label: '16:9 横版', value: '16x9' },
+  { label: '9:16 竖版', value: '9x16' },
+  { label: '1:1 方形', value: '1x1' },
+  { label: '4:3 标准', value: '4x3' },
+  { label: '3:4 竖版', value: '3x4' },
 ];
 
 const RESOLUTION_OPTIONS = [
@@ -118,6 +136,15 @@ function getThumbnailUrl(url?: string): string {
   return url.replace('/images/files/', '/thumbnails/');
 }
 
+function getCurrentUserLabel(adminUsername: string | null, saasUser: { display_name?: string; email?: string } | null): string {
+  return saasUser?.display_name || saasUser?.email || adminUsername || '';
+}
+
+function filterMineItems<T>(items: T[], currentUserLabel: string, onlyMine: boolean): T[] {
+  if (!onlyMine || !currentUserLabel) return items;
+  return items.filter(item => (((item as any).created_by || '') === currentUserLabel));
+}
+
 function getImageRecordUrl(projectId: string, image: ImageRecord): string {
   if (image.local_path) {
     return `/api/projects/${projectId}/images/files/${image.local_path}`;
@@ -128,6 +155,8 @@ function getImageRecordUrl(projectId: string, image: ImageRecord): string {
 export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabProps) {
   const { toast } = useToast();
   const { characters, scenes, props } = useAssetStore();
+  const adminUsername = useAdminAuthStore(state => state.username);
+  const saasUser = useSaasAuthStore(state => state.user);
 
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<'video' | 'image'>('video');
@@ -135,22 +164,26 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
   const [duration, setDuration] = useState(6);
   const [resolution, setResolution] = useState('720p');
   const [ratio, setRatio] = useState('16:9');
+  const [imageSize, setImageSize] = useState('16x9');
   const [generateAudio, setGenerateAudio] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<RefMedia[]>([]);
-  const [videos, setVideos] = useState<VideoRecord[]>([]);
-  const [images, setImages] = useState<ImageRecord[]>([]);
-  const [visibleCount, setVisibleCount] = useState(0);
-  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [allVideos, setAllVideos] = useState<VideoRecord[]>([]);
+  const [allImages, setAllImages] = useState<ImageRecord[]>([]);
+  const [videoVisibleCount, setVideoVisibleCount] = useState(0);
+  const [imageVisibleCount, setImageVisibleCount] = useState(0);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [pendingImageCount, setPendingImageCount] = useState(0);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [assetPickerTab, setAssetPickerTab] = useState<'character' | 'scene' | 'prop'>('character');
   const [showRatioMenu, setShowRatioMenu] = useState(false);
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
+  const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
-  const [showImageEditDialog, setShowImageEditDialog] = useState(false);
-  const [editingImageId, setEditingImageId] = useState<string | null>(null);
+  const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
+  const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
+  const [hasLoadedImages, setHasLoadedImages] = useState(false);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -172,44 +205,69 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     }
   }, []);
 
-  // 加载视频库
+  const currentUserLabel = getCurrentUserLabel(adminUsername, saasUser);
+
+  const filteredVideos = useMemo(
+    () => filterMineItems(allVideos, currentUserLabel, onlyMine),
+    [allVideos, currentUserLabel, onlyMine]
+  );
+
+  const filteredImages = useMemo(
+    () => filterMineItems(allImages, currentUserLabel, onlyMine),
+    [allImages, currentUserLabel, onlyMine]
+  );
+
+  const activeListLength = mode === 'video' ? filteredVideos.length : filteredImages.length;
+  const activeVisibleCount = mode === 'video' ? videoVisibleCount : imageVisibleCount;
+  const hasMoreHistory = activeListLength > activeVisibleCount;
+
+  // 加载视频库：只按项目首次加载，不受 mode/onlyMine 影响
   const loadLibraryVideos = useCallback(async () => {
     try {
-      const res = await generationApi.listLibraryVideos(projectId, onlyMine);
+      const res = await generationApi.listLibraryVideos(projectId);
       const list: VideoRecord[] = res.data || [];
-      // 保持时间顺序：旧 -> 新（最新在底部）
       const asc = [...list].reverse();
-      setVideos(asc);
-      const initialCount = Math.min(HISTORY_PAGE_SIZE, asc.length);
-      setVisibleCount(initialCount);
-      setHasMoreHistory(asc.length > initialCount);
+      setAllVideos(asc);
+      setVideoVisibleCount(Math.min(HISTORY_PAGE_SIZE, asc.length));
+      setHasLoadedVideos(true);
       shouldStickToBottomRef.current = true;
       historyReadyRef.current = false;
     } catch { /* ignore */ }
-  }, [projectId, onlyMine]);
+  }, [projectId]);
 
   const loadLibraryImages = useCallback(async () => {
     try {
-      const res = await generationApi.listLibraryImages(projectId, onlyMine);
+      const res = await generationApi.listLibraryImages(projectId);
       const list: ImageRecord[] = res.data || [];
-      setImages(list);
+      const asc = [...list].reverse();
+      setAllImages(asc);
+      setImageVisibleCount(Math.min(HISTORY_PAGE_SIZE, asc.length));
+      setHasLoadedImages(true);
+      shouldStickToBottomRef.current = true;
+      historyReadyRef.current = false;
     } catch { /* ignore */ }
-  }, [projectId, onlyMine]);
+  }, [projectId]);
 
   const visibleVideos = useMemo(() => {
-    if (visibleCount <= 0) return [];
-    return videos.slice(-visibleCount);
-  }, [videos, visibleCount]);
+    if (videoVisibleCount <= 0) return [];
+    return filteredVideos.slice(-videoVisibleCount);
+  }, [filteredVideos, videoVisibleCount]);
+
+  const visibleImages = useMemo(() => {
+    if (imageVisibleCount <= 0) return [];
+    return filteredImages.slice(-imageVisibleCount);
+  }, [filteredImages, imageVisibleCount]);
 
   const loadMoreHistory = useCallback(() => {
     if (!hasMoreHistory || isLoadingHistory) return;
     const container = videoListRef.current;
     const prevHeight = container?.scrollHeight || 0;
     setIsLoadingHistory(true);
-    setVisibleCount(prev => {
-      const next = Math.min(videos.length, prev + HISTORY_PAGE_SIZE);
-      return next;
-    });
+    if (mode === 'video') {
+      setVideoVisibleCount(prev => Math.min(filteredVideos.length, prev + HISTORY_PAGE_SIZE));
+    } else {
+      setImageVisibleCount(prev => Math.min(filteredImages.length, prev + HISTORY_PAGE_SIZE));
+    }
     requestAnimationFrame(() => {
       if (container) {
         const nextHeight = container.scrollHeight;
@@ -217,30 +275,42 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
       }
       setIsLoadingHistory(false);
     });
-  }, [hasMoreHistory, isLoadingHistory, videos.length]);
+  }, [hasMoreHistory, isLoadingHistory, mode, filteredVideos.length, filteredImages.length]);
 
   useEffect(() => {
-    if (mode === 'video') {
+    setAllVideos([]);
+    setAllImages([]);
+    setVideoVisibleCount(0);
+    setImageVisibleCount(0);
+    setHasLoadedVideos(false);
+    setHasLoadedImages(false);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (mode === 'video' && !hasLoadedVideos) {
       loadLibraryVideos();
-    } else {
+    } else if (mode === 'image' && !hasLoadedImages) {
       loadLibraryImages();
     }
-  }, [mode, loadLibraryVideos, loadLibraryImages]);
+  }, [mode, hasLoadedVideos, hasLoadedImages, loadLibraryVideos, loadLibraryImages]);
 
   useEffect(() => {
-    if (mode === 'image') {
-      setSelectedMedia(prev => prev.filter(item => item.type === 'image'));
+    if (mode === 'video' && videoVisibleCount === 0 && filteredVideos.length > 0) {
+      setVideoVisibleCount(Math.min(HISTORY_PAGE_SIZE, filteredVideos.length));
     }
-  }, [mode]);
+    if (mode === 'image' && imageVisibleCount === 0 && filteredImages.length > 0) {
+      setImageVisibleCount(Math.min(HISTORY_PAGE_SIZE, filteredImages.length));
+    }
+  }, [mode, videoVisibleCount, imageVisibleCount, filteredVideos.length, filteredImages.length]);
 
-  // 视频加载/新增后滚动到底部（仅在用户停留底部时）
+  // 历史新增后滚动到底部（仅在用户停留底部时）
   useEffect(() => {
     if (!shouldStickToBottomRef.current) return;
     setTimeout(() => {
       scrollToBottom();
       historyReadyRef.current = true;
     }, 50);
-  }, [visibleVideos.length, scrollToBottom]);
+  }, [mode === 'video' ? visibleVideos.length : visibleImages.length, scrollToBottom]);
 
   const handleVideoListScroll = useCallback(() => {
     const el = videoListRef.current;
@@ -272,7 +342,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
       try {
         const res = await generationApi.pollVideo(projectId, videoId);
         const updated: VideoRecord = res.data;
-        setVideos(prev => prev.map(v => v.video_id === videoId ? updated : v));
+        setAllVideos(prev => prev.map(v => v.video_id === videoId ? updated : v));
         if (updated.status === 'completed' || updated.status === 'failed' || updated.status === 'poll_failed') {
           clearInterval(timer);
           pollingRef.current.delete(videoId);
@@ -290,17 +360,97 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
   // 对已有 pending/in_progress 视频自动轮询
   useEffect(() => {
-    videos.forEach(v => {
+    allVideos.forEach(v => {
       if ((v.status === 'pending' || v.status === 'in_progress') && !pollingRef.current.has(v.video_id)) {
         startPolling(v.video_id);
       }
     });
-  }, [videos, startPolling]);
+  }, [allVideos, startPolling]);
+
+  const createPendingImage = useCallback((textPrompt: string, refs: RefMedia[]): ImageRecord => ({
+    image_id: `pending-${crypto.randomUUID()}`,
+    asset_id: 'square-generate',
+    asset_type: 'generate',
+    prompt: textPrompt,
+    created_at: new Date().toISOString(),
+    created_by: currentUserLabel,
+    status: 'pending',
+    isPlaceholder: true,
+    image_path: null,
+    local_path: undefined,
+    size: imageSize,
+    reference_image_ids: refs.filter(m => m.type === 'image' && m.id).map(m => m.id!),
+    reference_image_urls: refs.filter(m => m.type === 'image' && m.url).map(m => m.url),
+  }), [currentUserLabel, imageSize]);
+
+  const buildImageReferenceMedia = useCallback((image: ImageRecord): RefMedia[] => {
+    const refs: RefMedia[] = [];
+    const imageById = new Map(allImages.map(item => [item.image_id, item]));
+    (image.reference_image_ids || []).forEach(id => {
+      const ref = imageById.get(id);
+      const url = ref ? getImageRecordUrl(projectId, ref) : '';
+      refs.push({
+        type: 'image',
+        id,
+        url,
+        name: ref?.prompt || '参考图',
+      });
+    });
+    (image.reference_image_urls || []).forEach(url => {
+      if (!url) return;
+      if (refs.some(ref => ref.url === url)) return;
+      refs.push({ type: 'image', url, name: '参考图' });
+    });
+    return refs.filter(ref => ref.url || ref.id);
+  }, [allImages, projectId]);
+
+  const handleRegenerateImage = useCallback((image: ImageRecord) => {
+    setMode('image');
+    setPrompt(image.prompt || '');
+    setSelectedMedia(buildImageReferenceMedia(image));
+    if (image.size && IMAGE_RATIO_OPTIONS.some(option => option.value === image.size)) {
+      setImageSize(image.size);
+      return;
+    }
+    const width = (image as any).width;
+    const height = (image as any).height;
+    if (width && height) {
+      const ratioKey = `${width}:${height}`;
+      const byPixels: Record<string, string> = {
+        '2048:1152': '16x9',
+        '1152:2048': '9x16',
+        '1536:1536': '1x1',
+        '1536:1152': '4x3',
+        '1152:1536': '3x4',
+      };
+      if (byPixels[ratioKey]) {
+        setImageSize(byPixels[ratioKey]);
+      }
+    }
+  }, [buildImageReferenceMedia]);
+
+  const handleEditImage = useCallback((image: ImageRecord) => {
+    const imageUrl = getImageRecordUrl(projectId, image);
+    if (!imageUrl) return;
+    setMode('image');
+    setSelectedMedia(prev => {
+      if (prev.some(item => item.type === 'image' && item.id === image.image_id)) {
+        return prev;
+      }
+      return [...prev, {
+        type: 'image',
+        id: image.image_id,
+        url: imageUrl,
+        name: image.prompt || '广场图片',
+      }];
+    });
+  }, [projectId]);
 
   // 生成视频
   const handleGenerate = async () => {
     if (!prompt.trim()) { toast(mode === 'video' ? '请输入视频提示词' : '请输入图片提示词', 'error'); return; }
 
+    const trimmedPrompt = prompt.trim();
     const imageItems = selectedMedia.filter(m => m.type === 'image' && m.id);
     const videoItems = selectedMedia.filter(m => m.type === 'video');
     const audioItems = selectedMedia.filter(m => m.type === 'audio');
@@ -313,51 +463,78 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
       return m.url;
     });
 
-    setIsGenerating(true);
     try {
       if (mode === 'image') {
-        const imageRes = imageItems.length > 0
-          ? await generationApi.editSquareImage(projectId, {
-              prompt: prompt.trim(),
-              referenceImageIds: imageItems.map(m => m.id!),
-            })
-          : await generationApi.generateSquareImage(projectId, {
-              prompt: prompt.trim(),
-            });
-        const newImage: ImageRecord = imageRes.data;
-        setImages(prev => [newImage, ...prev]);
-        toast(imageItems.length > 0 ? '图片编辑成功' : '图片生成成功', 'success');
-      } else {
-        const res = await generationApi.generateVideo(projectId, {
-          storyboard_id: null,
-          episode_id: null,
-          image_ids: imageItems.map(m => m.id!),
-          video_urls: resolvedVideoUrls.length > 0 ? resolvedVideoUrls : undefined,
-          audio_urls: audioItems.length > 0 ? audioItems.map(m => m.url) : undefined,
-          prompt: prompt.trim(),
-          duration,
-          resolution,
-          ratio,
-          generate_audio: generateAudio,
-          reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
-        });
-        const newVideo: VideoRecord = res.data;
-        setVideos(prev => [...prev, newVideo]);
-        setVisibleCount(prev => {
-          const base = prev > 0 ? prev : Math.min(HISTORY_PAGE_SIZE, videos.length + 1);
-          return Math.min(videos.length + 1, base + 1);
-        });
+        const placeholder = createPendingImage(trimmedPrompt, selectedMedia);
+        setAllImages(prev => [...prev, placeholder]);
+        setImageVisibleCount(prev => Math.min(filteredImages.length + 1, Math.max(prev, 0) + 1));
         shouldStickToBottomRef.current = true;
-        startPolling(newVideo.video_id);
-        const estimatedCost = typeof newVideo.estimated_cost === 'number'
-          ? newVideo.estimated_cost
-          : newVideo.duration;
-        toast(`视频生成任务已提交（预计消耗 ${estimatedCost} 元）`, 'success');
+        setPendingImageCount(count => count + 1);
+        try {
+          const referenceImageIds = imageItems.map(m => m.id!);
+          const referenceImageUrls = selectedMedia
+            .filter(m => m.type === 'image' && m.url)
+            .map(m => m.url);
+          const response = await (imageItems.length > 0
+            ? generationApi.editSquareImage(projectId, {
+                prompt: trimmedPrompt,
+                size: imageSize,
+                referenceImageIds,
+                referenceImageUrls,
+              })
+            : generationApi.generateSquareImage(projectId, {
+                prompt: trimmedPrompt,
+                size: imageSize,
+              }));
+          const savedImage: ImageRecord = response.data;
+          setAllImages(prev => prev.map(image => image.image_id === placeholder.image_id ? savedImage : image));
+          toast(imageItems.length > 0 ? '图片生成成功' : '图片生成成功', 'success');
+        } catch (e: any) {
+          const errorMessage = e?.response?.data?.detail || '图片生成失败，请检查配置';
+          setAllImages(prev => prev.map(image => image.image_id === placeholder.image_id ? {
+            ...image,
+            status: 'failed',
+            error: String(errorMessage),
+            isPlaceholder: false,
+          } : image));
+          toast(errorMessage, 'error');
+        } finally {
+          setPendingImageCount(count => Math.max(0, count - 1));
+        }
+        return;
       }
+
+      setIsGeneratingVideo(true);
+      const res = await generationApi.generateVideo(projectId, {
+        storyboard_id: null,
+        episode_id: null,
+        image_ids: imageItems.map(m => m.id!),
+        video_urls: resolvedVideoUrls.length > 0 ? resolvedVideoUrls : undefined,
+        audio_urls: audioItems.length > 0 ? audioItems.map(m => m.url) : undefined,
+        prompt: trimmedPrompt,
+        duration,
+        resolution,
+        ratio,
+        generate_audio: generateAudio,
+        reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
+      });
+      const newVideo: VideoRecord = res.data;
+      setAllVideos(prev => [...prev, newVideo]);
+      setVideoVisibleCount(prev => {
+        const base = prev > 0 ? prev : Math.min(HISTORY_PAGE_SIZE, filteredVideos.length + 1);
+        return Math.min(filteredVideos.length + 1, base + 1);
+      });
+      shouldStickToBottomRef.current = true;
+      startPolling(newVideo.video_id);
+      const estimatedCost = typeof newVideo.estimated_cost === 'number'
+        ? newVideo.estimated_cost
+        : newVideo.duration;
+      toast(`视频生成任务已提交（预计消耗 ${estimatedCost} 元）`, 'success');
     } catch (e: any) {
-      toast(e?.response?.data?.detail || (mode === 'video' ? '生成失败，请检查配置' : '图片生成失败，请检查配置'), 'error');
+      const errorMessage = e?.response?.data?.detail || '生成失败，请检查配置';
+      toast(errorMessage, 'error');
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingVideo(false);
     }
   };
 
@@ -372,15 +549,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
     // 清空审核状态，让用户重新触发（若需要）
     setAssetStatuses({});
   };
-
-  const handleOpenImageEdit = useCallback((image: ImageRecord) => {
-    setEditingImageId(image.image_id);
-    setShowImageEditDialog(true);
-  }, []);
-
-  const handleImageEditCompleted = useCallback(async () => {
-    await loadLibraryImages();
-  }, [loadLibraryImages]);
 
   const handleAddAsset = (asset: any) => {
     const imgId = asset.image_id;
@@ -554,7 +722,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
   const ratioLabel = RATIO_OPTIONS.find(r => r.value === ratio)?.label || ratio;
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
-  const editingImage = images.find(image => image.image_id === editingImageId) || null;
+  const imageSizeLabel = IMAGE_RATIO_OPTIONS.find(option => option.value === imageSize)?.label || imageSize;
   const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
   return (
     <div className="flex flex-col h-full bg-gray-900 text-white">
@@ -583,7 +751,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
       {mode === 'video' ? (
         <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
-          {videos.length === 0 ? (
+          {filteredVideos.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
               <Film size={48} className="opacity-30" />
               <p className="text-lg">视频库为空</p>
@@ -612,43 +780,30 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4">
-          {images.length === 0 ? (
+        <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
+          {filteredImages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
               <Image size={48} className="opacity-30" />
               <p className="text-lg">图片库为空</p>
               <p className="text-sm">输入提示词直接文生图，或加参考图做图生图</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {images.map(image => {
-                const imageUrl = getImageRecordUrl(projectId, image);
-                return (
-                  <button
-                    key={image.image_id}
-                    onClick={() => handleOpenImageEdit(image)}
-                    className="text-left bg-gray-800 border border-gray-700 rounded-lg overflow-hidden hover:border-blue-500 transition"
-                    title="点击快捷编辑"
-                  >
-                    <div className="aspect-square bg-gray-900 overflow-hidden">
-                      {imageUrl ? (
-                        <img src={getThumbnailUrl(imageUrl)} alt={image.prompt} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-500">
-                          <Image size={24} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3 space-y-2">
-                      <ExpandableText text={image.prompt || '未命名图片'} maxLines={2} className="text-sm text-gray-200" />
-                      <div className="flex items-center justify-between text-xs text-gray-500 gap-2">
-                        <span>{new Date(image.created_at).toLocaleString('zh-CN')}</span>
-                        <span className="inline-flex items-center gap-1 text-blue-400"><Wand2 size={12} />快捷编辑</span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="space-y-3">
+              {hasMoreHistory && (
+                <div className="flex justify-center py-1">
+                  <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
+                </div>
+              )}
+              {visibleImages.map(image => (
+                <ImageHistoryItem
+                  key={image.image_id}
+                  image={image}
+                  projectId={projectId}
+                  onPreview={() => setExpandedImage(image)}
+                  onRegenerate={() => handleRegenerateImage(image)}
+                  onEdit={() => handleEditImage(image)}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -884,6 +1039,34 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
             </>
           )}
 
+          {mode === 'image' && (
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => setShowImageSizeMenu(!showImageSizeMenu)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                >
+                  <Image size={14} />
+                  {imageSizeLabel}
+                  <ChevronDown size={12} />
+                </button>
+                {showImageSizeMenu && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                    {IMAGE_RATIO_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => { setImageSize(option.value); setShowImageSizeMenu(false); }}
+                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === imageSize ? 'text-blue-400' : ''}`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           <div className="flex-1" />
 
           {mode === 'video' && (
@@ -898,11 +1081,11 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
 
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !prompt.trim()}
+            disabled={(mode === 'video' ? isGeneratingVideo : false) || !prompt.trim()}
             className="flex items-center gap-2 px-5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition"
           >
-            {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            {mode === 'video' ? '生成视频' : (imageSelectedCount > 0 ? '图生图' : '文生图')}
+            {(mode === 'video' ? isGeneratingVideo : false) ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {mode === 'video' ? '生成视频' : (imageSelectedCount > 0 ? `图生图${pendingImageCount > 0 ? ` (${pendingImageCount})` : ''}` : `文生图${pendingImageCount > 0 ? ` (${pendingImageCount})` : ''}`)}
           </button>
         </div>
       </div>
@@ -912,25 +1095,95 @@ export function GenerateTab({ projectId, showAssetSubmit = false }: GenerateTabP
           projectId={projectId}
           onClose={() => setShowLibrary(false)}
           libraryOnly
-          initialVideos={videos}
+          initialVideos={filteredVideos}
         />
       )}
 
-      {showImageEditDialog && editingImage && (
-        <ImageEditDialog
-          projectId={projectId}
-          assetId="square-generate"
-          assetType="generate"
-          assetName="广场图片"
-          images={images}
-          initialSelectedImageIds={[editingImage.image_id]}
-          onCompleted={handleImageEditCompleted}
-          onClose={() => {
-            setShowImageEditDialog(false);
-            setEditingImageId(null);
-          }}
-        />
+      {expandedImage && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={getImageRecordUrl(projectId, expandedImage)}
+              alt={expandedImage.prompt}
+              className="max-w-full max-h-[80vh] object-contain rounded-lg"
+            />
+            <div className="mt-3 text-sm text-gray-200">
+              {expandedImage.prompt || '未命名图片'}
+            </div>
+          </div>
+        </div>
       )}
+    </div>
+  );
+}
+
+interface ImageHistoryItemProps {
+  image: ImageRecord;
+  projectId: string;
+  onPreview: () => void;
+  onRegenerate: () => void;
+  onEdit: () => void;
+}
+
+function ImageHistoryItem({ image, projectId, onPreview, onRegenerate, onEdit }: ImageHistoryItemProps) {
+  const imageUrl = getImageRecordUrl(projectId, image);
+  const thumbUrl = getThumbnailUrl(imageUrl);
+
+  return (
+    <div className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+      <button
+        onClick={onRegenerate}
+        className="w-full text-left hover:bg-gray-750 transition-colors group"
+        title="点击回填提示词和比例"
+      >
+        <div className="flex items-start gap-3 p-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview();
+            }}
+            className="w-24 h-24 bg-gray-900 rounded overflow-hidden flex-shrink-0 flex items-center justify-center"
+            title="查看大图"
+          >
+            {image.status === 'pending' ? (
+              <Loader2 size={20} className="animate-spin text-gray-400" />
+            ) : thumbUrl ? (
+              <img src={thumbUrl} alt={image.prompt} className="w-full h-full object-cover" />
+            ) : (
+              <Image size={20} className="text-gray-500" />
+            )}
+          </button>
+          <div className="flex-1 min-w-0">
+            <ExpandableText text={image.prompt || '未命名图片'} maxLines={2} className="text-sm text-gray-200 group-hover:text-white transition-colors" />
+            <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 flex-wrap">
+              <span>{new Date(image.created_at).toLocaleString('zh-CN')}</span>
+              <span>·</span>
+              <span className={image.status === 'failed' ? 'text-red-400' : image.status === 'pending' ? 'text-yellow-400' : 'text-blue-400'}>
+                {image.status === 'failed' ? '生成失败' : image.status === 'pending' ? '生成中...' : '点击恢复参数'}
+              </span>
+              {image.error && (
+                <>
+                  <span>·</span>
+                  <span className="text-red-300 truncate">{image.error}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </button>
+      <div className="border-t border-gray-700 px-3 py-2 flex justify-end">
+        <button
+          onClick={onEdit}
+          disabled={image.status === 'pending'}
+          className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-500"
+        >
+          选择
+        </button>
+      </div>
     </div>
   );
 }

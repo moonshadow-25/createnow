@@ -223,6 +223,9 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
                 "generation_scope": generation_scope,
+                "size": size_str,
+                "reference_image_ids": [],
+                "reference_image_urls": [],
             }
             saved = ImageService.save_generation_record(project_id, record)
             saved_images.append(saved)
@@ -260,6 +263,9 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
             "generation_scope": generation_scope,
+            "size": size_str,
+            "reference_image_ids": [],
+            "reference_image_urls": [],
         }
         saved = ImageService.save_generation_record(project_id, record)
         images = ImageService.list_images(project_id, asset_id)
@@ -359,7 +365,9 @@ async def generate_image_edit_prompt(project_id: str, request: ImageEditPromptRe
 
 async def edit_image_core(project_id: str, asset_id: str, asset_type: str, prompt: str,
                           reference_image_paths: list, size: str = None, ai_config: dict = None,
-                          generation_scope: str = None) -> dict:
+                          generation_scope: str = None,
+                          reference_image_ids: list = None,
+                          reference_image_urls: list = None) -> dict:
     """可复用的图生图核心逻辑（供 HTTP handler 和对话工具共同调用）
 
     reference_image_paths: 已解析好的图片路径列表（base64 data URL 或 http URL）
@@ -421,6 +429,9 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                 "created_at": datetime.now().isoformat(),
                 "created_by": get_current_user() or "",
                 "generation_scope": generation_scope,
+                "size": size_str,
+                "reference_image_ids": reference_image_ids or [],
+                "reference_image_urls": reference_image_urls or [],
             }
             saved = ImageService.save_generation_record(project_id, record)
             saved_images.append(saved)
@@ -457,6 +468,9 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             "created_at": datetime.now().isoformat(),
             "created_by": get_current_user() or "",
             "generation_scope": generation_scope,
+            "size": size_str,
+            "reference_image_ids": reference_image_ids or [],
+            "reference_image_urls": reference_image_urls or [],
         }
         saved = ImageService.save_generation_record(project_id, record)
         images = ImageService.list_images(project_id, asset_id)
@@ -577,6 +591,8 @@ async def edit_image(project_id: str, request: ImageEditRequest):
             size=request.size,
             ai_config=ai_config,
             generation_scope=SQUARE_IMAGE_SCOPE if _is_virtual_image_asset(request.asset_type, request.asset_id) else None,
+            reference_image_ids=request.reference_image_ids,
+            reference_image_urls=request.reference_image_urls,
         )
         return saved
     except ValueError as e:

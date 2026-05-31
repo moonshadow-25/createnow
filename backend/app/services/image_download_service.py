@@ -36,7 +36,7 @@ class ImageDownloadService:
         images_dir.mkdir(parents=True, exist_ok=True)
 
         # 创建按类型分类的子目录
-        for asset_type in ["character", "scene", "prop", "storyboard", "canvas_element"]:
+        for asset_type in ["character", "scene", "prop", "storyboard", "canvas_element", "generate"]:
             (images_dir / asset_type).mkdir(exist_ok=True)
 
         return images_dir
