@@ -32,6 +32,8 @@ interface VideoRecord {
   resolution: string;
   ratio?: string;
   estimated_cost?: number;
+  actual_cost?: number;
+  credits_consumed?: number;
   model: string;
   status: string;
   created_at: string;
@@ -57,6 +59,9 @@ interface ImageRecord {
   created_at: string;
   created_by?: string;
   is_primary?: boolean;
+  estimated_cost?: number;
+  actual_cost?: number;
+  credits_consumed?: number;
   status?: 'pending' | 'completed' | 'failed';
   error?: string;
   isPlaceholder?: boolean;
@@ -153,6 +158,17 @@ function getImageRecordUrl(projectId: string, image: ImageRecord): string {
     return `/api/projects/${projectId}/images/files/${image.local_path}`;
   }
   return image.image_path || '';
+}
+
+function resolveGenerationCredits(record: { credits_consumed?: number; actual_cost?: number; estimated_cost?: number }, fallback: number): number {
+  if (typeof record.credits_consumed === 'number') return record.credits_consumed;
+  if (typeof record.actual_cost === 'number') return record.actual_cost;
+  if (typeof record.estimated_cost === 'number') return record.estimated_cost;
+  return fallback;
+}
+
+function formatCredits(value: number): string {
+  return `${Math.round(value)} 积分`;
 }
 
 export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, videoApiType }: GenerateTabProps) {
@@ -496,7 +512,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               }));
           const savedImage: ImageRecord = response.data;
           setAllImages(prev => prev.map(image => image.image_id === placeholder.image_id ? savedImage : image));
-          toast(imageItems.length > 0 ? '图片生成成功' : '图片生成成功', 'success');
+          const imageCredits = resolveGenerationCredits(savedImage, 100);
+          toast(`图片生成成功（消耗 ${formatCredits(imageCredits)}）`, 'success');
         } catch (e: any) {
           const errorMessage = e?.response?.data?.detail || '图片生成失败，请检查配置';
           setAllImages(prev => prev.map(image => image.image_id === placeholder.image_id ? {
@@ -535,10 +552,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
       });
       shouldStickToBottomRef.current = true;
       startPolling(newVideo.video_id);
-      const estimatedCost = typeof newVideo.estimated_cost === 'number'
-        ? newVideo.estimated_cost
-        : newVideo.duration;
-      toast(`视频生成任务已提交（预计消耗 ${estimatedCost} 元）`, 'success');
+      const estimatedCost = resolveGenerationCredits(newVideo, newVideo.duration * 200);
+      toast(`视频生成任务已提交（预计消耗 ${formatCredits(estimatedCost)}）`, 'success');
     } catch (e: any) {
       const errorMessage = e?.response?.data?.detail || '生成失败，请检查配置';
       toast(errorMessage, 'error');
