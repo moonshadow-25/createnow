@@ -250,6 +250,9 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                     )
                 except Exception as e:
                     logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
+            refreshed = ImageService.get_image(project_id, saved["image_id"])
+            if refreshed:
+                saved_images[-1] = refreshed
         logger.info(f"[多图生成] 成功生成并保存 {len(saved_images)} 张图片")
         return saved_images[0]
     else:
@@ -290,7 +293,8 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
                 )
             except Exception as e:
                 logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
-        return saved
+        refreshed = ImageService.get_image(project_id, saved["image_id"])
+        return refreshed or saved
 
 
 @router.post("/image")
@@ -456,6 +460,9 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                     )
                 except Exception as e:
                     logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
+            refreshed = ImageService.get_image(project_id, saved["image_id"])
+            if refreshed:
+                saved_images[-1] = refreshed
         logger.info(f"[图生图] 成功生成并保存 {len(saved_images)} 张图片")
         return saved_images[0]
     else:
@@ -495,7 +502,8 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                 )
             except Exception as e:
                 logger.warning(f"自动保存base64图片失败 (image_id: {saved['image_id']}): {e}")
-        return saved
+        refreshed = ImageService.get_image(project_id, saved["image_id"])
+        return refreshed or saved
 
 
 @router.post("/image-edit")

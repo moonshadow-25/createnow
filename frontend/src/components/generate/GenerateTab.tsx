@@ -1161,10 +1161,14 @@ function ImageHistoryItem({ image, projectId, onPreview, onRegenerate, onEdit }:
             <ExpandableText text={image.prompt || '未命名图片'} maxLines={2} className="text-sm text-gray-200 group-hover:text-white transition-colors" />
             <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 flex-wrap">
               <span>{new Date(image.created_at).toLocaleString('zh-CN')}</span>
-              <span>·</span>
-              <span className={image.status === 'failed' ? 'text-red-400' : image.status === 'pending' ? 'text-yellow-400' : 'text-blue-400'}>
-                {image.status === 'failed' ? '生成失败' : image.status === 'pending' ? '生成中...' : '点击恢复参数'}
-              </span>
+              {(image.status === 'failed' || image.status === 'pending') && (
+                <>
+                  <span>·</span>
+                  <span className={image.status === 'failed' ? 'text-red-400' : 'text-yellow-400'}>
+                    {image.status === 'failed' ? '生成失败' : '生成中...'}
+                  </span>
+                </>
+              )}
               {image.error && (
                 <>
                   <span>·</span>
