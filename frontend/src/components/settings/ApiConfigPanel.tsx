@@ -12,10 +12,10 @@ interface ApiConfigPanelProps {
   image: ApiConfig;
   video: ApiConfig;
   tts: ApiConfig;
-  onConfigChange: (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', config: ApiConfig) => void;
+  onConfigChange: (type: ApiConfigType, config: ApiConfig) => void;
   configPresets: ApiConfigPresetsMap;
   onPresetsChange: (presets: ApiConfigPresetsMap) => void;
-  onSwitchTag: (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', tagId: string) => void;
+  onSwitchTag: (type: ApiConfigType, tagId: string) => void;
   activePresetIds: {
     llm: string | null;
     vlm: string | null;
@@ -34,6 +34,26 @@ const API_TYPE_OPTIONS = [
   { value: 'local', label: '本地API' }
 ];
 
+type ApiConfigType = 'llm' | 'vlm' | 'image' | 'video' | 'tts';
+
+type CreatenowModelSuggestion = {
+  label: string;
+  model: string;
+};
+
+const CREATENOW_MODEL_SUGGESTIONS: Partial<Record<ApiConfigType, CreatenowModelSuggestion[]>> = {
+  image: [
+    { label: 'image2', model: 'nova-max' },
+    { label: 'nano2', model: 'nova-pro' },
+    { label: 'image2备用', model: 'image2-backup' }
+  ],
+  video: [
+    { label: 'sd2', model: 'nova-pro' },
+    { label: 'sd2-fast', model: 'nova' },
+    { label: 'happyhorse', model: 'happyhorse-1.0-r2v' }
+  ]
+};
+
 export function ApiConfigPanel({
   llm,
   vlm,
@@ -48,7 +68,7 @@ export function ApiConfigPanel({
   limitedMode = false
 }: ApiConfigPanelProps) {
   const { toast } = useToast();
-  const [apiSubTab, setApiSubTab] = useState<'llm' | 'vlm' | 'image' | 'video' | 'tts'>('llm');
+  const [apiSubTab, setApiSubTab] = useState<ApiConfigType>('llm');
 
   // API Key 明文显示状态（每个服务类型独立）
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -66,7 +86,7 @@ export function ApiConfigPanel({
   // 保存预设对话框状态
   const [savePresetDialog, setSavePresetDialog] = useState<{
     show: boolean;
-    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts' | null;
+    type: ApiConfigType | null;
     name: string;
   }>({
     show: false,
@@ -77,7 +97,7 @@ export function ApiConfigPanel({
   // 删除确认对话框状态
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
     show: boolean;
-    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts' | null;
+    type: ApiConfigType | null;
     presetId: string | null;
     presetName: string;
   }>({
@@ -138,7 +158,7 @@ export function ApiConfigPanel({
   }, [llm, vlm, image, video, tts]);
 
   const handleConfigChange = (
-    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
+    type: ApiConfigType,
     field: keyof ApiConfig,
     value: string | boolean | number
   ) => {
@@ -155,8 +175,46 @@ export function ApiConfigPanel({
     onConfigChange(type, newConfig);
   };
 
+  const handleModelSuggestionClick = (type: ApiConfigType, model: string) => {
+    handleConfigChange(type, 'model', model);
+  };
+
+  const renderModelSuggestions = (type: ApiConfigType, config: ApiConfig, disabled: boolean) => {
+    if (config.api_type !== 'createnow') return null;
+
+    const suggestions = CREATENOW_MODEL_SUGGESTIONS[type] || [];
+    if (suggestions.length === 0) return null;
+
+    return (
+      <div className="mt-2">
+        <div className="text-xs text-gray-500 mb-1">快捷填写模型名</div>
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((suggestion) => (
+            <button
+              key={`${suggestion.label}-${suggestion.model}`}
+              type="button"
+              onClick={() => handleModelSuggestionClick(type, suggestion.model)}
+              disabled={disabled}
+              title={`填入模型名：${suggestion.model}`}
+              className={`px-2.5 py-1 rounded-full text-xs border transition ${
+                config.model === suggestion.model
+                  ? 'border-blue-500 text-blue-300 bg-blue-500/10'
+                  : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+            >
+              {suggestion.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-600 mt-1">
+          仅用于快速填写模型字段，不会创建或切换配置。悬停标签可查看实际模型名。
+        </p>
+      </div>
+    );
+  };
+
   const handleApiTypeChange = (
-    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
+    type: ApiConfigType,
     apiType: 'openai' | 'dashscope' | 'local' | 'byteseed' | 'createnow'
   ) => {
     const config = localConfig[type];
@@ -238,7 +296,7 @@ export function ApiConfigPanel({
   // ===== 预设管理函数 =====
 
   // 打开保存预设对话框
-  const openSavePresetDialog = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts') => {
+  const openSavePresetDialog = (type: ApiConfigType) => {
     const config = localConfig[type];
     setSavePresetDialog({
       show: true,
@@ -293,7 +351,7 @@ export function ApiConfigPanel({
   };
 
   // 切换标签
-  const handleSwitchTag = (type: 'llm' | 'vlm' | 'image' | 'video' | 'tts', tagId: string) => {
+  const handleSwitchTag = (type: ApiConfigType, tagId: string) => {
     const tag = (localPresets[type] || []).find(p => p.id === tagId);
     if (tag) {
       onSwitchTag(type, tagId);
@@ -303,7 +361,7 @@ export function ApiConfigPanel({
 
   // 打开删除确认对话框
   const openDeleteConfirmDialog = (
-    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
+    type: ApiConfigType,
     presetId: string,
     presetName: string
   ) => {
@@ -335,7 +393,7 @@ export function ApiConfigPanel({
   };
 
   const renderApiForm = (
-    type: 'llm' | 'vlm' | 'image' | 'video' | 'tts',
+    type: ApiConfigType,
     title: string,
     config: ApiConfig
   ) => {
@@ -391,7 +449,7 @@ export function ApiConfigPanel({
               <label className="block text-sm text-gray-400 mb-1">API 类型</label>
               <select
                 value={config.api_type}
-                onChange={(e) => handleApiTypeChange(type, e.target.value as 'openai' | 'dashscope')}
+                onChange={(e) => handleApiTypeChange(type, e.target.value as 'openai' | 'dashscope' | 'local' | 'byteseed' | 'createnow')}
                 className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
                 disabled={hasNoActiveTag}
               >
@@ -503,6 +561,7 @@ export function ApiConfigPanel({
               className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
               disabled={hasNoActiveTag}
             />
+            {renderModelSuggestions(type, config, hasNoActiveTag)}
           </div>
 
           {!limitedMode && showVoiceField && (
