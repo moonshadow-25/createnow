@@ -39,6 +39,18 @@ def _write_users(data: dict) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _normalize_credit_limit(credit_limit) -> Optional[float]:
+    if credit_limit is None:
+        return None
+    try:
+        value = float(credit_limit)
+    except (TypeError, ValueError):
+        raise ValueError("积分使用上限必须是大于等于 0 的数字")
+    if value < 0:
+        raise ValueError("积分使用上限必须是大于等于 0 的数字")
+    return value
+
+
 # ============================================================
 # 查询
 # ============================================================
@@ -73,7 +85,7 @@ def list_users() -> list:
     return result
 
 
-def create_user(username: str, password: str, display_name: str = "", assigned_project_ids: list = None, readonly: bool = False) -> dict:
+def create_user(username: str, password: str, display_name: str = "", assigned_project_ids: list = None, readonly: bool = False, credit_limit: Optional[float] = None) -> dict:
     """创建子账号（role=user）"""
     data = _read_users()
     # 检查用户名是否已存在
@@ -81,6 +93,7 @@ def create_user(username: str, password: str, display_name: str = "", assigned_p
         if user.get("username") == username and user.get("is_active", True):
             raise ValueError(f"用户名 '{username}' 已存在")
 
+    normalized_credit_limit = _normalize_credit_limit(credit_limit)
     new_user = {
         "id": str(uuid.uuid4()),
         "username": username,
@@ -93,12 +106,14 @@ def create_user(username: str, password: str, display_name: str = "", assigned_p
         "assigned_project_ids": assigned_project_ids or [],
         "readonly": readonly,
     }
+    if normalized_credit_limit is not None:
+        new_user["credit_limit"] = normalized_credit_limit
     data.setdefault("users", []).append(new_user)
     _write_users(data)
     return {k: v for k, v in new_user.items() if k != "hashed_password"}
 
 
-def update_user(user_id: str, *, display_name: str = None, password: str = None, assigned_project_ids: list = None, readonly: bool = None) -> Optional[dict]:
+def update_user(user_id: str, *, display_name: str = None, password: str = None, assigned_project_ids: list = None, readonly: bool = None, credit_limit: Optional[float] = None, credit_limit_provided: bool = False) -> Optional[dict]:
     """更新子账号信息，超级管理员密码不可修改"""
     data = _read_users()
     for user in data.get("users", []):
@@ -114,6 +129,12 @@ def update_user(user_id: str, *, display_name: str = None, password: str = None,
                 user["assigned_project_ids"] = assigned_project_ids
             if readonly is not None:
                 user["readonly"] = readonly
+            if credit_limit_provided:
+                normalized_credit_limit = _normalize_credit_limit(credit_limit)
+                if normalized_credit_limit is None:
+                    user.pop("credit_limit", None)
+                else:
+                    user["credit_limit"] = normalized_credit_limit
             _write_users(data)
             return {k: v for k, v in user.items() if k != "hashed_password"}
     return None

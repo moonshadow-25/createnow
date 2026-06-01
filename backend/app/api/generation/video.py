@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.core.context import get_current_data_root
 from .models import VideoPromptRequest, VideoPromptSubagentRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest, VideoBatchGenerateRequest
 from .template_helpers import get_active_template
-from .utils import check_project_budget, normalize_video_resolution, calc_video_compute_units, resolve_credits
+from .utils import check_project_budget, check_user_credit_limit, normalize_video_resolution, calc_video_compute_units, resolve_credits
 from app.core.context import get_current_user
 from app.models.project import normalize_global_style_config
 from app.core.pricing import SUBTITLE_REMOVAL_COST
@@ -631,6 +631,11 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         "ratio": resolved_ratio,
     })
 
+    check_user_credit_limit(
+        get_current_user(),
+        calc_video_compute_units(request.duration, request.resolution),
+    )
+
     # 记录请求日志
     request_log = {
         "storyboard_id": request.storyboard_id,
@@ -807,6 +812,9 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
     video_config = ai_config.get("video", {})
     if video_config.get("api_type") != "createnow":
         raise HTTPException(status_code=400, detail="字幕擦除仅在 CreateNow 官方接口配置下可用")
+
+    check_project_budget(project)
+    check_user_credit_limit(get_current_user(), SUBTITLE_REMOVAL_COST)
 
     api_key = _get_createnow_api_key(project)
     if not api_key:

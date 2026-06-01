@@ -106,33 +106,93 @@ def get_video_cost(v: dict) -> float:
     return calc_video_compute_units(v.get("duration") or 0, v.get("resolution"))
 
 
-def check_project_budget(project: dict) -> None:
+def _iter_project_records(project_dir):
+    import json as _json
+
+    images_dir = project_dir / "images"
+    if images_dir.exists():
+        for img_file in images_dir.glob("*.json"):
+            with open(img_file, encoding="utf-8") as f:
+                yield "image", _json.load(f)
+
+    videos_dir = project_dir / "videos"
+    if videos_dir.exists():
+        for vf in videos_dir.glob("*.json"):
+            with open(vf, encoding="utf-8") as f:
+                yield "video", _json.load(f)
+
+
+def get_record_cost(record_type: str, record: dict) -> float:
+    if record_type == "image":
+        return get_image_cost(record)
+    if record_type == "video":
+        return get_video_cost(record)
+    return 0.0
+
+
+def get_project_spent(project_id: str) -> float:
+    project_dir = _get_projects_dir() / project_id
+    total_cost = 0.0
+    for record_type, record in _iter_project_records(project_dir):
+        total_cost += get_record_cost(record_type, record)
+    return round(total_cost, 2)
+
+
+def get_user_spent(username: str) -> float:
+    if not username:
+        return 0.0
+
+    projects_dir = _get_projects_dir()
+    total_cost = 0.0
+    if not projects_dir.exists():
+        return 0.0
+
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for record_type, record in _iter_project_records(project_dir):
+            if (record.get("created_by") or "") == username:
+                total_cost += get_record_cost(record_type, record)
+    return round(total_cost, 2)
+
+
+def check_user_credit_limit(username: str | None, estimated_cost: float = 0.0) -> None:
+    """检查用户积分上限；users.json 只存上限，不写入生成消耗。"""
+    if not username:
+        return
+
+    from app.services.user_service import get_user_by_username
+
+    user = get_user_by_username(username)
+    if not user or user.get("role") != "user":
+        return
+
+    credit_limit = user.get("credit_limit")
+    if credit_limit is None:
+        return
+
+    try:
+        limit = float(credit_limit)
+    except (TypeError, ValueError):
+        return
+
+    spent = get_user_spent(username)
+    projected = round(spent + max(float(estimated_cost or 0), 0.0), 2)
+    if projected > limit:
+        raise HTTPException(
+            status_code=402,
+            detail=f"用户积分使用已达上限（已用 {spent:.2f} / 上限 {limit:.2f}），请联系管理员增加额度"
+        )
+
+
+
     """检查项目预算，超出时抛出 HTTP 402（实时扫描文件计算开销）"""
     budget_total = project.get("budget_total")
     if budget_total is None:
         return
 
-    import json as _json
     project_id = project.get("project_id")
-    project_dir = _get_projects_dir() / project_id
-
-    images_dir = project_dir / "images"
-    total_image_cost = 0.0
-    if images_dir.exists():
-        for img_file in images_dir.glob("*.json"):
-            with open(img_file, encoding="utf-8") as f:
-                img = _json.load(f)
-            total_image_cost += get_image_cost(img)
-
-    videos_dir = project_dir / "videos"
-    total_video_cost = 0.0
-    if videos_dir.exists():
-        for vf in videos_dir.glob("*.json"):
-            with open(vf, encoding="utf-8") as f:
-                v = _json.load(f)
-            total_video_cost += get_video_cost(v)
-
-    budget_spent = round(total_image_cost + total_video_cost, 2)
+    budget_spent = get_project_spent(project_id)
     if budget_spent >= budget_total:
         raise HTTPException(
             status_code=402,

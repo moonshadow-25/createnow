@@ -58,6 +58,7 @@ class UserCreate(BaseModel):
     display_name: str = ""
     assigned_project_ids: list[str] = []
     readonly: bool = False
+    credit_limit: Optional[float] = None
 
 
 class UserUpdate(BaseModel):
@@ -65,6 +66,7 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     assigned_project_ids: Optional[list[str]] = None
     readonly: Optional[bool] = None
+    credit_limit: Optional[float] = None
 
 
 class PasswordChange(BaseModel):
@@ -130,7 +132,7 @@ async def admin_list_users(_admin: dict = Depends(_require_admin)):
 @router.post("/users", status_code=201)
 async def admin_create_user(body: UserCreate, _admin: dict = Depends(_require_admin)):
     try:
-        return create_user(body.username, body.password, body.display_name, body.assigned_project_ids, body.readonly)
+        return create_user(body.username, body.password, body.display_name, body.assigned_project_ids, body.readonly, body.credit_limit)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -144,6 +146,8 @@ async def admin_update_user(user_id: str, body: UserUpdate, _admin: dict = Depen
             password=body.password,
             assigned_project_ids=body.assigned_project_ids,
             readonly=body.readonly,
+            credit_limit=body.credit_limit,
+            credit_limit_provided="credit_limit" in body.model_fields_set,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

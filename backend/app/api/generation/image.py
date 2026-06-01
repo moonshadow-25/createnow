@@ -20,7 +20,7 @@ from .models import (
     FusionImageRequest,
     VLMAnalyzeRequest,
 )
-from .utils import parse_size, check_project_budget, resolve_credits
+from .utils import parse_size, check_project_budget, check_user_credit_limit, resolve_credits
 from app.core.context import get_current_user
 from .templates import DEFAULT_PROMPT_TEMPLATES
 from .template_helpers import get_active_template
@@ -185,6 +185,7 @@ async def generate_image_core(project_id: str, asset_id: str, asset_type: str, p
             raise ValueError("Project not found")
         ai_config = project.get("ai_config", {})
         check_project_budget(project)
+        check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST)
 
     default_sizes = {"character": "16x9", "scene": "16x9", "prop": "1x1", "storyboard": "16x9"}
     configured_sizes = ai_config.get("image_sizes", {})
@@ -308,6 +309,7 @@ async def generate_image(project_id: str, request: ImageGenerateRequest):
         raise HTTPException(status_code=404, detail="Project not found")
 
     check_project_budget(project)
+    check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST)
     ai_config = project.get("ai_config", {})
 
     try:
@@ -388,6 +390,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             raise ValueError("Project not found")
         ai_config = project.get("ai_config", {})
         check_project_budget(project)
+        check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST)
 
     if not reference_image_paths:
         raise ValueError("至少需要一张参考图片")
@@ -528,6 +531,7 @@ async def edit_image(project_id: str, request: ImageEditRequest):
 
     # 检查项目预算
     check_project_budget(project)
+    check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST)
 
     # 【模板支持】如果指定了模板，使用用户当前激活的模板内容作为提示词
     if request.template:
@@ -743,6 +747,7 @@ async def generate_fusion_image(project_id: str, request: FusionImageRequest):
 
     # 检查项目预算
     check_project_budget(project)
+    check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST)
 
     # 获取配置的分辨率
     size_str = request.size or "1x1"

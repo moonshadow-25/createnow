@@ -188,7 +188,9 @@ def _evaluate_asset_order(prompt_text: str, expected_lines: List[str]) -> Dict[s
 async def handle_generate_asset_image(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
     try:
         from app.api.generation.image import generate_image_core
-        from app.api.generation.utils import check_project_budget
+        from app.api.generation.utils import check_project_budget, check_user_credit_limit
+        from app.core.context import get_current_user
+        from app.core.pricing import DEFAULT_IMAGE_COST
         from app.services import ProjectService
         asset_type = parameters.get("asset_type")
         asset_id = parameters.get("asset_id")
@@ -202,6 +204,7 @@ async def handle_generate_asset_image(project_id: str, parameters: Dict, ai_conf
             return {"success": False, "error": f"资产 {asset.get('name', asset_id)} 尚未设置 image_prompt，请先编写生图提示词"}
         proj = ProjectService.get_project(project_id)
         check_project_budget(proj)
+        check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST)
         saved = await generate_image_core(project_id=project_id, asset_id=asset_id, asset_type=asset_type, prompt=image_prompt, ai_config=ai_config)
         return {"success": True, "image_id": saved["image_id"], "asset_name": asset.get("name", asset_id)}
     except Exception as e:
@@ -211,12 +214,12 @@ async def handle_generate_asset_image(project_id: str, parameters: Dict, ai_conf
 async def handle_generate_all_asset_images(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
     try:
         from app.api.generation.image import generate_image_core
-        from app.api.generation.utils import check_project_budget
+        from app.api.generation.utils import check_project_budget, check_user_credit_limit
+        from app.core.context import get_current_user
+        from app.core.pricing import DEFAULT_IMAGE_COST
         from app.services import ProjectService
         import asyncio
         asset_types = parameters.get("asset_types", ["character", "scene", "prop"])
-        proj = ProjectService.get_project(project_id)
-        check_project_budget(proj)
 
         tasks = []
         for atype in asset_types:
@@ -226,6 +229,10 @@ async def handle_generate_all_asset_images(project_id: str, parameters: Dict, ai
 
         if not tasks:
             return {"success": True, "generated": 0, "skipped": 0, "details": [], "skipped_names": []}
+
+        proj = ProjectService.get_project(project_id)
+        check_project_budget(proj)
+        check_user_credit_limit(get_current_user(), DEFAULT_IMAGE_COST * len(tasks))
 
         async def gen_one(asset, atype):
             aid = asset.get("asset_id")
