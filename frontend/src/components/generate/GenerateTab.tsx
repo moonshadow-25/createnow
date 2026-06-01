@@ -408,9 +408,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const buildImageReferenceMedia = useCallback((image: ImageRecord): RefMedia[] => {
     const refs: RefMedia[] = [];
     const imageById = new Map(allImages.map(item => [item.image_id, item]));
-    (image.reference_image_ids || []).forEach(id => {
+    const referenceImageIds = image.reference_image_ids || [];
+    const referenceImageUrls = image.reference_image_urls || [];
+
+    referenceImageIds.forEach((id, index) => {
       const ref = imageById.get(id);
-      const url = ref ? getImageRecordUrl(projectId, ref) : '';
+      const url = ref ? getImageRecordUrl(projectId, ref) : (referenceImageUrls[index] || '');
+      if (!url) return;
+      if (refs.some(item => item.url === url || item.id === id)) return;
       refs.push({
         type: 'image',
         id,
@@ -418,12 +423,12 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         name: ref?.prompt || '参考图',
       });
     });
-    (image.reference_image_urls || []).forEach(url => {
+    referenceImageUrls.forEach(url => {
       if (!url) return;
       if (refs.some(ref => ref.url === url)) return;
       refs.push({ type: 'image', url, name: '参考图' });
     });
-    return refs.filter(ref => ref.url || ref.id);
+    return refs;
   }, [allImages, projectId]);
 
   const handleRegenerateImage = useCallback((image: ImageRecord) => {
