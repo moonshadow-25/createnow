@@ -185,7 +185,7 @@ def check_user_credit_limit(username: str | None, estimated_cost: float = 0.0) -
         )
 
 
-
+def check_project_budget(project: dict) -> None:
     """检查项目预算，超出时抛出 HTTP 402（实时扫描文件计算开销）"""
     budget_total = project.get("budget_total")
     if budget_total is None:
