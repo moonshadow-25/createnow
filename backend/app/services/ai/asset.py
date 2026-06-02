@@ -52,10 +52,12 @@ class AssetService(AIService):
             return f"{base}{path}"
         return f"{base}/v1{path}"
 
-    async def cn_submit_asset(self, image_datauri: str) -> str:
+    async def cn_submit_asset(self, image_datauri: str, model: Optional[str] = None) -> str:
         """提交图片到 CreateNow 素材库，返回 asset_id"""
         url = self._cn_endpoint("/assets")
         payload = {"image": image_datauri}
+        if model:
+            payload["model"] = model
         start = time.time()
         try:
             resp = await self.client.post(
@@ -98,10 +100,13 @@ class AssetService(AIService):
         filename: str,
         content_type: str,
         project_name: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> str:
         """提交视频到 CreateNow 素材库，返回 asset_id"""
         url = self._cn_endpoint("/assets/video")
         data = {"project_name": (project_name or "default")}
+        if model:
+            data["model"] = model
         files = {
             "file": (filename, file_bytes, content_type or "video/mp4")
         }
@@ -111,6 +116,7 @@ class AssetService(AIService):
             "content_type": content_type,
             "size": len(file_bytes),
             "project_name": data["project_name"],
+            "model": model or "",
         }
         try:
             resp = await self.client.post(

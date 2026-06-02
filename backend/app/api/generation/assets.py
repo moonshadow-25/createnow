@@ -173,6 +173,7 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
     ai_config = project.get("ai_config", {})
     video_config = ai_config.get("video", {})
     api_type = video_config.get("api_type", "openai")
+    selected_video_model = (video_config.get("model") or "").strip()
 
     svc = _get_asset_service(project_id, project)
 
@@ -218,7 +219,7 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
                 skipped.append(image_id)
                 continue
             try:
-                asset_id = await svc.cn_submit_asset(image_datauri)
+                asset_id = await svc.cn_submit_asset(image_datauri, model=selected_video_model or None)
                 image["volcengine_asset_id"] = asset_id
                 image["volcengine_asset_status"] = "Processing"
                 ImageService.save_generation_record(project_id, image)
@@ -250,6 +251,7 @@ async def _submit_asset_impl(project_id: str, project: dict, request: SubmitAsse
                     filename=filename,
                     content_type=content_type,
                     project_name=request.project_name,
+                    model=selected_video_model or None,
                 )
                 submitted.append({
                     "ref_type": "video",
