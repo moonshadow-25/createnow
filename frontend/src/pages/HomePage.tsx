@@ -13,7 +13,7 @@ import { ProjectEditModal } from '@/components/project/ProjectEditModal';
 import { ProjectRatingModal } from '@/components/project/ProjectRatingModal';
 import { ProjectParticipantsModal } from '@/components/project/ProjectParticipantsModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
-import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2 } from 'lucide-react';
+import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2, WalletCards } from 'lucide-react';
 import { adminAuthApi, adminUserApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
@@ -65,6 +65,10 @@ export default function HomePage() {
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
   const canCheckUpdate = !isSaasUser && adminRole === 'admin';
+  const selfhostedUserCost = !isSaasUser && adminRole === 'user'
+    ? dashboardUserCosts.find((item) => item.username === adminUsername)
+    : null;
+  const selfhostedUserCostValue = selfhostedUserCost?.total_cost ?? 0;
   // 从 token payload 解析用户名作为兜底（user 异步加载前先显示）
   const saasDisplayName = saasAuth.user?.display_name || saasAuth.user?.email || (() => {
     try {
@@ -267,6 +271,16 @@ export default function HomePage() {
               </button>
             )}
 
+            {!isSaasUser && adminRole === 'user' && adminUsername && (
+              <div
+                className="flex items-center gap-2 bg-gray-800 border border-gray-700 px-3 py-2 rounded-lg text-sm text-gray-300"
+                title="当前账号累计生成消耗"
+              >
+                <WalletCards size={16} className="text-blue-400" />
+                <span>已消耗 {selfhostedUserCostValue.toFixed(2)} 积分</span>
+              </div>
+            )}
+
             <a
               href="https://docs.qq.com/aio/DSU5pZWRzdGFGQ1JH?p=Tti5hvBIeVGT1KIpGtCcOC&client_hint=0&client_hint=0&client_hint=0"
               target="_blank"
@@ -400,7 +414,7 @@ export default function HomePage() {
           onClose={() => setShowDashboard(false)}
         />
       )}
-      {showUserPanel && <AdminUserPanel onClose={() => setShowUserPanel(false)} />}
+      {showUserPanel && <AdminUserPanel onClose={() => setShowUserPanel(false)} userCosts={dashboardUserCosts} />}
       {showUpdateModal && <UpdateModal onClose={() => setShowUpdateModal(false)} />}
       {editingProject && (
         <ProjectEditModal

@@ -37,8 +37,14 @@ const EMPTY_FORM: FormState = {
   credit_limit: '',
 };
 
+interface UserCost {
+  username: string;
+  total_cost: number;
+}
+
 interface Props {
   onClose: () => void;
+  userCosts?: UserCost[];
 }
 
 function getProjectName(project: Project) {
@@ -55,7 +61,7 @@ function parseCreditLimit(value: string): number | null {
   return parsed;
 }
 
-export function AdminUserPanel({ onClose }: Props) {
+export function AdminUserPanel({ onClose, userCosts = [] }: Props) {
   const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [showEditor, setShowEditor] = useState(false);
@@ -69,6 +75,10 @@ export function AdminUserPanel({ onClose }: Props) {
     loadUsers();
     projectApi.list().then((r) => setProjects(r.data)).catch(() => {});
   }, []);
+
+  const usageByUsername = useMemo(() => {
+    return new Map(userCosts.map((item) => [item.username, item.total_cost || 0]));
+  }, [userCosts]);
 
   const filteredProjects = useMemo(() => {
     const keyword = projectSearch.trim().toLowerCase();
@@ -202,6 +212,15 @@ export function AdminUserPanel({ onClose }: Props) {
     return limit == null ? '不限制' : `${limit} 积分`;
   }
 
+  function formatCreditValue(value: number) {
+    return `${value.toFixed(2)} 积分`;
+  }
+
+  function getCreditRemaining(limit: number | null | undefined, used: number) {
+    if (limit == null) return null;
+    return Math.max(limit - used, 0);
+  }
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-[1344px] max-h-[90vh] flex flex-col shadow-2xl">
@@ -237,12 +256,18 @@ export function AdminUserPanel({ onClose }: Props) {
                     <th className="text-left px-4 py-2.5">显示名</th>
                     <th className="text-left px-4 py-2.5">角色</th>
                     <th className="text-left px-4 py-2.5">积分上限</th>
+                    <th className="text-left px-4 py-2.5">已消耗</th>
+                    <th className="text-left px-4 py-2.5">剩余额度</th>
                     <th className="text-left px-4 py-2.5">上次登录</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
-                  {users.map((user) => (
+                  {users.map((user) => {
+                    const creditUsed = usageByUsername.get(user.username) || 0;
+                    const creditRemaining = getCreditRemaining(user.credit_limit, creditUsed);
+                    const isCreditExceeded = user.credit_limit != null && creditUsed >= user.credit_limit;
+                    return (
                     <tr key={user.id} className="text-gray-300 hover:bg-gray-800/50">
                       <td className="px-4 py-2.5 font-mono">{user.username}</td>
                       <td className="px-4 py-2.5">{user.display_name || '—'}</td>
@@ -252,6 +277,10 @@ export function AdminUserPanel({ onClose }: Props) {
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-gray-400">{formatCreditLimit(user.credit_limit)}</td>
+                      <td className={`px-4 py-2.5 ${isCreditExceeded ? 'text-red-400' : 'text-gray-400'}`}>{formatCreditValue(creditUsed)}</td>
+                      <td className={`px-4 py-2.5 ${isCreditExceeded ? 'text-red-400' : 'text-gray-400'}`}>
+                        {creditRemaining == null ? '不限制' : formatCreditValue(creditRemaining)}
+                      </td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{formatDate(user.last_login_at)}</td>
                       <td className="px-4 py-2.5">
                         {user.role !== 'admin' && (
@@ -274,7 +303,8 @@ export function AdminUserPanel({ onClose }: Props) {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
