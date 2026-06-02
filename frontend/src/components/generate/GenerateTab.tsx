@@ -508,12 +508,12 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 size: imageSize,
                 referenceImageIds,
                 referenceImageUrls,
-                model: imageApiType === 'createnow' ? selectedImageModel : undefined,
+                model: imageApiType === 'createnow' ? selectedImageModel.trim() || undefined : undefined,
               })
             : generationApi.generateSquareImage(projectId, {
                 prompt: trimmedPrompt,
                 size: imageSize,
-                model: imageApiType === 'createnow' ? selectedImageModel : undefined,
+                model: imageApiType === 'createnow' ? selectedImageModel.trim() || undefined : undefined,
               }));
           const savedImage: ImageRecord = response.data;
           setAllImages(prev => prev.map(image => image.image_id === placeholder.image_id ? savedImage : image));
@@ -547,7 +547,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         ratio,
         generate_audio: generateAudio,
         reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
-        model: videoApiType === 'createnow' ? selectedVideoModel : undefined,
+        model: videoApiType === 'createnow' ? selectedVideoModel.trim() || undefined : undefined,
       });
       const newVideo: VideoRecord = res.data;
       setAllVideos(prev => [...prev, newVideo]);
@@ -758,7 +758,9 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     ? (CREATENOW_MODEL_SUGGESTIONS.image || [])
     : (CREATENOW_MODEL_SUGGESTIONS.video || []);
   const selectedModelOverride = mode === 'image' ? selectedImageModel : selectedVideoModel;
-  const selectedModelLabel = activeModelSuggestions.find(option => option.model === selectedModelOverride)?.label || '选择模型';
+  const selectedModelValue = selectedModelOverride.trim();
+  const selectedModelPreset = activeModelSuggestions.find(option => option.model === selectedModelOverride);
+  const selectedModelLabel = selectedModelPreset?.label || selectedModelValue || '选择模型';
   const handleModelOverrideChange = (model: string) => {
     if (mode === 'image') {
       setSelectedImageModel(model);
@@ -1121,17 +1123,36 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 <ChevronDown size={12} />
               </button>
               {showModelMenu && (
-                <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[160px]">
-                  {activeModelSuggestions.map(option => (
-                    <button
-                      key={`${option.label}-${option.model}`}
-                      onClick={() => { handleModelOverrideChange(option.model); setShowModelMenu(false); }}
-                      className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedModelOverride ? 'text-blue-400' : ''}`}
-                      title={option.model}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
+                  <div className="p-2 border-b border-gray-600">
+                    <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
+                    <input
+                      type="text"
+                      value={selectedModelOverride}
+                      onChange={(e) => handleModelOverrideChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setShowModelMenu(false);
+                        if (e.key === 'Escape') setShowModelMenu(false);
+                      }}
+                      placeholder={mode === 'image' ? '输入图片模型名' : '输入视频模型名'}
+                      className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="py-1">
+                    <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
+                    {activeModelSuggestions.map(option => (
+                      <button
+                        key={`${option.label}-${option.model}`}
+                        onClick={() => { handleModelOverrideChange(option.model); setShowModelMenu(false); }}
+                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedModelOverride ? 'text-blue-400' : ''}`}
+                        title={option.model}
+                      >
+                        <span>{option.label}</span>
+                        <span className="ml-2 text-xs text-gray-400">{option.model}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
