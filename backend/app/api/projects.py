@@ -177,7 +177,18 @@ def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> di
 
 
 def _get_project_home_stats(project_id: str) -> dict:
+    from app.services.asset_service import _images_cache, _videos_cache
     from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
+
+    has_runtime_cache = project_id in _images_cache and project_id in _videos_cache
+    if has_runtime_cache:
+        stats = _build_project_stats(project_id)
+        user_costs, unknown_cost = _build_project_user_costs(project_id)
+        return {
+            "stats": stats,
+            "user_costs": user_costs,
+            "unknown_cost": unknown_cost,
+        }
 
     snapshot = read_snapshot(project_id)
     if snapshot:
