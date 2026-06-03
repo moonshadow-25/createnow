@@ -44,7 +44,9 @@ _assets_cache: Dict[str, Dict[str, List[Dict]]] = {}
 def _delete_stats_snapshot(project_id: str) -> None:
     try:
         from app.services.project_stats_snapshot_service import delete_snapshot
-        delete_snapshot(project_id)
+        deleted = delete_snapshot(project_id)
+        if deleted:
+            print(f"[STATS SNAPSHOT DELETE] project={project_id[:8]}")
     except Exception:
         pass
 
@@ -156,6 +158,7 @@ class AssetService:
         if project_id not in _assets_cache:
             _assets_cache[project_id] = {}
         _assets_cache[project_id][asset_type] = all_assets
+        _delete_stats_snapshot(project_id)
 
         print(
             f"[CACHE MISS] list_assets/{asset_type} | "
@@ -382,6 +385,7 @@ class ImageService:
                 )
 
             _images_cache[project_id] = images
+            _delete_stats_snapshot(project_id)
 
         return _images_cache[project_id]
 
@@ -611,6 +615,7 @@ class VideoService:
                     f"files={len(files)} | load={1000*(t1-t0):.1f}ms"
                 )
             _videos_cache[project_id] = videos
+            _delete_stats_snapshot(project_id)
         return _videos_cache[project_id]
 
     @staticmethod

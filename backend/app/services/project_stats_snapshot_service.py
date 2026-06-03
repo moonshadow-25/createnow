@@ -52,10 +52,12 @@ def write_snapshot(project_id: str, stats: Dict, user_costs: Dict, unknown_cost:
     os.replace(tmp_path, path)
 
 
-def delete_snapshot(project_id: str) -> None:
+def delete_snapshot(project_id: str) -> bool:
     path = _snapshot_path(project_id)
     if path.exists():
         try:
             path.unlink()
+            return True
         except Exception:
-            pass
+            return False
+    return False
