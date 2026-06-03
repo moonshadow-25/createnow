@@ -123,6 +123,35 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
     }
 
 
+def _build_user_cost_summary_from_home_stats(home_stats: list[dict]) -> dict:
+    user_costs: dict[str, dict] = {}
+    unknown_cost = 0.0
+
+    for item in home_stats:
+        unknown_cost += float(item.get("unknown_cost") or 0)
+        for username, costs in (item.get("user_costs") or {}).items():
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry["image_cost"] += float(costs.get("image_cost") or 0)
+            entry["video_cost"] += float(costs.get("video_cost") or 0)
+            entry["total_cost"] += float(costs.get("total_cost") or 0)
+
+    users = []
+    for username, costs in sorted(user_costs.items(), key=lambda x: x[1]["total_cost"], reverse=True):
+        user = get_user_by_username(username)
+        users.append({
+            "username": username,
+            "display_name": user.get("display_name") if user else username,
+            "image_cost": round(costs["image_cost"], 2),
+            "video_cost": round(costs["video_cost"], 2),
+            "total_cost": round(costs["total_cost"], 2),
+        })
+
+    return {
+        "users": users,
+        "unknown_cost": round(unknown_cost, 2),
+    }
+
+
 class ProjectCreate(BaseModel):
     name: str
     description: str = ""
@@ -253,11 +282,15 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         projects = [p for p in projects if p.get("project_id") in allowed]
 
     if include_stats:
+        from app.services.project_stats_snapshot_service import get_home_stats
+        home_stats = []
         for p in projects:
-            p["stats"] = _build_project_stats(p["project_id"])
+            item, _ = get_home_stats(p["project_id"])
+            p["stats"] = item.get("stats")
+            home_stats.append(item)
         return {
             "projects": projects,
-            "user_summary": _build_user_cost_summary(projects),
+            "user_summary": _build_user_cost_summary_from_home_stats(home_stats),
         }
 
     return projects

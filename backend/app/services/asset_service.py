@@ -41,6 +41,15 @@ _videos_cache: Dict[str, List[Dict]] = {}
 _assets_cache: Dict[str, Dict[str, List[Dict]]] = {}
 
 
+def _delete_stats_snapshot_if_runtime_cache_ready(project_id: str) -> None:
+    if project_id in _images_cache and project_id in _videos_cache:
+        try:
+            from app.services.project_stats_snapshot_service import delete_snapshot
+            delete_snapshot(project_id)
+        except Exception:
+            pass
+
+
 class AssetService:
     """资产管理服务"""
 
@@ -371,6 +380,7 @@ class ImageService:
                 )
 
             _images_cache[project_id] = images
+            _delete_stats_snapshot_if_runtime_cache_ready(project_id)
 
         return _images_cache[project_id]
 
@@ -599,6 +609,7 @@ class VideoService:
                     f"files={len(files)} | load={1000*(t1-t0):.1f}ms"
                 )
             _videos_cache[project_id] = videos
+            _delete_stats_snapshot_if_runtime_cache_ready(project_id)
         return _videos_cache[project_id]
 
     @staticmethod
