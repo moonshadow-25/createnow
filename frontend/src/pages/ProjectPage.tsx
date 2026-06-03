@@ -20,7 +20,7 @@ export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { currentProject, fetchProject } = useProjectStore();
-  const { characters, scenes, props, episodes, fetchAssets, loadedProjectId } = useAssetStore();
+  const { characters, scenes, props, episodes, storyboards, fetchAssets, loadedProjectId } = useAssetStore();
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
@@ -268,6 +268,8 @@ export default function ProjectPage() {
                 characters={characters}
                 scenes={scenes}
                 props={props}
+                episodes={episodes}
+                storyboards={storyboards}
                 onRefresh={handleRefreshAssets}
               />
             </div>

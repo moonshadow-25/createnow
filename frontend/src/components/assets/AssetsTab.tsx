@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, RefreshCw, Wand2, Loader2, HardDrive, Zap, ChevronDown } from 'lucide-react';
 import { AssetCard } from './AssetCard';
 import { CreateAssetDialog } from './CreateAssetDialog';
@@ -15,11 +15,31 @@ interface Asset {
   [key: string]: any;
 }
 
+interface EpisodeAsset {
+  asset_id?: string;
+  episode_id?: string;
+  episode_number?: number;
+  name?: string;
+  [key: string]: any;
+}
+
+interface StoryboardAsset {
+  asset_id: string;
+  episode_id?: string;
+  character_ids?: string[];
+  scene_id?: string;
+  scene_ids?: string[];
+  prop_ids?: string[];
+  [key: string]: any;
+}
+
 interface AssetsTabProps {
   projectId: string;
   characters: Asset[];
   scenes: Asset[];
   props: Asset[];
+  episodes: EpisodeAsset[];
+  storyboards: StoryboardAsset[];
   onRefresh: () => void;
 }
 
@@ -28,10 +48,13 @@ export function AssetsTab({
   characters,
   scenes,
   props,
+  episodes,
+  storyboards,
   onRefresh,
 }: AssetsTabProps) {
   const { toast } = useToast();
   const [assetFilter, setAssetFilter] = useState<'all' | 'character' | 'scene' | 'prop'>('all');
+  const [episodeFilter, setEpisodeFilter] = useState('all');
   const [showCreateAsset, setShowCreateAsset] = useState(false);
   const [createAssetType, setCreateAssetType] = useState<'character' | 'scene' | 'prop'>('character');
 
@@ -126,16 +149,62 @@ export function AssetsTab({
     setShowCreateAsset(true);
   };
 
+  const episodeOptions = useMemo(() => {
+    return [...episodes].sort((a, b) => {
+      const aNumber = a.episode_number ?? Number.MAX_SAFE_INTEGER;
+      const bNumber = b.episode_number ?? Number.MAX_SAFE_INTEGER;
+      if (aNumber !== bNumber) return aNumber - bNumber;
+      return (a.name || '').localeCompare(b.name || '', 'zh-CN');
+    });
+  }, [episodes]);
+
+  useEffect(() => {
+    if (episodeFilter === 'all') return;
+    const exists = episodes.some((episode) => (episode.asset_id || episode.episode_id) === episodeFilter);
+    if (!exists) setEpisodeFilter('all');
+  }, [episodeFilter, episodes]);
+
+  const filteredAssets = useMemo(() => {
+    if (episodeFilter === 'all') {
+      return { characters, scenes, props };
+    }
+
+    const episodeStoryboards = storyboards.filter((storyboard) => storyboard.episode_id === episodeFilter);
+    const characterIds = new Set<string>();
+    const sceneIds = new Set<string>();
+    const propIds = new Set<string>();
+
+    episodeStoryboards.forEach((storyboard) => {
+      storyboard.character_ids?.forEach((id) => characterIds.add(id));
+      storyboard.scene_ids?.forEach((id) => sceneIds.add(id));
+      if (storyboard.scene_id) sceneIds.add(storyboard.scene_id);
+      storyboard.prop_ids?.forEach((id) => propIds.add(id));
+    });
+
+    return {
+      characters: characters.filter((character) => characterIds.has(character.asset_id) || (character.parent_id && characterIds.has(character.parent_id))),
+      scenes: scenes.filter((scene) => sceneIds.has(scene.asset_id)),
+      props: props.filter((prop) => propIds.has(prop.asset_id)),
+    };
+  }, [characters, scenes, props, storyboards, episodeFilter]);
+
+  const mainFilteredCharacters = useMemo(
+    () => filteredAssets.characters.filter((character) => !character.parent_id),
+    [filteredAssets.characters]
+  );
+
+  const hasFilteredAssets = mainFilteredCharacters.length > 0 || filteredAssets.scenes.length > 0 || filteredAssets.props.length > 0;
+
   // 获取当前tab的主资产列表（排除子角色）
   const getMainAssets = (): { assets: Asset[]; type: 'character' | 'scene' | 'prop' } => {
     if (assetFilter === 'character') {
-      return { assets: characters.filter(c => !c.parent_id), type: 'character' };
+      return { assets: mainFilteredCharacters, type: 'character' };
     }
     if (assetFilter === 'scene') {
-      return { assets: scenes, type: 'scene' };
+      return { assets: filteredAssets.scenes, type: 'scene' };
     }
     if (assetFilter === 'prop') {
-      return { assets: props, type: 'prop' };
+      return { assets: filteredAssets.props, type: 'prop' };
     }
     return { assets: [], type: 'character' };
   };
@@ -320,7 +389,7 @@ export function AssetsTab({
     <div className="flex-1 p-6 overflow-y-auto">
       {/* Tab 按钮 + 创建按钮 */}
       <div className="flex justify-between items-center mb-4">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           <button
             onClick={() => setAssetFilter('all')}
             className={`px-4 py-2 rounded-lg transition ${
@@ -339,7 +408,7 @@ export function AssetsTab({
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
-            角色 ({characters.length})
+            角色 ({mainFilteredCharacters.length})
           </button>
           <button
             onClick={() => setAssetFilter('scene')}
@@ -349,7 +418,7 @@ export function AssetsTab({
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
-            场景 ({scenes.length})
+            场景 ({filteredAssets.scenes.length})
           </button>
           <button
             onClick={() => setAssetFilter('prop')}
@@ -359,8 +428,26 @@ export function AssetsTab({
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
-            道具 ({props.length})
+            道具 ({filteredAssets.props.length})
           </button>
+          <select
+            value={episodeFilter}
+            onChange={(e) => setEpisodeFilter(e.target.value)}
+            className="bg-gray-800 border border-gray-600 text-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            title="按分镜中已使用的资产筛选"
+          >
+            <option value="all">全部资产</option>
+            {episodeOptions.map((episode, index) => {
+              const episodeId = episode.asset_id || episode.episode_id;
+              if (!episodeId) return null;
+              const label = episode.episode_number ? `第${episode.episode_number}集已使用` : `${episode.name || `第${index + 1}集`}已使用`;
+              return (
+                <option key={episodeId} value={episodeId}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
         </div>
         <div className="flex gap-2 items-center">
           {/* 全部 tab：一键生成保留外层，其余进"更多" */}
@@ -596,30 +683,20 @@ export function AssetsTab({
       {/* 资产网格 */}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
         {/* 角色 */}
-        {(assetFilter === 'all' || assetFilter === 'character') && (() => {
-          const mainCharacters = characters.filter(c => !c.parent_id);
-          if (mainCharacters.length === 0 && assetFilter === 'character') {
-            return (
-              <div className="col-span-full text-gray-500 text-center py-12">
-                暂无角色
-              </div>
-            );
-          }
-          return mainCharacters.map(char => (
-            <div key={char.asset_id} className="col-span-1">
-              <AssetCard
-                projectId={projectId}
-                assetType="character"
-                asset={char}
-                onDeleted={onRefresh}
-                childAssets={characters.filter(c => c.parent_id === char.asset_id)}
-              />
-            </div>
-          ));
-        })()}
+        {(assetFilter === 'all' || assetFilter === 'character') && mainFilteredCharacters.map(char => (
+          <div key={char.asset_id} className="col-span-1">
+            <AssetCard
+              projectId={projectId}
+              assetType="character"
+              asset={char}
+              onDeleted={onRefresh}
+              childAssets={filteredAssets.characters.filter(c => c.parent_id === char.asset_id)}
+            />
+          </div>
+        ))}
 
         {/* 场景 */}
-        {(assetFilter === 'all' || assetFilter === 'scene') && scenes.map((scene) => (
+        {(assetFilter === 'all' || assetFilter === 'scene') && filteredAssets.scenes.map((scene) => (
           <AssetCard
             key={scene.asset_id}
             projectId={projectId}
@@ -630,7 +707,7 @@ export function AssetsTab({
         ))}
 
         {/* 道具 */}
-        {(assetFilter === 'all' || assetFilter === 'prop') && props.map((prop) => (
+        {(assetFilter === 'all' || assetFilter === 'prop') && filteredAssets.props.map((prop) => (
           <AssetCard
             key={prop.asset_id}
             projectId={projectId}
@@ -642,24 +719,24 @@ export function AssetsTab({
       </div>
 
       {/* 空状态 */}
-      {assetFilter === 'all' && characters.length === 0 && scenes.length === 0 && props.length === 0 && (
+      {assetFilter === 'all' && !hasFilteredAssets && (
         <div className="text-gray-500 text-center py-12">
-          暂无资产，请先创建资产
+          {episodeFilter === 'all' ? '暂无资产，请先创建资产' : '当前集暂无已使用资产'}
         </div>
       )}
-      {assetFilter === 'character' && characters.length === 0 && (
+      {assetFilter === 'character' && mainFilteredCharacters.length === 0 && (
         <div className="text-gray-500 text-center py-12">
-          暂无角色
+          {episodeFilter === 'all' ? '暂无角色' : '当前集暂无已使用角色'}
         </div>
       )}
-      {assetFilter === 'scene' && scenes.length === 0 && (
+      {assetFilter === 'scene' && filteredAssets.scenes.length === 0 && (
         <div className="text-gray-500 text-center py-12">
-          暂无场景
+          {episodeFilter === 'all' ? '暂无场景' : '当前集暂无已使用场景'}
         </div>
       )}
-      {assetFilter === 'prop' && props.length === 0 && (
+      {assetFilter === 'prop' && filteredAssets.props.length === 0 && (
         <div className="text-gray-500 text-center py-12">
-          暂无道具
+          {episodeFilter === 'all' ? '暂无道具' : '当前集暂无已使用道具'}
         </div>
       )}
 
