@@ -123,11 +123,38 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
     }
 
 
-def _build_user_cost_summary_from_home_stats(home_stats: list[dict]) -> dict:
+def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], float]:
     user_costs: dict[str, dict] = {}
     unknown_cost = 0.0
 
-    for item in home_stats:
+    for img in ImageService.list_images(project_id):
+        username = (img.get("created_by") or "").strip()
+        cost = get_image_cost(img)
+        if username:
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry["image_cost"] += cost
+            entry["total_cost"] += cost
+        else:
+            unknown_cost += cost
+
+    for video in VideoService.list_videos(project_id):
+        username = (video.get("created_by") or "").strip()
+        cost = get_video_cost(video)
+        if username:
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry["video_cost"] += cost
+            entry["total_cost"] += cost
+        else:
+            unknown_cost += cost
+
+    return user_costs, unknown_cost
+
+
+def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> dict:
+    user_costs: dict[str, dict] = {}
+    unknown_cost = 0.0
+
+    for item in project_costs:
         unknown_cost += float(item.get("unknown_cost") or 0)
         for username, costs in (item.get("user_costs") or {}).items():
             entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
@@ -146,9 +173,23 @@ def _build_user_cost_summary_from_home_stats(home_stats: list[dict]) -> dict:
             "total_cost": round(costs["total_cost"], 2),
         })
 
+    return {"users": users, "unknown_cost": round(unknown_cost, 2)}
+
+
+def _get_project_home_stats(project_id: str) -> dict:
+    from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
+
+    snapshot = read_snapshot(project_id)
+    if snapshot:
+        return snapshot
+
+    stats = _build_project_stats(project_id)
+    user_costs, unknown_cost = _build_project_user_costs(project_id)
+    write_snapshot(project_id, stats, user_costs, unknown_cost)
     return {
-        "users": users,
-        "unknown_cost": round(unknown_cost, 2),
+        "stats": stats,
+        "user_costs": user_costs,
+        "unknown_cost": unknown_cost,
     }
 
 
@@ -282,15 +323,14 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         projects = [p for p in projects if p.get("project_id") in allowed]
 
     if include_stats:
-        from app.services.project_stats_snapshot_service import get_home_stats
-        home_stats = []
+        project_costs = []
         for p in projects:
-            item, _ = get_home_stats(p["project_id"])
+            item = _get_project_home_stats(p["project_id"])
             p["stats"] = item.get("stats")
-            home_stats.append(item)
+            project_costs.append(item)
         return {
             "projects": projects,
-            "user_summary": _build_user_cost_summary_from_home_stats(home_stats),
+            "user_summary": _build_user_cost_summary_from_project_costs(project_costs),
         }
 
     return projects
@@ -302,6 +342,8 @@ async def get_project(project_id: str):
     result = ProjectService.get_project(project_id)
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
+    from app.services.project_stats_snapshot_service import delete_snapshot
+    delete_snapshot(project_id)
     return result
 
 
@@ -323,6 +365,8 @@ async def update_project(project_id: str, project: ProjectUpdate):
     result = ProjectService.update_project(project_id, **update_data)
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
+    from app.services.project_stats_snapshot_service import delete_snapshot
+    delete_snapshot(project_id)
     return result
 
 

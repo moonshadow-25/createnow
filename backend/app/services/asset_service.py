@@ -41,13 +41,12 @@ _videos_cache: Dict[str, List[Dict]] = {}
 _assets_cache: Dict[str, Dict[str, List[Dict]]] = {}
 
 
-def _delete_stats_snapshot_if_runtime_cache_ready(project_id: str) -> None:
-    if project_id in _images_cache and project_id in _videos_cache:
-        try:
-            from app.services.project_stats_snapshot_service import delete_snapshot
-            delete_snapshot(project_id)
-        except Exception:
-            pass
+def _delete_stats_snapshot(project_id: str) -> None:
+    try:
+        from app.services.project_stats_snapshot_service import delete_snapshot
+        delete_snapshot(project_id)
+    except Exception:
+        pass
 
 
 class AssetService:
@@ -69,6 +68,8 @@ class AssetService:
         file_path = asset_dir / f"{asset_id}.json"
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(asset, f, ensure_ascii=False, indent=2)
+
+        _delete_stats_snapshot(project_id)
 
         # 更新缓存
         if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
@@ -183,6 +184,7 @@ class AssetService:
             return False
 
         file_path.unlink()
+        _delete_stats_snapshot(project_id)
 
         # 从缓存中移除
         if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
@@ -380,7 +382,6 @@ class ImageService:
                 )
 
             _images_cache[project_id] = images
-            _delete_stats_snapshot_if_runtime_cache_ready(project_id)
 
         return _images_cache[project_id]
 
@@ -397,6 +398,7 @@ class ImageService:
         file_path = images_dir / f"{image_id}.json"
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(record, f, ensure_ascii=False, indent=2)
+        _delete_stats_snapshot(project_id)
 
         # 更新缓存（新增或替换）
         cache = ImageService._get_images_cache(project_id)
@@ -609,7 +611,6 @@ class VideoService:
                     f"files={len(files)} | load={1000*(t1-t0):.1f}ms"
                 )
             _videos_cache[project_id] = videos
-            _delete_stats_snapshot_if_runtime_cache_ready(project_id)
         return _videos_cache[project_id]
 
     @staticmethod
@@ -620,6 +621,7 @@ class VideoService:
     @staticmethod
     def save_video(project_id: str, record: Dict) -> None:
         """新增或更新视频记录到缓存（调用方负责写磁盘）"""
+        _delete_stats_snapshot(project_id)
         cache = VideoService._get_cache(project_id)
         video_id = record.get("video_id")
         for i, v in enumerate(cache):
@@ -631,6 +633,7 @@ class VideoService:
     @staticmethod
     def delete_video(project_id: str, video_id: str) -> None:
         """从缓存中移除视频记录（调用方负责删磁盘文件）"""
+        _delete_stats_snapshot(project_id)
         if project_id in _videos_cache:
             _videos_cache[project_id] = [
                 v for v in _videos_cache[project_id] if v.get("video_id") != video_id
