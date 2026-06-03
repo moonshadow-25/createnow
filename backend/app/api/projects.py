@@ -181,11 +181,13 @@ def _get_project_home_stats(project_id: str) -> dict:
 
     snapshot = read_snapshot(project_id)
     if snapshot:
+        print(f"[STATS SNAPSHOT HIT] project={project_id[:8]}")
         return snapshot
 
     stats = _build_project_stats(project_id)
     user_costs, unknown_cost = _build_project_user_costs(project_id)
     write_snapshot(project_id, stats, user_costs, unknown_cost)
+    print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]}")
     return {
         "stats": stats,
         "user_costs": user_costs,
