@@ -652,18 +652,21 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   };
 
   // 提交素材审核
-  const handleSubmitAssets = async () => {
+  const handleSubmitAssets = async (force = false) => {
     const imageIds = selectedMedia.filter(m => m.type === 'image' && m.id).map(m => m.id!);
     const videoItems = selectedMedia.filter(m => m.type === 'video' && m.url);
     const videoUrls = videoItems.map(m => m.url);
     if (imageIds.length === 0 && videoUrls.length === 0) return;
     setIsSubmittingAssets(true);
     try {
-      const res = await generationApi.submitAsset(projectId, {
+      const payload = {
         image_ids: imageIds,
         video_urls: videoUrls,
         project_name: 'default',
-      });
+      };
+      const res = force
+        ? await generationApi.resubmitAsset(projectId, payload)
+        : await generationApi.submitAsset(projectId, payload);
       const submitted: any[] = res.data.submitted || [];
       // skipped 可能是字符串（错误跳过）或对象（已提交过）
       const skippedRaw: any[] = res.data.skipped || [];
@@ -969,18 +972,29 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               <span className="text-xs text-yellow-400 flex items-center gap-1 ml-1">
                 <Loader2 size={12} className="animate-spin" />审核中...
               </span>
-            ) : allActive ? (
-              <span className="text-xs text-green-400 flex items-center gap-1 ml-1">
-                <CheckCircle size={12} />已入库
-              </span>
-            ) : (hasUnreviewed || anyFailed) ? (
-              <button
-                onClick={handleSubmitAssets}
-                className={`flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 ${anyFailed ? 'text-red-400 hover:text-red-300' : 'text-blue-400 hover:text-blue-300'}`}
-              >
-                <Upload size={12} />{anyFailed ? '部分失败，重试' : '提交审核'}
-              </button>
-            ) : null
+            ) : (
+              <>
+                {allActive ? (
+                  <span className="text-xs text-green-400 flex items-center gap-1 ml-1">
+                    <CheckCircle size={12} />已入库
+                  </span>
+                ) : (hasUnreviewed || anyFailed) ? (
+                  <button
+                    onClick={() => handleSubmitAssets(false)}
+                    className={`flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 ${anyFailed ? 'text-red-400 hover:text-red-300' : 'text-blue-400 hover:text-blue-300'}`}
+                  >
+                    <Upload size={12} />{anyFailed ? '部分失败，重试' : '提交审核'}
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => handleSubmitAssets(true)}
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 text-gray-400 hover:text-white"
+                  title="强制重新提交（清空旧审核状态重新入库）"
+                >
+                  重新提交
+                </button>
+              </>
+            )
           )}
 
           {mode === 'image' && (

@@ -237,8 +237,13 @@ export const generationApi = {
     const body = Array.isArray(payload) ? { image_ids: payload } : payload;
     return api.post(`/projects/${projectId}/generate/assets/submit`, body);
   },
-  resubmitAsset: (projectId: string, imageIds: string[]) =>
-    api.post(`/projects/${projectId}/generate/assets/resubmit`, { image_ids: imageIds }),
+  resubmitAsset: (
+    projectId: string,
+    payload: string[] | { image_ids?: string[]; video_urls?: string[]; project_name?: string }
+  ) => {
+    const body = Array.isArray(payload) ? { image_ids: payload } : payload;
+    return api.post(`/projects/${projectId}/generate/assets/resubmit`, body);
+  },
   getAssetStatus: (projectId: string, assetId: string) =>
     api.get(`/projects/${projectId}/generate/assets/${assetId}/status`),
   // 提示词模板管理
