@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from app.core.config import settings
 from app.core.context import get_current_data_root
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 
 
 def _get_projects_dir() -> Path:

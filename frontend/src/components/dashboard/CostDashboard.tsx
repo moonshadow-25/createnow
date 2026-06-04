@@ -10,6 +10,7 @@ interface ProjectStats {
   total_images: number;
   total_video_seconds: number;
   total_video_compute_units?: number;
+  failed_video_compute_units?: number;
   other_cost?: number;
   total_compute_spent?: number;
 }
@@ -28,6 +29,7 @@ interface ProjectCost {
   name: string;
   image_cost: number;
   video_cost: number;
+  failed_video_cost: number;
   other_cost: number;
   total_cost: number;
 }
@@ -46,15 +48,16 @@ const COLORS = [
   '#14b8a6', '#eab308', '#f43f5e', '#a855f7', '#0ea5e9',
 ];
 
-function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost: number; other_cost: number; total_cost: number } {
-  if (!stats) return { image_cost: 0, video_cost: 0, other_cost: 0, total_cost: 0 };
+function calcCost(stats: ProjectStats | null): { image_cost: number; video_cost: number; failed_video_cost: number; other_cost: number; total_cost: number } {
+  if (!stats) return { image_cost: 0, video_cost: 0, failed_video_cost: 0, other_cost: 0, total_cost: 0 };
   const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * (stats.total_video_seconds || 0));
+  const failed_video_cost = stats.failed_video_compute_units ?? 0;
   const total_cost = stats.total_compute_spent ?? (DEFAULT_IMAGE_COST * (stats.total_images || 0) + video_cost);
   const other_cost = stats.other_cost ?? 0;
   const image_cost = stats.total_compute_spent != null
     ? total_cost - video_cost - other_cost
     : DEFAULT_IMAGE_COST * (stats.total_images || 0);
-  return { image_cost, video_cost, other_cost, total_cost };
+  return { image_cost, video_cost, failed_video_cost, other_cost, total_cost };
 }
 
 const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
@@ -76,6 +79,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
   const totalCost = projectCosts.reduce((s, p) => s + p.total_cost, 0);
   const totalImageCost = projectCosts.reduce((s, p) => s + p.image_cost, 0);
   const totalVideoCost = projectCosts.reduce((s, p) => s + p.video_cost, 0);
+  const totalFailedVideoCost = projectCosts.reduce((s, p) => s + p.failed_video_cost, 0);
   const totalOtherCost = projectCosts.reduce((s, p) => s + p.other_cost, 0);
 
   const fmty = (n: number) => (n / creditsPerYuan).toFixed(2) + '元';
@@ -133,11 +137,12 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
 
         <div className="p-6 space-y-6">
           {/* 汇总卡片 */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-6 gap-4">
             {[
               { label: '总消耗', value: `${fmt(totalCost)}`, color: 'text-white' },
               { label: '图片费用', value: `${fmt(totalImageCost)}`, color: 'text-blue-400' },
               { label: '视频费用', value: `${fmt(totalVideoCost)}`, color: 'text-green-400' },
+              { label: '失败消耗', value: `${fmt(totalFailedVideoCost)}`, color: 'text-red-400' },
               { label: '其他', value: `${fmt(totalOtherCost)}`, color: 'text-purple-400' },
               { label: '预估费用', value: fmty(totalCost), color: 'text-yellow-400' },
             ].map(c => (
@@ -192,6 +197,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                         <th className="text-left py-2 pr-4">项目名称</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
                         <th className="text-right py-2 pr-4">视频费用</th>
+                        <th className="text-right py-2 pr-4">失败消耗</th>
                         <th className="text-right py-2 pr-4">其他</th>
                         <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">总计</th>
@@ -209,6 +215,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                           </td>
                           <td className="text-right py-2 pr-4 text-blue-400">{fmt(p.image_cost)}</td>
                           <td className="text-right py-2 pr-4 text-green-400">{fmt(p.video_cost)}</td>
+                          <td className="text-right py-2 pr-4 text-red-400">{fmt(p.failed_video_cost)}</td>
                           <td className="text-right py-2 pr-4 text-purple-400">{fmt(p.other_cost)}</td>
                           <td className="text-right py-2 pr-4 text-yellow-400">{fmty(p.total_cost)}</td>
                           <td className="text-right py-2 font-medium">{fmt(p.total_cost)}</td>
@@ -220,6 +227,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                         <td className="py-2 pr-4">合计</td>
                         <td className="text-right py-2 pr-4 text-blue-400">{fmt(totalImageCost)}</td>
                         <td className="text-right py-2 pr-4 text-green-400">{fmt(totalVideoCost)}</td>
+                        <td className="text-right py-2 pr-4 text-red-400">{fmt(totalFailedVideoCost)}</td>
                         <td className="text-right py-2 pr-4 text-purple-400">{fmt(totalOtherCost)}</td>
                         <td className="text-right py-2 pr-4 text-yellow-400">{fmty(totalCost)}</td>
                         <td className="text-right py-2">{fmt(totalCost)}</td>

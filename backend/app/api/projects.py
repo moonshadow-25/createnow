@@ -37,9 +37,12 @@ def _build_project_stats(project_id: str) -> dict:
     storyboard_video_seconds = 0.0
     total_video_compute_units = 0.0
     storyboard_video_compute_units = 0.0
+    failed_video_compute_units = 0.0
     subtitle_removal_cost = 0.0
     for v in videos:
         compute_units = _gvc(v)
+        if v.get("status") in {"failed", "poll_failed"}:
+            failed_video_compute_units += compute_units
         if v.get("operation_type") == "subtitle_removal":
             subtitle_removal_cost += compute_units
         else:
@@ -79,6 +82,7 @@ def _build_project_stats(project_id: str) -> dict:
         "storyboard_video_seconds": storyboard_video_seconds,
         "total_video_compute_units": total_video_compute_units,
         "storyboard_video_compute_units": storyboard_video_compute_units,
+        "failed_video_compute_units": round(failed_video_compute_units, 2),
         "other_cost": other_cost,
         "total_compute_spent": total_compute_spent,
     }
