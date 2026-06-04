@@ -6,6 +6,7 @@ API文档: https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks
 """
 
 import logging
+import traceback
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -551,8 +552,9 @@ class ByteSeedVideoAdapter(VideoAdapter):
 
         except Exception as e:
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
-            error_msg = f"ByteSeed Poll Error: {str(e)}"
-            logger.error(error_msg)
+            exc_text = str(e) or repr(e) or "<empty exception>"
+            error_msg = f"ByteSeed Poll Error: {type(e).__name__}: {exc_text}"
+            logger.error("%s\n%s", error_msg, traceback.format_exc())
 
             self._log(
                 operation="video_poll",
@@ -567,7 +569,12 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "success": False,
                 "status": "failed",
                 "error": error_msg,
-                "task_id": task_id
+                "task_id": task_id,
+                "raw_poll_response": {
+                    "exception_type": type(e).__name__,
+                    "exception_repr": repr(e),
+                    "traceback": traceback.format_exc(),
+                }
             }
 
     def _map_resolution_to_ratio(self, resolution: str) -> str:
