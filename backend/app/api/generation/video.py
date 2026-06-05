@@ -102,6 +102,99 @@ def _is_local_video_api_url(url: str, project_id: str) -> bool:
     return marker in path or marker in url
 
 
+def _is_data_url(url: Optional[str]) -> bool:
+    return isinstance(url, str) and url.startswith("data:")
+
+
+def _image_record_url(project_id: str, image: Dict[str, Any]) -> str:
+    local_path = image.get("local_path")
+    if local_path:
+        return f"/api/projects/{project_id}/images/files/{local_path}"
+
+    image_path = image.get("image_path") or ""
+    if image_path.startswith(("http://", "https://")):
+        return image_path
+    return ""
+
+
+def _audio_record_url(project_id: str, audio: Dict[str, Any]) -> str:
+    audio_path = audio.get("audio_path") or ""
+    if audio_path.startswith(("http://", "https://")):
+        return audio_path
+
+    local_path = audio.get("local_path")
+    if local_path:
+        return f"/api/projects/{project_id}/audios/files/{local_path}"
+    return ""
+
+
+def _media_key(item: Dict[str, Any]) -> str:
+    media_type = item.get("type") or ""
+    media_id = item.get("id") or ""
+    url = item.get("url") or ""
+    if not media_type or not (media_id or url):
+        return ""
+    return f"{media_type}:{media_id or url}"
+
+
+def _merge_reference_media(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    seen = set()
+    for group in groups:
+        for item in group or []:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("url") or ""
+            if _is_data_url(url):
+                item = {k: v for k, v in item.items() if k != "url"}
+            key = _media_key(item)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+    return merged
+
+
+def _build_image_reference_media(project_id: str, image_ids: List[str]) -> List[Dict[str, Any]]:
+    from app.services.asset_service import AssetService
+
+    refs: List[Dict[str, Any]] = []
+    for image_id in image_ids or []:
+        image = ImageService.get_image(project_id, image_id)
+        if not image:
+            continue
+
+        name = image.get("prompt") or "参考图"
+        asset_id = image.get("asset_id")
+        asset_type = image.get("asset_type")
+        if asset_id and asset_type:
+            asset = AssetService.load_asset(project_id, asset_type, asset_id)
+            if asset and asset.get("name"):
+                name = asset["name"]
+
+        refs.append({
+            "type": "image",
+            "id": image_id,
+            "url": _image_record_url(project_id, image),
+            "name": name,
+        })
+    return refs
+
+
+def _build_url_reference_media(media_type: str, urls: Optional[List[str]]) -> List[Dict[str, Any]]:
+    refs: List[Dict[str, Any]] = []
+    label = "视频" if media_type == "video" else "音频"
+    for index, url in enumerate(urls or [], start=1):
+        if not url or _is_data_url(url):
+            continue
+        refs.append({
+            "type": media_type,
+            "url": url,
+            "name": f"参考{label} {index}",
+        })
+    return refs
+
+
 def _build_ordered_assets(project_id: str, character_ids: List[str], scene_ids: List[str], prop_ids: List[str]) -> Dict[str, Any]:
     from app.services import AssetService
 
@@ -583,6 +676,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
     # 多模态路径（video_urls / audio_urls）：不需要 image_ids
     has_multimodal = bool(request.video_urls or request.audio_urls)
+    auto_audio_reference_media: List[Dict[str, Any]] = []
 
     # 自动注入角色主音色（仅当请求未手动指定 audio_urls）
     if not request.audio_urls:
@@ -596,9 +690,10 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             if char and char.get("voice_enabled", True) and char.get("voice_audio_id"):
                 audio = AudioService.get_audio(project_id, char["voice_audio_id"])
                 if audio:
+                    public_url = _audio_record_url(project_id, audio)
                     url = audio.get("audio_path")
                     if not url and audio.get("local_path"):
-                        # 转为 base64 data URL
+                        # 转为 base64 data URL 仅用于本次请求，不写入生成记录
                         local_file = _get_projects_dir() / project_id / "audios" / "files" / audio["local_path"]
                         if local_file.exists():
                             import base64
@@ -609,6 +704,13 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                         char_audio_urls.append(url)
                         audio_ref_lines.append(f"@音频{audio_idx}是{char.get('name', '')}的声音")
                         audio_idx += 1
+                        if public_url:
+                            auto_audio_reference_media.append({
+                                "type": "audio",
+                                "id": audio.get("audio_id"),
+                                "url": public_url,
+                                "name": f"{char.get('name', '')}的声音" if char.get("name") else "角色声音",
+                            })
                         logger.info(f"[视频生成] 注入角色音色: char={char_id}, audio={audio['audio_id']}")
         if char_audio_urls:
             # 在 prompt 末尾追加音频引用说明（供 Seedance 2.0 理解角色声音对应关系）
@@ -750,6 +852,19 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             raise HTTPException(status_code=500, detail=result.get("error"))
 
         # 创建视频记录（状态为 pending，等待轮询更新）
+        image_reference_media = _build_image_reference_media(project_id, image_ids)
+        video_reference_media = _build_url_reference_media("video", request.video_urls)
+        audio_reference_media = _build_url_reference_media("audio", request.audio_urls)
+        reference_media = _merge_reference_media(
+            request.reference_media or [],
+            image_reference_media,
+            video_reference_media,
+            audio_reference_media,
+            auto_audio_reference_media,
+        )
+        non_data_audio_urls = [url for url in (request.audio_urls or []) if not _is_data_url(url)]
+        non_data_video_urls = [url for url in (request.video_urls or []) if not _is_data_url(url)]
+
         video_id = str(uuid.uuid4())
         record = {
             "video_id": video_id,
@@ -772,7 +887,14 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "last_poll_time": None,
             "last_poll_response": None,
             "generate_audio": request.generate_audio,
-            "reference_media": request.reference_media or [],
+            "reference_media": reference_media,
+            "input_snapshot": {
+                "image_ids": image_ids,
+                "video_urls": non_data_video_urls,
+                "audio_urls": non_data_audio_urls,
+                "use_web_search": request.use_web_search,
+                "reference_media": reference_media,
+            },
         }
 
         # 保存视频记录到文件
