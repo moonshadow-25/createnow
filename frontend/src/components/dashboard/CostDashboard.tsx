@@ -34,6 +34,14 @@ interface ProjectCost {
   total_cost: number;
 }
 
+interface UserProjectCost {
+  project_id: string;
+  name: string;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+}
+
 interface UserCost {
   username: string;
   display_name?: string;
@@ -65,6 +73,7 @@ const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 export function CostDashboard({ projects, projectStats, userCosts, unknownCost, isAdmin, onClose }: CostDashboardProps) {
   const [creditsPerYuan, setCreditsPerYuan] = useState(200);
   const [rateInput, setRateInput] = useState('200');
+  const [selectedUser, setSelectedUser] = useState<UserCost | null>(null);
 
   // 计算每个项目费用
   const projectCosts: ProjectCost[] = projects
@@ -81,6 +90,26 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
   const totalVideoCost = projectCosts.reduce((s, p) => s + p.video_cost, 0);
   const totalFailedVideoCost = projectCosts.reduce((s, p) => s + p.failed_video_cost, 0);
   const totalOtherCost = projectCosts.reduce((s, p) => s + p.other_cost, 0);
+
+  const selectedUserProjectCosts: UserProjectCost[] = selectedUser
+    ? projects
+      .map((project) => {
+        const costs = project.user_costs?.[selectedUser.username];
+        return costs ? {
+          project_id: project.project_id,
+          name: project.name,
+          image_cost: costs.image_cost || 0,
+          video_cost: costs.video_cost || 0,
+          total_cost: costs.total_cost || 0,
+        } : null;
+      })
+      .filter((item): item is UserProjectCost => !!item && item.total_cost > 0)
+      .sort((a, b) => b.total_cost - a.total_cost)
+    : [];
+
+  const selectedUserProjectImageCost = selectedUserProjectCosts.reduce((s, p) => s + p.image_cost, 0);
+  const selectedUserProjectVideoCost = selectedUserProjectCosts.reduce((s, p) => s + p.video_cost, 0);
+  const selectedUserProjectTotalCost = selectedUserProjectCosts.reduce((s, p) => s + p.total_cost, 0);
 
   const fmty = (n: number) => (n / creditsPerYuan).toFixed(2) + '元';
 
@@ -259,7 +288,16 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                               {u.display_name && u.display_name !== u.username ? `${u.display_name} (${u.username})` : u.username}
                             </td>
                             <td className="text-right py-2 pr-4 text-blue-400">{fmt(u.image_cost)}</td>
-                            <td className="text-right py-2 pr-4 text-green-400">{fmt(u.video_cost)}</td>
+                            <td className="text-right py-2 pr-4">
+                              <button
+                                onClick={() => setSelectedUser(u)}
+                                disabled={u.video_cost <= 0}
+                                className="text-green-400 hover:text-green-300 hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-default"
+                                title="查看该用户在各项目中的消耗"
+                              >
+                                {fmt(u.video_cost)}
+                              </button>
+                            </td>
                             <td className="text-right py-2 pr-4 text-yellow-400">{fmty(u.total_cost)}</td>
                             <td className="text-right py-2 font-medium">{fmt(u.total_cost)}</td>
                           </tr>
@@ -276,6 +314,64 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
           )}
         </div>
       </div>
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
+          <div className="bg-gray-800 rounded-xl w-full max-w-[960px] max-h-[82vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  {selectedUser.display_name && selectedUser.display_name !== selectedUser.username
+                    ? `${selectedUser.display_name} (${selectedUser.username})`
+                    : selectedUser.username} 的项目消耗
+                </h3>
+                <div className="text-xs text-gray-400 mt-1">
+                  {selectedUserProjectCosts.length} 个项目 · 视频 {fmt(selectedUserProjectVideoCost)} · 合计 {fmt(selectedUserProjectTotalCost)}
+                </div>
+              </div>
+              <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-white transition" title="关闭">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-auto">
+              {selectedUserProjectCosts.length === 0 ? (
+                <div className="text-center text-gray-400 py-12">暂无项目消耗数据</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-700">
+                      <th className="text-left py-2 pr-4">项目名称</th>
+                      <th className="text-right py-2 pr-4">图片费用</th>
+                      <th className="text-right py-2 pr-4">视频费用</th>
+                      <th className="text-right py-2 pr-4">预估费用</th>
+                      <th className="text-right py-2">实际消耗</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedUserProjectCosts.map((project) => (
+                      <tr key={project.project_id} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                        <td className="py-2 pr-4">{project.name}</td>
+                        <td className="text-right py-2 pr-4 text-blue-400">{fmt(project.image_cost)}</td>
+                        <td className="text-right py-2 pr-4 text-green-400">{fmt(project.video_cost)}</td>
+                        <td className="text-right py-2 pr-4 text-yellow-400">{fmty(project.total_cost)}</td>
+                        <td className="text-right py-2 font-medium">{fmt(project.total_cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="text-gray-300 font-semibold">
+                      <td className="py-2 pr-4">合计</td>
+                      <td className="text-right py-2 pr-4 text-blue-400">{fmt(selectedUserProjectImageCost)}</td>
+                      <td className="text-right py-2 pr-4 text-green-400">{fmt(selectedUserProjectVideoCost)}</td>
+                      <td className="text-right py-2 pr-4 text-yellow-400">{fmty(selectedUserProjectTotalCost)}</td>
+                      <td className="text-right py-2">{fmt(selectedUserProjectTotalCost)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

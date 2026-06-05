@@ -179,6 +179,12 @@ export interface ProjectStats {
   total_compute_spent?: number;
 }
 
+export interface ProjectUserCost {
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+}
+
 // 项目类型
 export interface Project {
   project_id: string;
@@ -187,6 +193,7 @@ export interface Project {
   created_at: string;
   updated_at: string;
   stats?: ProjectStats;
+  user_costs?: Record<string, ProjectUserCost>;
   ai_config?: {
     llm: ApiConfig;
     vlm?: ApiConfig;

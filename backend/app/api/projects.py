@@ -344,6 +344,7 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         for p in projects:
             item = _get_project_home_stats(p["project_id"])
             p["stats"] = item.get("stats")
+            p["user_costs"] = item.get("user_costs") or {}
             project_costs.append(item)
         return {
             "projects": projects,
