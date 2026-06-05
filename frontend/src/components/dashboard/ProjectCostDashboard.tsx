@@ -130,8 +130,14 @@ export function ProjectCostDashboard({ projectId, episodes, storyboards, charact
       const episodeId = record.episode_id || storyboard?.episode_id;
       if (episodeId) {
         const episode = episodeById.get(episodeId) as any;
-        const num = episode?.episode_number ?? episode?.name ?? '';
-        return { key: `episode:${episodeId}`, label: num ? `第${num}集` : '未命名剧集', sort: Number(episode?.episode_number || 0) || 0 };
+        if (episode) {
+          const num = episode.episode_number ?? episode.name ?? '';
+          return { key: `episode:${episodeId}`, label: num ? `第${num}集` : '未命名剧集', sort: Number(episode.episode_number || 0) || 0 };
+        }
+        return { key: 'deleted-episode', label: '已删除集/失联分镜', sort: 9800 };
+      }
+      if (record.storyboard_id) {
+        return { key: 'deleted-episode', label: '已删除集/失联分镜', sort: 9800 };
       }
       return { key: 'square', label: '广场生成', sort: 9000 };
     };
