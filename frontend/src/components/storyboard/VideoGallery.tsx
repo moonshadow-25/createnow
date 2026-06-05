@@ -80,9 +80,9 @@ export function VideoGallery({
   const downloadProgress = useVideoDownloadProgress(projectId);
 
   const [allVideos, setAllVideos] = useState<VideoRecord[]>([]);        // 所有视频（内存）
-  const [displayedVideos, setDisplayedVideos] = useState<VideoRecord[]>([]); // 当前显示的视频
   const [displayCount] = useState(10);                                  // 每次显示的数量
-  const [hasMore, setHasMore] = useState(true);                        // 是否还有更多
+  const [visibleCount, setVisibleCount] = useState(10);
+  const [authorFilter, setAuthorFilter] = useState('__all__');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pollingVideos, setPollingVideos] = useState<Set<string>>(new Set());
@@ -90,7 +90,6 @@ export function VideoGallery({
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videosRef = useRef<VideoRecord[]>([]); // 存储最新的allVideos状态，供定时器访问
   const parentRef = useRef<HTMLDivElement>(null); // 虚拟滚动容器ref
-  const displayedVideosRef = useRef<VideoRecord[]>([]); // 供 estimateSize 同步读取最新数据
 
   useEffect(() => {
     const init = async () => {
@@ -136,10 +135,23 @@ export function VideoGallery({
     videosRef.current = allVideos;
   }, [allVideos]);
 
-  // 同步 displayedVideos 到 ref，供 estimateSize 读取
+  const authorOptions = Array.from(new Set(
+    allVideos.map(v => (v.created_by || '').trim() || '__unknown__')
+  )).sort((a, b) => {
+    if (a === '__unknown__') return 1;
+    if (b === '__unknown__') return -1;
+    return a.localeCompare(b, 'zh');
+  });
+  const filteredVideos = authorFilter === '__all__'
+    ? allVideos
+    : allVideos.filter(v => ((v.created_by || '').trim() || '__unknown__') === authorFilter);
+  const displayedVideos = filteredVideos.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredVideos.length;
+
   useEffect(() => {
-    displayedVideosRef.current = displayedVideos;
-  }, [displayedVideos]);
+    setVisibleCount(displayCount);
+    parentRef.current?.scrollTo({ top: 0 });
+  }, [authorFilter, displayCount]);
 
   // 监听滚动，到底部时加载更多
   useEffect(() => {
@@ -166,8 +178,7 @@ export function VideoGallery({
       // 视频库要最新在上面（降序），广场传入的是升序，这里反转，不影响原数组
       const videoList = [...initialVideos].reverse();
       setAllVideos(videoList);
-      setDisplayedVideos(videoList.slice(0, displayCount));
-      setHasMore(videoList.length > displayCount);
+      setVisibleCount(displayCount);
       setLoading(false);
       setError('');
       return videoList;
@@ -191,8 +202,7 @@ export function VideoGallery({
       }
 
       setAllVideos(videoList);
-      setDisplayedVideos(videoList.slice(0, displayCount));
-      setHasMore(videoList.length > displayCount);
+      setVisibleCount(displayCount);
       setError('');
       return videoList;
     } catch (err: any) {
@@ -206,16 +216,7 @@ export function VideoGallery({
   // 加载更多（追加下一批）
   const loadMore = () => {
     if (!hasMore) return;
-
-    const currentLength = displayedVideos.length;
-    const nextBatch = allVideos.slice(currentLength, currentLength + displayCount);
-
-    if (nextBatch.length > 0) {
-      setDisplayedVideos(prev => [...prev, ...nextBatch]);
-      setHasMore(currentLength + nextBatch.length < allVideos.length);
-    } else {
-      setHasMore(false);
-    }
+    setVisibleCount(prev => Math.min(prev + displayCount, filteredVideos.length));
   };
 
   // 加载分镜缩略图
@@ -287,9 +288,8 @@ export function VideoGallery({
     if (successResults.length > 0) {
       const updateMap = new Map(successResults.map(v => [v.video_id, v]));
 
-      // 同时更新两个列表
+      // 批量更新状态（一次render而非多次）
       setAllVideos(prev => prev.map(v => updateMap.get(v.video_id) || v));
-      setDisplayedVideos(prev => prev.map(v => updateMap.get(v.video_id) || v));
     }
   };
 
@@ -303,11 +303,7 @@ export function VideoGallery({
       const response = await generationApi.pollVideo(projectId, videoId);
       const updatedVideo = response.data;
 
-      // 同时更新两个列表
       setAllVideos(prev => prev.map(v =>
-        v.video_id === videoId ? updatedVideo : v
-      ));
-      setDisplayedVideos(prev => prev.map(v =>
         v.video_id === videoId ? updatedVideo : v
       ));
 
@@ -353,7 +349,6 @@ export function VideoGallery({
       if (initialVideos) {
         // 有内存数据模式：直接把新视频插到列表头部，不全量拉取
         setAllVideos(prev => [newVideo, ...prev]);
-        setDisplayedVideos(prev => [newVideo, ...prev]);
       } else {
         await loadAllVideos(true);
       }
@@ -372,24 +367,7 @@ export function VideoGallery({
       });
 
       if (response.ok) {
-        // 同时从两个列表中删除
         setAllVideos(prev => prev.filter(v => v.video_id !== videoId));
-        setDisplayedVideos(prev => {
-          const filtered = prev.filter(v => v.video_id !== videoId);
-
-          // 如果删除后displayedVideos变少，自动补充下一个
-          const currentLength = filtered.length;
-          if (currentLength < displayCount && allVideos.length > currentLength) {
-            const nextVideo = allVideos.find((v, idx) =>
-              idx >= currentLength && !filtered.find(d => d.video_id === v.video_id)
-            );
-            if (nextVideo) {
-              return [...filtered, nextVideo];
-            }
-          }
-
-          return filtered;
-        });
         toast('视频已删除', 'success');
       } else {
         toast('删除失败', 'error');
@@ -413,9 +391,7 @@ export function VideoGallery({
               : v.is_primary
         }));
 
-      // 同时更新两个列表
       setAllVideos(updatePrimary);
-      setDisplayedVideos(updatePrimary);
       toast('已设为主视频', 'success');
     } catch (err: any) {
       toast(err.response?.data?.detail || '设置失败', 'error');
@@ -450,8 +426,19 @@ export function VideoGallery({
       <div className="bg-gray-800 rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* 头部 */}
         <div className="flex justify-between items-center p-4 border-b border-gray-700">
-          <h2 className="text-xl font-semibold">视频库 ({allVideos.length})</h2>
+          <h2 className="text-xl font-semibold">视频库 ({filteredVideos.length}/{allVideos.length})</h2>
           <div className="flex items-center gap-2">
+            <select
+              value={authorFilter}
+              onChange={(e) => setAuthorFilter(e.target.value)}
+              className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+              title="按作者筛选"
+            >
+              <option value="__all__">全部作者</option>
+              {authorOptions.map(author => (
+                <option key={author} value={author}>{author === '__unknown__' ? '未知作者' : author}</option>
+              ))}
+            </select>
             {/* 导出视频按钮 */}
             <button
               onClick={handleExportVideos}
@@ -597,7 +584,8 @@ export function VideoGallery({
         {/* 底部 */}
         <div className="p-4 border-t border-gray-700 flex justify-between items-center">
           <div className="text-sm text-gray-400">
-            显示 {displayedVideos.length} / {allVideos.length} 个视频
+            显示 {displayedVideos.length} / {filteredVideos.length} 个视频
+            {authorFilter !== '__all__' && <span className="ml-2 text-gray-500">（全部 {allVideos.length} 个）</span>}
             {allVideos.filter(v => {
               const status = v.status || 'pending';
               return status === 'pending' || status === 'queued' || status === 'in_progress';

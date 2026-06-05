@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Download, Trash2, Clock, CheckCircle, XCircle, Loader2, Play, Subtitles } from 'lucide-react';
+import { Download, Trash2, Clock, CheckCircle, XCircle, Loader2, Play, Subtitles, User } from 'lucide-react';
 
 import { getVideoUrl } from './utils/mediaUtils';
 import { ExpandableText } from '@/components/common/ExpandableText';
@@ -13,6 +13,7 @@ export interface VideoRecord {
   duration: number;
   resolution?: string;
   created_at: string;
+  created_by?: string;
   storyboard_id: string;
   episode_id: string;
   task_id?: string;
@@ -50,6 +51,7 @@ export const VideoCard = memo(({
   onRemoveSubtitle
 }: VideoCardProps) => {
   const videoUrl = getVideoUrl(video, projectId);
+  const authorLabel = (video.created_by || '').trim() || '未知';
 
   // 压缩状态显示（包含所有元数据在一行）
   const getCompactStatus = (video: VideoRecord) => {
@@ -157,6 +159,10 @@ export const VideoCard = memo(({
               {getCompactStatus(video)}
             </span>
           </div>
+          <div className="flex items-center gap-1 text-gray-500 ml-2 flex-shrink-0" title={`作者：${authorLabel}`}>
+            <User size={12} />
+            <span className="max-w-[96px] truncate">{authorLabel}</span>
+          </div>
           {video.status !== 'completed' && (
             <button
               onClick={() => onPoll(video.video_id)}
@@ -235,6 +241,7 @@ export const VideoCard = memo(({
     prevProps.video.is_primary === nextProps.video.is_primary &&
     prevProps.video.video_path === nextProps.video.video_path &&
     prevProps.video.local_path === nextProps.video.local_path &&
+    prevProps.video.created_by === nextProps.video.created_by &&
     prevProps.isPolling === nextProps.isPolling
   );
 });
