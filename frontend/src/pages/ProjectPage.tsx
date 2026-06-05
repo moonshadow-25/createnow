@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText } from 'lucide-react';
+import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText, BarChart2 } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
@@ -13,6 +13,7 @@ import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useThemeStore } from '@/store/themeStore';
 import { FullScriptImportModal } from '@/components/script/FullScriptImportModal';
+import { ProjectCostDashboard } from '@/components/dashboard/ProjectCostDashboard';
 
 type TabType = 'chat' | 'assets' | 'storyboard' | 'generate';
 
@@ -29,6 +30,7 @@ export default function ProjectPage() {
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
   const [showSettings, setShowSettings] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showProjectCostDashboard, setShowProjectCostDashboard] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [showFullScriptImport, setShowFullScriptImport] = useState(false);
   // 项目没有分集时自动弹出导入弹框
@@ -166,6 +168,14 @@ export default function ProjectPage() {
             <h1 className="text-2xl font-bold inline">{currentProject.name}</h1>
           </div>
           <div className="flex items-center gap-2 pr-10">
+            <button
+              onClick={() => setShowProjectCostDashboard(true)}
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm ${isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'}`}
+              title="项目消耗看板"
+            >
+              <BarChart2 size={18} className="inline mr-2" />
+              消耗看板
+            </button>
             <button
               onClick={() => setActiveTab('storyboard')}
               className={`px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm ${
@@ -306,6 +316,18 @@ export default function ProjectPage() {
       </div>
 
       {/* 设置弹框 */}
+      {showProjectCostDashboard && projectId && (
+        <ProjectCostDashboard
+          projectId={projectId}
+          episodes={episodes}
+          storyboards={storyboards}
+          characters={characters}
+          scenes={scenes}
+          props={props}
+          onClose={() => setShowProjectCostDashboard(false)}
+        />
+      )}
+
       {showSettings && projectId && (
         <SettingsModal projectId={projectId} onClose={() => setShowSettings(false)} />
       )}
