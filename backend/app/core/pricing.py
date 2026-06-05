@@ -18,8 +18,8 @@ DEFAULT_VIDEO_PRICES = {
 # 去字幕成本（积分/条）
 SUBTITLE_REMOVAL_COST = 300
 
-# 不计费模型（手动上传、三宫格拆解）
-ZERO_COST_MODELS = {"manual_upload", "split"}
+# 不计费模型（手动上传、三宫格拆解、视频抽帧）
+ZERO_COST_MODELS = {"manual_upload", "split", "extracted_frame"}
 
 # 旧数据 RMB → 积分换算比
 LEGACY_RMB_TO_CREDITS = 200

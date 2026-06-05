@@ -57,7 +57,7 @@ interface ProjectCostDashboardProps {
 const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 const userKey = (value?: string) => (value || '').trim() || '__unknown__';
 const userLabel = (value: string) => value === '__unknown__' ? '未知用户' : value;
-const isZeroCostImageModel = (model?: string) => ['manual_upload', 'split'].includes(model || '');
+const isZeroCostImageModel = (model?: string) => ['manual_upload', 'split', 'extracted_frame'].includes(model || '');
 const imageCost = (record: ImageRecord) => {
   if (isZeroCostImageModel(record.model)) return 0;
   return Number(record.actual_cost ?? record.credits_consumed ?? DEFAULT_IMAGE_COST) || 0;
