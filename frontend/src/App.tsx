@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import HomePage from '@/pages/HomePage';
 import ProjectPage from '@/pages/ProjectPage';
 import StoryboardEditorPage from '@/pages/StoryboardEditorPage';
@@ -16,6 +16,11 @@ import { useThemeStore, applyStoredTheme } from '@/store/themeStore';
 applyStoredTheme();
 
 const CONFIG_URL = (import.meta.env.DEV ? 'http://localhost:8501' : '') + '/api/config';
+
+function StoryboardEditorRoute() {
+  const { projectId, storyboardId } = useParams();
+  return <StoryboardEditorPage key={`${projectId}:${storyboardId}`} />;
+}
 
 function App() {
   const adminAuth = useAdminAuthStore();
@@ -123,7 +128,7 @@ function App() {
               <BrowserRouter>
                 <Routes>
                   <Route path="/" element={<HomePage />} />
-                  <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
+                  <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorRoute />} />
                   <Route path="/project/:projectId" element={<ProjectPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
@@ -134,7 +139,7 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorPage />} />
+              <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorRoute />} />
               <Route path="/project/:projectId" element={<ProjectPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
