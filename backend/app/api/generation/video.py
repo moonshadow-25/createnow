@@ -862,8 +862,6 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             audio_reference_media,
             auto_audio_reference_media,
         )
-        non_data_audio_urls = [url for url in (request.audio_urls or []) if not _is_data_url(url)]
-        non_data_video_urls = [url for url in (request.video_urls or []) if not _is_data_url(url)]
 
         video_id = str(uuid.uuid4())
         record = {
@@ -888,13 +886,6 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "last_poll_response": None,
             "generate_audio": request.generate_audio,
             "reference_media": reference_media,
-            "input_snapshot": {
-                "image_ids": image_ids,
-                "video_urls": non_data_video_urls,
-                "audio_urls": non_data_audio_urls,
-                "use_web_search": request.use_web_search,
-                "reference_media": reference_media,
-            },
         }
 
         # 保存视频记录到文件
