@@ -66,19 +66,6 @@ const videoCost = (record: VideoRecord) => Number(
   record.actual_cost ?? record.credits_consumed ?? record.estimated_cost ?? ((record.duration || 0) * DEFAULT_VIDEO_COST_PER_SEC)
 ) || 0;
 
-async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = [];
-  let next = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const current = next++;
-      results[current] = await worker(items[current]);
-    }
-  });
-  await Promise.all(runners);
-  return results;
-}
-
 export function ProjectCostDashboard({ projectId, episodes, storyboards, characters, scenes, props, onClose }: ProjectCostDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -161,23 +148,15 @@ export function ProjectCostDashboard({ projectId, episodes, storyboards, charact
           ...props.map(a => a.asset_id),
         ].filter(Boolean);
 
-        const [libraryImagesRes, allVideosRes] = await Promise.all([
+        const [libraryImagesRes, allVideosRes, assetImagesRes] = await Promise.all([
           generationApi.listLibraryImages(projectId),
           generationApi.listVideos(projectId),
+          generationApi.listImagesBatch(projectId, assetIds),
         ]);
-
-        const imageLists = await mapLimit(assetIds, 8, async (assetId) => {
-          try {
-            const res = await generationApi.listImages(projectId, assetId);
-            return res.data || [];
-          } catch {
-            return [];
-          }
-        });
 
         const images: ImageRecord[] = [
           ...(libraryImagesRes.data || []),
-          ...imageLists.flat(),
+          ...(assetImagesRes.data?.images || []),
         ];
         const seenImages = new Set<string>();
         images.forEach((record) => {

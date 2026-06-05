@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Request
+from pydantic import BaseModel
 
 from app.services import get_ai_service, PromptService, ImageService, AssetService
 from app.core.config import settings
@@ -57,6 +58,10 @@ def _get_projects_dir():
 
 
 router = APIRouter()
+
+
+class ImageBatchRequest(BaseModel):
+    asset_ids: list[str]
 
 
 def _resolve_generated_image_url(image_data: dict) -> str:
@@ -844,6 +849,17 @@ async def list_library_images(project_id: str, mine: bool = False):
         images = [img for img in images if (img.get("created_by") or "") == current_user]
     images.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return images
+
+
+@router.post("/images/batch")
+async def list_images_batch(project_id: str, request: ImageBatchRequest):
+    """批量列出多个资产的图片记录"""
+    asset_ids = {asset_id for asset_id in request.asset_ids if asset_id}
+    if not asset_ids:
+        return {"images": []}
+    images = [img for img in ImageService.list_images(project_id) if img.get("asset_id") in asset_ids]
+    images.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return {"images": images}
 
 
 @router.get("/images/{asset_id}")
