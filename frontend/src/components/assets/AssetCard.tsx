@@ -37,8 +37,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [generating, setGenerating] = useState(false);
   const [promptError, setPromptError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [imagePromptSectionExpanded, setImagePromptSectionExpanded] = useState(false);
-  const [basicInfoExpanded, setBasicInfoExpanded] = useState(false);
   const [editImagePrompt, setEditImagePrompt] = useState('');
   const [generatingEditPrompt, setGeneratingEditPrompt] = useState(false);
   const [editingImage, setEditingImage] = useState(false);
@@ -166,7 +164,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     setNewTagInput('');
     setImagePrompt(asset.image_prompt || '');
     setEditImagePrompt(asset.edit_image_prompt || '');
-    setImagePromptSectionExpanded(!asset.parent_id);
     setPromptError('');
     setSaveSuccess(false);
     setShowEdit(true);
@@ -661,7 +658,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       {/* 编辑弹框 - 直接显示完整编辑界面 */}
       {showEdit && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-7xl max-h-[90vh] overflow-y-auto">
             {/* 标题栏 */}
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">
@@ -683,24 +680,14 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
               </div>
             )}
 
-            <div className="space-y-4">
-              {/* 基本信息编辑 - 可收起/展开 */}
-              <div className="bg-gray-700 rounded overflow-hidden">
-                <button
-                  onClick={() => setBasicInfoExpanded(!basicInfoExpanded)}
-                  className="w-full flex items-center justify-between p-3 hover:bg-gray-600 transition text-left"
-                >
-                  <div className="flex items-center gap-2">
-                    {basicInfoExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <h3 className="text-sm font-semibold text-gray-300">基本信息</h3>
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {basicInfoExpanded ? '收起' : '展开'}
-                  </span>
-                </button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {/* 基本信息编辑 */}
+              <div className="bg-gray-700 rounded overflow-hidden lg:col-start-1 lg:row-start-1">
+                <div className="p-3 border-b border-gray-600">
+                  <h3 className="text-sm font-semibold text-gray-300">基本信息</h3>
+                </div>
 
-                {basicInfoExpanded && (
-                  <div className="p-4 pt-0 space-y-3">
+                <div className="p-4 space-y-3">
                     {/* 名称、性别、年龄 - 角色放在一行 */}
                     {assetType === 'character' ? (
                       <div className="grid grid-cols-3 gap-3">
@@ -837,30 +824,20 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       </div>
                     )}
                   </div>
-                )}
               </div>
 
               {/* 错误提示 */}
               {promptError && (
-                <div className="flex items-center gap-2 text-sm text-red-400 bg-red-900 bg-opacity-20 px-3 py-2 rounded">
+                <div className="flex items-center gap-2 text-sm text-red-400 bg-red-900 bg-opacity-20 px-3 py-2 rounded lg:col-start-2">
                   <AlertCircle size={16} />
                   {promptError}
                 </div>
               )}
 
-              {/* 图片提示词区域 - 默认展开 */}
-              <div className="bg-gray-700 rounded overflow-hidden">
-                <div className="flex items-center justify-between p-3">
-                  <button
-                    onClick={() => setImagePromptSectionExpanded(!imagePromptSectionExpanded)}
-                    className="flex items-center gap-2 hover:bg-gray-600 transition text-left flex-1"
-                  >
-                    {imagePromptSectionExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <h3 className="text-sm font-semibold text-gray-300">图片提示词</h3>
-                    <span className="text-xs text-gray-500">
-                      {imagePromptSectionExpanded ? '收起' : '展开'}
-                    </span>
-                  </button>
+              {/* 图片提示词区域 */}
+              <div className="bg-gray-700 rounded overflow-hidden lg:col-start-2 lg:row-start-1">
+                <div className="flex items-center justify-between p-3 border-b border-gray-600">
+                  <h3 className="text-sm font-semibold text-gray-300">图片提示词</h3>
                   <button
                     onClick={() => setShowImageEditDialog(true)}
                     className="flex items-center gap-1 bg-orange-600 hover:bg-orange-700 px-3 py-1.5 rounded text-sm"
@@ -872,8 +849,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                   </button>
                 </div>
 
-                {imagePromptSectionExpanded && (
-                  <div className="p-4 pt-0 space-y-3">
+                <div className="p-4 space-y-3">
                     <div>
                       <label className="block text-sm text-gray-400 mb-2">提示词内容</label>
                       <textarea
@@ -919,12 +895,11 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       )}
                     </div>
                   </div>
-                )}
               </div>
 
               {/* 图像编辑提示词区域 - 仅子角色显示 */}
               {isChildCharacter && (
-                <div className="bg-orange-900 bg-opacity-20 rounded-lg p-4 space-y-3 border border-orange-700">
+                <div className="bg-orange-900 bg-opacity-20 rounded-lg p-4 space-y-3 border border-orange-700 lg:col-start-2">
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <label className="block text-sm text-orange-300">图像编辑提示词（基于父角色主图编辑）</label>
@@ -973,7 +948,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
 
               {/* 音色管理区域 - 仅角色显示 */}
               {assetType === 'character' && (
-                <div className="bg-gray-700 rounded overflow-hidden">
+                <div className="bg-gray-700 rounded overflow-hidden lg:col-start-1">
                   <button
                     onClick={() => {
                       setVoiceSectionExpanded(!voiceSectionExpanded);
@@ -1136,66 +1111,71 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
               )}
 
               {/* 图片库预览 */}
-              {images.length > 0 && (() => {
-                // 过滤隐藏的图片并排序（主图在前）
-                const visibleImages = images
-                  .filter(img => !hiddenImageIds.has(img.image_id))
-                  .sort((a, b) => {
-                    if (a.is_primary && !b.is_primary) return -1;
-                    if (!a.is_primary && b.is_primary) return 1;
-                    return 0;
-                  });
+              <div className="bg-gray-700 rounded p-4 lg:col-start-2">
+                {images.length > 0 ? (() => {
+                  const visibleImages = images
+                    .filter(img => !hiddenImageIds.has(img.image_id))
+                    .sort((a, b) => {
+                      if (a.is_primary && !b.is_primary) return -1;
+                      if (!a.is_primary && b.is_primary) return 1;
+                      return 0;
+                    });
 
-                if (visibleImages.length === 0) return null;
+                  if (visibleImages.length === 0) {
+                    return <div className="text-sm text-gray-500">已生成图片均已隐藏</div>;
+                  }
 
-                return (
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm font-medium text-gray-300">
-                      已生成图片 ({visibleImages.length})
-                    </span>
-                    <div className="flex items-center gap-2 flex-1">
-                      <div
-                        onClick={() => {
-                          setShowEdit(false);
-                          setShowGallery(true);
-                        }}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        {visibleImages.slice(0, 3).map((img) => (
-                          <div key={img.image_id} className="relative group">
-                            <img
-                              src={getImageUrl(img).replace('/images/files/', '/thumbnails/')}
-                              alt={asset.name}
-                              className="w-16 h-16 object-cover rounded-lg border-2 border-transparent hover:border-blue-500 transition"
-                              loading="lazy"
-                            />
-                            {img.is_primary && (
-                              <div className="absolute top-0 right-0 bg-blue-600 text-xs px-1 rounded-tl rounded-br">
-                                主
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {visibleImages.length > 3 && (
-                          <div className="w-16 h-16 bg-gray-600 rounded-lg flex items-center justify-center text-gray-300 font-semibold border-2 border-transparent hover:border-blue-500 transition">
-                            +{visibleImages.length - 3}
-                          </div>
-                        )}
+                  return (
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm font-medium text-gray-300">
+                        已生成图片 ({visibleImages.length})
+                      </span>
+                      <div className="flex items-center gap-2 flex-1">
+                        <div
+                          onClick={() => {
+                            setShowEdit(false);
+                            setShowGallery(true);
+                          }}
+                          className="flex items-center gap-2 cursor-pointer"
+                        >
+                          {visibleImages.slice(0, 4).map((img) => (
+                            <div key={img.image_id} className="relative group">
+                              <img
+                                src={getImageUrl(img).replace('/images/files/', '/thumbnails/')}
+                                alt={asset.name}
+                                className="w-16 h-16 object-cover rounded-lg border-2 border-transparent hover:border-blue-500 transition"
+                                loading="lazy"
+                              />
+                              {img.is_primary && (
+                                <div className="absolute top-0 right-0 bg-blue-600 text-xs px-1 rounded-tl rounded-br">
+                                  主
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {visibleImages.length > 4 && (
+                            <div className="w-16 h-16 bg-gray-600 rounded-lg flex items-center justify-center text-gray-300 font-semibold border-2 border-transparent hover:border-blue-500 transition">
+                              +{visibleImages.length - 4}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowEdit(false);
+                            setShowGallery(true);
+                          }}
+                          className="flex items-center gap-1 text-green-400 hover:text-green-300 text-sm ml-auto"
+                        >
+                          <Images size={14} />
+                          管理
+                        </button>
                       </div>
-                      <button
-                        onClick={() => {
-                          setShowEdit(false);
-                          setShowGallery(true);
-                        }}
-                        className="flex items-center gap-1 text-green-400 hover:text-green-300 text-sm ml-auto"
-                      >
-                        <Images size={14} />
-                        管理
-                      </button>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })() : (
+                  <div className="text-sm text-gray-500">暂无已生成图片</div>
+                )}
+              </div>
             </div>
 
             {/* 底部按钮 */}
