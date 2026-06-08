@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';import {
-  Upload, X, Film, Plus, ChevronDown, Loader2, Play,
-  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music, ZoomIn
+  Upload, X, Film, ChevronDown, Loader2, Play,
+  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music
 } from 'lucide-react';
 import { useAssetStore } from '@/store/assetStore';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
@@ -11,13 +11,15 @@ import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
 import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
-import { collectAssetTags, filterAssetsByTags, toggleTag } from '@/utils/assetTags';
+import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
   id?: string;      // image_id 或 media_id
   url: string;      // 图片展示 URL 或视频/音频公网 URL
   name: string;
+  sourceAssetId?: string;
+  sourceAssetType?: 'character' | 'scene' | 'prop';
   volcengineAssetId?: string;
   volcengineStatus?: string;
 }
@@ -145,14 +147,6 @@ function getThumbnailUrl(url?: string): string {
   return url.replace('/images/files/', '/thumbnails/');
 }
 
-function getAssetImageUrl(asset: any): string {
-  return asset?.primary_image_url || asset?.image_url || '';
-}
-
-function getAssetThumbnailUrl(asset: any): string {
-  return getThumbnailUrl(getAssetImageUrl(asset));
-}
-
 function getCurrentUserLabel(adminUsername: string | null, saasUser: { display_name?: string; email?: string } | null): string {
   return saasUser?.display_name || saasUser?.email || adminUsername || '';
 }
@@ -204,9 +198,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [pendingImageCount, setPendingImageCount] = useState(0);
-  const [showAssetPicker, setShowAssetPicker] = useState(false);
-  const [assetPickerTab, setAssetPickerTab] = useState<'character' | 'scene' | 'prop'>('character');
-  const [assetPickerSelectedTags, setAssetPickerSelectedTags] = useState<string[]>([]);
   const [showRatioMenu, setShowRatioMenu] = useState(false);
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
   const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
@@ -214,7 +205,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
-  const [previewAsset, setPreviewAsset] = useState<any | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const [hasLoadedImages, setHasLoadedImages] = useState(false);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
@@ -226,8 +216,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
-  const assetPickerRef = useRef<HTMLDivElement>(null);
-  const previewAssetRef = useRef<any | null>(null);
   const videoListRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const historyReadyRef = useRef(false);
@@ -356,22 +344,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
       loadMoreHistory();
     }
   }, [hasMoreHistory, isLoadingHistory, loadMoreHistory]);
-
-  useEffect(() => {
-    previewAssetRef.current = previewAsset;
-  }, [previewAsset]);
-
-  // 点击外部关闭弹窗
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (previewAssetRef.current) return;
-      if (assetPickerRef.current && !assetPickerRef.current.contains(e.target as Node)) {
-        setShowAssetPicker(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   // 启动视频轮询
   const startPolling = useCallback((videoId: string) => {
@@ -563,7 +535,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         resolution,
         ratio,
         generate_audio: generateAudio,
-        reference_media: selectedMedia.map(m => ({ type: m.type, id: m.id, url: m.url, name: m.name })),
+        reference_media: selectedMedia.map(m => ({
+          type: m.type,
+          id: m.id,
+          url: m.url,
+          name: m.name,
+          sourceAssetId: m.sourceAssetId,
+          sourceAssetType: m.sourceAssetType,
+        })),
         model: videoApiType === 'createnow' ? selectedVideoModel.trim() || undefined : undefined,
       });
       const newVideo: VideoRecord = res.data;
@@ -596,12 +575,19 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     setAssetStatuses({});
   };
 
-  const handleAddAsset = (asset: any) => {
+  const addAssetMedia = (asset: any): boolean => {
     const imgId = asset.image_id;
-    if (!imgId) { toast('该资产暂无主图', 'error'); return; }
-    if (selectedMedia.find(m => m.id === imgId)) { toast('已添加过该图片', 'error'); return; }
-    if (selectedMedia.filter(m => m.type === 'image').length >= 10) { toast('最多支持10张参考图片', 'error'); return; }
-    const newItem: RefMedia = { type: 'image', id: imgId, url: asset.primary_image_url || '', name: asset.name };
+    if (!imgId) { toast('该资产暂无主图', 'error'); return false; }
+    if (selectedMedia.find(m => m.id === imgId || m.sourceAssetId === asset.asset_id)) { return true; }
+    if (selectedMedia.filter(m => m.type === 'image').length >= 10) { toast('最多支持10张参考图片', 'error'); return false; }
+    const newItem: RefMedia = {
+      type: 'image',
+      id: imgId,
+      url: getAssetImageUrl(asset),
+      name: asset.name,
+      sourceAssetId: asset.asset_id,
+      sourceAssetType: asset.asset_type,
+    };
     setSelectedMedia(prev => [...prev, newItem]);
     // 直接从 asset 对象读取审核状态（后端已透传主图的 volcengine 字段）
     if (showAssetSubmit) {
@@ -613,6 +599,20 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         }));
       }
     }
+    return true;
+  };
+
+  const removeAssetMedia = (asset: any) => {
+    setSelectedMedia(prev => prev.filter(m => m.sourceAssetId !== asset.asset_id && m.id !== asset.image_id));
+  };
+
+  const handleToggleAsset = (asset: any) => {
+    const selected = selectedMedia.some(m => m.sourceAssetId === asset.asset_id || m.id === asset.image_id);
+    if (selected) {
+      removeAssetMedia(asset);
+      return;
+    }
+    addAssetMedia(asset);
   };
 
   // 上传本地文件（图片/视频/音频自动识别）
@@ -766,18 +766,45 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const hasUnreviewed = reviewItems.length > 0 && (allStatuses.length < reviewItems.length || allStatuses.some(s => !s || s === 'Failed'));
   const showSubmitButton = showAssetSubmit && reviewItems.length > 0;
 
-  const allAssets = assetPickerTab === 'character' ? characters
-    : assetPickerTab === 'scene' ? scenes : props;
-  const assetPickerTags = useMemo(() => collectAssetTags(allAssets as any[]), [allAssets]);
-  const filteredPickerAssets = useMemo(
-    () => filterAssetsByTags(allAssets as any[], assetPickerSelectedTags),
-    [allAssets, assetPickerSelectedTags]
-  );
-
   const ratioLabel = RATIO_OPTIONS.find(r => r.value === ratio)?.label || ratio;
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
   const imageSizeLabel = IMAGE_RATIO_OPTIONS.find(option => option.value === imageSize)?.label || imageSize;
   const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
+  const selectedCharacterIds = selectedMedia
+    .filter(item => item.sourceAssetType === 'character' && item.sourceAssetId)
+    .map(item => item.sourceAssetId!);
+  const selectedSceneIds = selectedMedia
+    .filter(item => item.sourceAssetType === 'scene' && item.sourceAssetId)
+    .map(item => item.sourceAssetId!);
+  const selectedPropIds = selectedMedia
+    .filter(item => item.sourceAssetType === 'prop' && item.sourceAssetId)
+    .map(item => item.sourceAssetId!);
+  const selectedProjectAssetMap = useMemo(() => {
+    const map = new Map<string, any>();
+    [...characters, ...scenes, ...props].forEach(asset => map.set(asset.asset_id, asset));
+    return map;
+  }, [characters, scenes, props]);
+  const handleInsertReferences = () => {
+    const imageRefs = selectedMedia
+      .filter(item => item.type === 'image' && item.sourceAssetId)
+      .map((item, index) => `@图${index + 1}是【${item.name}】`);
+    const audioRefs = generateAudio
+      ? selectedMedia
+        .filter(item => item.sourceAssetType === 'character' && item.sourceAssetId)
+        .map(item => selectedProjectAssetMap.get(item.sourceAssetId!))
+        .filter(asset => asset && asset.voice_enabled !== false && (asset.voice_audio_id || asset.voice_id || asset.voice_prompt))
+        .map((asset, index) => `@音频${index + 1}是【${asset.name}】的声音`)
+      : [];
+    const referenceText = [...imageRefs, ...audioRefs].join('，');
+    if (!referenceText) {
+      toast('请先选择可引用的资产', 'error');
+      return;
+    }
+    setPrompt(prev => {
+      const body = prev.trimStart();
+      return body ? `${referenceText}\n${body}` : referenceText;
+    });
+  };
   const showCreatenowModelSelect = mode === 'image' ? imageApiType === 'createnow' : videoApiType === 'createnow';
   const activeModelSuggestions = mode === 'image'
     ? (CREATENOW_MODEL_SUGGESTIONS.image || [])
@@ -832,113 +859,28 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
         <div className="w-full lg:w-[40%] lg:basis-[40%] lg:shrink-0 min-h-0 border-b lg:border-b-0 lg:border-r border-gray-700 bg-gray-800">
-          <div className="flex h-full min-h-0 flex-col" ref={assetPickerRef}>
-            {showAssetPicker ? (
-              <div className="flex-1 min-h-0 p-4 pb-0">
-                <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
-                  <div className="flex border-b border-gray-700">
-                    {(['character', 'scene', 'prop'] as const).map(tab => (
-                      <button
-                        key={tab}
-                        onClick={() => setAssetPickerTab(tab)}
-                        className={`flex-1 py-2 text-sm transition ${assetPickerTab === tab ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
-                      >
-                        {tab === 'character' ? '角色' : tab === 'scene' ? '场景' : '道具'}
-                      </button>
-                    ))}
-                  </div>
-                  {assetPickerTags.length > 0 && (
-                    <div className="shrink-0 border-b border-gray-700 p-3">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <span className="text-xs text-gray-400">按tag筛选</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">显示 {filteredPickerAssets.length} 个</span>
-                          {assetPickerSelectedTags.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setAssetPickerSelectedTags([])}
-                              className="text-xs text-gray-400 hover:text-white"
-                            >
-                              清空
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
-                        {assetPickerTags.map((tag) => {
-                          const selected = assetPickerSelectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
-                          return (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => setAssetPickerSelectedTags((prev) => toggleTag(prev, tag))}
-                              className={`rounded-full px-2 py-0.5 text-xs transition ${
-                                selected
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                              }`}
-                            >
-                              {tag}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  <div className="grid flex-1 min-h-0 grid-cols-6 gap-2 overflow-y-auto p-3">
-                    {allAssets.length === 0 ? (
-                      <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
-                    ) : filteredPickerAssets.length === 0 ? (
-                      <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
-                    ) : (
-                      filteredPickerAssets.map((asset: any) => {
-                        const imageUrl = getAssetImageUrl(asset);
-                        const thumbnailUrl = getAssetThumbnailUrl(asset);
-                        return (
-                          <button
-                            key={asset.asset_id}
-                            onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
-                            disabled={!asset.image_id}
-                            className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                            title={asset.name}
-                          >
-                            {imageUrl ? (
-                              <div className="relative">
-                                <img src={thumbnailUrl} alt={asset.name} className="w-16 h-16 object-cover rounded" />
-                                <span
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={(e) => { e.stopPropagation(); setPreviewAsset(asset); }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setPreviewAsset(asset);
-                                    }
-                                  }}
-                                  className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded bg-black/60 text-white transition hover:bg-black/80 group-hover:flex"
-                                  title="查看大图"
-                                  aria-label={`查看${asset.name || '资产'}大图`}
-                                >
-                                  <ZoomIn size={14} />
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
-                                <Image size={20} className="text-gray-500" />
-                              </div>
-                            )}
-                            <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex-1 min-h-0 p-4 pb-0">
+              <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
+                <AssetPickerPanel
+                  characters={characters}
+                  scenes={scenes}
+                  props={props}
+                  selectedCharacters={selectedCharacterIds}
+                  selectedScenes={selectedSceneIds}
+                  selectedProps={selectedPropIds}
+                  onToggleCharacter={(_, asset) => handleToggleAsset(asset)}
+                  onToggleScene={(_, asset) => handleToggleAsset(asset)}
+                  onToggleProp={(_, asset) => handleToggleAsset(asset)}
+                  showOnlyUsedFilter={false}
+                  showAddEmptyAction={false}
+                  isAssetDisabled={(asset) => !asset.image_id}
+                  disabledReason={(asset) => !asset.image_id ? `${asset.name || '资产'}暂无主图，不能作为参考图` : undefined}
+                  className="h-full p-3"
+                  gridClassName="grid grid-cols-6 gap-2 p-1"
+                />
               </div>
-            ) : (
-              <div className="flex-1" />
-            )}
+            </div>
             <div className="shrink-0 max-h-full overflow-y-auto p-4 space-y-4">
             <div className="flex flex-wrap gap-3 items-center min-h-[72px]">
               {selectedMedia.map((item, idx) => {
@@ -984,16 +926,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 );
               })}
 
-              <div className="relative">
-                <button
-                  onClick={() => setShowAssetPicker(!showAssetPicker)}
-                  className="w-16 h-16 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
-                  title={mode === 'video' ? '从项目资产选择参考图' : '选择项目图片作为图生图参考'}
-                >
-                  <Plus size={18} className="text-gray-400" />
-                </button>
-              </div>
-
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
@@ -1009,6 +941,15 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                   for (const f of files) await handleUploadFile(f);
                 }}
               />
+
+              <button
+                onClick={handleInsertReferences}
+                disabled={selectedMedia.filter(item => item.type === 'image').length === 0}
+                className="h-16 px-3 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 flex items-center justify-center text-xs text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="将已选资产引用插入提示词开头"
+              >
+                插入引用
+              </button>
 
               {mode === 'video' && showSubmitButton && (
                 isSubmittingAssets || anyProcessing ? (
@@ -1300,35 +1241,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
           libraryOnly
           initialVideos={filteredVideos}
         />
-      )}
-
-      {previewAsset && (
-        <div
-          className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6"
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setPreviewAsset(null)}
-        >
-          <div className="relative max-w-[92vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setPreviewAsset(null)}
-              className="absolute right-2 top-2 z-10 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"
-              aria-label="关闭预览"
-            >
-              <X size={20} />
-            </button>
-            <img
-              src={getAssetImageUrl(previewAsset)}
-              alt={previewAsset.name || '资产大图'}
-              className="max-w-full max-h-[86vh] object-contain rounded-lg bg-gray-900 shadow-2xl"
-            />
-            {previewAsset.name && (
-              <div className="absolute left-0 right-0 bottom-0 bg-black/60 text-white text-sm px-3 py-2 rounded-b-lg truncate">
-                {previewAsset.name}
-              </div>
-            )}
-          </div>
-        </div>
       )}
 
       {expandedImage && (
