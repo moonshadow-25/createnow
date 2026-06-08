@@ -803,442 +803,451 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         </button>
       </div>
 
-      {mode === 'video' ? (
-        <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
-          {filteredVideos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
-              <Film size={48} className="opacity-30" />
-              <p className="text-lg">视频库为空</p>
-              <p className="text-sm">可直接纯文生，也可添加图片/视频/音频参考后生成</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {hasMoreHistory && (
-                <div className="flex justify-center py-1">
-                  <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
-                </div>
-              )}
-              {visibleVideos.map(video => (
-                <VideoItem
-                  key={video.video_id}
-                  video={video}
-                  projectId={projectId}
-                  isPolling={pollingIds.has(video.video_id)}
-                  isPlaying={playingVideoId === video.video_id}
-                  onPlay={() => setPlayingVideoId(playingVideoId === video.video_id ? null : video.video_id)}
-                  onRegenerate={() => handleRegenerate(video)}
-                  onRetryPoll={() => startPolling(video.video_id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
-          {filteredImages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
-              <Image size={48} className="opacity-30" />
-              <p className="text-lg">图片库为空</p>
-              <p className="text-sm">输入提示词直接文生图，或加参考图做图生图</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {hasMoreHistory && (
-                <div className="flex justify-center py-1">
-                  <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
-                </div>
-              )}
-              {visibleImages.map(image => (
-                <ImageHistoryItem
-                  key={image.image_id}
-                  image={image}
-                  projectId={projectId}
-                  onPreview={() => setExpandedImage(image)}
-                  onRegenerate={() => handleRegenerateImage(image)}
-                  onEdit={() => handleEditImage(image)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
-      <div className="border-t border-gray-700 bg-gray-800 p-4 space-y-3">
-        <div className="flex flex-wrap gap-2 items-center min-h-[44px]">
-          {selectedMedia.map((item, idx) => {
-            const statusKey = getAssetStatusKey(item);
-            const volStatus = statusKey ? assetStatuses[statusKey]?.status : undefined;
-            return (
-              <div key={`${item.type}-${idx}`} className="relative group flex-shrink-0">
-                {item.type === 'image' ? (
-                  <div className="w-10 h-10">
-                    {item.url ? (
-                      <img src={item.url} alt={item.name} className="w-10 h-10 object-cover rounded border border-gray-600" />
-                    ) : (
-                      <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
-                        <Image size={16} className="text-gray-400" />
-                      </div>
-                    )}
-                    {mode === 'video' && showAssetSubmit && volStatus && (
-                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
-                    )}
-                  </div>
-                ) : item.type === 'video' ? (
-                  <div className="w-10 h-10 relative">
-                    <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
-                      <Film size={16} className="text-blue-400" />
-                    </div>
-                    {mode === 'video' && showAssetSubmit && volStatus && (
-                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 h-10 px-2 bg-gray-700 rounded border border-gray-600 max-w-[120px]" title={item.name}>
-                    <Music size={14} className="text-purple-400 flex-shrink-0" />
-                    <span className="text-xs text-gray-300 truncate">{item.name}</span>
-                  </div>
-                )}
-                <button
-                  onClick={() => setSelectedMedia(prev => prev.filter((_, i) => i !== idx))}
-                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                >
-                  <X size={10} />
-                </button>
-              </div>
-            );
-          })}
-
-          <div className="relative" ref={assetPickerRef}>
-            <button
-              onClick={() => setShowAssetPicker(!showAssetPicker)}
-              className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
-              title={mode === 'video' ? '从项目资产选择参考图' : '选择项目图片作为图生图参考'}
-            >
-              <Plus size={18} className="text-gray-400" />
-            </button>
-
-            {showAssetPicker && (
-              <div className="absolute bottom-full mb-2 left-0 w-[34rem] max-w-[calc(100vw-2rem)] bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
-                <div className="flex border-b border-gray-700">
-                  {(['character', 'scene', 'prop'] as const).map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setAssetPickerTab(tab)}
-                      className={`flex-1 py-2 text-sm transition ${assetPickerTab === tab ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
-                    >
-                      {tab === 'character' ? '角色' : tab === 'scene' ? '场景' : '道具'}
-                    </button>
-                  ))}
-                </div>
-                {assetPickerTags.length > 0 && (
-                  <div className="border-b border-gray-700 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-xs text-gray-400">按tag筛选</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">显示 {filteredPickerAssets.length} 个</span>
-                        {assetPickerSelectedTags.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setAssetPickerSelectedTags([])}
-                            className="text-xs text-gray-400 hover:text-white"
-                          >
-                            清空
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
-                      {assetPickerTags.map((tag) => {
-                        const selected = assetPickerSelectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => setAssetPickerSelectedTags((prev) => toggleTag(prev, tag))}
-                            className={`rounded-full px-2 py-0.5 text-xs transition ${
-                              selected
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                            }`}
-                          >
-                            {tag}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <div className="max-h-96 overflow-y-auto p-3 grid grid-cols-6 gap-2">
-                  {allAssets.length === 0 ? (
-                    <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
-                  ) : filteredPickerAssets.length === 0 ? (
-                    <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
-                  ) : (
-                    filteredPickerAssets.map((asset: any) => (
-                      <button
-                        key={asset.asset_id}
-                        onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
-                        disabled={!asset.image_id}
-                        className="flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={asset.name}
-                      >
-                        {asset.primary_image_url ? (
-                          <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-16 h-16 object-cover rounded" />
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+        <div className="w-full lg:w-[420px] lg:shrink-0 min-h-0 border-b lg:border-b-0 lg:border-r border-gray-700 bg-gray-800">
+          <div className="flex h-full min-h-0 flex-col">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+            <div className="flex flex-wrap gap-2 items-center min-h-[44px]">
+              {selectedMedia.map((item, idx) => {
+                const statusKey = getAssetStatusKey(item);
+                const volStatus = statusKey ? assetStatuses[statusKey]?.status : undefined;
+                return (
+                  <div key={`${item.type}-${idx}`} className="relative group flex-shrink-0">
+                    {item.type === 'image' ? (
+                      <div className="w-10 h-10">
+                        {item.url ? (
+                          <img src={item.url} alt={item.name} className="w-10 h-10 object-cover rounded border border-gray-600" />
                         ) : (
-                          <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
-                            <Image size={20} className="text-gray-500" />
+                          <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                            <Image size={16} className="text-gray-400" />
                           </div>
                         )}
-                        <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
+                        {mode === 'video' && showAssetSubmit && volStatus && (
+                          <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
+                        )}
+                      </div>
+                    ) : item.type === 'video' ? (
+                      <div className="w-10 h-10 relative">
+                        <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                          <Film size={16} className="text-blue-400" />
+                        </div>
+                        {mode === 'video' && showAssetSubmit && volStatus && (
+                          <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 h-10 px-2 bg-gray-700 rounded border border-gray-600 max-w-[120px]" title={item.name}>
+                        <Music size={14} className="text-purple-400 flex-shrink-0" />
+                        <span className="text-xs text-gray-300 truncate">{item.name}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => setSelectedMedia(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                );
+              })}
+
+              <div className="relative" ref={assetPickerRef}>
+                <button
+                  onClick={() => setShowAssetPicker(!showAssetPicker)}
+                  className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
+                  title={mode === 'video' ? '从项目资产选择参考图' : '选择项目图片作为图生图参考'}
+                >
+                  <Plus size={18} className="text-gray-400" />
+                </button>
+
+                {showAssetPicker && (
+                  <div className="absolute bottom-full mb-2 left-0 w-[34rem] max-w-[calc(100vw-2rem)] bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                    <div className="flex border-b border-gray-700">
+                      {(['character', 'scene', 'prop'] as const).map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => setAssetPickerTab(tab)}
+                          className={`flex-1 py-2 text-sm transition ${assetPickerTab === tab ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                        >
+                          {tab === 'character' ? '角色' : tab === 'scene' ? '场景' : '道具'}
+                        </button>
+                      ))}
+                    </div>
+                    {assetPickerTags.length > 0 && (
+                      <div className="border-b border-gray-700 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <span className="text-xs text-gray-400">按tag筛选</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">显示 {filteredPickerAssets.length} 个</span>
+                            {assetPickerSelectedTags.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setAssetPickerSelectedTags([])}
+                                className="text-xs text-gray-400 hover:text-white"
+                              >
+                                清空
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
+                          {assetPickerTags.map((tag) => {
+                            const selected = assetPickerSelectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => setAssetPickerSelectedTags((prev) => toggleTag(prev, tag))}
+                                className={`rounded-full px-2 py-0.5 text-xs transition ${
+                                  selected
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                              >
+                                {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <div className="max-h-96 overflow-y-auto p-3 grid grid-cols-6 gap-2">
+                      {allAssets.length === 0 ? (
+                        <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
+                      ) : filteredPickerAssets.length === 0 ? (
+                        <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
+                      ) : (
+                        filteredPickerAssets.map((asset: any) => (
+                          <button
+                            key={asset.asset_id}
+                            onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
+                            disabled={!asset.image_id}
+                            className="flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={asset.name}
+                          >
+                            {asset.primary_image_url ? (
+                              <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-16 h-16 object-cover rounded" />
+                            ) : (
+                              <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
+                                <Image size={20} className="text-gray-500" />
+                              </div>
+                            )}
+                            <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors disabled:opacity-50"
+                title={mode === 'video' ? '上传图片、视频或音频' : '上传图片作为图生图参考'}
+              >
+                {isUploading ? <Loader2 size={16} className="text-gray-400 animate-spin" /> : <Upload size={16} className="text-gray-400" />}
+              </button>
+              <input ref={fileInputRef} type="file" accept={mode === 'video' ? 'image/*,video/*,audio/*' : 'image/*'} multiple className="hidden"
+                onChange={async e => {
+                  const files = Array.from(e.target.files || []);
+                  e.target.value = '';
+                  for (const f of files) await handleUploadFile(f);
+                }}
+              />
+
+              {mode === 'video' && showSubmitButton && (
+                isSubmittingAssets || anyProcessing ? (
+                  <span className="text-xs text-yellow-400 flex items-center gap-1 ml-1">
+                    <Loader2 size={12} className="animate-spin" />审核中...
+                  </span>
+                ) : (
+                  <>
+                    {allActive ? (
+                      <span className="text-xs text-green-400 flex items-center gap-1 ml-1">
+                        <CheckCircle size={12} />已入库
+                      </span>
+                    ) : (hasUnreviewed || anyFailed) ? (
+                      <button
+                        onClick={() => handleSubmitAssets(false)}
+                        className={`flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 ${anyFailed ? 'text-red-400 hover:text-red-300' : 'text-blue-400 hover:text-blue-300'}`}
+                      >
+                        <Upload size={12} />{anyFailed ? '部分失败，重试' : '提交审核'}
                       </button>
-                    ))
+                    ) : null}
+                    <button
+                      onClick={() => handleSubmitAssets(true)}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 text-gray-400 hover:text-white"
+                      title="强制重新提交（清空旧审核状态重新入库）"
+                    >
+                      重新提交
+                    </button>
+                  </>
+                )
+              )}
+
+              {mode === 'image' && (
+                <span className="text-xs text-gray-400 ml-1">已选参考图 {imageSelectedCount} 张，0 张时直接文生图</span>
+              )}
+            </div>
+
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              placeholder={mode === 'video' ? '输入视频提示词，描述画面内容、动作、氛围...' : '输入图片提示词，0 张参考图时文生图，已选参考图时图生图'}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-500 placeholder-gray-500"
+              rows={5}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+            />
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {mode === 'video' && (
+                <>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowDurationMenu(!showDurationMenu)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                    >
+                      <Clock size={14} />
+                      {duration}s
+                      <ChevronDown size={12} />
+                    </button>
+                    {showDurationMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
+                        {Array.from({ length: 12 }, (_, i) => i + 4).map(s => (
+                          <button
+                            key={s}
+                            onClick={() => { setDuration(s); setShowDurationMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${s === duration ? 'text-blue-400' : ''}`}
+                          >
+                            {s}s
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowRatioMenu(!showRatioMenu)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                    >
+                      <Film size={14} />
+                      {ratioLabel}
+                      <ChevronDown size={12} />
+                    </button>
+                    {showRatioMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                        {RATIO_OPTIONS.map(r => (
+                          <button
+                            key={r.value}
+                            onClick={() => { setRatio(r.value); setShowRatioMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === ratio ? 'text-blue-400' : ''}`}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowResolutionMenu(!showResolutionMenu)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                    >
+                      <Film size={14} />
+                      {resolutionLabel}
+                      <ChevronDown size={12} />
+                    </button>
+                    {showResolutionMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                        {RESOLUTION_OPTIONS.map(r => (
+                          <button
+                            key={r.value}
+                            onClick={() => { setResolution(r.value); setShowResolutionMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === resolution ? 'text-blue-400' : ''}`}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setGenerateAudio(!generateAudio)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${generateAudio ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'}`}
+                    title={generateAudio ? '已开启声音' : '已关闭声音'}
+                  >
+                    {generateAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                    {generateAudio ? '有声' : '无声'}
+                  </button>
+                </>
+              )}
+
+              {mode === 'image' && (
+                <>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowImageSizeMenu(!showImageSizeMenu)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                    >
+                      <Image size={14} />
+                      {imageSizeLabel}
+                      <ChevronDown size={12} />
+                    </button>
+                    {showImageSizeMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                        {IMAGE_RATIO_OPTIONS.map(option => (
+                          <button
+                            key={option.value}
+                            onClick={() => { setImageSize(option.value); setShowImageSizeMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === imageSize ? 'text-blue-400' : ''}`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {showCreatenowModelSelect && activeModelSuggestions.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowModelMenu(!showModelMenu)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
+                    title={`当前模型：${selectedModelOverride}`}
+                  >
+                    {mode === 'image' ? <Image size={14} /> : <Film size={14} />}
+                    {selectedModelLabel}
+                    <ChevronDown size={12} />
+                  </button>
+                  {showModelMenu && (
+                    <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
+                      <div className="p-2 border-b border-gray-600">
+                        <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
+                        <input
+                          type="text"
+                          value={selectedModelOverride}
+                          onChange={(e) => handleModelOverrideChange(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') setShowModelMenu(false);
+                            if (e.key === 'Escape') setShowModelMenu(false);
+                          }}
+                          placeholder={mode === 'image' ? '输入图片模型名' : '输入视频模型名'}
+                          className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="py-1">
+                        <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
+                        {activeModelSuggestions.map(option => (
+                          <button
+                            key={`${option.label}-${option.model}`}
+                            onClick={() => { handleModelOverrideChange(option.model); setShowModelMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedModelOverride ? 'text-blue-400' : ''}`}
+                            title={option.model}
+                          >
+                            <span>{option.label}</span>
+                            <span className="ml-2 text-xs text-gray-400">{option.model}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors disabled:opacity-50"
-            title={mode === 'video' ? '上传图片、视频或音频' : '上传图片作为图生图参考'}
-          >
-            {isUploading ? <Loader2 size={16} className="text-gray-400 animate-spin" /> : <Upload size={16} className="text-gray-400" />}
-          </button>
-          <input ref={fileInputRef} type="file" accept={mode === 'video' ? 'image/*,video/*,audio/*' : 'image/*'} multiple className="hidden"
-            onChange={async e => {
-              const files = Array.from(e.target.files || []);
-              e.target.value = '';
-              for (const f of files) await handleUploadFile(f);
-            }}
-          />
+              <div className="flex-1" />
 
-          {mode === 'video' && showSubmitButton && (
-            isSubmittingAssets || anyProcessing ? (
-              <span className="text-xs text-yellow-400 flex items-center gap-1 ml-1">
-                <Loader2 size={12} className="animate-spin" />审核中...
-              </span>
-            ) : (
-              <>
-                {allActive ? (
-                  <span className="text-xs text-green-400 flex items-center gap-1 ml-1">
-                    <CheckCircle size={12} />已入库
-                  </span>
-                ) : (hasUnreviewed || anyFailed) ? (
-                  <button
-                    onClick={() => handleSubmitAssets(false)}
-                    className={`flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 ${anyFailed ? 'text-red-400 hover:text-red-300' : 'text-blue-400 hover:text-blue-300'}`}
-                  >
-                    <Upload size={12} />{anyFailed ? '部分失败，重试' : '提交审核'}
-                  </button>
-                ) : null}
+              {mode === 'video' && (
                 <button
-                  onClick={() => handleSubmitAssets(true)}
-                  className="flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 text-gray-400 hover:text-white"
-                  title="强制重新提交（清空旧审核状态重新入库）"
+                  onClick={() => setShowLibrary(true)}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
                 >
-                  重新提交
+                  <Film size={14} />
+                  视频库
                 </button>
-              </>
-            )
-          )}
+              )}
 
-          {mode === 'image' && (
-            <span className="text-xs text-gray-400 ml-1">已选参考图 {imageSelectedCount} 张，0 张时直接文生图</span>
-          )}
+              <button
+                onClick={handleGenerate}
+                disabled={(mode === 'video' ? isGeneratingVideo : false) || !prompt.trim()}
+                className="flex items-center gap-2 px-5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition"
+              >
+                {(mode === 'video' ? isGeneratingVideo : false) ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                {mode === 'video' ? '生成视频' : (imageSelectedCount > 0 ? `图生图${pendingImageCount > 0 ? ` (${pendingImageCount})` : ''}` : `文生图${pendingImageCount > 0 ? ` (${pendingImageCount})` : ''}`)}
+              </button>
+            </div>
+          </div>
+        </div>
         </div>
 
-        <textarea
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          placeholder={mode === 'video' ? '输入视频提示词，描述画面内容、动作、氛围...' : '输入图片提示词，0 张参考图时文生图，已选参考图时图生图'}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-500 placeholder-gray-500"
-          rows={5}
-          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
-        />
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {mode === 'video' && (
-            <>
-              <div className="relative">
-                <button
-                  onClick={() => setShowDurationMenu(!showDurationMenu)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                >
-                  <Clock size={14} />
-                  {duration}s
-                  <ChevronDown size={12} />
-                </button>
-                {showDurationMenu && (
-                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
-                    {Array.from({ length: 12 }, (_, i) => i + 4).map(s => (
-                      <button
-                        key={s}
-                        onClick={() => { setDuration(s); setShowDurationMenu(false); }}
-                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${s === duration ? 'text-blue-400' : ''}`}
-                      >
-                        {s}s
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <button
-                  onClick={() => setShowRatioMenu(!showRatioMenu)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                >
-                  <Film size={14} />
-                  {ratioLabel}
-                  <ChevronDown size={12} />
-                </button>
-                {showRatioMenu && (
-                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                    {RATIO_OPTIONS.map(r => (
-                      <button
-                        key={r.value}
-                        onClick={() => { setRatio(r.value); setShowRatioMenu(false); }}
-                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === ratio ? 'text-blue-400' : ''}`}
-                      >
-                        {r.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <button
-                  onClick={() => setShowResolutionMenu(!showResolutionMenu)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                >
-                  <Film size={14} />
-                  {resolutionLabel}
-                  <ChevronDown size={12} />
-                </button>
-                {showResolutionMenu && (
-                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                    {RESOLUTION_OPTIONS.map(r => (
-                      <button
-                        key={r.value}
-                        onClick={() => { setResolution(r.value); setShowResolutionMenu(false); }}
-                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === resolution ? 'text-blue-400' : ''}`}
-                      >
-                        {r.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setGenerateAudio(!generateAudio)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${generateAudio ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-700 hover:bg-gray-600 text-gray-400'}`}
-                title={generateAudio ? '已开启声音' : '已关闭声音'}
-              >
-                {generateAudio ? <Volume2 size={14} /> : <VolumeX size={14} />}
-                {generateAudio ? '有声' : '无声'}
-              </button>
-            </>
-          )}
-
-          {mode === 'image' && (
-            <>
-              <div className="relative">
-                <button
-                  onClick={() => setShowImageSizeMenu(!showImageSizeMenu)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                >
-                  <Image size={14} />
-                  {imageSizeLabel}
-                  <ChevronDown size={12} />
-                </button>
-                {showImageSizeMenu && (
-                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                    {IMAGE_RATIO_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => { setImageSize(option.value); setShowImageSizeMenu(false); }}
-                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === imageSize ? 'text-blue-400' : ''}`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {showCreatenowModelSelect && activeModelSuggestions.length > 0 && (
-            <div className="relative">
-              <button
-                onClick={() => setShowModelMenu(!showModelMenu)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                title={`当前模型：${selectedModelOverride}`}
-              >
-                {mode === 'image' ? <Image size={14} /> : <Film size={14} />}
-                {selectedModelLabel}
-                <ChevronDown size={12} />
-              </button>
-              {showModelMenu && (
-                <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
-                  <div className="p-2 border-b border-gray-600">
-                    <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
-                    <input
-                      type="text"
-                      value={selectedModelOverride}
-                      onChange={(e) => handleModelOverrideChange(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') setShowModelMenu(false);
-                        if (e.key === 'Escape') setShowModelMenu(false);
-                      }}
-                      placeholder={mode === 'image' ? '输入图片模型名' : '输入视频模型名'}
-                      className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                      autoFocus
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-gray-900">
+          {mode === 'video' ? (
+            <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
+              {filteredVideos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
+                  <Film size={48} className="opacity-30" />
+                  <p className="text-lg">视频库为空</p>
+                  <p className="text-sm">可直接纯文生，也可添加图片/视频/音频参考后生成</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {hasMoreHistory && (
+                    <div className="flex justify-center py-1">
+                      <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
+                    </div>
+                  )}
+                  {visibleVideos.map(video => (
+                    <VideoItem
+                      key={video.video_id}
+                      video={video}
+                      projectId={projectId}
+                      isPolling={pollingIds.has(video.video_id)}
+                      isPlaying={playingVideoId === video.video_id}
+                      onPlay={() => setPlayingVideoId(playingVideoId === video.video_id ? null : video.video_id)}
+                      onRegenerate={() => handleRegenerate(video)}
+                      onRetryPoll={() => startPolling(video.video_id)}
                     />
-                  </div>
-                  <div className="py-1">
-                    <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
-                    {activeModelSuggestions.map(option => (
-                      <button
-                        key={`${option.label}-${option.model}`}
-                        onClick={() => { handleModelOverrideChange(option.model); setShowModelMenu(false); }}
-                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedModelOverride ? 'text-blue-400' : ''}`}
-                        title={option.model}
-                      >
-                        <span>{option.label}</span>
-                        <span className="ml-2 text-xs text-gray-400">{option.model}</span>
-                      </button>
-                    ))}
-                  </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
+              {filteredImages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
+                  <Image size={48} className="opacity-30" />
+                  <p className="text-lg">图片库为空</p>
+                  <p className="text-sm">输入提示词直接文生图，或加参考图做图生图</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {hasMoreHistory && (
+                    <div className="flex justify-center py-1">
+                      <span className="text-xs text-gray-500">{isLoadingHistory ? '加载历史中...' : '向上滚动查看更多历史'}</span>
+                    </div>
+                  )}
+                  {visibleImages.map(image => (
+                    <ImageHistoryItem
+                      key={image.image_id}
+                      image={image}
+                      projectId={projectId}
+                      onPreview={() => setExpandedImage(image)}
+                      onRegenerate={() => handleRegenerateImage(image)}
+                      onEdit={() => handleEditImage(image)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
           )}
-
-          <div className="flex-1" />
-
-          {mode === 'video' && (
-            <button
-              onClick={() => setShowLibrary(true)}
-              className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-            >
-              <Film size={14} />
-              视频库
-            </button>
-          )}
-
-          <button
-            onClick={handleGenerate}
-            disabled={(mode === 'video' ? isGeneratingVideo : false) || !prompt.trim()}
-            className="flex items-center gap-2 px-5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition"
-          >
-            {(mode === 'video' ? isGeneratingVideo : false) ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            {mode === 'video' ? '生成视频' : (imageSelectedCount > 0 ? `图生图${pendingImageCount > 0 ? ` (${pendingImageCount})` : ''}` : `文生图${pendingImageCount > 0 ? ` (${pendingImageCount})` : ''}`)}
-          </button>
         </div>
       </div>
 
