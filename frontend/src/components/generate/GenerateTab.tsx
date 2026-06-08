@@ -780,19 +780,21 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const selectedSceneIds = selectedProjectAssetIds(scenes);
   const selectedPropIds = selectedProjectAssetIds(props);
   const handleInsertReferences = () => {
-    const selectedProjectAssets = [...characters, ...scenes, ...props]
-      .filter(asset => selectedMedia.some(item =>
-        item.sourceAssetId === asset.asset_id ||
-        (item.type === 'image' && item.id && asset.image_id && item.id === asset.image_id)
-      ));
-    const imageRefs = selectedProjectAssets
+    const assetsById = new Map<string, any>();
+    const assetsByImageId = new Map<string, any>();
+    [...characters, ...scenes, ...props].forEach(asset => {
+      assetsById.set(asset.asset_id, asset);
+      if (asset.image_id) assetsByImageId.set(asset.image_id, asset);
+    });
+    const selectedImageAssets = selectedMedia
+      .filter(item => item.type === 'image')
+      .map(item => item.sourceAssetId ? assetsById.get(item.sourceAssetId) : (item.id ? assetsByImageId.get(item.id) : null))
+      .filter(Boolean);
+    const imageRefs = selectedImageAssets
       .map((asset, index) => `@图${index + 1}是【${asset.name}】`);
     const audioRefs = generateAudio
-      ? characters
-        .filter(asset => selectedMedia.some(item =>
-          item.sourceAssetId === asset.asset_id ||
-          (item.type === 'image' && item.id && asset.image_id && item.id === asset.image_id)
-        ))
+      ? selectedImageAssets
+        .filter(asset => characters.some(character => character.asset_id === asset.asset_id))
         .filter(asset => asset.voice_enabled !== false && asset.voice_audio_id)
         .map((asset, index) => `@音频${index + 1}是【${asset.name}】的声音`)
       : [];
