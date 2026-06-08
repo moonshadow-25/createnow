@@ -167,7 +167,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     setImagePrompt(asset.image_prompt || '');
     setEditImagePrompt(asset.edit_image_prompt || '');
     setImagePromptSectionExpanded(!asset.parent_id);
-    setBasicInfoExpanded(true);
     setPromptError('');
     setSaveSuccess(false);
     setShowEdit(true);
