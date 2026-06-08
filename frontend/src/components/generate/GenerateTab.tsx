@@ -874,7 +874,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                   isAssetDisabled={(asset) => !asset.image_id}
                   disabledReason={(asset) => !asset.image_id ? `${asset.name || '资产'}暂无主图，不能作为参考图` : undefined}
                   className="h-full p-3"
-                  gridClassName="grid grid-cols-6 gap-2 p-1"
+                  gridClassName="flex flex-wrap gap-3 p-1"
                 />
               </div>
             </div>
