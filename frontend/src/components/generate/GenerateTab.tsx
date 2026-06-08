@@ -227,6 +227,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const assetPickerRef = useRef<HTMLDivElement>(null);
+  const previewAssetRef = useRef<any | null>(null);
   const videoListRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const historyReadyRef = useRef(false);
@@ -356,9 +357,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     }
   }, [hasMoreHistory, isLoadingHistory, loadMoreHistory]);
 
+  useEffect(() => {
+    previewAssetRef.current = previewAsset;
+  }, [previewAsset]);
+
   // 点击外部关闭弹窗
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      if (previewAssetRef.current) return;
       if (assetPickerRef.current && !assetPickerRef.current.contains(e.target as Node)) {
         setShowAssetPicker(false);
       }
@@ -1299,6 +1305,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
       {previewAsset && (
         <div
           className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6"
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setPreviewAsset(null)}
         >
           <div className="relative max-w-[92vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
