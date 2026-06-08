@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';import {
   Upload, X, Film, Plus, ChevronDown, Loader2, Play,
-  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music
+  Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music, ZoomIn
 } from 'lucide-react';
 import { useAssetStore } from '@/store/assetStore';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
@@ -129,7 +129,7 @@ function VideoStatusIcon({ status }: { status: string }) {
 function VideoStatusText({ status }: { status: string }) {
   if (status === 'completed') return <span className="text-green-400">已完成</span>;
   if (status === 'failed') return <span className="text-red-400">生成失败</span>;
-  if (status === 'poll_failed') return <span className="text-orange-400">轮询异常（可手动继续）</span>;
+  if (status === 'poll_failed') return <span className="text-orange-400">轮询异常</span>;
   if (status === 'in_progress') return <span className="text-blue-400">生成中...</span>;
   return <span className="text-yellow-400">等待中...</span>;
 }
@@ -143,6 +143,14 @@ function getAssetStatusKey(item: Pick<RefMedia, 'type' | 'id' | 'url'>): string 
 function getThumbnailUrl(url?: string): string {
   if (!url) return '';
   return url.replace('/images/files/', '/thumbnails/');
+}
+
+function getAssetImageUrl(asset: any): string {
+  return asset?.primary_image_url || asset?.image_url || '';
+}
+
+function getAssetThumbnailUrl(asset: any): string {
+  return getThumbnailUrl(getAssetImageUrl(asset));
 }
 
 function getCurrentUserLabel(adminUsername: string | null, saasUser: { display_name?: string; email?: string } | null): string {
@@ -206,6 +214,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<any | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const [hasLoadedImages, setHasLoadedImages] = useState(false);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
@@ -876,24 +885,47 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                     ) : filteredPickerAssets.length === 0 ? (
                       <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
                     ) : (
-                      filteredPickerAssets.map((asset: any) => (
-                        <button
-                          key={asset.asset_id}
-                          onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
-                          disabled={!asset.image_id}
-                          className="flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={asset.name}
-                        >
-                          {asset.primary_image_url ? (
-                            <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-16 h-16 object-cover rounded" />
-                          ) : (
-                            <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
-                              <Image size={20} className="text-gray-500" />
-                            </div>
-                          )}
-                          <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
-                        </button>
-                      ))
+                      filteredPickerAssets.map((asset: any) => {
+                        const imageUrl = getAssetImageUrl(asset);
+                        const thumbnailUrl = getAssetThumbnailUrl(asset);
+                        return (
+                          <button
+                            key={asset.asset_id}
+                            onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
+                            disabled={!asset.image_id}
+                            className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={asset.name}
+                          >
+                            {imageUrl ? (
+                              <div className="relative">
+                                <img src={thumbnailUrl} alt={asset.name} className="w-16 h-16 object-cover rounded" />
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => { e.stopPropagation(); setPreviewAsset(asset); }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setPreviewAsset(asset);
+                                    }
+                                  }}
+                                  className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded bg-black/60 text-white transition hover:bg-black/80 group-hover:flex"
+                                  title="查看大图"
+                                  aria-label={`查看${asset.name || '资产'}大图`}
+                                >
+                                  <ZoomIn size={14} />
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
+                                <Image size={20} className="text-gray-500" />
+                              </div>
+                            )}
+                            <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -1264,6 +1296,34 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         />
       )}
 
+      {previewAsset && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6"
+          onClick={() => setPreviewAsset(null)}
+        >
+          <div className="relative max-w-[92vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewAsset(null)}
+              className="absolute right-2 top-2 z-10 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"
+              aria-label="关闭预览"
+            >
+              <X size={20} />
+            </button>
+            <img
+              src={getAssetImageUrl(previewAsset)}
+              alt={previewAsset.name || '资产大图'}
+              className="max-w-full max-h-[86vh] object-contain rounded-lg bg-gray-900 shadow-2xl"
+            />
+            {previewAsset.name && (
+              <div className="absolute left-0 right-0 bottom-0 bg-black/60 text-white text-sm px-3 py-2 rounded-b-lg truncate">
+                {previewAsset.name}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {expandedImage && (
         <div
           className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6"
@@ -1469,7 +1529,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <XCircle size={14} className="flex-shrink-0" />
-              <span className="truncate">轮询异常{video.error ? `: ${video.error}` : ''}</span>
+              <span>轮询异常</span>
             </div>
             <button
               onClick={onRetryPoll}
@@ -1524,7 +1584,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
       )}
 
       {(video.task_id || video.error || video.last_poll_response || video.poll_count || video.last_poll_time) && (
-        <details className="border-t border-gray-700 px-3 py-2">
+        <details className="border-t border-gray-700 px-3 py-2" open={video.status === 'poll_failed'}>
           <summary className="text-xs text-blue-400 cursor-pointer">调试信息</summary>
           <div className="mt-2 text-xs text-gray-400 space-y-1">
             {video.task_id && <div>Task: {video.task_id}</div>}
