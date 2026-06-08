@@ -817,8 +817,91 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
         <div className="w-full lg:w-[40%] lg:basis-[40%] lg:shrink-0 min-h-0 border-b lg:border-b-0 lg:border-r border-gray-700 bg-gray-800">
-          <div className="flex h-full min-h-0 flex-col justify-end">
-            <div className="max-h-full overflow-y-auto p-4 space-y-4">
+          <div className="flex h-full min-h-0 flex-col" ref={assetPickerRef}>
+            {showAssetPicker ? (
+              <div className="flex-1 min-h-0 p-4 pb-0">
+                <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
+                  <div className="flex border-b border-gray-700">
+                    {(['character', 'scene', 'prop'] as const).map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => setAssetPickerTab(tab)}
+                        className={`flex-1 py-2 text-sm transition ${assetPickerTab === tab ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
+                      >
+                        {tab === 'character' ? '角色' : tab === 'scene' ? '场景' : '道具'}
+                      </button>
+                    ))}
+                  </div>
+                  {assetPickerTags.length > 0 && (
+                    <div className="shrink-0 border-b border-gray-700 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="text-xs text-gray-400">按tag筛选</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">显示 {filteredPickerAssets.length} 个</span>
+                          {assetPickerSelectedTags.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setAssetPickerSelectedTags([])}
+                              className="text-xs text-gray-400 hover:text-white"
+                            >
+                              清空
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
+                        {assetPickerTags.map((tag) => {
+                          const selected = assetPickerSelectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setAssetPickerSelectedTags((prev) => toggleTag(prev, tag))}
+                              className={`rounded-full px-2 py-0.5 text-xs transition ${
+                                selected
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="grid flex-1 min-h-0 grid-cols-6 gap-2 overflow-y-auto p-3">
+                    {allAssets.length === 0 ? (
+                      <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
+                    ) : filteredPickerAssets.length === 0 ? (
+                      <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
+                    ) : (
+                      filteredPickerAssets.map((asset: any) => (
+                        <button
+                          key={asset.asset_id}
+                          onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
+                          disabled={!asset.image_id}
+                          className="flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={asset.name}
+                        >
+                          {asset.primary_image_url ? (
+                            <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-16 h-16 object-cover rounded" />
+                          ) : (
+                            <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
+                              <Image size={20} className="text-gray-500" />
+                            </div>
+                          )}
+                          <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1" />
+            )}
+            <div className="shrink-0 max-h-full overflow-y-auto p-4 space-y-4">
             <div className="flex flex-wrap gap-3 items-center min-h-[72px]">
               {selectedMedia.map((item, idx) => {
                 const statusKey = getAssetStatusKey(item);
@@ -863,7 +946,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 );
               })}
 
-              <div className="relative" ref={assetPickerRef}>
+              <div className="relative">
                 <button
                   onClick={() => setShowAssetPicker(!showAssetPicker)}
                   className="w-16 h-16 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
@@ -871,89 +954,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 >
                   <Plus size={18} className="text-gray-400" />
                 </button>
-
-                {showAssetPicker && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowAssetPicker(false)} />
-                    <div className="fixed left-6 bottom-28 z-50 w-[min(40vw,34rem)] max-w-[calc(100vw-3rem)] max-h-[70vh] overflow-hidden bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
-                    <div className="flex border-b border-gray-700">
-                      {(['character', 'scene', 'prop'] as const).map(tab => (
-                        <button
-                          key={tab}
-                          onClick={() => setAssetPickerTab(tab)}
-                          className={`flex-1 py-2 text-sm transition ${assetPickerTab === tab ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400 hover:text-gray-200'}`}
-                        >
-                          {tab === 'character' ? '角色' : tab === 'scene' ? '场景' : '道具'}
-                        </button>
-                      ))}
-                    </div>
-                    {assetPickerTags.length > 0 && (
-                      <div className="border-b border-gray-700 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <span className="text-xs text-gray-400">按tag筛选</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">显示 {filteredPickerAssets.length} 个</span>
-                            {assetPickerSelectedTags.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setAssetPickerSelectedTags([])}
-                                className="text-xs text-gray-400 hover:text-white"
-                              >
-                                清空
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
-                          {assetPickerTags.map((tag) => {
-                            const selected = assetPickerSelectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() => setAssetPickerSelectedTags((prev) => toggleTag(prev, tag))}
-                                className={`rounded-full px-2 py-0.5 text-xs transition ${
-                                  selected
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                }`}
-                              >
-                                {tag}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    <div className="max-h-[42vh] overflow-y-auto p-3 grid grid-cols-6 gap-2">
-                      {allAssets.length === 0 ? (
-                        <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
-                      ) : filteredPickerAssets.length === 0 ? (
-                        <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
-                      ) : (
-                        filteredPickerAssets.map((asset: any) => (
-                          <button
-                            key={asset.asset_id}
-                            onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
-                            disabled={!asset.image_id}
-                            className="flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                            title={asset.name}
-                          >
-                            {asset.primary_image_url ? (
-                              <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-16 h-16 object-cover rounded" />
-                            ) : (
-                              <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
-                                <Image size={20} className="text-gray-500" />
-                              </div>
-                            )}
-                            <span className="text-xs text-gray-300 truncate w-full text-center">{asset.name}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                  </>
-                )}
               </div>
 
               <button
