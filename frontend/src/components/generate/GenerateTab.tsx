@@ -805,21 +805,21 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
 
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-        <div className="w-full lg:w-[420px] lg:shrink-0 min-h-0 border-b lg:border-b-0 lg:border-r border-gray-700 bg-gray-800">
-          <div className="flex h-full min-h-0 flex-col">
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-            <div className="flex flex-wrap gap-2 items-center min-h-[44px]">
+        <div className="w-full lg:w-[40%] lg:basis-[40%] lg:shrink-0 min-h-0 border-b lg:border-b-0 lg:border-r border-gray-700 bg-gray-800">
+          <div className="flex h-full min-h-0 flex-col justify-end">
+            <div className="max-h-full overflow-y-auto p-4 space-y-4">
+            <div className="flex flex-wrap gap-3 items-center min-h-[72px]">
               {selectedMedia.map((item, idx) => {
                 const statusKey = getAssetStatusKey(item);
                 const volStatus = statusKey ? assetStatuses[statusKey]?.status : undefined;
                 return (
                   <div key={`${item.type}-${idx}`} className="relative group flex-shrink-0">
                     {item.type === 'image' ? (
-                      <div className="w-10 h-10">
+                      <div className="w-16 h-16">
                         {item.url ? (
-                          <img src={item.url} alt={item.name} className="w-10 h-10 object-cover rounded border border-gray-600" />
+                          <img src={item.url} alt={item.name} className="w-16 h-16 object-cover rounded border border-gray-600" />
                         ) : (
-                          <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                          <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
                             <Image size={16} className="text-gray-400" />
                           </div>
                         )}
@@ -829,7 +829,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                       </div>
                     ) : item.type === 'video' ? (
                       <div className="w-10 h-10 relative">
-                        <div className="w-10 h-10 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                        <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
                           <Film size={16} className="text-blue-400" />
                         </div>
                         {mode === 'video' && showAssetSubmit && volStatus && (
@@ -837,14 +837,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                         )}
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1 h-10 px-2 bg-gray-700 rounded border border-gray-600 max-w-[120px]" title={item.name}>
+                      <div className="flex items-center gap-2 h-16 px-3 bg-gray-700 rounded border border-gray-600 max-w-[220px]" title={item.name}>
                         <Music size={14} className="text-purple-400 flex-shrink-0" />
                         <span className="text-xs text-gray-300 truncate">{item.name}</span>
                       </div>
                     )}
                     <button
                       onClick={() => setSelectedMedia(prev => prev.filter((_, i) => i !== idx))}
-                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
                     >
                       <X size={10} />
                     </button>
@@ -855,7 +855,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               <div className="relative" ref={assetPickerRef}>
                 <button
                   onClick={() => setShowAssetPicker(!showAssetPicker)}
-                  className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
+                  className="w-16 h-16 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors"
                   title={mode === 'video' ? '从项目资产选择参考图' : '选择项目图片作为图生图参考'}
                 >
                   <Plus size={18} className="text-gray-400" />
@@ -945,7 +945,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="w-10 h-10 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors disabled:opacity-50"
+                className="w-16 h-16 bg-gray-700 hover:bg-gray-600 rounded border border-dashed border-gray-500 flex items-center justify-center transition-colors disabled:opacity-50"
                 title={mode === 'video' ? '上传图片、视频或音频' : '上传图片作为图生图参考'}
               >
                 {isUploading ? <Loader2 size={16} className="text-gray-400 animate-spin" /> : <Upload size={16} className="text-gray-400" />}
@@ -997,8 +997,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               placeholder={mode === 'video' ? '输入视频提示词，描述画面内容、动作、氛围...' : '输入图片提示词，0 张参考图时文生图，已选参考图时图生图'}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-500 placeholder-gray-500"
-              rows={5}
+              className="w-full min-h-[260px] bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-500 placeholder-gray-500"
+              rows={12}
               onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
             />
 
@@ -1188,7 +1188,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         </div>
         </div>
 
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-gray-900">
+        <div className="flex-1 lg:basis-[60%] min-w-0 min-h-0 flex flex-col bg-gray-900">
           {mode === 'video' ? (
             <div ref={videoListRef} onScroll={handleVideoListScroll} className="flex-1 overflow-y-auto p-4">
               {filteredVideos.length === 0 ? (
