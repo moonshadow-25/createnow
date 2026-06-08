@@ -19,14 +19,12 @@ function getAspectRatioStyle(resolution?: string): CSSProperties {
   if (!w || !h) return { aspectRatio: '16/9' };
   return { aspectRatio: `${w}/${h}` };
 }
-import { X, Download, Video, RefreshCw, Loader2, HardDrive } from 'lucide-react';
+import { X, Video, RefreshCw, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useToast } from '@/components/common/Toast';
 import { generationApi } from '@/services/api';
 import { VideoCard, VideoRecord } from './VideoCard';
 import { getVideoUrl } from './utils/mediaUtils';
-import { useVideoExportDownload } from './hooks/useVideoExportDownload';
-import { useIsVideoDownloading, useVideoDownloadProgress } from '@/store/videoDownloadStore';
 
 interface Image {
   image_id: string;
@@ -54,30 +52,11 @@ export function VideoGallery({
   storyboardId,
   episodeId,
   onClose,
-  storyboardCount = 0,
-  loadStoryboards,
   storyboardPrimaryImages,
   libraryOnly = false,
   initialVideos,
 }: VideoGalleryProps) {
   const { toast } = useToast();
-
-  // 使用视频导出下载 hook
-  const {
-    isExporting,
-    exportProgress,
-    handleDownloadAllVideos,
-    handleExportVideos
-  } = useVideoExportDownload({
-    projectId,
-    episodeId,
-    toast,
-    loadStoryboards
-  });
-
-  // 从 store 获取下载状态
-  const isDownloading = useIsVideoDownloading(projectId);
-  const downloadProgress = useVideoDownloadProgress(projectId);
 
   const [allVideos, setAllVideos] = useState<VideoRecord[]>([]);        // 所有视频（内存）
   const [displayCount] = useState(10);                                  // 每次显示的数量
@@ -439,44 +418,6 @@ export function VideoGallery({
                 <option key={author} value={author}>{author === '__unknown__' ? '未知作者' : author}</option>
               ))}
             </select>
-            {/* 导出视频按钮 */}
-            <button
-              onClick={handleExportVideos}
-              disabled={isExporting || storyboardCount === 0}
-              className="flex items-center gap-1 px-3 py-1 bg-teal-600 hover:bg-teal-700 rounded text-sm disabled:bg-gray-600 disabled:cursor-not-allowed"
-              title="导出该剧集所有分镜视频"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  导出中 {Math.round(exportProgress)}%
-                </>
-              ) : (
-                <>
-                  <Download size={14} />
-                  导出视频
-                </>
-              )}
-            </button>
-            {/* 下载视频按钮 */}
-            <button
-              onClick={handleDownloadAllVideos}
-              disabled={isDownloading}
-              className="flex items-center gap-1 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-sm disabled:bg-gray-600 disabled:cursor-not-allowed"
-              title="下载所有已完成的视频到本地"
-            >
-              {isDownloading ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  下载中 {Math.round(downloadProgress)}%
-                </>
-              ) : (
-                <>
-                  <HardDrive size={14} />
-                  下载视频
-                </>
-              )}
-            </button>
             <button
               onClick={() => {
                 loadAllVideos();
