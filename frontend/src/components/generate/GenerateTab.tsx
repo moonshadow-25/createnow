@@ -770,29 +770,26 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
   const imageSizeLabel = IMAGE_RATIO_OPTIONS.find(option => option.value === imageSize)?.label || imageSize;
   const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
-  const selectedCharacterIds = selectedMedia
-    .filter(item => item.sourceAssetType === 'character' && item.sourceAssetId)
-    .map(item => item.sourceAssetId!);
-  const selectedSceneIds = selectedMedia
-    .filter(item => item.sourceAssetType === 'scene' && item.sourceAssetId)
-    .map(item => item.sourceAssetId!);
-  const selectedPropIds = selectedMedia
-    .filter(item => item.sourceAssetType === 'prop' && item.sourceAssetId)
-    .map(item => item.sourceAssetId!);
-  const selectedProjectAssetMap = useMemo(() => {
-    const map = new Map<string, any>();
-    [...characters, ...scenes, ...props].forEach(asset => map.set(asset.asset_id, asset));
-    return map;
-  }, [characters, scenes, props]);
+  const selectedProjectAssetIds = useCallback((assets: any[]) => assets
+    .filter(asset => selectedMedia.some(item =>
+      item.sourceAssetId === asset.asset_id ||
+      (item.type === 'image' && item.id && asset.image_id && item.id === asset.image_id)
+    ))
+    .map(asset => asset.asset_id), [selectedMedia]);
+  const selectedCharacterIds = selectedProjectAssetIds(characters);
+  const selectedSceneIds = selectedProjectAssetIds(scenes);
+  const selectedPropIds = selectedProjectAssetIds(props);
   const handleInsertReferences = () => {
-    const imageRefs = selectedMedia
-      .filter(item => item.type === 'image' && item.sourceAssetId)
-      .map((item, index) => `@图${index + 1}是【${item.name}】`);
+    const selectedProjectAssets = [...characters, ...scenes, ...props]
+      .filter(asset => selectedMedia.some(item =>
+        item.sourceAssetId === asset.asset_id ||
+        (item.type === 'image' && item.id && asset.image_id && item.id === asset.image_id)
+      ));
+    const imageRefs = selectedProjectAssets
+      .map((asset, index) => `@图${index + 1}是【${asset.name}】`);
     const audioRefs = generateAudio
-      ? selectedMedia
-        .filter(item => item.sourceAssetType === 'character' && item.sourceAssetId)
-        .map(item => selectedProjectAssetMap.get(item.sourceAssetId!))
-        .filter(asset => asset && asset.voice_enabled !== false && (asset.voice_audio_id || asset.voice_id || asset.voice_prompt))
+      ? selectedProjectAssets
+        .filter(asset => asset.asset_type === 'character' && asset.voice_enabled !== false && (asset.voice_audio_id || asset.voice_id || asset.voice_prompt))
         .map((asset, index) => `@音频${index + 1}是【${asset.name}】的声音`)
       : [];
     const referenceText = [...imageRefs, ...audioRefs].join('，');
@@ -802,7 +799,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     }
     setPrompt(prev => {
       const body = prev.trimStart();
-      return body ? `${referenceText}\n${body}` : referenceText;
+      return body ? `${referenceText}\n\n${body}` : `${referenceText}\n`;
     });
   };
   const showCreatenowModelSelect = mode === 'image' ? imageApiType === 'createnow' : videoApiType === 'createnow';
@@ -945,10 +942,10 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               <button
                 onClick={handleInsertReferences}
                 disabled={selectedMedia.filter(item => item.type === 'image').length === 0}
-                className="h-16 px-3 bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 flex items-center justify-center text-xs text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded ml-1 text-blue-400 hover:text-blue-300 disabled:text-gray-500 disabled:cursor-not-allowed"
                 title="将已选资产引用插入提示词开头"
               >
-                插入引用
+                插入引用提示词
               </button>
 
               {mode === 'video' && showSubmitButton && (
