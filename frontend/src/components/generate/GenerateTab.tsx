@@ -795,12 +795,23 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
             图片
           </button>
         </div>
-        <button
-          onClick={() => setOnlyMine(prev => !prev)}
-          className={`px-3 py-1.5 rounded-lg text-sm transition ${onlyMine ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
-        >
-          {onlyMine ? '只看自己' : '查看全部'}
-        </button>
+        <div className="flex items-center gap-2">
+          {mode === 'video' && (
+            <button
+              onClick={() => setShowLibrary(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition"
+            >
+              <Film size={14} />
+              视频库
+            </button>
+          )}
+          <button
+            onClick={() => setOnlyMine(prev => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-sm transition ${onlyMine ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+          >
+            {onlyMine ? '只看自己' : '查看全部'}
+          </button>
+        </div>
       </div>
 
 
@@ -828,7 +839,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                         )}
                       </div>
                     ) : item.type === 'video' ? (
-                      <div className="w-10 h-10 relative">
+                      <div className="w-16 h-16 relative">
                         <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
                           <Film size={16} className="text-blue-400" />
                         </div>
@@ -862,7 +873,9 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 </button>
 
                 {showAssetPicker && (
-                  <div className="absolute bottom-full mb-2 left-0 w-[34rem] max-w-[calc(100vw-2rem)] bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowAssetPicker(false)} />
+                    <div className="fixed left-6 bottom-28 z-50 w-[min(40vw,34rem)] max-w-[calc(100vw-3rem)] max-h-[70vh] overflow-hidden bg-gray-800 border border-gray-600 rounded-lg shadow-xl">
                     <div className="flex border-b border-gray-700">
                       {(['character', 'scene', 'prop'] as const).map(tab => (
                         <button
@@ -912,7 +925,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                         </div>
                       </div>
                     )}
-                    <div className="max-h-96 overflow-y-auto p-3 grid grid-cols-6 gap-2">
+                    <div className="max-h-[42vh] overflow-y-auto p-3 grid grid-cols-6 gap-2">
                       {allAssets.length === 0 ? (
                         <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
                       ) : filteredPickerAssets.length === 0 ? (
@@ -939,6 +952,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                       )}
                     </div>
                   </div>
+                  </>
                 )}
               </div>
 
@@ -1164,16 +1178,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               )}
 
               <div className="flex-1" />
-
-              {mode === 'video' && (
-                <button
-                  onClick={() => setShowLibrary(true)}
-                  className="flex items-center gap-2 px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                >
-                  <Film size={14} />
-                  视频库
-                </button>
-              )}
 
               <button
                 onClick={handleGenerate}
