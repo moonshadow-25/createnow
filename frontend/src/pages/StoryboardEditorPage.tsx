@@ -19,6 +19,7 @@ import { getImageUrl, getVideoUrl } from '@/components/storyboard/utils/mediaUti
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
+import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -172,6 +173,11 @@ export default function StoryboardEditorPage() {
     scene_ids: selectedScenes,
     prop_ids: selectedProps,
   } : null, [storyboard, editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, selectedCharacters, selectedScenes, selectedProps]);
+
+  const usedAssetIdsByType = useMemo(
+    () => getUsedAssetIdsForEpisode(storyboardList, episodeId),
+    [storyboardList, episodeId]
+  );
 
   // ── Sync latest refs ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1622,6 +1628,7 @@ export default function StoryboardEditorPage() {
         setSelectedScenes={setSelectedScenes}
         selectedProps={selectedProps}
         setSelectedProps={setSelectedProps}
+        usedAssetIdsByType={usedAssetIdsByType}
         onClose={() => setShowAssetSelector(false)}
         onAssetsAdded={reloadAssets}
       />

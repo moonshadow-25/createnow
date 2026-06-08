@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Plus, Check, X, Loader2, Upload, Image, ZoomIn } from 'lucide-react';
 import { assetApi, generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
+import { collectProjectAssetTags, filterAssetsByTags, toggleTag } from '@/utils/assetTags';
+import type { UsedAssetIdsByType } from '@/utils/assetTags';
 
 export interface AssetSelectorDialogProps {
   show: boolean;
@@ -15,6 +17,7 @@ export interface AssetSelectorDialogProps {
   setSelectedScenes: (v: string[]) => void;
   selectedProps: string[];
   setSelectedProps: (v: string[]) => void;
+  usedAssetIdsByType?: UsedAssetIdsByType;
   onClose: () => void;
   onAssetsAdded: () => void;
 }
@@ -230,14 +233,15 @@ export function AssetSelectorDialog({
   setSelectedScenes,
   selectedProps,
   setSelectedProps,
+  usedAssetIdsByType,
   onClose,
   onAssetsAdded,
 }: AssetSelectorDialogProps) {
   const [activeTab, setActiveTab] = useState<AssetTab>('character');
   const [showAddForm, setShowAddForm] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<any | null>(null);
-
-  if (!show) return null;
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [onlyUsedInEpisode, setOnlyUsedInEpisode] = useState(false);
 
   const toggleCharacter = (id: string) => {
     setSelectedCharacters(
@@ -280,7 +284,17 @@ export function AssetSelectorDialog({
     prop: 'border-purple-500 text-purple-400',
   };
 
-  const currentAssets = activeTab === 'character' ? characters : activeTab === 'scene' ? scenes : props;
+  const allTags = useMemo(() => collectProjectAssetTags(characters, scenes, props), [characters, scenes, props]);
+  const baseAssets = activeTab === 'character' ? characters : activeTab === 'scene' ? scenes : props;
+  const usedIds = activeTab === 'character'
+    ? usedAssetIdsByType?.characterIds
+    : activeTab === 'scene'
+      ? usedAssetIdsByType?.sceneIds
+      : usedAssetIdsByType?.propIds;
+  const usedFilteredAssets = onlyUsedInEpisode && usedIds
+    ? baseAssets.filter((asset) => usedIds.has(asset.asset_id))
+    : baseAssets;
+  const currentAssets = filterAssetsByTags(usedFilteredAssets, selectedTags);
   const isSelected = (id: string) =>
     activeTab === 'character' ? selectedCharacters.includes(id)
     : activeTab === 'scene' ? selectedScenes.includes(id)
@@ -289,6 +303,8 @@ export function AssetSelectorDialog({
     activeTab === 'character' ? toggleCharacter(id)
     : activeTab === 'scene' ? toggleScene(id)
     : toggleProp(id);
+
+  if (!show) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]">
@@ -319,7 +335,7 @@ export function AssetSelectorDialog({
         )}
 
         {/* Tab 栏 */}
-        <div className="flex border-b border-gray-700 mb-4">
+        <div className="flex border-b border-gray-700 mb-3">
           {tabs.map(tab => (
             <button
               key={tab.key}
@@ -337,6 +353,57 @@ export function AssetSelectorDialog({
             </button>
           ))}
         </div>
+
+        {(allTags.length > 0 || usedAssetIdsByType) && (
+          <div className="mb-3 space-y-2 rounded-lg bg-gray-700/50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {usedAssetIdsByType && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyUsedInEpisode((prev) => !prev)}
+                  className={`rounded-full px-3 py-1 text-xs transition ${
+                    onlyUsedInEpisode
+                      ? 'bg-yellow-600 text-white'
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                >
+                  本集使用
+                </button>
+              )}
+              {selectedTags.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTags([])}
+                  className="text-xs text-gray-400 hover:text-white"
+                >
+                  清空tag
+                </button>
+              )}
+              <span className="text-xs text-gray-500">当前显示 {currentAssets.length} 个</span>
+            </div>
+            {allTags.length > 0 && (
+              <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
+                {allTags.map((tag) => {
+                  const selected = selectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setSelectedTags((prev) => toggleTag(prev, tag))}
+                      className={`rounded-full px-2 py-0.5 text-xs transition ${
+                        selected
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 资产格子 */}
         <div className="flex-1 overflow-y-auto">

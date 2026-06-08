@@ -59,6 +59,7 @@ export interface Asset {
   name: string;
   description: string;
   parent_id?: string;
+  tags?: string[];
   image_id?: string;
   primary_image_url?: string;
   image_count?: number;

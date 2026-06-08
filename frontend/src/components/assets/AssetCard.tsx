@@ -5,6 +5,7 @@ import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { normalizeTags, toggleTag } from '@/utils/assetTags';
 
 interface AssetCardProps {
   projectId: string;
@@ -12,9 +13,10 @@ interface AssetCardProps {
   asset: any;
   onDeleted: () => void;
   childAssets?: any[];
+  allTags?: string[];
 }
 
-export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets = [] }: AssetCardProps) {
+export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets = [], allTags = [] }: AssetCardProps) {
   const { toast } = useToast();
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const openVibeDrama = useVibeDramaStore(s => s.open);
@@ -29,6 +31,8 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
 
   // 编辑状态
   const [editData, setEditData] = useState<any>({});
+  const [draftTags, setDraftTags] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
   const [imagePrompt, setImagePrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [promptError, setPromptError] = useState('');
@@ -58,6 +62,21 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const voiceUploadRef = useRef<HTMLInputElement>(null);
 
   const isChildCharacter = assetType === 'character' && asset.parent_id;
+  const availableTags = normalizeTags(allTags);
+  const remainingTags = availableTags.filter(
+    (tag) => !normalizeTags(draftTags).some((draftTag) => draftTag.toLocaleLowerCase() === tag.toLocaleLowerCase())
+  );
+
+  const addDraftTag = (tag: string) => {
+    const normalized = normalizeTags([tag])[0];
+    if (!normalized) return;
+    setDraftTags((prev) => normalizeTags([...prev, normalized]));
+    setNewTagInput('');
+  };
+
+  const removeDraftTag = (tag: string) => {
+    setDraftTags((prev) => toggleTag(prev, tag));
+  };
 
   // 当 asset 更新时同步主图和数量（父组件刷新时）
   useEffect(() => {
@@ -143,9 +162,12 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   // 打开编辑弹框
   const openEditModal = async () => {
     setEditData({ ...asset, voice_enabled: asset.voice_enabled ?? true });
+    setDraftTags(normalizeTags(asset.tags ?? []));
+    setNewTagInput('');
     setImagePrompt(asset.image_prompt || '');
     setEditImagePrompt(asset.edit_image_prompt || '');
     setImagePromptSectionExpanded(!asset.parent_id);
+    setBasicInfoExpanded(true);
     setPromptError('');
     setSaveSuccess(false);
     setShowEdit(true);
@@ -166,6 +188,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     try {
       const dataToSave = {
         ...editData,
+        tags: normalizeTags(draftTags),
         image_prompt: imagePrompt || undefined,
         edit_image_prompt: editImagePrompt || undefined,
         ...(assetType === 'character' ? { voice_enabled: voiceEnabled } : {})
@@ -736,6 +759,69 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                         className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white h-24"
                         placeholder="详细描述"
                       />
+                    </div>
+
+                    {/* 标签 */}
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">标签</label>
+                      <div className="space-y-2">
+                        {draftTags.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {draftTags.map((tag) => (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => removeDraftTag(tag)}
+                                className="inline-flex items-center gap-1 rounded-full bg-blue-600/25 border border-blue-500/60 px-2.5 py-1 text-xs text-blue-100 hover:bg-blue-600/40"
+                                title="点击移除标签"
+                              >
+                                {tag}
+                                <X size={12} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newTagInput}
+                            onChange={(e) => setNewTagInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addDraftTag(newTagInput);
+                              }
+                            }}
+                            className="flex-1 bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white"
+                            placeholder="输入新标签，如 主角、反派、顾长夜"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addDraftTag(newTagInput)}
+                            className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm disabled:bg-gray-600 disabled:text-gray-400"
+                            disabled={!newTagInput.trim()}
+                          >
+                            新增tag
+                          </button>
+                        </div>
+                        {remainingTags.length > 0 && (
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">已有标签，点击添加</div>
+                            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                              {remainingTags.map((tag) => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => addDraftTag(tag)}
+                                  className="rounded-full bg-gray-600 hover:bg-gray-500 px-2 py-0.5 text-xs text-gray-200"
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* 场景特有字段 */}

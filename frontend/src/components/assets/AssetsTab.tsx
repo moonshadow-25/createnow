@@ -6,6 +6,7 @@ import { generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { useCurrentBatchTasks, useBatchPromptStore } from '@/store/batchPromptStore';
 import { useDownloadState, downloadStore } from '@/store/downloadStore';
+import { collectProjectAssetTags, filterAssetsByTags, getUsedAssetIdsForEpisode, toggleTag } from '@/utils/assetTags';
 
 interface Asset {
   asset_id: string;
@@ -55,6 +56,7 @@ export function AssetsTab({
   const { toast } = useToast();
   const [assetFilter, setAssetFilter] = useState<'all' | 'character' | 'scene' | 'prop'>('all');
   const [episodeFilter, setEpisodeFilter] = useState('all');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showCreateAsset, setShowCreateAsset] = useState(false);
   const [createAssetType, setCreateAssetType] = useState<'character' | 'scene' | 'prop'>('character');
 
@@ -164,36 +166,37 @@ export function AssetsTab({
     if (!exists) setEpisodeFilter('all');
   }, [episodeFilter, episodes]);
 
+  const allTags = useMemo(
+    () => collectProjectAssetTags(characters, scenes, props),
+    [characters, scenes, props]
+  );
+
   const filteredAssets = useMemo(() => {
     if (episodeFilter === 'all') {
       return { characters, scenes, props };
     }
 
-    const episodeStoryboards = storyboards.filter((storyboard) => storyboard.episode_id === episodeFilter);
-    const characterIds = new Set<string>();
-    const sceneIds = new Set<string>();
-    const propIds = new Set<string>();
-
-    episodeStoryboards.forEach((storyboard) => {
-      storyboard.character_ids?.forEach((id) => characterIds.add(id));
-      storyboard.scene_ids?.forEach((id) => sceneIds.add(id));
-      if (storyboard.scene_id) sceneIds.add(storyboard.scene_id);
-      storyboard.prop_ids?.forEach((id) => propIds.add(id));
-    });
+    const usedIds = getUsedAssetIdsForEpisode(storyboards, episodeFilter);
 
     return {
-      characters: characters.filter((character) => characterIds.has(character.asset_id) || (character.parent_id && characterIds.has(character.parent_id))),
-      scenes: scenes.filter((scene) => sceneIds.has(scene.asset_id)),
-      props: props.filter((prop) => propIds.has(prop.asset_id)),
+      characters: characters.filter((character) => usedIds.characterIds.has(character.asset_id) || (character.parent_id && usedIds.characterIds.has(character.parent_id))),
+      scenes: scenes.filter((scene) => usedIds.sceneIds.has(scene.asset_id)),
+      props: props.filter((prop) => usedIds.propIds.has(prop.asset_id)),
     };
   }, [characters, scenes, props, storyboards, episodeFilter]);
 
+  const tagFilteredAssets = useMemo(() => ({
+    characters: filterAssetsByTags(filteredAssets.characters, selectedTags),
+    scenes: filterAssetsByTags(filteredAssets.scenes, selectedTags),
+    props: filterAssetsByTags(filteredAssets.props, selectedTags),
+  }), [filteredAssets, selectedTags]);
+
   const mainFilteredCharacters = useMemo(
-    () => filteredAssets.characters.filter((character) => !character.parent_id),
-    [filteredAssets.characters]
+    () => tagFilteredAssets.characters.filter((character) => !character.parent_id),
+    [tagFilteredAssets.characters]
   );
 
-  const hasFilteredAssets = mainFilteredCharacters.length > 0 || filteredAssets.scenes.length > 0 || filteredAssets.props.length > 0;
+  const hasFilteredAssets = mainFilteredCharacters.length > 0 || tagFilteredAssets.scenes.length > 0 || tagFilteredAssets.props.length > 0;
 
   // 获取当前tab的主资产列表（排除子角色）
   const getMainAssets = (): { assets: Asset[]; type: 'character' | 'scene' | 'prop' } => {
@@ -201,10 +204,10 @@ export function AssetsTab({
       return { assets: mainFilteredCharacters, type: 'character' };
     }
     if (assetFilter === 'scene') {
-      return { assets: filteredAssets.scenes, type: 'scene' };
+      return { assets: tagFilteredAssets.scenes, type: 'scene' };
     }
     if (assetFilter === 'prop') {
-      return { assets: filteredAssets.props, type: 'prop' };
+      return { assets: tagFilteredAssets.props, type: 'prop' };
     }
     return { assets: [], type: 'character' };
   };
@@ -418,7 +421,7 @@ export function AssetsTab({
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
-            场景 ({filteredAssets.scenes.length})
+            场景 ({tagFilteredAssets.scenes.length})
           </button>
           <button
             onClick={() => setAssetFilter('prop')}
@@ -428,7 +431,7 @@ export function AssetsTab({
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
-            道具 ({filteredAssets.props.length})
+            道具 ({tagFilteredAssets.props.length})
           </button>
           <select
             value={episodeFilter}
@@ -627,6 +630,44 @@ export function AssetsTab({
         </div>
       </div>
 
+      <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/60 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-gray-300">按tag筛选</span>
+          {selectedTags.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedTags([])}
+              className="text-xs text-gray-400 hover:text-white"
+            >
+              清空
+            </button>
+          )}
+        </div>
+        {allTags.length > 0 ? (
+          <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto">
+            {allTags.map((tag) => {
+              const selected = selectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setSelectedTags((prev) => toggleTag(prev, tag))}
+                  className={`rounded-full px-2.5 py-1 text-xs transition ${
+                    selected
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-xs text-gray-500">暂无tag，请在资产详情中新增tag。</div>
+        )}
+      </div>
+
       {/* 下载进度显示 */}
       {isDownloading && (
         <div className="mb-4 bg-gray-800 rounded-lg p-4">
@@ -690,30 +731,33 @@ export function AssetsTab({
               assetType="character"
               asset={char}
               onDeleted={onRefresh}
-              childAssets={filteredAssets.characters.filter(c => c.parent_id === char.asset_id)}
+              childAssets={tagFilteredAssets.characters.filter(c => c.parent_id === char.asset_id)}
+              allTags={allTags}
             />
           </div>
         ))}
 
         {/* 场景 */}
-        {(assetFilter === 'all' || assetFilter === 'scene') && filteredAssets.scenes.map((scene) => (
+        {(assetFilter === 'all' || assetFilter === 'scene') && tagFilteredAssets.scenes.map((scene) => (
           <AssetCard
             key={scene.asset_id}
             projectId={projectId}
             assetType="scene"
             asset={scene}
             onDeleted={onRefresh}
+            allTags={allTags}
           />
         ))}
 
         {/* 道具 */}
-        {(assetFilter === 'all' || assetFilter === 'prop') && filteredAssets.props.map((prop) => (
+        {(assetFilter === 'all' || assetFilter === 'prop') && tagFilteredAssets.props.map((prop) => (
           <AssetCard
             key={prop.asset_id}
             projectId={projectId}
             assetType="prop"
             asset={prop}
             onDeleted={onRefresh}
+            allTags={allTags}
           />
         ))}
       </div>
@@ -729,12 +773,12 @@ export function AssetsTab({
           {episodeFilter === 'all' ? '暂无角色' : '当前集暂无已使用角色'}
         </div>
       )}
-      {assetFilter === 'scene' && filteredAssets.scenes.length === 0 && (
+      {assetFilter === 'scene' && tagFilteredAssets.scenes.length === 0 && (
         <div className="text-gray-500 text-center py-12">
           {episodeFilter === 'all' ? '暂无场景' : '当前集暂无已使用场景'}
         </div>
       )}
-      {assetFilter === 'prop' && filteredAssets.props.length === 0 && (
+      {assetFilter === 'prop' && tagFilteredAssets.props.length === 0 && (
         <div className="text-gray-500 text-center py-12">
           {episodeFilter === 'all' ? '暂无道具' : '当前集暂无已使用道具'}
         </div>

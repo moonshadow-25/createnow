@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
@@ -30,6 +30,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useJianyingExport } from './hooks/useJianyingExport';
 import { useVideoGeneration } from './hooks/useVideoGeneration';
 import { useThemeStore } from '@/store/themeStore';
+import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 interface StoryboardDetailProps {
   projectId: string;
@@ -253,6 +254,11 @@ export function StoryboardDetail({
     props,
     multimodalReference,
   });
+
+  const usedAssetIdsByType = useMemo(
+    () => getUsedAssetIdsForEpisode(storyboards, selectedEpisode?.asset_id),
+    [storyboards, selectedEpisode?.asset_id]
+  );
 
   // 隐藏图片状态
 
@@ -1559,6 +1565,7 @@ export function StoryboardDetail({
         setSelectedScenes={setSelectedScenes}
         selectedProps={selectedProps}
         setSelectedProps={setSelectedProps}
+        usedAssetIdsByType={usedAssetIdsByType}
         onClose={() => dialogs.close('assetSelector')}
         onAssetsAdded={onUpdated}
       />

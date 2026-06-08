@@ -11,6 +11,7 @@ import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
 import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
+import { collectAssetTags, filterAssetsByTags, toggleTag } from '@/utils/assetTags';
 
 interface RefMedia {
   type: 'image' | 'video' | 'audio';
@@ -197,6 +198,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [pendingImageCount, setPendingImageCount] = useState(0);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
   const [assetPickerTab, setAssetPickerTab] = useState<'character' | 'scene' | 'prop'>('character');
+  const [assetPickerSelectedTags, setAssetPickerSelectedTags] = useState<string[]>([]);
   const [showRatioMenu, setShowRatioMenu] = useState(false);
   const [showResolutionMenu, setShowResolutionMenu] = useState(false);
   const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
@@ -751,6 +753,11 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
 
   const allAssets = assetPickerTab === 'character' ? characters
     : assetPickerTab === 'scene' ? scenes : props;
+  const assetPickerTags = useMemo(() => collectAssetTags(allAssets as any[]), [allAssets]);
+  const filteredPickerAssets = useMemo(
+    () => filterAssetsByTags(allAssets as any[], assetPickerSelectedTags),
+    [allAssets, assetPickerSelectedTags]
+  );
 
   const ratioLabel = RATIO_OPTIONS.find(r => r.value === ratio)?.label || ratio;
   const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
@@ -911,7 +918,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
             </button>
 
             {showAssetPicker && (
-              <div className="absolute bottom-full mb-2 left-0 w-80 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+              <div className="absolute bottom-full mb-2 left-0 w-[34rem] max-w-[calc(100vw-2rem)] bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
                 <div className="flex border-b border-gray-700">
                   {(['character', 'scene', 'prop'] as const).map(tab => (
                     <button
@@ -923,22 +930,62 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                     </button>
                   ))}
                 </div>
-                <div className="max-h-48 overflow-y-auto p-2 grid grid-cols-4 gap-1">
+                {assetPickerTags.length > 0 && (
+                  <div className="border-b border-gray-700 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-xs text-gray-400">按tag筛选</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">显示 {filteredPickerAssets.length} 个</span>
+                        {assetPickerSelectedTags.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setAssetPickerSelectedTags([])}
+                            className="text-xs text-gray-400 hover:text-white"
+                          >
+                            清空
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
+                      {assetPickerTags.map((tag) => {
+                        const selected = assetPickerSelectedTags.some((item) => item.toLocaleLowerCase() === tag.toLocaleLowerCase());
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setAssetPickerSelectedTags((prev) => toggleTag(prev, tag))}
+                            className={`rounded-full px-2 py-0.5 text-xs transition ${
+                              selected
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div className="max-h-96 overflow-y-auto p-3 grid grid-cols-6 gap-2">
                   {allAssets.length === 0 ? (
-                    <div className="col-span-4 text-center text-gray-500 text-sm py-4">暂无资产</div>
+                    <div className="col-span-6 text-center text-gray-500 text-sm py-6">暂无资产</div>
+                  ) : filteredPickerAssets.length === 0 ? (
+                    <div className="col-span-6 text-center text-gray-500 text-sm py-6">没有匹配当前tag的资产</div>
                   ) : (
-                    (allAssets as any[]).map((asset: any) => (
+                    filteredPickerAssets.map((asset: any) => (
                       <button
                         key={asset.asset_id}
                         onClick={() => { handleAddAsset(asset); setShowAssetPicker(false); }}
                         disabled={!asset.image_id}
-                        className="flex flex-col items-center gap-1 p-1 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="flex flex-col items-center gap-1 p-1.5 rounded hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
                         title={asset.name}
                       >
                         {asset.primary_image_url ? (
-                          <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-14 h-14 object-cover rounded" />
+                          <img src={asset.primary_image_url.replace('/images/files/', '/thumbnails/')} alt={asset.name} className="w-16 h-16 object-cover rounded" />
                         ) : (
-                          <div className="w-14 h-14 bg-gray-700 rounded flex items-center justify-center">
+                          <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center">
                             <Image size={20} className="text-gray-500" />
                           </div>
                         )}
