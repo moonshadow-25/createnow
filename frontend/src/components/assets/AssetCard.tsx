@@ -602,7 +602,10 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
           assetType={assetType}
           onSelectPrimary={handleSetPrimary}
           onClose={() => setShowGallery(false)}
-          onImagesUpdated={loadImages}
+          onImagesUpdated={async () => {
+            await loadImages();
+            onDeleted();
+          }}
         />
       )}
 
