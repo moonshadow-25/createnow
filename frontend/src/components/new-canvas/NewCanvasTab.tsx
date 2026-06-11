@@ -763,7 +763,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const index = Math.max(0, ports.findIndex((item) => item.key === port));
     const gap = NODE_HEIGHT / (ports.length + 1 || 2);
     return {
-      x: node.x + (side === 'out' ? NODE_WIDTH : 0),
+      x: node.x + (side === 'out' ? NODE_WIDTH + 8 : -8),
       y: node.y + gap * (index + 1),
     };
   };
@@ -784,12 +784,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   const getPortClassName = (nodeId: string, port: string, side: 'in' | 'out', type: PortType) => {
     const state = getPortConnectionState(nodeId, port, side, type);
-    const base = 'absolute flex h-4 w-4 items-center justify-center rounded-full border-2 border-gray-900 transition';
+    const base = 'h-4 w-4 flex-shrink-0 rounded-full border-2 border-gray-950 shadow transition';
     if (state.connectingSource) return `${base} bg-yellow-300 ring-4 ring-yellow-300/30`;
-    if (state.incompatible) return `${base} bg-gray-700 opacity-40`;
-    if (state.connectable) return `${base} bg-gray-950 ring-4 ring-blue-400/30 after:h-1.5 after:w-1.5 after:rounded-full after:bg-blue-300`;
+    if (state.incompatible) return `${base} bg-gray-500 opacity-60`;
+    if (state.connectable) return `${base} bg-blue-100 ring-4 ring-blue-400/35`;
     if (state.connected) return `${base} ${side === 'in' ? 'bg-blue-400' : 'bg-green-400'}`;
-    return `${base} ${side === 'in' ? 'bg-gray-950 hover:bg-blue-400' : 'bg-gray-950 hover:bg-green-400'}`;
+    return `${base} ${side === 'in' ? 'bg-blue-950 border-blue-400 hover:bg-blue-400' : 'bg-green-950 border-green-400 hover:bg-green-400'}`;
   };
 
   const moveInputEdge = (edgeId: string, direction: -1 | 1) => {
@@ -1699,20 +1699,26 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       key={port.key}
                       data-port="in"
                       onClick={(event) => { event.stopPropagation(); handleInputPortClick(node.node_id, port.key, port.type); }}
-                      className={getPortClassName(node.node_id, port.key, 'in', port.type)}
-                      style={{ top: (NODE_HEIGHT / (definition.inputs.length + 1)) * (index + 1) - 8 }}
+                      className="absolute -left-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-blue-100 ring-1 ring-blue-500/70 shadow-lg hover:bg-blue-950"
+                      style={{ top: (NODE_HEIGHT / (definition.inputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
-                    />
+                    >
+                      <span className={getPortClassName(node.node_id, port.key, 'in', port.type)} />
+                      <span>{port.label}</span>
+                    </button>
                   ))}
                   {definition.outputs.map((port, index) => (
                     <button
                       key={port.key}
                       data-port="out"
                       onClick={(event) => { event.stopPropagation(); handleOutputPortClick(node.node_id, port.key, port.type); }}
-                      className={getPortClassName(node.node_id, port.key, 'out', port.type)}
-                      style={{ top: (NODE_HEIGHT / (definition.outputs.length + 1)) * (index + 1) - 8 }}
+                      className="absolute -right-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-green-100 ring-1 ring-green-500/70 shadow-lg hover:bg-green-950"
+                      style={{ top: (NODE_HEIGHT / (definition.outputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
-                    />
+                    >
+                      <span>{port.label}</span>
+                      <span className={getPortClassName(node.node_id, port.key, 'out', port.type)} />
+                    </button>
                   ))}
 
                   <div className="space-y-2 p-3">
