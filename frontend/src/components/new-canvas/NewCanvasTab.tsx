@@ -707,6 +707,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const target = event.target as HTMLElement;
     if (target.closest('[data-port]') || target.closest('button')) return;
     event.stopPropagation();
+    window.getSelection()?.removeAllRanges();
     nodeDragMovedRef.current = false;
     const point = screenToWorld(event.clientX, event.clientY);
     setDraggingNode({ nodeId: node.node_id, dx: point.x - node.x, dy: point.y - node.y });
@@ -1271,8 +1272,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
     const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
     const text = output?.text;
-    if (imageUrl) return <img src={imageUrl} alt={node.label} className="h-20 w-full rounded-lg object-cover" />;
-    if (videoUrl) return <video src={videoUrl} className="h-20 w-full rounded-lg bg-black object-cover" controls />;
+    if (imageUrl) return <img src={imageUrl} alt={node.label} draggable={false} className="h-20 w-full rounded-lg bg-gray-950 object-contain" />;
+    if (videoUrl) return <video src={videoUrl} draggable={false} className="h-20 w-full rounded-lg bg-black object-contain" controls />;
     if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
     if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
     return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
@@ -1500,7 +1501,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             const imageUrl = getImageUrlFromRecord(projectId, item.image);
             return (
               <div key={`image-${item.id}`} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-                {imageUrl && <img src={imageUrl} alt={item.title} className="mb-2 h-28 w-full rounded object-cover" />}
+                {imageUrl && <img src={imageUrl} alt={item.title} draggable={false} className="mb-2 h-28 w-full rounded bg-gray-900 object-contain" />}
                 <div className="mb-1 text-[10px] text-blue-300">图片</div>
                 <div className="line-clamp-2 text-xs text-gray-300">{item.title}</div>
                 <div className="mt-1 text-[10px] text-gray-600">{item.createdAt || item.id}</div>
@@ -1513,7 +1514,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             const polling = pollingVideoIds.has(item.video.video_id);
             return (
               <div key={`video-${item.id}`} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-                {videoUrl ? <video src={videoUrl} className="mb-2 h-28 w-full rounded bg-black object-cover" controls /> : <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{item.video.status || 'pending'}</div>}
+                {videoUrl ? <video src={videoUrl} draggable={false} className="mb-2 h-28 w-full rounded bg-black object-contain" controls /> : <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{item.video.status || 'pending'}</div>}
                 <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
                   <span className="text-purple-300">视频</span>
                   <span className={pending ? 'text-yellow-300' : item.video.status === 'failed' ? 'text-red-300' : 'text-green-300'}>{item.video.status || 'pending'}</span>
@@ -1626,10 +1627,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
         <div
           ref={canvasRef}
-          className="h-full w-full cursor-grab overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.22)_1px,transparent_0)] [background-size:24px_24px]"
+          className="h-full w-full cursor-grab select-none overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.22)_1px,transparent_0)] [background-size:24px_24px]"
           onWheel={handleCanvasWheel}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
+              window.getSelection()?.removeAllRanges();
               setPanning({ x: event.clientX - pan.x, y: event.clientY - pan.y });
               setSelectedNodeId(null);
               setSelectedEdgeId(null);
@@ -1680,7 +1682,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                     setSelectedNodeId(node.node_id);
                     setSelectedEdgeId(null);
                   }}
-                  className={`absolute rounded-xl border bg-gray-900 shadow-2xl transition ${selectedNodeId === node.node_id ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-gray-700'} ${state === 'running' ? 'ring-2 ring-yellow-400/40' : ''} ${state === 'failed' ? 'border-red-500' : ''}`}
+                  className={`absolute select-none rounded-xl border bg-gray-900 shadow-2xl transition ${selectedNodeId === node.node_id ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-gray-700'} ${state === 'running' ? 'ring-2 ring-yellow-400/40' : ''} ${state === 'failed' ? 'border-red-500' : ''}`}
                   style={{ left: node.x, top: node.y, width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
                 >
                   <div className={`rounded-t-xl bg-gradient-to-r ${definition.color} px-3 py-2`}>
@@ -1780,7 +1782,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                 return (
                   <button key={asset.asset_id} onClick={() => selectAssetForNode(asset, assetTab)} className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-left hover:border-blue-400">
                     <div className="mb-2 flex h-28 items-center justify-center overflow-hidden rounded bg-gray-950">
-                      {imageUrl ? <img src={imageUrl} alt={asset.name} className="h-full w-full object-cover" /> : <ImageIcon className="text-gray-600" />}
+                      {imageUrl ? <img src={imageUrl} alt={asset.name} draggable={false} className="h-full w-full object-contain" /> : <ImageIcon className="text-gray-600" />}
                     </div>
                     <div className="truncate text-sm text-gray-200">{asset.name || asset.description || asset.asset_id}</div>
                     <div className="truncate text-xs text-gray-500">{asset.image_id ? '有主图' : '暂无主图'}</div>
