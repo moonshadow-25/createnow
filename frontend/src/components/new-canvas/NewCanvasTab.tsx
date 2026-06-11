@@ -32,6 +32,7 @@ type NodeKind =
 
 type PortType = 'text' | 'image' | 'video' | 'audio' | 'media' | 'json';
 type RunStatus = 'idle' | 'running' | 'succeeded' | 'failed';
+type RunMode = 'continue' | 'from-selected' | 'all';
 type CanvasAssetType = 'character' | 'scene' | 'prop' | 'storyboard';
 
 type RefMedia = {
@@ -41,6 +42,7 @@ type RefMedia = {
   name: string;
   sourceAssetId?: string;
   sourceAssetType?: CanvasAssetType;
+  audit?: AssetAuditState;
 };
 
 type AssetAuditState = {
@@ -75,6 +77,8 @@ type CanvasNode = {
     asset_id?: string;
     asset_type?: CanvasAssetType;
     asset_name?: string;
+    existing_asset_audit_id?: string;
+    existing_asset_audit_status?: string;
     file_name?: string;
     input_hash?: string;
     audit_state?: Record<string, AssetAuditState>;
@@ -370,6 +374,20 @@ function buildTopologicalOrder(nodes: CanvasNode[], edges: CanvasEdge[]): string
     });
   }
   return order.length === nodes.length ? order : [];
+}
+
+function collectDownstreamNodeIds(startNodeId: string, edges: CanvasEdge[]): Set<string> {
+  const result = new Set<string>([startNodeId]);
+  const queue = [startNodeId];
+  while (queue.length) {
+    const current = queue.shift()!;
+    edges.filter((edge) => edge.source_node_id === current).forEach((edge) => {
+      if (result.has(edge.target_node_id)) return;
+      result.add(edge.target_node_id);
+      queue.push(edge.target_node_id);
+    });
+  }
+  return result;
 }
 
 async function readChatStream(projectId: string, message: string): Promise<string> {
@@ -734,6 +752,13 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const executeNode = async (node: CanvasNode, inputOutputs: NodeOutput[]): Promise<{ output: NodeOutput; auditState?: Record<string, AssetAuditState> }> => {
     if (node.type === 'static.image') {
       if (!node.config.image_id && !node.config.image_url) throw new Error('静态图片节点缺少图片');
+      const audit = node.config.image_id && node.config.existing_asset_audit_id ? {
+        refType: 'image' as const,
+        refKey: node.config.image_id,
+        assetId: node.config.existing_asset_audit_id,
+        status: node.config.existing_asset_audit_status || 'Active',
+        updatedAt: new Date().toISOString(),
+      } : undefined;
       const media: RefMedia[] = [{
         type: 'image',
         id: node.config.image_id,
@@ -741,8 +766,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         name: node.config.asset_name || node.config.file_name || node.label,
         sourceAssetId: node.config.asset_id,
         sourceAssetType: node.config.asset_type,
+        audit,
       }];
-      return { output: { image_id: node.config.image_id, image_url: node.config.image_url, media } };
+      return {
+        output: { image_id: node.config.image_id, image_url: node.config.image_url, media },
+        auditState: audit && node.config.image_id ? { [`image:${node.config.image_id}`]: audit } : undefined,
+      };
     }
 
     if (node.type === 'static.video') {
@@ -818,9 +847,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         ...inputOutputs.map((output) => output.audio_url).filter(Boolean) as string[],
         ...media.filter((item) => item.type === 'audio').map((item) => item.url),
       ];
+      const upstreamAuditState = media.reduce<Record<string, AssetAuditState>>((acc, item) => {
+        if (item.audit && item.type === 'image' && item.id) acc[`image:${item.id}`] = item.audit;
+        if (item.audit && item.type === 'video' && item.url) acc[`video:${item.url}`] = item.audit;
+        return acc;
+      }, {});
       const prepared = showAssetSubmit
-        ? await prepareReferenceAssets(imageIds, videoUrls, node.config.audit_state || {})
-        : { imageIds, videoUrls, auditState: node.config.audit_state || {} };
+        ? await prepareReferenceAssets(imageIds, videoUrls, { ...upstreamAuditState, ...(node.config.audit_state || {}) })
+        : { imageIds, videoUrls, auditState: { ...upstreamAuditState, ...(node.config.audit_state || {}) } };
       const response = await generationApi.generateCanvasVideo(projectId, {
         storyboard_id: null,
         episode_id: null,
@@ -930,7 +964,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     };
   };
 
-  const runWorkflow = async () => {
+  const runWorkflow = async (mode: RunMode = 'continue') => {
     if (running) return;
     const order = buildTopologicalOrder(nodes, edges);
     if (!nodes.length) {
@@ -941,6 +975,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       toast.toast('工作流存在环路，请检查连线', 'error');
       return;
     }
+    if (mode === 'from-selected' && !selectedNodeId) {
+      toast.toast('请先选择要重跑的节点', 'error');
+      return;
+    }
+    const forceRerunIds = mode === 'all'
+      ? new Set(nodes.filter((node) => isDynamicNode(node.type)).map((node) => node.node_id))
+      : mode === 'from-selected' && selectedNodeId
+        ? collectDownstreamNodeIds(selectedNodeId, edges)
+        : new Set<string>();
     setRunning(true);
     setNodeStatus(Object.fromEntries(nodes.map((node) => [node.node_id, { status: 'idle' as RunStatus }])));
     const outputMap: Record<string, NodeOutput> = {};
@@ -953,7 +996,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         if (!node) continue;
         const inputs = incomingOutputs(nodeId, outputMap);
         const inputHash = buildInputHash(node, inputs);
-        if (isDynamicNode(node.type) && node.config.last_result && node.config.input_hash === inputHash) {
+        if (!forceRerunIds.has(nodeId) && isDynamicNode(node.type) && node.config.last_result && node.config.input_hash === inputHash) {
           outputMap[nodeId] = node.config.last_result;
           setStatus(nodeId, 'succeeded');
           continue;
@@ -1037,12 +1080,24 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       toast.toast('该资产暂无主图', 'error');
       return;
     }
+    const existingAuditState = asset.image_id && asset.volcengine_asset_id ? {
+      [`image:${asset.image_id}`]: {
+        refType: 'image' as const,
+        refKey: asset.image_id,
+        assetId: asset.volcengine_asset_id,
+        status: asset.volcengine_asset_status || 'Active',
+        updatedAt: new Date().toISOString(),
+      },
+    } : undefined;
     updateNodeConfig(selectedNode.node_id, {
       image_id: asset.image_id,
       image_url: imageUrl,
       asset_id: asset.asset_id,
       asset_type: assetType,
       asset_name: asset.name,
+      existing_asset_audit_id: asset.volcengine_asset_id,
+      existing_asset_audit_status: asset.volcengine_asset_status,
+      ...(existingAuditState ? { audit_state: existingAuditState } : {}),
     });
     setAssetPickerOpen(false);
   };
@@ -1119,6 +1174,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             {selectedNode.type === 'static.video' && <button onClick={() => openUpload('video')} className="w-full rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600">上传本地视频</button>}
             {selectedNode.type === 'static.audio' && <button onClick={() => openUpload('audio')} className="w-full rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600">上传本地音频</button>}
             <div className="text-xs text-gray-500">{selectedNode.config.asset_name || selectedNode.config.file_name || '未选择资源'}</div>
+            {selectedNode.config.existing_asset_audit_id && (
+              <div className="rounded bg-gray-950 p-2 text-xs text-green-300">
+                已有审核资产：{selectedNode.config.existing_asset_audit_status || 'Active'}
+                <div className="mt-1 truncate text-[10px] text-gray-500">{selectedNode.config.existing_asset_audit_id}</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1327,11 +1388,29 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             <button onClick={() => saveCanvas(false)} disabled={saving} className="flex items-center justify-center gap-1 rounded bg-gray-700 px-2 py-2 text-xs hover:bg-gray-600 disabled:opacity-50">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}保存
             </button>
-            <button onClick={runWorkflow} disabled={running} className="flex items-center justify-center gap-1 rounded bg-green-700 px-2 py-2 text-xs hover:bg-green-600 disabled:opacity-50">
-              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}运行
+            <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center justify-center gap-1 rounded bg-green-700 px-2 py-2 text-xs hover:bg-green-600 disabled:opacity-50">
+              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}继续
             </button>
             <button onClick={deleteCanvas} className="flex items-center justify-center gap-1 rounded bg-red-900/60 px-2 py-2 text-xs text-red-200 hover:bg-red-900">
               <Trash2 size={14} />删除
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => runWorkflow('from-selected')}
+              disabled={running || !selectedNodeId}
+              className="rounded bg-gray-800 px-2 py-2 text-xs text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-45"
+              title="重跑当前选中节点及其下游"
+            >
+              从选中重跑
+            </button>
+            <button
+              onClick={() => runWorkflow('all')}
+              disabled={running}
+              className="rounded bg-gray-800 px-2 py-2 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+              title="重跑所有动态节点"
+            >
+              全部重跑
             </button>
           </div>
         </div>
