@@ -13,6 +13,7 @@ import {
   Video,
   X,
   Zap,
+  ZoomIn,
 } from 'lucide-react';
 import { canvasApi, generationApi } from '@/services/api';
 import { useAssetStore } from '@/store/assetStore';
@@ -60,6 +61,8 @@ type CanvasNode = {
   label: string;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
   config: {
     prompt?: string;
     negative_prompt?: string;
@@ -342,6 +345,8 @@ function normalizeNodes(nodes: any[] | undefined): CanvasNode[] {
     label: String(node.label || getDefinition((node.type || 'static.image') as NodeKind).label),
     x: Number(node.x || 0),
     y: Number(node.y || 0),
+    width: Number(node.width || NODE_WIDTH),
+    height: Number(node.height || NODE_HEIGHT),
     config: node.config || {},
   }));
 }
@@ -453,6 +458,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<{ nodeId: string; port: string; type: PortType } | null>(null);
   const [draggingNode, setDraggingNode] = useState<{ nodeId: string; dx: number; dy: number } | null>(null);
+  const [resizingNode, setResizingNode] = useState<{ nodeId: string; startX: number; startY: number; width: number; height: number } | null>(null);
   const [panning, setPanning] = useState<{ x: number; y: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -460,6 +466,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [nodeStatus, setNodeStatus] = useState<Record<string, { status: RunStatus; error?: string }>>({});
   const [outputs, setOutputs] = useState<Record<string, NodeOutput>>({});
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string; imageId?: string } | null>(null);
   const [assetTab, setAssetTab] = useState<CanvasAssetType>('character');
   const [uploadTarget, setUploadTarget] = useState<'image' | 'video' | 'audio'>('image');
   const [rightPanelTab, setRightPanelTab] = useState<'node' | 'history'>('node');
@@ -656,6 +663,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       label: definition.label,
       x: center.x - NODE_WIDTH / 2 + nodes.length * 20,
       y: center.y - NODE_HEIGHT / 2 + nodes.length * 20,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
       config: { ...definition.defaults },
     };
     const next = [...nodes, node];
@@ -692,6 +701,16 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   };
 
   const handleMouseMove = (event: React.MouseEvent) => {
+    if (resizingNode) {
+      const dx = (event.clientX - resizingNode.startX) / zoom;
+      const dy = (event.clientY - resizingNode.startY) / zoom;
+      setNodes((prev) => prev.map((node) => node.node_id === resizingNode.nodeId ? {
+        ...node,
+        width: Math.max(220, resizingNode.width + dx),
+        height: Math.max(150, resizingNode.height + dy),
+      } : node));
+      return;
+    }
     if (draggingNode) {
       nodeDragMovedRef.current = true;
       const point = screenToWorld(event.clientX, event.clientY);
@@ -715,6 +734,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   const finishPointerAction = () => {
     setDraggingNode(null);
+    setResizingNode(null);
     setPanning(null);
   };
 
@@ -729,8 +749,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       return;
     }
     if (connecting.type !== type) {
-      toast.toast(`端口类型不匹配：${connecting.type} -> ${type}`, 'error');
-      setConnecting(null);
       return;
     }
     const nextOrder = Math.max(0, ...edges
@@ -761,9 +779,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const definition = getDefinition(node.type);
     const ports = side === 'in' ? definition.inputs : definition.outputs;
     const index = Math.max(0, ports.findIndex((item) => item.key === port));
-    const gap = NODE_HEIGHT / (ports.length + 1 || 2);
+    const gap = (node.height || NODE_HEIGHT) / (ports.length + 1 || 2);
     return {
-      x: node.x + (side === 'out' ? NODE_WIDTH + 8 : -8),
+      x: node.x + (side === 'out' ? (node.width || NODE_WIDTH) + 8 : -8),
       y: node.y + gap * (index + 1),
     };
   };
@@ -1272,7 +1290,19 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
     const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
     const text = output?.text;
-    if (imageUrl) return <img src={imageUrl} alt={node.label} draggable={false} className="h-20 w-full rounded-lg bg-gray-950 object-contain" />;
+    if (imageUrl) return (
+      <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: Math.max(80, (node.height || NODE_HEIGHT) - 96) }}>
+        <img src={imageUrl} alt={node.label} draggable={false} className="h-full w-full object-cover" />
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); setPreviewImage({ url: imageUrl, title: node.label }); }}
+          className="absolute right-1 top-1 hidden rounded bg-black/70 p-1 text-white hover:bg-black/90 group-hover:block"
+          title="放大查看"
+        >
+          <ZoomIn size={14} />
+        </button>
+      </div>
+    );
     if (videoUrl) return <video src={videoUrl} draggable={false} className="h-20 w-full rounded-lg bg-black object-contain" controls />;
     if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
     if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
@@ -1683,7 +1713,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                     setSelectedEdgeId(null);
                   }}
                   className={`absolute select-none rounded-xl border bg-gray-900 shadow-2xl transition ${selectedNodeId === node.node_id ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-gray-700'} ${state === 'running' ? 'ring-2 ring-yellow-400/40' : ''} ${state === 'failed' ? 'border-red-500' : ''}`}
-                  style={{ left: node.x, top: node.y, width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
+                  style={{ left: node.x, top: node.y, width: node.width || NODE_WIDTH, minHeight: node.height || NODE_HEIGHT }}
                 >
                   <div className={`rounded-t-xl bg-gradient-to-r ${definition.color} px-3 py-2`}>
                     <div className="flex items-center justify-between gap-2">
@@ -1700,7 +1730,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       data-port="in"
                       onClick={(event) => { event.stopPropagation(); handleInputPortClick(node.node_id, port.key, port.type); }}
                       className="absolute -left-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-blue-100 ring-1 ring-blue-500/70 shadow-lg hover:bg-blue-950"
-                      style={{ top: (NODE_HEIGHT / (definition.inputs.length + 1)) * (index + 1) - 10 }}
+                      style={{ top: ((node.height || NODE_HEIGHT) / (definition.inputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
                     >
                       <span className={getPortClassName(node.node_id, port.key, 'in', port.type)} />
@@ -1713,7 +1743,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       data-port="out"
                       onClick={(event) => { event.stopPropagation(); handleOutputPortClick(node.node_id, port.key, port.type); }}
                       className="absolute -right-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-green-100 ring-1 ring-green-500/70 shadow-lg hover:bg-green-950"
-                      style={{ top: (NODE_HEIGHT / (definition.outputs.length + 1)) * (index + 1) - 10 }}
+                      style={{ top: ((node.height || NODE_HEIGHT) / (definition.outputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
                     >
                       <span>{port.label}</span>
@@ -1729,6 +1759,22 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       {definition.outputs.map((port) => <span key={`out-${port.key}`} className="rounded bg-green-950 px-1.5 py-0.5">出:{port.label}</span>)}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.stopPropagation();
+                      window.getSelection()?.removeAllRanges();
+                      setResizingNode({
+                        nodeId: node.node_id,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        width: node.width || NODE_WIDTH,
+                        height: node.height || NODE_HEIGHT,
+                      });
+                    }}
+                    className="absolute bottom-1 right-1 h-4 w-4 cursor-se-resize rounded-sm border border-white/40 bg-white/20 hover:bg-white/40"
+                    title="缩放节点"
+                  />
                 </div>
               );
             })}
@@ -1764,6 +1810,23 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           if (file) handleUpload(file);
         }}
       />
+
+      {previewImage && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-6" onMouseDown={() => setPreviewImage(null)}>
+          <div className="relative flex max-h-[92vh] max-w-[92vw] flex-col rounded-xl border border-gray-700 bg-gray-950 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-gray-100">{previewImage.title}</div>
+                {previewImage.imageId && <div className="truncate text-xs text-gray-500">{previewImage.imageId}</div>}
+              </div>
+              <button onClick={() => setPreviewImage(null)} className="rounded-lg bg-gray-800 p-2 hover:bg-gray-700"><X size={18} /></button>
+            </div>
+            <div className="flex min-h-0 items-center justify-center p-3">
+              <img src={previewImage.url} alt={previewImage.title} draggable={false} className="max-h-[78vh] max-w-[88vw] object-contain" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {assetPickerOpen && selectedNode && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-6" onMouseDown={() => setAssetPickerOpen(false)}>
