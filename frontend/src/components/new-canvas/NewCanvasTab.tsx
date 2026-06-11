@@ -140,6 +140,11 @@ type HistoryVideo = {
   ratio?: string;
 };
 
+type HistoryItem =
+  | { kind: 'image'; id: string; title: string; createdAt: string; image: HistoryImage }
+  | { kind: 'video'; id: string; title: string; createdAt: string; video: HistoryVideo }
+  | { kind: 'text'; id: string; title: string; createdAt: string; text: string; nodeId: string };
+
 type NodeDefinition = {
   type: NodeKind;
   label: string;
@@ -289,6 +294,10 @@ function getImageUrlFromRecord(projectId: string, record: any): string {
 function getVideoUrlFromRecord(projectId: string, record: any): string {
   if (record?.local_path) return `/api/projects/${projectId}/videos/files/${record.local_path}`;
   return record?.video_path || record?.video_url || '';
+}
+
+function isPendingVideoStatus(status?: string): boolean {
+  return !status || ['pending', 'processing', 'running', 'in_progress', 'created'].includes(status);
 }
 
 function isVideoNode(type: NodeKind): boolean {
@@ -454,6 +463,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyImages, setHistoryImages] = useState<HistoryImage[]>([]);
   const [historyVideos, setHistoryVideos] = useState<HistoryVideo[]>([]);
+  const [pollingVideoIds, setPollingVideoIds] = useState<Set<string>>(new Set());
   const { characters, scenes, props, storyboards } = useAssetStore();
 
   const selectedNode = useMemo(
@@ -472,6 +482,33 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     .map((node) => ({ node, output: outputs[node.node_id] || node.config.last_result }))
     .filter((item) => item.output?.text)
     .map((item) => ({ node_id: item.node.node_id, label: item.node.label, text: item.output?.text || '' })), [nodes, outputs]);
+
+  const historyItems = useMemo<HistoryItem[]>(() => {
+    const imageItems: HistoryItem[] = historyImages.map((image) => ({
+      kind: 'image',
+      id: image.image_id,
+      title: image.prompt || '画布图片',
+      createdAt: image.created_at || '',
+      image,
+    }));
+    const videoItems: HistoryItem[] = historyVideos.map((video) => ({
+      kind: 'video',
+      id: video.video_id,
+      title: video.prompt || '画布视频',
+      createdAt: video.created_at || '',
+      video,
+    }));
+    const textItems: HistoryItem[] = textHistory.map((item) => ({
+      kind: 'text',
+      id: item.node_id,
+      nodeId: item.node_id,
+      title: item.label,
+      createdAt: '',
+      text: item.text,
+    }));
+    return [...imageItems, ...videoItems, ...textItems]
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [historyImages, historyVideos, textHistory]);
 
   const loadCanvases = useCallback(async () => {
     setLoading(true);
@@ -888,12 +925,44 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     for (let i = 0; i < 80; i += 1) {
       const response = await generationApi.pollVideo(projectId, videoId);
       current = response.data;
-      if (['completed', 'failed', 'canceled'].includes(current.status)) break;
+      if (!isPendingVideoStatus(current.status)) break;
       await new Promise((resolve) => setTimeout(resolve, 3000));
     }
     if (current?.status === 'failed') throw new Error(current.error || '视频生成失败');
     return current;
   };
+
+  const continuePollingHistoryVideo = async (videoId: string, silent = false) => {
+    let shouldStart = false;
+    setPollingVideoIds((prev) => {
+      if (prev.has(videoId)) return prev;
+      shouldStart = true;
+      return new Set(prev).add(videoId);
+    });
+    if (!shouldStart) return;
+    try {
+      const updated = await pollVideoUntilDone(videoId);
+      setHistoryVideos((prev) => prev.map((video) => video.video_id === videoId ? { ...video, ...updated } : video));
+      if (!silent) toast.toast('视频轮询已更新', 'success');
+    } catch (error: any) {
+      if (!silent) toast.toast(error?.response?.data?.detail || error?.message || '视频轮询失败', 'error');
+    } finally {
+      setPollingVideoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(videoId);
+        return next;
+      });
+      await loadCanvasHistory();
+    }
+  };
+
+  useEffect(() => {
+    if (rightPanelTab !== 'history') return;
+    const resumable = historyVideos.filter((video) => isPendingVideoStatus(video.status) && !pollingVideoIds.has(video.video_id));
+    resumable.slice(0, 3).forEach((video) => {
+      continuePollingHistoryVideo(video.video_id, true);
+    });
+  }, [rightPanelTab, historyVideos, pollingVideoIds]);
 
   const prepareReferenceAssets = async (
     imageIds: string[],
@@ -1288,11 +1357,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   };
 
   const renderHistoryPanel = () => (
-    <div className="space-y-5 p-4">
+    <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-semibold text-gray-200">画布历史</div>
-          <div className="text-xs text-gray-500">只显示画布生成记录，不包含广场</div>
+          <div className="text-xs text-gray-500">统一倒序显示，只包含画布结果</div>
         </div>
         <button
           onClick={loadCanvasHistory}
@@ -1303,68 +1372,60 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         </button>
       </div>
 
-      <section>
-        <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-          <span>图片结果</span>
-          <span>{historyImages.length}</span>
-        </div>
-        <div className="space-y-2">
-          {historyImages.slice(0, 30).map((image) => {
-            const imageUrl = getImageUrlFromRecord(projectId, image);
+      <div className="space-y-3">
+        {historyItems.slice(0, 80).map((item) => {
+          if (item.kind === 'image') {
+            const imageUrl = getImageUrlFromRecord(projectId, item.image);
             return (
-              <div key={image.image_id} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-                {imageUrl && <img src={imageUrl} alt={image.prompt || '画布图片'} className="mb-2 h-28 w-full rounded object-cover" />}
-                <div className="line-clamp-2 text-xs text-gray-300">{image.prompt || '无提示词'}</div>
-                <div className="mt-1 text-[10px] text-gray-600">{image.created_at || image.image_id}</div>
+              <div key={`image-${item.id}`} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
+                {imageUrl && <img src={imageUrl} alt={item.title} className="mb-2 h-28 w-full rounded object-cover" />}
+                <div className="mb-1 text-[10px] text-blue-300">图片</div>
+                <div className="line-clamp-2 text-xs text-gray-300">{item.title}</div>
+                <div className="mt-1 text-[10px] text-gray-600">{item.createdAt || item.id}</div>
               </div>
             );
-          })}
-          {!historyImages.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布图片历史</div>}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-          <span>视频结果</span>
-          <span>{historyVideos.length}</span>
-        </div>
-        <div className="space-y-2">
-          {historyVideos.slice(0, 30).map((video) => {
-            const videoUrl = getVideoUrlFromRecord(projectId, video);
+          }
+          if (item.kind === 'video') {
+            const videoUrl = getVideoUrlFromRecord(projectId, item.video);
+            const pending = isPendingVideoStatus(item.video.status);
+            const polling = pollingVideoIds.has(item.video.video_id);
             return (
-              <div key={video.video_id} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-                {videoUrl ? <video src={videoUrl} className="mb-2 h-28 w-full rounded bg-black object-cover" controls /> : <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{video.status || 'pending'}</div>}
-                <div className="line-clamp-2 text-xs text-gray-300">{video.prompt || '无提示词'}</div>
-                <div className="mt-1 flex justify-between text-[10px] text-gray-600">
-                  <span>{video.status || 'unknown'}</span>
-                  <span>{video.created_at || video.video_id}</span>
+              <div key={`video-${item.id}`} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
+                {videoUrl ? <video src={videoUrl} className="mb-2 h-28 w-full rounded bg-black object-cover" controls /> : <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{item.video.status || 'pending'}</div>}
+                <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
+                  <span className="text-purple-300">视频</span>
+                  <span className={pending ? 'text-yellow-300' : item.video.status === 'failed' ? 'text-red-300' : 'text-green-300'}>{item.video.status || 'pending'}</span>
+                </div>
+                <div className="line-clamp-2 text-xs text-gray-300">{item.title}</div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-gray-600">
+                  <span>{item.createdAt || item.id}</span>
+                  {(pending || item.video.status === 'failed') && (
+                    <button
+                      onClick={() => continuePollingHistoryVideo(item.video.video_id)}
+                      disabled={polling}
+                      className="rounded bg-blue-700 px-2 py-1 text-[10px] text-white hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      {polling ? '轮询中' : '继续轮询'}
+                    </button>
+                  )}
                 </div>
               </div>
             );
-          })}
-          {!historyVideos.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布视频历史</div>}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
-          <span>文本结果</span>
-          <span>{textHistory.length}</span>
-        </div>
-        <div className="space-y-2">
-          {textHistory.map((item) => (
+          }
+          return (
             <button
-              key={item.node_id}
-              onClick={() => { setSelectedNodeId(item.node_id); setRightPanelTab('node'); }}
+              key={`text-${item.id}`}
+              onClick={() => { setSelectedNodeId(item.nodeId); setRightPanelTab('node'); }}
               className="w-full rounded-lg border border-gray-800 bg-gray-950 p-3 text-left hover:border-blue-500"
             >
-              <div className="mb-1 text-xs font-medium text-blue-300">{item.label}</div>
+              <div className="mb-1 text-[10px] text-amber-300">文本</div>
+              <div className="mb-1 text-xs font-medium text-blue-300">{item.title}</div>
               <div className="line-clamp-5 whitespace-pre-wrap text-xs text-gray-300">{item.text}</div>
             </button>
-          ))}
-          {!textHistory.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布文本历史</div>}
-        </div>
-      </section>
+          );
+        })}
+        {!historyItems.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布历史</div>}
+      </div>
     </div>
   );
 
