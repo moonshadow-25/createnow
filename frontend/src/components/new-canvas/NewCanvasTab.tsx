@@ -439,6 +439,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const toast = useToast();
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingVideoIdsRef = useRef<Set<string>>(new Set());
   const [canvases, setCanvases] = useState<CanvasRecord[]>([]);
   const [activeCanvasId, setActiveCanvasId] = useState<string>('');
   const [canvasName, setCanvasName] = useState('新画布');
@@ -932,14 +933,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return current;
   };
 
-  const continuePollingHistoryVideo = async (videoId: string, silent = false) => {
-    let shouldStart = false;
-    setPollingVideoIds((prev) => {
-      if (prev.has(videoId)) return prev;
-      shouldStart = true;
-      return new Set(prev).add(videoId);
-    });
-    if (!shouldStart) return;
+  const continuePollingHistoryVideo = async (videoId: string, silent = false, force = false) => {
+    if (force) {
+      pollingVideoIdsRef.current.delete(videoId);
+      setPollingVideoIds(new Set(pollingVideoIdsRef.current));
+    }
+    if (pollingVideoIdsRef.current.has(videoId)) return;
+    pollingVideoIdsRef.current.add(videoId);
+    setPollingVideoIds(new Set(pollingVideoIdsRef.current));
     try {
       const updated = await pollVideoUntilDone(videoId);
       setHistoryVideos((prev) => prev.map((video) => video.video_id === videoId ? { ...video, ...updated } : video));
@@ -947,22 +948,19 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     } catch (error: any) {
       if (!silent) toast.toast(error?.response?.data?.detail || error?.message || '视频轮询失败', 'error');
     } finally {
-      setPollingVideoIds((prev) => {
-        const next = new Set(prev);
-        next.delete(videoId);
-        return next;
-      });
+      pollingVideoIdsRef.current.delete(videoId);
+      setPollingVideoIds(new Set(pollingVideoIdsRef.current));
       await loadCanvasHistory();
     }
   };
 
   useEffect(() => {
     if (rightPanelTab !== 'history') return;
-    const resumable = historyVideos.filter((video) => isPendingVideoStatus(video.status) && !pollingVideoIds.has(video.video_id));
+    const resumable = historyVideos.filter((video) => isPendingVideoStatus(video.status) && !pollingVideoIdsRef.current.has(video.video_id));
     resumable.slice(0, 3).forEach((video) => {
       continuePollingHistoryVideo(video.video_id, true);
     });
-  }, [rightPanelTab, historyVideos, pollingVideoIds]);
+  }, [rightPanelTab, historyVideos]);
 
   const prepareReferenceAssets = async (
     imageIds: string[],
@@ -1401,11 +1399,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                   <span>{item.createdAt || item.id}</span>
                   {(pending || item.video.status === 'failed') && (
                     <button
-                      onClick={() => continuePollingHistoryVideo(item.video.video_id)}
-                      disabled={polling}
-                      className="rounded bg-blue-700 px-2 py-1 text-[10px] text-white hover:bg-blue-600 disabled:opacity-50"
+                      onClick={() => continuePollingHistoryVideo(item.video.video_id, false, true)}
+                      className="rounded bg-blue-700 px-2 py-1 text-[10px] text-white hover:bg-blue-600"
                     >
-                      {polling ? '轮询中' : '继续轮询'}
+                      {polling ? '重新轮询' : '继续轮询'}
                     </button>
                   )}
                 </div>
