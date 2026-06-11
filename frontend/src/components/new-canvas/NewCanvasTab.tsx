@@ -94,6 +94,7 @@ type CanvasEdge = {
   target_node_id: string;
   target_port: string;
   target_port_type?: PortType;
+  order?: number;
 };
 
 type CanvasRecord = {
@@ -169,7 +170,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: ImageIcon,
     color: 'from-blue-500 to-cyan-500',
     inputs: [],
-    outputs: [{ key: 'image', label: '图片', type: 'image' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }],
     defaults: {},
   },
   {
@@ -179,7 +180,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: Video,
     color: 'from-purple-500 to-fuchsia-500',
     inputs: [],
-    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }],
     defaults: {},
   },
   {
@@ -189,7 +190,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: Music,
     color: 'from-emerald-500 to-teal-500',
     inputs: [],
-    outputs: [{ key: 'audio', label: '音频', type: 'audio' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'audio', label: '音频', type: 'audio' }],
     defaults: {},
   },
   {
@@ -209,7 +210,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: Zap,
     color: 'from-sky-500 to-blue-600',
     inputs: [{ key: 'text', label: '提示词', type: 'text' }],
-    outputs: [{ key: 'image', label: '图片', type: 'image' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }],
     defaults: { prompt: '', size: '16x9' },
   },
   {
@@ -219,7 +220,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: ImageIcon,
     color: 'from-pink-500 to-rose-500',
     inputs: [{ key: 'image', label: '参考图', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
-    outputs: [{ key: 'image', label: '图片', type: 'image' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }],
     defaults: { prompt: '', size: '16x9' },
   },
   {
@@ -229,7 +230,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: Video,
     color: 'from-red-500 to-orange-600',
     inputs: [{ key: 'text', label: '提示词', type: 'text' }],
-    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }],
     defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
   },
   {
@@ -239,7 +240,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: Play,
     color: 'from-indigo-500 to-violet-600',
     inputs: [{ key: 'image', label: '参考图', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
-    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }],
     defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
   },
   {
@@ -252,10 +253,9 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
       { key: 'image', label: '图片', type: 'image' },
       { key: 'video', label: '视频', type: 'video' },
       { key: 'audio', label: '音频', type: 'audio' },
-      { key: 'media', label: '媒体', type: 'media' },
       { key: 'text', label: '提示词', type: 'text' },
     ],
-    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }],
     defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
   },
 ];
@@ -347,7 +347,7 @@ function normalizeNodes(nodes: any[] | undefined): CanvasNode[] {
 }
 
 function normalizeEdges(edges: any[] | undefined): CanvasEdge[] {
-  return (edges || []).map((edge) => ({
+  return (edges || []).map((edge, index) => ({
     edge_id: String(edge.edge_id || edge.id || newId('edge')),
     source_node_id: String(edge.source_node_id || edge.source || ''),
     source_port: String(edge.source_port || edge.sourceHandle || 'out'),
@@ -355,6 +355,7 @@ function normalizeEdges(edges: any[] | undefined): CanvasEdge[] {
     target_node_id: String(edge.target_node_id || edge.target || ''),
     target_port: String(edge.target_port || edge.targetHandle || 'in'),
     target_port_type: edge.target_port_type,
+    order: Number.isFinite(Number(edge.order)) ? Number(edge.order) : index + 1,
   })).filter((edge) => edge.source_node_id && edge.target_node_id);
 }
 
@@ -440,6 +441,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingVideoIdsRef = useRef<Set<string>>(new Set());
+  const nodeDragMovedRef = useRef(false);
   const [canvases, setCanvases] = useState<CanvasRecord[]>([]);
   const [activeCanvasId, setActiveCanvasId] = useState<string>('');
   const [canvasName, setCanvasName] = useState('新画布');
@@ -691,6 +693,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   const handleMouseMove = (event: React.MouseEvent) => {
     if (draggingNode) {
+      nodeDragMovedRef.current = true;
       const point = screenToWorld(event.clientX, event.clientY);
       setNodes((prev) => prev.map((node) => node.node_id === draggingNode.nodeId ? { ...node, x: point.x - draggingNode.dx, y: point.y - draggingNode.dy } : node));
       return;
@@ -704,10 +707,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const target = event.target as HTMLElement;
     if (target.closest('[data-port]') || target.closest('button')) return;
     event.stopPropagation();
+    nodeDragMovedRef.current = false;
     const point = screenToWorld(event.clientX, event.clientY);
     setDraggingNode({ nodeId: node.node_id, dx: point.x - node.x, dy: point.y - node.y });
-    setSelectedNodeId(node.node_id);
-    setSelectedEdgeId(null);
   };
 
   const finishPointerAction = () => {
@@ -725,11 +727,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setConnecting(null);
       return;
     }
-    if (connecting.type !== type && connecting.type !== 'media' && type !== 'media') {
+    if (connecting.type !== type) {
       toast.toast(`端口类型不匹配：${connecting.type} -> ${type}`, 'error');
       setConnecting(null);
       return;
     }
+    const nextOrder = Math.max(0, ...edges
+      .filter((item) => item.target_node_id === nodeId && item.target_port === port)
+      .map((item) => item.order || 0)) + 1;
     const edge: CanvasEdge = {
       edge_id: newId('edge'),
       source_node_id: connecting.nodeId,
@@ -738,6 +743,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       target_node_id: nodeId,
       target_port: port,
       target_port_type: type,
+      order: nextOrder,
     };
     setEdges((prev) => [...prev.filter((item) => !(item.target_node_id === nodeId && item.target_port === port && item.source_node_id === connecting.nodeId)), edge]);
     setConnecting(null);
@@ -761,8 +767,98 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     };
   };
 
+  const getIncomingEdges = (nodeId: string, targetPort?: string) => edges
+    .filter((edge) => edge.target_node_id === nodeId && (!targetPort || edge.target_port === targetPort))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const getPortConnectionState = (nodeId: string, port: string, side: 'in' | 'out', type: PortType) => {
+    const connected = edges.some((edge) => side === 'in'
+      ? edge.target_node_id === nodeId && edge.target_port === port
+      : edge.source_node_id === nodeId && edge.source_port === port);
+    const connectingSource = side === 'out' && connecting?.nodeId === nodeId && connecting.port === port;
+    const connectable = side === 'in' && Boolean(connecting) && connecting?.nodeId !== nodeId && connecting?.type === type;
+    const incompatible = side === 'in' && Boolean(connecting) && !connectable;
+    return { connected, connectingSource, connectable, incompatible };
+  };
+
+  const getPortClassName = (nodeId: string, port: string, side: 'in' | 'out', type: PortType) => {
+    const state = getPortConnectionState(nodeId, port, side, type);
+    const base = 'absolute flex h-4 w-4 items-center justify-center rounded-full border-2 border-gray-900 transition';
+    if (state.connectingSource) return `${base} bg-yellow-300 ring-4 ring-yellow-300/30`;
+    if (state.incompatible) return `${base} bg-gray-700 opacity-40`;
+    if (state.connectable) return `${base} bg-gray-950 ring-4 ring-blue-400/30 after:h-1.5 after:w-1.5 after:rounded-full after:bg-blue-300`;
+    if (state.connected) return `${base} ${side === 'in' ? 'bg-blue-400' : 'bg-green-400'}`;
+    return `${base} ${side === 'in' ? 'bg-gray-950 hover:bg-blue-400' : 'bg-gray-950 hover:bg-green-400'}`;
+  };
+
+  const moveInputEdge = (edgeId: string, direction: -1 | 1) => {
+    const edge = edges.find((item) => item.edge_id === edgeId);
+    if (!edge) return;
+    const group = getIncomingEdges(edge.target_node_id, edge.target_port);
+    const index = group.findIndex((item) => item.edge_id === edgeId);
+    const swap = group[index + direction];
+    if (!swap) return;
+    setEdges((prev) => prev.map((item) => {
+      if (item.edge_id === edge.edge_id) return { ...item, order: swap.order };
+      if (item.edge_id === swap.edge_id) return { ...item, order: edge.order };
+      return item;
+    }));
+  };
+
+  const getNodePrimaryOutput = (node: CanvasNode): NodeOutput | undefined => {
+    if (node.config.last_result) return node.config.last_result;
+    if (node.type === 'static.image') return {
+      image_id: node.config.image_id,
+      image_url: node.config.image_url,
+      media: node.config.image_id && node.config.existing_asset_audit_id ? [{
+        type: 'image',
+        id: node.config.image_id,
+        url: node.config.image_url || '',
+        name: node.config.asset_name || node.label,
+        audit: {
+          refType: 'image',
+          refKey: node.config.image_id,
+          assetId: node.config.existing_asset_audit_id,
+          status: node.config.existing_asset_audit_status || 'Active',
+        },
+      }] : [],
+    };
+    if (node.type === 'static.video') return { video_url: node.config.media_url };
+    if (node.type === 'static.audio') return { audio_url: node.config.media_url };
+    return undefined;
+  };
+
+  const collectVisibleAuditStateForNode = (nodeId: string) => {
+    const visible: Record<string, AssetAuditState> = {};
+    const currentKeys = new Set<string>();
+    getIncomingEdges(nodeId).forEach((edge) => {
+      const source = nodes.find((item) => item.node_id === edge.source_node_id);
+      if (!source) return;
+      const output = getNodePrimaryOutput(source);
+      const imageKey = output?.image_id ? `image:${output.image_id}` : '';
+      const videoKey = output?.video_url ? `video:${output.video_url}` : '';
+      if (imageKey) currentKeys.add(imageKey);
+      if (videoKey) currentKeys.add(videoKey);
+      Object.entries(source.config.audit_state || {}).forEach(([key, audit]) => {
+        if (!currentKeys.has(key)) return;
+        visible[key] = audit;
+      });
+      (output?.media || []).forEach((media) => {
+        if (!media.audit) return;
+        const key = media.type === 'image' && media.id ? `image:${media.id}` : media.type === 'video' ? `video:${media.url}` : '';
+        if (key) visible[key] = media.audit;
+      });
+    });
+    Object.entries(nodes.find((node) => node.node_id === nodeId)?.config.audit_state || {}).forEach(([key, audit]) => {
+      if (currentKeys.has(key)) visible[key] = audit;
+    });
+    return visible;
+  };
+
   const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>) => {
-    const inputs = edges.filter((edge) => edge.target_node_id === nodeId);
+    const inputs = edges
+      .filter((edge) => edge.target_node_id === nodeId)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
     return inputs.map((edge) => outputMap[edge.source_node_id]).filter(Boolean);
   };
 
@@ -1182,8 +1278,34 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
   };
 
+  const renderInputOrderPanel = (node: CanvasNode) => {
+    const incoming = getIncomingEdges(node.node_id);
+    if (!incoming.length) return null;
+    return (
+      <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
+        <div className="mb-2 text-xs font-medium text-gray-300">输入顺序</div>
+        <div className="space-y-2">
+          {incoming.map((edge, index) => {
+            const source = nodes.find((item) => item.node_id === edge.source_node_id);
+            return (
+              <div key={edge.edge_id} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-700 text-[10px] text-white">{index + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-gray-200">{source?.label || edge.source_node_id}</div>
+                  <div className="text-[10px] text-gray-500">{edge.target_port} ← {edge.source_port}</div>
+                </div>
+                <button onClick={() => moveInputEdge(edge.edge_id, -1)} disabled={index === 0} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">上</button>
+                <button onClick={() => moveInputEdge(edge.edge_id, 1)} disabled={index === incoming.length - 1} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">下</button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderAuditState = (node: CanvasNode) => {
-    const entries = Object.entries(node.config.audit_state || {});
+    const entries = Object.entries(isVideoNode(node.type) ? collectVisibleAuditStateForNode(node.node_id) : (node.config.audit_state || {}));
     if (!entries.length) return null;
     return (
       <div className="mt-3 rounded-lg border border-gray-800 bg-gray-950 p-3">
@@ -1229,6 +1351,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         </div>
 
         <div className="rounded-lg bg-gray-900 p-3 text-xs text-gray-400">{definition.description}</div>
+
+        {renderInputOrderPanel(selectedNode)}
 
         {(selectedNode.type === 'static.image' || selectedNode.type === 'static.video' || selectedNode.type === 'static.audio') && (
           <div className="space-y-2">
@@ -1527,6 +1651,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                   <g key={edge.edge_id} className="pointer-events-auto cursor-pointer" onClick={(event) => { event.stopPropagation(); setSelectedEdgeId(edge.edge_id); setSelectedNodeId(null); }}>
                     <path d={path} stroke="transparent" strokeWidth={12} fill="none" />
                     <path d={path} stroke={selected ? '#60a5fa' : '#64748b'} strokeWidth={selected ? 3 : 2} fill="none" />
+                    {edge.order != null && (
+                      <g transform={`translate(${end.x - 22}, ${end.y - 10})`}>
+                        <circle cx="8" cy="8" r="8" fill={selected ? '#60a5fa' : '#1e293b'} stroke="#64748b" strokeWidth="1" />
+                        <text x="8" y="11" textAnchor="middle" fontSize="9" fill="#fff">{edge.order}</text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
@@ -1541,7 +1671,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                   key={node.node_id}
                   data-node-id={node.node_id}
                   onMouseDown={(event) => handleNodeMouseDown(event, node)}
-                  onClick={(event) => { event.stopPropagation(); setSelectedNodeId(node.node_id); setSelectedEdgeId(null); }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (nodeDragMovedRef.current) {
+                      nodeDragMovedRef.current = false;
+                      return;
+                    }
+                    setSelectedNodeId(node.node_id);
+                    setSelectedEdgeId(null);
+                  }}
                   className={`absolute rounded-xl border bg-gray-900 shadow-2xl transition ${selectedNodeId === node.node_id ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-gray-700'} ${state === 'running' ? 'ring-2 ring-yellow-400/40' : ''} ${state === 'failed' ? 'border-red-500' : ''}`}
                   style={{ left: node.x, top: node.y, width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
                 >
@@ -1559,7 +1697,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       key={port.key}
                       data-port="in"
                       onClick={(event) => { event.stopPropagation(); handleInputPortClick(node.node_id, port.key, port.type); }}
-                      className="absolute -left-2 h-4 w-4 rounded-full border border-gray-900 bg-blue-400 hover:bg-blue-300"
+                      className={getPortClassName(node.node_id, port.key, 'in', port.type)}
                       style={{ top: (NODE_HEIGHT / (definition.inputs.length + 1)) * (index + 1) - 8 }}
                       title={`${port.label} (${port.type})`}
                     />
@@ -1569,7 +1707,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       key={port.key}
                       data-port="out"
                       onClick={(event) => { event.stopPropagation(); handleOutputPortClick(node.node_id, port.key, port.type); }}
-                      className="absolute -right-2 h-4 w-4 rounded-full border border-gray-900 bg-green-400 hover:bg-green-300"
+                      className={getPortClassName(node.node_id, port.key, 'out', port.type)}
                       style={{ top: (NODE_HEIGHT / (definition.outputs.length + 1)) * (index + 1) - 8 }}
                       title={`${port.label} (${port.type})`}
                     />
