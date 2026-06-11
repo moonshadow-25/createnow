@@ -1,0 +1,1238 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Box,
+  Brain,
+  CheckCircle,
+  Image as ImageIcon,
+  Loader2,
+  Music,
+  Play,
+  Plus,
+  Save,
+  Trash2,
+  Video,
+  X,
+  Zap,
+} from 'lucide-react';
+import { canvasApi, generationApi } from '@/services/api';
+import { useAssetStore } from '@/store/assetStore';
+import { useToast } from '@/components/common/Toast';
+import { getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
+
+type NodeKind =
+  | 'static.image'
+  | 'static.video'
+  | 'static.audio'
+  | 'gen.llm'
+  | 'gen.image'
+  | 'gen.image_edit'
+  | 'gen.video.text'
+  | 'gen.video.image'
+  | 'gen.video.multi';
+
+type PortType = 'text' | 'image' | 'video' | 'audio' | 'media' | 'json';
+type RunStatus = 'idle' | 'running' | 'succeeded' | 'failed';
+type CanvasAssetType = 'character' | 'scene' | 'prop' | 'storyboard';
+
+type RefMedia = {
+  type: 'image' | 'video' | 'audio';
+  id?: string;
+  url: string;
+  name: string;
+  sourceAssetId?: string;
+  sourceAssetType?: CanvasAssetType;
+};
+
+type CanvasNode = {
+  node_id: string;
+  type: NodeKind;
+  label: string;
+  x: number;
+  y: number;
+  config: {
+    prompt?: string;
+    negative_prompt?: string;
+    size?: string;
+    model?: string;
+    duration?: number;
+    resolution?: string;
+    ratio?: string;
+    generate_audio?: boolean;
+    image_id?: string;
+    image_url?: string;
+    media_id?: string;
+    media_url?: string;
+    media_type?: 'video' | 'audio';
+    asset_id?: string;
+    asset_type?: CanvasAssetType;
+    asset_name?: string;
+    file_name?: string;
+    last_result?: NodeOutput;
+  };
+};
+
+type CanvasEdge = {
+  edge_id: string;
+  source_node_id: string;
+  source_port: string;
+  source_port_type?: PortType;
+  target_node_id: string;
+  target_port: string;
+  target_port_type?: PortType;
+};
+
+type CanvasRecord = {
+  canvas_id: string;
+  name: string;
+  description?: string;
+  zoom?: number;
+  pan_x?: number;
+  pan_y?: number;
+  nodes?: CanvasNode[];
+  edges?: CanvasEdge[];
+  variables?: Record<string, unknown>;
+};
+
+type NodeOutput = {
+  text?: string;
+  image_id?: string;
+  image_url?: string;
+  video_id?: string;
+  video_url?: string;
+  audio_url?: string;
+  media?: RefMedia[];
+  raw?: unknown;
+};
+
+type NodeDefinition = {
+  type: NodeKind;
+  label: string;
+  description: string;
+  icon: typeof ImageIcon;
+  color: string;
+  inputs: { key: string; label: string; type: PortType }[];
+  outputs: { key: string; label: string; type: PortType }[];
+  defaults: CanvasNode['config'];
+};
+
+const NODE_WIDTH = 280;
+const NODE_HEIGHT = 174;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 2.2;
+
+const NODE_DEFINITIONS: NodeDefinition[] = [
+  {
+    type: 'static.image',
+    label: '静态图片',
+    description: '上传图片或选择资产主图',
+    icon: ImageIcon,
+    color: 'from-blue-500 to-cyan-500',
+    inputs: [],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: {},
+  },
+  {
+    type: 'static.video',
+    label: '静态视频',
+    description: '上传本地视频作为参考',
+    icon: Video,
+    color: 'from-purple-500 to-fuchsia-500',
+    inputs: [],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: {},
+  },
+  {
+    type: 'static.audio',
+    label: '静态音频',
+    description: '上传本地音频作为参考',
+    icon: Music,
+    color: 'from-emerald-500 to-teal-500',
+    inputs: [],
+    outputs: [{ key: 'audio', label: '音频', type: 'audio' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: {},
+  },
+  {
+    type: 'gen.llm',
+    label: 'LLM 文本',
+    description: '调用现有项目对话接口生成文本',
+    icon: Brain,
+    color: 'from-amber-500 to-orange-500',
+    inputs: [{ key: 'text', label: '文本', type: 'text' }],
+    outputs: [{ key: 'text', label: '文本', type: 'text' }],
+    defaults: { prompt: '请根据输入内容生成提示词：\n{{input}}' },
+  },
+  {
+    type: 'gen.image',
+    label: '文生图',
+    description: '使用广场图片生成接口',
+    icon: Zap,
+    color: 'from-sky-500 to-blue-600',
+    inputs: [{ key: 'text', label: '提示词', type: 'text' }],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: { prompt: '', size: '16x9' },
+  },
+  {
+    type: 'gen.image_edit',
+    label: '图生图',
+    description: '使用现有 image-edit 接口',
+    icon: ImageIcon,
+    color: 'from-pink-500 to-rose-500',
+    inputs: [{ key: 'image', label: '参考图', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: { prompt: '', size: '16x9' },
+  },
+  {
+    type: 'gen.video.text',
+    label: '文生视频',
+    description: '无图片参考的视频生成',
+    icon: Video,
+    color: 'from-red-500 to-orange-600',
+    inputs: [{ key: 'text', label: '提示词', type: 'text' }],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
+  },
+  {
+    type: 'gen.video.image',
+    label: '图生视频',
+    description: '图片作为参考生成视频',
+    icon: Play,
+    color: 'from-indigo-500 to-violet-600',
+    inputs: [{ key: 'image', label: '参考图', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
+  },
+  {
+    type: 'gen.video.multi',
+    label: '多参生视频',
+    description: '图片、视频、音频多参考生成视频',
+    icon: Box,
+    color: 'from-yellow-500 to-lime-500',
+    inputs: [
+      { key: 'image', label: '图片', type: 'image' },
+      { key: 'video', label: '视频', type: 'video' },
+      { key: 'audio', label: '音频', type: 'audio' },
+      { key: 'media', label: '媒体', type: 'media' },
+      { key: 'text', label: '提示词', type: 'text' },
+    ],
+    outputs: [{ key: 'video', label: '视频', type: 'video' }, { key: 'media', label: '媒体', type: 'media' }],
+    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
+  },
+];
+
+const IMAGE_SIZE_OPTIONS = [
+  { label: '16:9 横版', value: '16x9' },
+  { label: '9:16 竖版', value: '9x16' },
+  { label: '1:1 方形', value: '1x1' },
+  { label: '4:3 标准', value: '4x3' },
+  { label: '3:4 竖版', value: '3x4' },
+];
+
+const VIDEO_RATIO_OPTIONS = ['16:9', '9:16', '21:9'];
+const VIDEO_RESOLUTION_OPTIONS = ['480p', '720p', '1080p'];
+
+interface NewCanvasTabProps {
+  projectId: string;
+  showAssetSubmit?: boolean;
+  imageApiType?: string;
+  videoApiType?: string;
+}
+
+function newId(prefix: string): string {
+  return `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+}
+
+function getDefinition(type: NodeKind): NodeDefinition {
+  return NODE_DEFINITIONS.find((item) => item.type === type) || NODE_DEFINITIONS[0];
+}
+
+function getImageUrlFromRecord(projectId: string, record: any): string {
+  if (record?.local_path) return `/api/projects/${projectId}/images/files/${record.local_path}`;
+  return record?.image_path || record?.image_url || '';
+}
+
+function getVideoUrlFromRecord(projectId: string, record: any): string {
+  if (record?.local_path) return `/api/projects/${projectId}/videos/files/${record.local_path}`;
+  return record?.video_path || record?.video_url || '';
+}
+
+function isVideoNode(type: NodeKind): boolean {
+  return type === 'gen.video.text' || type === 'gen.video.image' || type === 'gen.video.multi';
+}
+
+function textFromOutput(output?: NodeOutput): string {
+  if (!output) return '';
+  if (output.text) return output.text;
+  if (output.image_id) return output.image_id;
+  if (output.video_url) return output.video_url;
+  return '';
+}
+
+function mergePrompt(prompt: string | undefined, inputText: string): string {
+  const base = (prompt || '').trim();
+  if (!base) return inputText.trim();
+  if (base.includes('{{input}}')) return base.split('{{input}}').join(inputText.trim());
+  return [base, inputText.trim()].filter(Boolean).join('\n');
+}
+
+function normalizeNodes(nodes: any[] | undefined): CanvasNode[] {
+  return (nodes || []).map((node) => ({
+    node_id: String(node.node_id || node.id || newId('node')),
+    type: (node.type || 'static.image') as NodeKind,
+    label: String(node.label || getDefinition((node.type || 'static.image') as NodeKind).label),
+    x: Number(node.x || 0),
+    y: Number(node.y || 0),
+    config: node.config || {},
+  }));
+}
+
+function normalizeEdges(edges: any[] | undefined): CanvasEdge[] {
+  return (edges || []).map((edge) => ({
+    edge_id: String(edge.edge_id || edge.id || newId('edge')),
+    source_node_id: String(edge.source_node_id || edge.source || ''),
+    source_port: String(edge.source_port || edge.sourceHandle || 'out'),
+    source_port_type: edge.source_port_type,
+    target_node_id: String(edge.target_node_id || edge.target || ''),
+    target_port: String(edge.target_port || edge.targetHandle || 'in'),
+    target_port_type: edge.target_port_type,
+  })).filter((edge) => edge.source_node_id && edge.target_node_id);
+}
+
+function buildTopologicalOrder(nodes: CanvasNode[], edges: CanvasEdge[]): string[] {
+  const ids = new Set(nodes.map((node) => node.node_id));
+  const indegree = new Map<string, number>();
+  const graph = new Map<string, string[]>();
+  nodes.forEach((node) => {
+    indegree.set(node.node_id, 0);
+    graph.set(node.node_id, []);
+  });
+  edges.forEach((edge) => {
+    if (!ids.has(edge.source_node_id) || !ids.has(edge.target_node_id)) return;
+    graph.get(edge.source_node_id)?.push(edge.target_node_id);
+    indegree.set(edge.target_node_id, (indegree.get(edge.target_node_id) || 0) + 1);
+  });
+  const queue = [...indegree.entries()].filter(([, degree]) => degree === 0).map(([id]) => id);
+  const order: string[] = [];
+  while (queue.length) {
+    const current = queue.shift()!;
+    order.push(current);
+    (graph.get(current) || []).forEach((next) => {
+      const degree = (indegree.get(next) || 0) - 1;
+      indegree.set(next, degree);
+      if (degree === 0) queue.push(next);
+    });
+  }
+  return order.length === nodes.length ? order : [];
+}
+
+async function readChatStream(projectId: string, message: string): Promise<string> {
+  const token = localStorage.getItem('saas_token') || localStorage.getItem('admin_token');
+  const response = await fetch(`/api/projects/${projectId}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ message }),
+  });
+  if (!response.ok) throw new Error('LLM 调用失败');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('LLM 响应为空');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    lines.forEach((line) => {
+      if (!line.startsWith('data: ')) return;
+      try {
+        const chunk = JSON.parse(line.slice(6));
+        if (chunk.type === 'content') content += chunk.content || '';
+      } catch {
+        // ignore malformed stream chunks
+      }
+    });
+  }
+  return content.trim();
+}
+
+export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType = '', videoApiType = '' }: NewCanvasTabProps) {
+  const toast = useToast();
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [canvases, setCanvases] = useState<CanvasRecord[]>([]);
+  const [activeCanvasId, setActiveCanvasId] = useState<string>('');
+  const [canvasName, setCanvasName] = useState('新画布');
+  const [nodes, setNodes] = useState<CanvasNode[]>([]);
+  const [edges, setEdges] = useState<CanvasEdge[]>([]);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<{ nodeId: string; port: string; type: PortType } | null>(null);
+  const [draggingNode, setDraggingNode] = useState<{ nodeId: string; dx: number; dy: number } | null>(null);
+  const [panning, setPanning] = useState<{ x: number; y: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [nodeStatus, setNodeStatus] = useState<Record<string, { status: RunStatus; error?: string }>>({});
+  const [outputs, setOutputs] = useState<Record<string, NodeOutput>>({});
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [assetTab, setAssetTab] = useState<CanvasAssetType>('character');
+  const [uploadTarget, setUploadTarget] = useState<'image' | 'video' | 'audio'>('image');
+  const { characters, scenes, props, storyboards } = useAssetStore();
+
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.node_id === selectedNodeId) || null,
+    [nodes, selectedNodeId],
+  );
+
+  const assetGroups = useMemo(() => ({
+    character: characters,
+    scene: scenes,
+    prop: props,
+    storyboard: storyboards,
+  }), [characters, scenes, props, storyboards]);
+
+  const loadCanvases = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await canvasApi.list(projectId);
+      let list = response.data as CanvasRecord[];
+      if (!list.length) {
+        const created = await canvasApi.create(projectId, { name: '默认画布', description: '新画布工作流' });
+        list = [created.data];
+      }
+      setCanvases(list);
+      const first = list[0];
+      setActiveCanvasId(first.canvas_id);
+      setCanvasName(first.name || '默认画布');
+      setNodes(normalizeNodes(first.nodes));
+      setEdges(normalizeEdges(first.edges));
+      setZoom(Number(first.zoom || 1));
+      setPan({ x: Number(first.pan_x || 0), y: Number(first.pan_y || 0) });
+      setOutputs(Object.fromEntries(normalizeNodes(first.nodes).map((node) => [node.node_id, node.config.last_result]).filter(([, output]) => Boolean(output))) as Record<string, NodeOutput>);
+    } catch (error: any) {
+      toast.toast(error?.response?.data?.detail || '画布加载失败', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, toast]);
+
+  useEffect(() => {
+    loadCanvases();
+  }, [loadCanvases]);
+
+  const saveCanvas = useCallback(async (silent = false, nextNodes = nodes, nextEdges = edges) => {
+    if (!activeCanvasId) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: canvasName || '新画布',
+        zoom,
+        pan_x: pan.x,
+        pan_y: pan.y,
+        schema_version: 3,
+        nodes: nextNodes,
+        edges: nextEdges,
+        variables: { ui: 'new-canvas' },
+      };
+      const response = await canvasApi.update(projectId, activeCanvasId, payload);
+      setCanvases((prev) => prev.map((item) => item.canvas_id === activeCanvasId ? response.data : item));
+      if (!silent) toast.toast('画布已保存', 'success');
+    } catch (error: any) {
+      toast.toast(error?.response?.data?.detail || '画布保存失败', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [activeCanvasId, canvasName, edges, nodes, pan.x, pan.y, projectId, toast, zoom]);
+
+  const createCanvas = async () => {
+    try {
+      const response = await canvasApi.create(projectId, { name: `画布 ${canvases.length + 1}`, description: '新画布工作流' });
+      const canvas = response.data as CanvasRecord;
+      setCanvases((prev) => [...prev, canvas]);
+      setActiveCanvasId(canvas.canvas_id);
+      setCanvasName(canvas.name);
+      setNodes([]);
+      setEdges([]);
+      setOutputs({});
+      setNodeStatus({});
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+    } catch (error: any) {
+      toast.toast(error?.response?.data?.detail || '创建画布失败', 'error');
+    }
+  };
+
+  const switchCanvas = (canvasId: string) => {
+    const canvas = canvases.find((item) => item.canvas_id === canvasId);
+    if (!canvas) return;
+    setActiveCanvasId(canvas.canvas_id);
+    setCanvasName(canvas.name || '新画布');
+    const nextNodes = normalizeNodes(canvas.nodes);
+    setNodes(nextNodes);
+    setEdges(normalizeEdges(canvas.edges));
+    setZoom(Number(canvas.zoom || 1));
+    setPan({ x: Number(canvas.pan_x || 0), y: Number(canvas.pan_y || 0) });
+    setOutputs(Object.fromEntries(nextNodes.map((node) => [node.node_id, node.config.last_result]).filter(([, output]) => Boolean(output))) as Record<string, NodeOutput>);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+  };
+
+  const deleteCanvas = async () => {
+    if (!activeCanvasId || canvases.length <= 1) {
+      toast.toast('至少保留一个画布', 'error');
+      return;
+    }
+    try {
+      await canvasApi.delete(projectId, activeCanvasId);
+      const next = canvases.filter((canvas) => canvas.canvas_id !== activeCanvasId);
+      setCanvases(next);
+      switchCanvas(next[0].canvas_id);
+    } catch (error: any) {
+      toast.toast(error?.response?.data?.detail || '删除画布失败', 'error');
+    }
+  };
+
+  const screenToWorld = (clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom,
+    };
+  };
+
+  const addNode = (type: NodeKind) => {
+    const definition = getDefinition(type);
+    const center = canvasRef.current
+      ? screenToWorld(canvasRef.current.getBoundingClientRect().left + canvasRef.current.clientWidth / 2, canvasRef.current.getBoundingClientRect().top + canvasRef.current.clientHeight / 2)
+      : { x: 120, y: 120 };
+    const node: CanvasNode = {
+      node_id: newId('node'),
+      type,
+      label: definition.label,
+      x: center.x - NODE_WIDTH / 2 + nodes.length * 20,
+      y: center.y - NODE_HEIGHT / 2 + nodes.length * 20,
+      config: { ...definition.defaults },
+    };
+    const next = [...nodes, node];
+    setNodes(next);
+    setSelectedNodeId(node.node_id);
+    setSelectedEdgeId(null);
+  };
+
+  const removeNode = (nodeId: string) => {
+    const nextNodes = nodes.filter((node) => node.node_id !== nodeId);
+    const nextEdges = edges.filter((edge) => edge.source_node_id !== nodeId && edge.target_node_id !== nodeId);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    setSelectedNodeId(null);
+    setOutputs((prev) => {
+      const copy = { ...prev };
+      delete copy[nodeId];
+      return copy;
+    });
+  };
+
+  const updateNodeConfig = (nodeId: string, patch: CanvasNode['config']) => {
+    setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch } } : node));
+  };
+
+  const updateNodeLabel = (nodeId: string, label: string) => {
+    setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, label } : node));
+  };
+
+  const handleCanvasWheel = (event: React.WheelEvent) => {
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? -0.08 : 0.08;
+    setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((prev + direction).toFixed(2)))));
+  };
+
+  const handleMouseMove = (event: React.MouseEvent) => {
+    if (draggingNode) {
+      const point = screenToWorld(event.clientX, event.clientY);
+      setNodes((prev) => prev.map((node) => node.node_id === draggingNode.nodeId ? { ...node, x: point.x - draggingNode.dx, y: point.y - draggingNode.dy } : node));
+      return;
+    }
+    if (panning) {
+      setPan({ x: event.clientX - panning.x, y: event.clientY - panning.y });
+    }
+  };
+
+  const handleNodeMouseDown = (event: React.MouseEvent, node: CanvasNode) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-port]') || target.closest('button')) return;
+    event.stopPropagation();
+    const point = screenToWorld(event.clientX, event.clientY);
+    setDraggingNode({ nodeId: node.node_id, dx: point.x - node.x, dy: point.y - node.y });
+    setSelectedNodeId(node.node_id);
+    setSelectedEdgeId(null);
+  };
+
+  const finishPointerAction = () => {
+    setDraggingNode(null);
+    setPanning(null);
+  };
+
+  const handleOutputPortClick = (nodeId: string, port: string, type: PortType) => {
+    setConnecting({ nodeId, port, type });
+  };
+
+  const handleInputPortClick = (nodeId: string, port: string, type: PortType) => {
+    if (!connecting) return;
+    if (connecting.nodeId === nodeId) {
+      setConnecting(null);
+      return;
+    }
+    if (connecting.type !== type && connecting.type !== 'media' && type !== 'media') {
+      toast.toast(`端口类型不匹配：${connecting.type} -> ${type}`, 'error');
+      setConnecting(null);
+      return;
+    }
+    const edge: CanvasEdge = {
+      edge_id: newId('edge'),
+      source_node_id: connecting.nodeId,
+      source_port: connecting.port,
+      source_port_type: connecting.type,
+      target_node_id: nodeId,
+      target_port: port,
+      target_port_type: type,
+    };
+    setEdges((prev) => [...prev.filter((item) => !(item.target_node_id === nodeId && item.target_port === port && item.source_node_id === connecting.nodeId)), edge]);
+    setConnecting(null);
+  };
+
+  const removeEdge = (edgeId: string) => {
+    setEdges((prev) => prev.filter((edge) => edge.edge_id !== edgeId));
+    setSelectedEdgeId(null);
+  };
+
+  const getPortPosition = (nodeId: string, port: string, side: 'in' | 'out') => {
+    const node = nodes.find((item) => item.node_id === nodeId);
+    if (!node) return { x: 0, y: 0 };
+    const definition = getDefinition(node.type);
+    const ports = side === 'in' ? definition.inputs : definition.outputs;
+    const index = Math.max(0, ports.findIndex((item) => item.key === port));
+    const gap = NODE_HEIGHT / (ports.length + 1 || 2);
+    return {
+      x: node.x + (side === 'out' ? NODE_WIDTH : 0),
+      y: node.y + gap * (index + 1),
+    };
+  };
+
+  const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>) => {
+    const inputs = edges.filter((edge) => edge.target_node_id === nodeId);
+    return inputs.map((edge) => outputMap[edge.source_node_id]).filter(Boolean);
+  };
+
+  const setStatus = (nodeId: string, status: RunStatus, error?: string) => {
+    setNodeStatus((prev) => ({ ...prev, [nodeId]: { status, error } }));
+  };
+
+  const storeOutput = (nodeId: string, output: NodeOutput) => {
+    setOutputs((prev) => ({ ...prev, [nodeId]: output }));
+    setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, last_result: output } } : node));
+  };
+
+  const executeNode = async (node: CanvasNode, inputOutputs: NodeOutput[]): Promise<NodeOutput> => {
+    if (node.type === 'static.image') {
+      if (!node.config.image_id && !node.config.image_url) throw new Error('静态图片节点缺少图片');
+      const media: RefMedia[] = [{
+        type: 'image',
+        id: node.config.image_id,
+        url: node.config.image_url || '',
+        name: node.config.asset_name || node.config.file_name || node.label,
+        sourceAssetId: node.config.asset_id,
+        sourceAssetType: node.config.asset_type,
+      }];
+      return { image_id: node.config.image_id, image_url: node.config.image_url, media };
+    }
+
+    if (node.type === 'static.video') {
+      if (!node.config.media_url) throw new Error('静态视频节点缺少视频');
+      const media: RefMedia[] = [{ type: 'video', id: node.config.media_id, url: node.config.media_url, name: node.config.file_name || node.label }];
+      return { video_url: node.config.media_url, media };
+    }
+
+    if (node.type === 'static.audio') {
+      if (!node.config.media_url) throw new Error('静态音频节点缺少音频');
+      const media: RefMedia[] = [{ type: 'audio', id: node.config.media_id, url: node.config.media_url, name: node.config.file_name || node.label }];
+      return { audio_url: node.config.media_url, media };
+    }
+
+    const inputText = inputOutputs.map(textFromOutput).filter(Boolean).join('\n');
+    const prompt = mergePrompt(node.config.prompt, inputText);
+
+    if (node.type === 'gen.llm') {
+      if (!prompt) throw new Error('LLM 节点缺少提示词');
+      const text = await readChatStream(projectId, prompt);
+      return { text, raw: { prompt } };
+    }
+
+    if (node.type === 'gen.image') {
+      if (!prompt) throw new Error('文生图节点缺少提示词');
+      const response = await generationApi.generateSquareImage(projectId, {
+        prompt,
+        negative_prompt: node.config.negative_prompt || '',
+        size: node.config.size,
+        model: imageApiType === 'createnow' ? node.config.model : undefined,
+      });
+      const record = response.data;
+      const imageUrl = getImageUrlFromRecord(projectId, record);
+      return {
+        image_id: record.image_id,
+        image_url: imageUrl,
+        media: [{ type: 'image', id: record.image_id, url: imageUrl, name: record.prompt || node.label }],
+        raw: record,
+      };
+    }
+
+    if (node.type === 'gen.image_edit') {
+      const referenceImageIds = inputOutputs.map((output) => output.image_id).filter(Boolean) as string[];
+      const referenceImageUrls = inputOutputs.map((output) => output.image_url).filter(Boolean) as string[];
+      if (!prompt) throw new Error('图生图节点缺少提示词');
+      if (!referenceImageIds.length && !referenceImageUrls.length) throw new Error('图生图节点缺少参考图');
+      const response = await generationApi.editSquareImage(projectId, {
+        prompt,
+        size: node.config.size,
+        referenceImageIds,
+        referenceImageUrls,
+        model: imageApiType === 'createnow' ? node.config.model : undefined,
+      });
+      const record = response.data;
+      const imageUrl = getImageUrlFromRecord(projectId, record);
+      return {
+        image_id: record.image_id,
+        image_url: imageUrl,
+        media: [{ type: 'image', id: record.image_id, url: imageUrl, name: record.prompt || node.label }],
+        raw: record,
+      };
+    }
+
+    if (isVideoNode(node.type)) {
+      if (!prompt) throw new Error('视频节点缺少提示词');
+      const media = inputOutputs.flatMap((output) => output.media || []);
+      const imageIds = inputOutputs.map((output) => output.image_id).filter(Boolean) as string[];
+      const videoUrls = [
+        ...inputOutputs.map((output) => output.video_url).filter(Boolean) as string[],
+        ...media.filter((item) => item.type === 'video').map((item) => item.url),
+      ];
+      const audioUrls = [
+        ...inputOutputs.map((output) => output.audio_url).filter(Boolean) as string[],
+        ...media.filter((item) => item.type === 'audio').map((item) => item.url),
+      ];
+      const resolvedVideoUrls = showAssetSubmit && videoUrls.length ? await resolveVideoAssetUrls(videoUrls) : videoUrls;
+      const response = await generationApi.generateVideo(projectId, {
+        storyboard_id: null,
+        episode_id: null,
+        image_ids: imageIds,
+        video_urls: resolvedVideoUrls.length ? resolvedVideoUrls : undefined,
+        audio_urls: audioUrls.length ? audioUrls : undefined,
+        prompt,
+        duration: node.config.duration || 6,
+        resolution: node.config.resolution || '720p',
+        ratio: node.config.ratio || '16:9',
+        generate_audio: node.config.generate_audio,
+        reference_media: media,
+        model: videoApiType === 'createnow' ? node.config.model : undefined,
+      });
+      let video = response.data;
+      if (video.video_id) video = await pollVideoUntilDone(video.video_id);
+      const videoUrl = getVideoUrlFromRecord(projectId, video);
+      return {
+        video_id: video.video_id,
+        video_url: videoUrl,
+        media: videoUrl ? [{ type: 'video', id: video.video_id, url: videoUrl, name: video.prompt || node.label }] : [],
+        raw: video,
+      };
+    }
+
+    throw new Error(`不支持的节点类型：${node.type}`);
+  };
+
+  const pollVideoUntilDone = async (videoId: string) => {
+    let current: any = null;
+    for (let i = 0; i < 80; i += 1) {
+      const response = await generationApi.pollVideo(projectId, videoId);
+      current = response.data;
+      if (['completed', 'failed', 'canceled'].includes(current.status)) break;
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+    if (current?.status === 'failed') throw new Error(current.error || '视频生成失败');
+    return current;
+  };
+
+  const resolveVideoAssetUrls = async (videoUrls: string[]) => {
+    const submit = await generationApi.submitAsset(projectId, { video_urls: videoUrls, project_name: 'default' });
+    const submitted: any[] = [...(submit.data.submitted || []), ...(submit.data.skipped || []).filter((item: any) => typeof item === 'object')];
+    const resolved = await Promise.all(videoUrls.map(async (url) => {
+      const match = submitted.find((item) => item.video_url === url && item.asset_id);
+      if (!match?.asset_id) return url;
+      for (let i = 0; i < 20; i += 1) {
+        const status = await generationApi.getAssetStatus(projectId, match.asset_id);
+        if (status.data.status === 'Active') return `asset://${match.asset_id}`;
+        if (status.data.status === 'Failed') return url;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      return url;
+    }));
+    return resolved;
+  };
+
+  const runWorkflow = async () => {
+    if (running) return;
+    const order = buildTopologicalOrder(nodes, edges);
+    if (!nodes.length) {
+      toast.toast('请先添加节点', 'error');
+      return;
+    }
+    if (!order.length) {
+      toast.toast('工作流存在环路，请检查连线', 'error');
+      return;
+    }
+    setRunning(true);
+    setNodeStatus(Object.fromEntries(nodes.map((node) => [node.node_id, { status: 'idle' as RunStatus }])));
+    const outputMap: Record<string, NodeOutput> = {};
+    try {
+      await saveCanvas(true);
+      await canvasApi.validateWorkflow(projectId, activeCanvasId);
+      for (const nodeId of order) {
+        const node = nodes.find((item) => item.node_id === nodeId);
+        if (!node) continue;
+        setStatus(nodeId, 'running');
+        const result = await executeNode(node, incomingOutputs(nodeId, outputMap));
+        outputMap[nodeId] = result;
+        storeOutput(nodeId, result);
+        setStatus(nodeId, 'succeeded');
+      }
+      const nextNodes = nodes.map((node) => outputMap[node.node_id]
+        ? { ...node, config: { ...node.config, last_result: outputMap[node.node_id] } }
+        : node);
+      await saveCanvas(true, nextNodes, edges);
+      toast.toast('工作流运行完成', 'success');
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || error?.message || '工作流运行失败';
+      toast.toast(message, 'error');
+      const runningNode = Object.entries(nodeStatus).find(([, state]) => state.status === 'running')?.[0];
+      if (runningNode) setStatus(runningNode, 'failed', message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const openUpload = (target: 'image' | 'video' | 'audio') => {
+    setUploadTarget(target);
+    fileInputRef.current?.click();
+  };
+
+  const handleUpload = async (file: File) => {
+    if (!selectedNode) return;
+    try {
+      if (uploadTarget === 'image') {
+        const response = await generationApi.uploadImage(projectId, {
+          asset_id: crypto.randomUUID(),
+          asset_type: 'storyboard',
+          file,
+          prompt: '画布上传',
+        });
+        const record = response.data;
+        updateNodeConfig(selectedNode.node_id, {
+          image_id: record.image_id,
+          image_url: getImageUrlFromRecord(projectId, record),
+          file_name: file.name,
+        });
+      } else {
+        const response = await generationApi.uploadMedia(projectId, file);
+        const record = response.data;
+        updateNodeConfig(selectedNode.node_id, {
+          media_id: record.media_id,
+          media_url: record.url,
+          media_type: record.media_type,
+          file_name: file.name,
+        });
+      }
+      toast.toast('上传成功', 'success');
+    } catch (error: any) {
+      toast.toast(error?.response?.data?.detail || '上传失败', 'error');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const selectAssetForNode = (asset: any, assetType: CanvasAssetType) => {
+    if (!selectedNode) return;
+    const imageUrl = getAssetImageUrl(asset);
+    if (!asset.image_id && !imageUrl) {
+      toast.toast('该资产暂无主图', 'error');
+      return;
+    }
+    updateNodeConfig(selectedNode.node_id, {
+      image_id: asset.image_id,
+      image_url: imageUrl,
+      asset_id: asset.asset_id,
+      asset_type: assetType,
+      asset_name: asset.name,
+    });
+    setAssetPickerOpen(false);
+  };
+
+  const renderNodePreview = (node: CanvasNode) => {
+    const output = outputs[node.node_id] || node.config.last_result;
+    const imageUrl = output?.image_url || node.config.image_url;
+    const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
+    const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
+    const text = output?.text;
+    if (imageUrl) return <img src={imageUrl} alt={node.label} className="h-20 w-full rounded-lg object-cover" />;
+    if (videoUrl) return <video src={videoUrl} className="h-20 w-full rounded-lg bg-black object-cover" controls />;
+    if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
+    if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
+    return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
+  };
+
+  const renderPropertyPanel = () => {
+    if (!selectedNode) {
+      return <div className="p-4 text-sm text-gray-400">选择一个节点后编辑参数。</div>;
+    }
+    const definition = getDefinition(selectedNode.type);
+    return (
+      <div className="space-y-4 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm text-gray-400">节点设置</div>
+            <input
+              value={selectedNode.label}
+              onChange={(event) => updateNodeLabel(selectedNode.node_id, event.target.value)}
+              className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
+            />
+          </div>
+          <button onClick={() => removeNode(selectedNode.node_id)} className="rounded-lg bg-red-600/20 p-2 text-red-300 hover:bg-red-600/30" title="删除节点">
+            <Trash2 size={16} />
+          </button>
+        </div>
+
+        <div className="rounded-lg bg-gray-900 p-3 text-xs text-gray-400">{definition.description}</div>
+
+        {(selectedNode.type === 'static.image' || selectedNode.type === 'static.video' || selectedNode.type === 'static.audio') && (
+          <div className="space-y-2">
+            {selectedNode.type === 'static.image' && (
+              <>
+                <button onClick={() => setAssetPickerOpen(true)} className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm hover:bg-blue-500">选择项目资产</button>
+                <button onClick={() => openUpload('image')} className="w-full rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600">上传本地图片</button>
+              </>
+            )}
+            {selectedNode.type === 'static.video' && <button onClick={() => openUpload('video')} className="w-full rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600">上传本地视频</button>}
+            {selectedNode.type === 'static.audio' && <button onClick={() => openUpload('audio')} className="w-full rounded-lg bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600">上传本地音频</button>}
+            <div className="text-xs text-gray-500">{selectedNode.config.asset_name || selectedNode.config.file_name || '未选择资源'}</div>
+          </div>
+        )}
+
+        {(selectedNode.type === 'gen.llm' || selectedNode.type.startsWith('gen.')) && (
+          <label className="block">
+            <span className="text-xs text-gray-400">提示词</span>
+            <textarea
+              value={selectedNode.config.prompt || ''}
+              onChange={(event) => updateNodeConfig(selectedNode.node_id, { prompt: event.target.value })}
+              rows={5}
+              placeholder="可使用 {{input}} 引用上游文本"
+              className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
+            />
+          </label>
+        )}
+
+        {(selectedNode.type === 'gen.image' || selectedNode.type === 'gen.image_edit') && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-xs text-gray-400">图片比例</span>
+              <select
+                value={selectedNode.config.size || '16x9'}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { size: event.target.value })}
+                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              >
+                {IMAGE_SIZE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            {imageApiType === 'createnow' && (
+              <label className="block">
+                <span className="text-xs text-gray-400">模型</span>
+                <input
+                  value={selectedNode.config.model || ''}
+                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
+                  className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+                  placeholder="默认配置"
+                />
+              </label>
+            )}
+          </div>
+        )}
+
+        {isVideoNode(selectedNode.type) && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-xs text-gray-400">时长</span>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={selectedNode.config.duration || 6}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { duration: Number(event.target.value) || 6 })}
+                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-400">清晰度</span>
+              <select
+                value={selectedNode.config.resolution || '720p'}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { resolution: event.target.value })}
+                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              >
+                {VIDEO_RESOLUTION_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-400">比例</span>
+              <select
+                value={selectedNode.config.ratio || '16:9'}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { ratio: event.target.value })}
+                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              >
+                {VIDEO_RATIO_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label className="mt-6 flex items-center gap-2 text-xs text-gray-300">
+              <input
+                type="checkbox"
+                checked={Boolean(selectedNode.config.generate_audio)}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { generate_audio: event.target.checked })}
+              />
+              生成音频
+            </label>
+            {videoApiType === 'createnow' && (
+              <label className="col-span-2 block">
+                <span className="text-xs text-gray-400">模型</span>
+                <input
+                  value={selectedNode.config.model || ''}
+                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
+                  className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+                  placeholder="默认配置"
+                />
+              </label>
+            )}
+          </div>
+        )}
+
+        <div>
+          <div className="mb-2 text-xs text-gray-400">最近结果</div>
+          {renderNodePreview(selectedNode)}
+          {nodeStatus[selectedNode.node_id]?.error && <div className="mt-2 text-xs text-red-300">{nodeStatus[selectedNode.node_id].error}</div>}
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return <div className="flex h-full items-center justify-center bg-gray-950 text-gray-300"><Loader2 className="mr-2 animate-spin" />加载画布...</div>;
+  }
+
+  return (
+    <div className="flex h-full min-h-0 bg-gray-950 text-white">
+      <div className="flex w-72 flex-shrink-0 flex-col border-r border-gray-800 bg-gray-900">
+        <div className="border-b border-gray-800 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-lg font-semibold">新画布</div>
+            <button onClick={createCanvas} className="rounded-lg bg-blue-600 p-2 hover:bg-blue-500" title="新建画布"><Plus size={16} /></button>
+          </div>
+          <select value={activeCanvasId} onChange={(event) => switchCanvas(event.target.value)} className="mb-2 w-full rounded bg-gray-950 px-3 py-2 text-sm outline-none ring-1 ring-gray-700">
+            {canvases.map((canvas) => <option key={canvas.canvas_id} value={canvas.canvas_id}>{canvas.name}</option>)}
+          </select>
+          <input value={canvasName} onChange={(event) => setCanvasName(event.target.value)} className="w-full rounded bg-gray-950 px-3 py-2 text-sm outline-none ring-1 ring-gray-700" />
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <button onClick={() => saveCanvas(false)} disabled={saving} className="flex items-center justify-center gap-1 rounded bg-gray-700 px-2 py-2 text-xs hover:bg-gray-600 disabled:opacity-50">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}保存
+            </button>
+            <button onClick={runWorkflow} disabled={running} className="flex items-center justify-center gap-1 rounded bg-green-700 px-2 py-2 text-xs hover:bg-green-600 disabled:opacity-50">
+              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}运行
+            </button>
+            <button onClick={deleteCanvas} className="flex items-center justify-center gap-1 rounded bg-red-900/60 px-2 py-2 text-xs text-red-200 hover:bg-red-900">
+              <Trash2 size={14} />删除
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="mb-3 text-sm font-medium text-gray-300">添加节点</div>
+          <div className="space-y-2">
+            {NODE_DEFINITIONS.map((definition) => {
+              const Icon = definition.icon;
+              return (
+                <button key={definition.type} onClick={() => addNode(definition.type)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-left hover:border-blue-500 hover:bg-gray-750">
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-lg bg-gradient-to-br ${definition.color} p-2`}><Icon size={16} /></span>
+                    <span className="text-sm font-medium">{definition.label}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">{definition.description}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative min-w-0 flex-1 overflow-hidden">
+        <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
+          <span>缩放 {Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
+          {connecting && <span className="text-blue-300">正在连接：{connecting.type}</span>}
+          {selectedEdgeId && <button onClick={() => removeEdge(selectedEdgeId)} className="rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700">删除连线</button>}
+        </div>
+
+        <div
+          ref={canvasRef}
+          className="h-full w-full cursor-grab overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.22)_1px,transparent_0)] [background-size:24px_24px]"
+          onWheel={handleCanvasWheel}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPanning({ x: event.clientX - pan.x, y: event.clientY - pan.y });
+              setSelectedNodeId(null);
+              setSelectedEdgeId(null);
+            }
+          }}
+          onMouseMove={handleMouseMove}
+          onMouseUp={finishPointerAction}
+          onMouseLeave={finishPointerAction}
+        >
+          <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: 1, height: 1 }}>
+            <svg className="pointer-events-none absolute left-0 top-0 h-[6000px] w-[6000px] overflow-visible">
+              {edges.map((edge) => {
+                const start = getPortPosition(edge.source_node_id, edge.source_port, 'out');
+                const end = getPortPosition(edge.target_node_id, edge.target_port, 'in');
+                const dx = Math.max(80, Math.abs(end.x - start.x) / 2);
+                const path = `M ${start.x} ${start.y} C ${start.x + dx} ${start.y}, ${end.x - dx} ${end.y}, ${end.x} ${end.y}`;
+                const selected = selectedEdgeId === edge.edge_id;
+                return (
+                  <g key={edge.edge_id} className="pointer-events-auto cursor-pointer" onClick={(event) => { event.stopPropagation(); setSelectedEdgeId(edge.edge_id); setSelectedNodeId(null); }}>
+                    <path d={path} stroke="transparent" strokeWidth={12} fill="none" />
+                    <path d={path} stroke={selected ? '#60a5fa' : '#64748b'} strokeWidth={selected ? 3 : 2} fill="none" />
+                  </g>
+                );
+              })}
+            </svg>
+
+            {nodes.map((node) => {
+              const definition = getDefinition(node.type);
+              const Icon = definition.icon;
+              const state = nodeStatus[node.node_id]?.status || 'idle';
+              return (
+                <div
+                  key={node.node_id}
+                  data-node-id={node.node_id}
+                  onMouseDown={(event) => handleNodeMouseDown(event, node)}
+                  onClick={(event) => { event.stopPropagation(); setSelectedNodeId(node.node_id); setSelectedEdgeId(null); }}
+                  className={`absolute rounded-xl border bg-gray-900 shadow-2xl transition ${selectedNodeId === node.node_id ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-gray-700'} ${state === 'running' ? 'ring-2 ring-yellow-400/40' : ''} ${state === 'failed' ? 'border-red-500' : ''}`}
+                  style={{ left: node.x, top: node.y, width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
+                >
+                  <div className={`rounded-t-xl bg-gradient-to-r ${definition.color} px-3 py-2`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold"><Icon size={16} />{node.label}</div>
+                      {state === 'running' && <Loader2 size={16} className="animate-spin" />}
+                      {state === 'succeeded' && <CheckCircle size={16} />}
+                      {state === 'failed' && <X size={16} />}
+                    </div>
+                  </div>
+
+                  {definition.inputs.map((port, index) => (
+                    <button
+                      key={port.key}
+                      data-port="in"
+                      onClick={(event) => { event.stopPropagation(); handleInputPortClick(node.node_id, port.key, port.type); }}
+                      className="absolute -left-2 h-4 w-4 rounded-full border border-gray-900 bg-blue-400 hover:bg-blue-300"
+                      style={{ top: (NODE_HEIGHT / (definition.inputs.length + 1)) * (index + 1) - 8 }}
+                      title={`${port.label} (${port.type})`}
+                    />
+                  ))}
+                  {definition.outputs.map((port, index) => (
+                    <button
+                      key={port.key}
+                      data-port="out"
+                      onClick={(event) => { event.stopPropagation(); handleOutputPortClick(node.node_id, port.key, port.type); }}
+                      className="absolute -right-2 h-4 w-4 rounded-full border border-gray-900 bg-green-400 hover:bg-green-300"
+                      style={{ top: (NODE_HEIGHT / (definition.outputs.length + 1)) * (index + 1) - 8 }}
+                      title={`${port.label} (${port.type})`}
+                    />
+                  ))}
+
+                  <div className="space-y-2 p-3">
+                    <div className="text-xs text-gray-400">{definition.description}</div>
+                    {renderNodePreview(node)}
+                    <div className="flex flex-wrap gap-1 text-[10px] text-gray-500">
+                      {definition.inputs.map((port) => <span key={`in-${port.key}`} className="rounded bg-blue-950 px-1.5 py-0.5">入:{port.label}</span>)}
+                      {definition.outputs.map((port) => <span key={`out-${port.key}`} className="rounded bg-green-950 px-1.5 py-0.5">出:{port.label}</span>)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="w-80 flex-shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900">
+        {renderPropertyPanel()}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept={uploadTarget === 'image' ? 'image/*' : uploadTarget === 'video' ? 'video/*' : 'audio/*'}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) handleUpload(file);
+        }}
+      />
+
+      {assetPickerOpen && selectedNode && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-6" onMouseDown={() => setAssetPickerOpen(false)}>
+          <div className="flex max-h-[82vh] w-[920px] flex-col rounded-xl border border-gray-700 bg-gray-900 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
+              <div>
+                <div className="text-lg font-semibold">选择资产主图</div>
+                <div className="text-xs text-gray-500">用于静态图片、图生图、图生视频和多参生视频</div>
+              </div>
+              <button onClick={() => setAssetPickerOpen(false)} className="rounded-lg bg-gray-800 p-2 hover:bg-gray-700"><X size={18} /></button>
+            </div>
+            <div className="flex border-b border-gray-800 px-5">
+              {(['character', 'scene', 'prop', 'storyboard'] as CanvasAssetType[]).map((tab) => (
+                <button key={tab} onClick={() => setAssetTab(tab)} className={`border-b-2 px-4 py-3 text-sm ${assetTab === tab ? 'border-blue-400 text-blue-300' : 'border-transparent text-gray-400 hover:text-gray-200'}`}>
+                  {tab === 'character' ? '角色' : tab === 'scene' ? '场景' : tab === 'prop' ? '道具' : '分镜'} ({assetGroups[tab].length})
+                </button>
+              ))}
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-5 gap-3 overflow-y-auto p-5">
+              {assetGroups[assetTab].map((asset: any) => {
+                const imageUrl = getAssetImageUrl(asset);
+                return (
+                  <button key={asset.asset_id} onClick={() => selectAssetForNode(asset, assetTab)} className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-left hover:border-blue-400">
+                    <div className="mb-2 flex h-28 items-center justify-center overflow-hidden rounded bg-gray-950">
+                      {imageUrl ? <img src={imageUrl} alt={asset.name} className="h-full w-full object-cover" /> : <ImageIcon className="text-gray-600" />}
+                    </div>
+                    <div className="truncate text-sm text-gray-200">{asset.name || asset.description || asset.asset_id}</div>
+                    <div className="truncate text-xs text-gray-500">{asset.image_id ? '有主图' : '暂无主图'}</div>
+                  </button>
+                );
+              })}
+              {!assetGroups[assetTab].length && <div className="col-span-5 py-12 text-center text-gray-500">暂无资产</div>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

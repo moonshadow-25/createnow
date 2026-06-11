@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText, BarChart2 } from 'lucide-react';
+import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText, BarChart2, Workflow } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
@@ -9,13 +9,14 @@ import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
 import { StoryboardTab } from '@/components/storyboard/StoryboardTab';
 import { GenerateTab } from '@/components/generate/GenerateTab';
+import { NewCanvasTab } from '@/components/new-canvas/NewCanvasTab';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useThemeStore } from '@/store/themeStore';
 import { FullScriptImportModal } from '@/components/script/FullScriptImportModal';
 import { ProjectCostDashboard } from '@/components/dashboard/ProjectCostDashboard';
 
-type TabType = 'chat' | 'assets' | 'storyboard' | 'generate';
+type TabType = 'chat' | 'assets' | 'storyboard' | 'generate' | 'canvas';
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -46,10 +47,13 @@ export default function ProjectPage() {
   // 生成 tab 首次访问后保持挂载，避免切换时状态丢失
   const [generateMounted, setGenerateMounted] = useState(false);
   useEffect(() => { if (activeTab === 'generate') setGenerateMounted(true); }, [activeTab]);
+  // 画布 tab 首次访问后保持挂载，避免切换时节点状态丢失
+  const [canvasMounted, setCanvasMounted] = useState(false);
+  useEffect(() => { if (activeTab === 'canvas') setCanvasMounted(true); }, [activeTab]);
 
   // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
   const TAB_LABELS: Record<string, string> = {
-    assets: '资产面板', chat: '项目对话', generate: '视频生成',
+    assets: '资产面板', chat: '项目对话', generate: '视频生成', canvas: '画布工作流',
   };
   useEffect(() => {
     if (!projectId || activeTab === 'storyboard') return;
@@ -203,7 +207,7 @@ export default function ProjectPage() {
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
                 className={`px-4 py-2 rounded-lg transition flex items-center gap-1 text-sm ${
-                  ['generate', 'chat'].includes(activeTab)
+                  ['generate', 'canvas', 'chat'].includes(activeTab)
                     ? 'bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] border border-[#d0ad63] shadow-[0_6px_16px_rgba(216,179,96,0.32)]'
                     : isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'
                 }`}
@@ -219,6 +223,13 @@ export default function ProjectPage() {
                   >
                     <Video size={16} />
                     广场
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('canvas'); setShowMoreMenu(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 ${activeTab === 'canvas' ? 'text-blue-400' : 'text-gray-200'}`}
+                  >
+                    <Workflow size={16} />
+                    画布
                   </button>
                   <div className="border-t border-gray-600 my-1" />
                   <button
@@ -304,6 +315,19 @@ export default function ProjectPage() {
             <div className={`flex h-full ${activeTab !== 'generate' ? 'hidden' : ''}`}>
               <div className="flex-1 overflow-hidden">
                 <GenerateTab
+                  projectId={projectId!}
+                  showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
+                  imageApiType={currentProject?.ai_config?.image?.api_type || ''}
+                  videoApiType={currentProject?.ai_config?.video?.api_type || ''}
+                />
+              </div>
+            </div>
+          )}
+
+          {canvasMounted && (
+            <div className={`flex h-full ${activeTab !== 'canvas' ? 'hidden' : ''}`}>
+              <div className="flex-1 overflow-hidden">
+                <NewCanvasTab
                   projectId={projectId!}
                   showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
                   imageApiType={currentProject?.ai_config?.image?.api_type || ''}
