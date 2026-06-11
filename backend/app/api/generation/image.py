@@ -31,22 +31,23 @@ from app.core.pricing import DEFAULT_IMAGE_COST
 logger = logging.getLogger(__name__)
 
 SQUARE_IMAGE_SCOPE = "square_generate"
+CANVAS_GENERATE_SCOPE = "canvas_generate"
 SQUARE_IMAGE_ASSET_TYPE = "generate"
 SQUARE_IMAGE_ASSET_ID = "square-generate"
+CANVAS_IMAGE_ASSET_TYPE = "generate"
+CANVAS_IMAGE_ASSET_ID = "canvas-generate"
 
 
 def _is_square_image_record(image: dict) -> bool:
-    return (
-        image.get("generation_scope") == SQUARE_IMAGE_SCOPE
-        or (
-            image.get("asset_type") == SQUARE_IMAGE_ASSET_TYPE
-            and image.get("asset_id") == SQUARE_IMAGE_ASSET_ID
-        )
-    )
+    if image.get("generation_scope") == SQUARE_IMAGE_SCOPE:
+        return True
+    if image.get("generation_scope"):
+        return False
+    return image.get("asset_type") == SQUARE_IMAGE_ASSET_TYPE and image.get("asset_id") == SQUARE_IMAGE_ASSET_ID
 
 
 def _is_virtual_image_asset(asset_type: str, asset_id: str) -> bool:
-    return asset_type == SQUARE_IMAGE_ASSET_TYPE and asset_id == SQUARE_IMAGE_ASSET_ID
+    return asset_type == SQUARE_IMAGE_ASSET_TYPE and asset_id in {SQUARE_IMAGE_ASSET_ID, CANVAS_IMAGE_ASSET_ID}
 
 
 def _get_projects_dir():
@@ -610,7 +611,7 @@ async def edit_image(project_id: str, request: ImageEditRequest):
             reference_image_paths=reference_image_paths,
             size=request.size,
             ai_config=ai_config,
-            generation_scope=SQUARE_IMAGE_SCOPE if _is_virtual_image_asset(request.asset_type, request.asset_id) else None,
+            generation_scope=request.generation_scope or (SQUARE_IMAGE_SCOPE if _is_virtual_image_asset(request.asset_type, request.asset_id) else None),
             reference_image_ids=request.reference_image_ids,
             reference_image_urls=request.reference_image_urls,
             model_override=request.model,

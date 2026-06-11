@@ -89,7 +89,7 @@ class VideoGenerateRequest(BaseModel):
     duration: int = 6
     resolution: str = "1920x1080"
     model: Optional[str] = None  # 临时模型覆盖，仅用于本次生成，不修改项目配置
-    # 多模态输入（Seedance 2.0）
+    generation_scope: Optional[str] = None  # 生成范围标记，如 canvas_generate
     video_urls: Optional[List[str]] = None   # 参考视频公网 URL
     audio_urls: Optional[List[str]] = None   # 参考音频公网 URL 或 Base64
     # 2.0 新参数
@@ -139,6 +139,7 @@ class ImageEditRequest(BaseModel):
     reference_image_urls: List[str] = [] # 参考图片URL列表（可选），直接使用URL而不需要先上传
     template: Optional[str] = None   # 模板ID（可选），如 "character_sheet" 用于生成人设图
     model: Optional[str] = None      # 临时模型覆盖，仅用于本次生成，不修改项目配置
+    generation_scope: Optional[str] = None  # 生成范围标记，如 canvas_generate
 
 
 class FusionPromptRequest(BaseModel):

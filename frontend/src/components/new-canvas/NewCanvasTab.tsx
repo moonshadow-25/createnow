@@ -104,6 +104,27 @@ type NodeOutput = {
   raw?: unknown;
 };
 
+type HistoryImage = {
+  image_id: string;
+  prompt?: string;
+  image_path?: string | null;
+  local_path?: string;
+  created_at?: string;
+  size?: string;
+};
+
+type HistoryVideo = {
+  video_id: string;
+  prompt?: string;
+  video_path?: string | null;
+  local_path?: string;
+  status?: string;
+  created_at?: string;
+  duration?: number;
+  resolution?: string;
+  ratio?: string;
+};
+
 type NodeDefinition = {
   type: NodeKind;
   label: string;
@@ -384,6 +405,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [assetTab, setAssetTab] = useState<CanvasAssetType>('character');
   const [uploadTarget, setUploadTarget] = useState<'image' | 'video' | 'audio'>('image');
+  const [rightPanelTab, setRightPanelTab] = useState<'node' | 'history'>('node');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyImages, setHistoryImages] = useState<HistoryImage[]>([]);
+  const [historyVideos, setHistoryVideos] = useState<HistoryVideo[]>([]);
   const { characters, scenes, props, storyboards } = useAssetStore();
 
   const selectedNode = useMemo(
@@ -397,6 +422,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     prop: props,
     storyboard: storyboards,
   }), [characters, scenes, props, storyboards]);
+
+  const textHistory = useMemo(() => nodes
+    .map((node) => ({ node, output: outputs[node.node_id] || node.config.last_result }))
+    .filter((item) => item.output?.text)
+    .map((item) => ({ node_id: item.node.node_id, label: item.node.label, text: item.output?.text || '' })), [nodes, outputs]);
 
   const loadCanvases = useCallback(async () => {
     setLoading(true);
@@ -426,6 +456,26 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   useEffect(() => {
     loadCanvases();
   }, [loadCanvases]);
+
+  const loadCanvasHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const [imageResponse, videoResponse] = await Promise.all([
+        generationApi.listCanvasImages(projectId),
+        generationApi.listCanvasVideos(projectId),
+      ]);
+      setHistoryImages((imageResponse.data || []) as HistoryImage[]);
+      setHistoryVideos((videoResponse.data || []) as HistoryVideo[]);
+    } catch (error: any) {
+      toast.toast(error?.response?.data?.detail || '画布历史加载失败', 'error');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [projectId, toast]);
+
+  useEffect(() => {
+    if (rightPanelTab === 'history') loadCanvasHistory();
+  }, [rightPanelTab, loadCanvasHistory]);
 
   const saveCanvas = useCallback(async (silent = false, nextNodes = nodes, nextEdges = edges) => {
     if (!activeCanvasId) return;
@@ -679,7 +729,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
     if (node.type === 'gen.image') {
       if (!prompt) throw new Error('文生图节点缺少提示词');
-      const response = await generationApi.generateSquareImage(projectId, {
+      const response = await generationApi.generateCanvasImage(projectId, {
         prompt,
         negative_prompt: node.config.negative_prompt || '',
         size: node.config.size,
@@ -700,7 +750,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       const referenceImageUrls = inputOutputs.map((output) => output.image_url).filter(Boolean) as string[];
       if (!prompt) throw new Error('图生图节点缺少提示词');
       if (!referenceImageIds.length && !referenceImageUrls.length) throw new Error('图生图节点缺少参考图');
-      const response = await generationApi.editSquareImage(projectId, {
+      const response = await generationApi.editCanvasImage(projectId, {
         prompt,
         size: node.config.size,
         referenceImageIds,
@@ -730,7 +780,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         ...media.filter((item) => item.type === 'audio').map((item) => item.url),
       ];
       const resolvedVideoUrls = showAssetSubmit && videoUrls.length ? await resolveVideoAssetUrls(videoUrls) : videoUrls;
-      const response = await generationApi.generateVideo(projectId, {
+      const response = await generationApi.generateCanvasVideo(projectId, {
         storyboard_id: null,
         episode_id: null,
         image_ids: imageIds,
@@ -817,6 +867,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         ? { ...node, config: { ...node.config, last_result: outputMap[node.node_id] } }
         : node);
       await saveCanvas(true, nextNodes, edges);
+      await loadCanvasHistory();
       toast.toast('工作流运行完成', 'success');
     } catch (error: any) {
       const message = error?.response?.data?.detail || error?.message || '工作流运行失败';
@@ -1037,6 +1088,87 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     );
   };
 
+  const renderHistoryPanel = () => (
+    <div className="space-y-5 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold text-gray-200">画布历史</div>
+          <div className="text-xs text-gray-500">只显示画布生成记录，不包含广场</div>
+        </div>
+        <button
+          onClick={loadCanvasHistory}
+          disabled={historyLoading}
+          className="rounded-lg bg-gray-800 px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+        >
+          {historyLoading ? '刷新中...' : '刷新'}
+        </button>
+      </div>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
+          <span>图片结果</span>
+          <span>{historyImages.length}</span>
+        </div>
+        <div className="space-y-2">
+          {historyImages.slice(0, 30).map((image) => {
+            const imageUrl = getImageUrlFromRecord(projectId, image);
+            return (
+              <div key={image.image_id} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
+                {imageUrl && <img src={imageUrl} alt={image.prompt || '画布图片'} className="mb-2 h-28 w-full rounded object-cover" />}
+                <div className="line-clamp-2 text-xs text-gray-300">{image.prompt || '无提示词'}</div>
+                <div className="mt-1 text-[10px] text-gray-600">{image.created_at || image.image_id}</div>
+              </div>
+            );
+          })}
+          {!historyImages.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布图片历史</div>}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
+          <span>视频结果</span>
+          <span>{historyVideos.length}</span>
+        </div>
+        <div className="space-y-2">
+          {historyVideos.slice(0, 30).map((video) => {
+            const videoUrl = getVideoUrlFromRecord(projectId, video);
+            return (
+              <div key={video.video_id} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
+                {videoUrl ? <video src={videoUrl} className="mb-2 h-28 w-full rounded bg-black object-cover" controls /> : <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{video.status || 'pending'}</div>}
+                <div className="line-clamp-2 text-xs text-gray-300">{video.prompt || '无提示词'}</div>
+                <div className="mt-1 flex justify-between text-[10px] text-gray-600">
+                  <span>{video.status || 'unknown'}</span>
+                  <span>{video.created_at || video.video_id}</span>
+                </div>
+              </div>
+            );
+          })}
+          {!historyVideos.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布视频历史</div>}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between text-xs text-gray-400">
+          <span>文本结果</span>
+          <span>{textHistory.length}</span>
+        </div>
+        <div className="space-y-2">
+          {textHistory.map((item) => (
+            <button
+              key={item.node_id}
+              onClick={() => { setSelectedNodeId(item.node_id); setRightPanelTab('node'); }}
+              className="w-full rounded-lg border border-gray-800 bg-gray-950 p-3 text-left hover:border-blue-500"
+            >
+              <div className="mb-1 text-xs font-medium text-blue-300">{item.label}</div>
+              <div className="line-clamp-5 whitespace-pre-wrap text-xs text-gray-300">{item.text}</div>
+            </button>
+          ))}
+          {!textHistory.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布文本历史</div>}
+        </div>
+      </section>
+    </div>
+  );
+
   if (loading) {
     return <div className="flex h-full items-center justify-center bg-gray-950 text-gray-300"><Loader2 className="mr-2 animate-spin" />加载画布...</div>;
   }
@@ -1184,7 +1316,21 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       </div>
 
       <div className="w-80 flex-shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900">
-        {renderPropertyPanel()}
+        <div className="sticky top-0 z-10 flex border-b border-gray-800 bg-gray-900">
+          <button
+            onClick={() => setRightPanelTab('node')}
+            className={`flex-1 px-4 py-3 text-sm ${rightPanelTab === 'node' ? 'border-b-2 border-blue-400 text-blue-300' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            节点
+          </button>
+          <button
+            onClick={() => setRightPanelTab('history')}
+            className={`flex-1 px-4 py-3 text-sm ${rightPanelTab === 'history' ? 'border-b-2 border-blue-400 text-blue-300' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            历史
+          </button>
+        </div>
+        {rightPanelTab === 'node' ? renderPropertyPanel() : renderHistoryPanel()}
       </div>
 
       <input

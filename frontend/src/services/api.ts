@@ -120,6 +120,9 @@ export const chatApi = {
 const SQUARE_GENERATE_ASSET_ID = 'square-generate';
 const SQUARE_GENERATE_ASSET_TYPE = 'generate';
 const SQUARE_GENERATE_SCOPE = 'square_generate';
+const CANVAS_GENERATE_ASSET_ID = 'canvas-generate';
+const CANVAS_GENERATE_ASSET_TYPE = 'generate';
+const CANVAS_GENERATE_SCOPE = 'canvas_generate';
 
 export const generationApi = {
   generateImagePrompt: (projectId: string, data: any) =>
@@ -136,6 +139,18 @@ export const generationApi = {
       ...(data.model ? { model: data.model } : {}),
       generation_scope: SQUARE_GENERATE_SCOPE,
     }),
+  generateCanvasImage: (projectId: string, data: { prompt: string; negative_prompt?: string; size?: string; model?: string }) =>
+    api.post(`/projects/${projectId}/generate/image`, {
+      asset_id: CANVAS_GENERATE_ASSET_ID,
+      asset_type: CANVAS_GENERATE_ASSET_TYPE,
+      prompt: data.prompt,
+      negative_prompt: data.negative_prompt || '',
+      ...(data.size ? { size: data.size } : {}),
+      ...(data.model ? { model: data.model } : {}),
+      generation_scope: CANVAS_GENERATE_SCOPE,
+    }),
+  listCanvasImages: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/images/${CANVAS_GENERATE_ASSET_ID}`),
   listImages: (projectId: string, assetId: string) =>
     api.get(`/projects/${projectId}/generate/images/${assetId}`),
   listImagesBatch: (projectId: string, assetIds: string[]) =>
@@ -179,6 +194,13 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/video-reverse-prompt`, data),
   generateVideo: (projectId: string, data: any) =>
     api.post(`/projects/${projectId}/generate/video`, data),
+  generateCanvasVideo: (projectId: string, data: any) =>
+    api.post(`/projects/${projectId}/generate/video`, {
+      ...data,
+      storyboard_id: data.storyboard_id ?? null,
+      episode_id: data.episode_id ?? null,
+      generation_scope: CANVAS_GENERATE_SCOPE,
+    }),
   generateAllStoryboardVideos: (projectId: string, episodeId: string) =>
     api.post(`/projects/${projectId}/generate/all-storyboard-videos`, { episode_id: episodeId }),
   generateVideoMultiImage: (projectId: string, data: {
@@ -215,6 +237,8 @@ export const generationApi = {
     api.get(`/projects/${projectId}/generate/videos`, { params: { episode_id: episodeId, mine: onlyMine } }),
   listLibraryVideos: (projectId: string) =>
     api.get(`/projects/${projectId}/generate/videos`, { params: { library: true } }),
+  listCanvasVideos: (projectId: string) =>
+    api.get(`/projects/${projectId}/generate/videos`, { params: { generation_scope: CANVAS_GENERATE_SCOPE } }),
   getVideo: (projectId: string, videoId: string) =>
     api.get(`/projects/${projectId}/generate/videos/${videoId}`),
   pollVideo: (projectId: string, videoId: string) =>
@@ -294,6 +318,23 @@ export const generationApi = {
       reference_image_ids: data.referenceImageIds || [],
       reference_image_urls: data.referenceImageUrls || [],
       ...(data.model ? { model: data.model } : {}),
+    }),
+  editCanvasImage: (projectId: string, data: {
+    prompt: string,
+    size?: string,
+    referenceImageIds?: string[],
+    referenceImageUrls?: string[],
+    model?: string
+  }) =>
+    api.post(`/projects/${projectId}/generate/image-edit`, {
+      asset_id: CANVAS_GENERATE_ASSET_ID,
+      asset_type: CANVAS_GENERATE_ASSET_TYPE,
+      prompt: data.prompt,
+      ...(data.size && { size: data.size }),
+      reference_image_ids: data.referenceImageIds || [],
+      reference_image_urls: data.referenceImageUrls || [],
+      ...(data.model ? { model: data.model } : {}),
+      generation_scope: CANVAS_GENERATE_SCOPE,
     }),
   // VLM图片分析（统一接口）
   analyzeWithVLM: (projectId: string, data: {

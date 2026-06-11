@@ -886,6 +886,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "last_poll_response": None,
             "generate_audio": request.generate_audio,
             "reference_media": reference_media,
+            "generation_scope": request.generation_scope,
         }
 
         # 保存视频记录到文件
@@ -982,7 +983,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
 
 
 @router.get("/videos")
-async def list_videos(project_id: str, episode_id: str = None, library: bool = False, mine: bool = False):
+async def list_videos(project_id: str, episode_id: str = None, library: bool = False, mine: bool = False, generation_scope: str = None):
     """列出项目的所有视频记录"""
     videos_dir = _get_projects_dir() / project_id / "videos"
     if not videos_dir.exists():
@@ -994,9 +995,12 @@ async def list_videos(project_id: str, episode_id: str = None, library: bool = F
         try:
             with open(video_file, "r", encoding="utf-8") as f:
                 video = json.load(f)
-                if library:
-                    # 视频库模式：只返回不属于任何分镜的视频
-                    if video.get("storyboard_id") is not None:
+                if generation_scope:
+                    if video.get("generation_scope") != generation_scope:
+                        continue
+                elif library:
+                    # 视频库模式：只返回不属于任何分镜、且不属于画布工作流的视频
+                    if video.get("storyboard_id") is not None or video.get("generation_scope") == "canvas_generate":
                         continue
                 elif episode_id:
                     # 按 episode_id 过滤
