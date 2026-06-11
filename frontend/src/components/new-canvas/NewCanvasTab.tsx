@@ -43,6 +43,15 @@ type RefMedia = {
   sourceAssetType?: CanvasAssetType;
 };
 
+type AssetAuditState = {
+  refType: 'image' | 'video';
+  refKey: string;
+  assetId?: string;
+  status?: string;
+  error?: string;
+  updatedAt?: string;
+};
+
 type CanvasNode = {
   node_id: string;
   type: NodeKind;
@@ -67,6 +76,8 @@ type CanvasNode = {
     asset_type?: CanvasAssetType;
     asset_name?: string;
     file_name?: string;
+    input_hash?: string;
+    audit_state?: Record<string, AssetAuditState>;
     last_result?: NodeOutput;
   };
 };
@@ -286,6 +297,22 @@ function textFromOutput(output?: NodeOutput): string {
   if (output.image_id) return output.image_id;
   if (output.video_url) return output.video_url;
   return '';
+}
+
+function isDynamicNode(type: NodeKind): boolean {
+  return type.startsWith('gen.');
+}
+
+function stableStringify(value: unknown): string {
+  if (value == null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const objectValue = value as Record<string, unknown>;
+  return `{${Object.keys(objectValue).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`).join(',')}}`;
+}
+
+function buildInputHash(node: CanvasNode, inputOutputs: NodeOutput[]): string {
+  const { last_result: _lastResult, audit_state: _auditState, input_hash: _inputHash, ...config } = node.config;
+  return stableStringify({ type: node.type, config, inputs: inputOutputs });
 }
 
 function mergePrompt(prompt: string | undefined, inputText: string): string {
@@ -687,12 +714,24 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setNodeStatus((prev) => ({ ...prev, [nodeId]: { status, error } }));
   };
 
-  const storeOutput = (nodeId: string, output: NodeOutput) => {
+  const storeOutput = (nodeId: string, output: NodeOutput, inputHash?: string, auditState?: Record<string, AssetAuditState>) => {
     setOutputs((prev) => ({ ...prev, [nodeId]: output }));
-    setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, last_result: output } } : node));
+    setNodes((prev) => prev.map((node) => node.node_id === nodeId ? {
+      ...node,
+      config: {
+        ...node.config,
+        last_result: output,
+        ...(inputHash ? { input_hash: inputHash } : {}),
+        ...(auditState ? { audit_state: auditState } : {}),
+      },
+    } : node));
   };
 
-  const executeNode = async (node: CanvasNode, inputOutputs: NodeOutput[]): Promise<NodeOutput> => {
+  const updateWorkingNodeConfig = (workingNodes: CanvasNode[], nodeId: string, patch: CanvasNode['config']) => {
+    return workingNodes.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch } } : node);
+  };
+
+  const executeNode = async (node: CanvasNode, inputOutputs: NodeOutput[]): Promise<{ output: NodeOutput; auditState?: Record<string, AssetAuditState> }> => {
     if (node.type === 'static.image') {
       if (!node.config.image_id && !node.config.image_url) throw new Error('静态图片节点缺少图片');
       const media: RefMedia[] = [{
@@ -703,19 +742,19 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         sourceAssetId: node.config.asset_id,
         sourceAssetType: node.config.asset_type,
       }];
-      return { image_id: node.config.image_id, image_url: node.config.image_url, media };
+      return { output: { image_id: node.config.image_id, image_url: node.config.image_url, media } };
     }
 
     if (node.type === 'static.video') {
       if (!node.config.media_url) throw new Error('静态视频节点缺少视频');
       const media: RefMedia[] = [{ type: 'video', id: node.config.media_id, url: node.config.media_url, name: node.config.file_name || node.label }];
-      return { video_url: node.config.media_url, media };
+      return { output: { video_url: node.config.media_url, media } };
     }
 
     if (node.type === 'static.audio') {
       if (!node.config.media_url) throw new Error('静态音频节点缺少音频');
       const media: RefMedia[] = [{ type: 'audio', id: node.config.media_id, url: node.config.media_url, name: node.config.file_name || node.label }];
-      return { audio_url: node.config.media_url, media };
+      return { output: { audio_url: node.config.media_url, media } };
     }
 
     const inputText = inputOutputs.map(textFromOutput).filter(Boolean).join('\n');
@@ -724,7 +763,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (node.type === 'gen.llm') {
       if (!prompt) throw new Error('LLM 节点缺少提示词');
       const text = await readChatStream(projectId, prompt);
-      return { text, raw: { prompt } };
+      return { output: { text, raw: { prompt } } };
     }
 
     if (node.type === 'gen.image') {
@@ -737,12 +776,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       });
       const record = response.data;
       const imageUrl = getImageUrlFromRecord(projectId, record);
-      return {
+      return { output: {
         image_id: record.image_id,
         image_url: imageUrl,
         media: [{ type: 'image', id: record.image_id, url: imageUrl, name: record.prompt || node.label }],
         raw: record,
-      };
+      } };
     }
 
     if (node.type === 'gen.image_edit') {
@@ -759,12 +798,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       });
       const record = response.data;
       const imageUrl = getImageUrlFromRecord(projectId, record);
-      return {
+      return { output: {
         image_id: record.image_id,
         image_url: imageUrl,
         media: [{ type: 'image', id: record.image_id, url: imageUrl, name: record.prompt || node.label }],
         raw: record,
-      };
+      } };
     }
 
     if (isVideoNode(node.type)) {
@@ -779,12 +818,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         ...inputOutputs.map((output) => output.audio_url).filter(Boolean) as string[],
         ...media.filter((item) => item.type === 'audio').map((item) => item.url),
       ];
-      const resolvedVideoUrls = showAssetSubmit && videoUrls.length ? await resolveVideoAssetUrls(videoUrls) : videoUrls;
+      const prepared = showAssetSubmit
+        ? await prepareReferenceAssets(imageIds, videoUrls, node.config.audit_state || {})
+        : { imageIds, videoUrls, auditState: node.config.audit_state || {} };
       const response = await generationApi.generateCanvasVideo(projectId, {
         storyboard_id: null,
         episode_id: null,
-        image_ids: imageIds,
-        video_urls: resolvedVideoUrls.length ? resolvedVideoUrls : undefined,
+        image_ids: prepared.imageIds,
+        video_urls: prepared.videoUrls.length ? prepared.videoUrls : undefined,
         audio_urls: audioUrls.length ? audioUrls : undefined,
         prompt,
         duration: node.config.duration || 6,
@@ -797,12 +838,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       let video = response.data;
       if (video.video_id) video = await pollVideoUntilDone(video.video_id);
       const videoUrl = getVideoUrlFromRecord(projectId, video);
-      return {
+      return { output: {
         video_id: video.video_id,
         video_url: videoUrl,
         media: videoUrl ? [{ type: 'video', id: video.video_id, url: videoUrl, name: video.prompt || node.label }] : [],
         raw: video,
-      };
+      }, auditState: prepared.auditState };
     }
 
     throw new Error(`不支持的节点类型：${node.type}`);
@@ -820,21 +861,73 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return current;
   };
 
-  const resolveVideoAssetUrls = async (videoUrls: string[]) => {
-    const submit = await generationApi.submitAsset(projectId, { video_urls: videoUrls, project_name: 'default' });
-    const submitted: any[] = [...(submit.data.submitted || []), ...(submit.data.skipped || []).filter((item: any) => typeof item === 'object')];
-    const resolved = await Promise.all(videoUrls.map(async (url) => {
-      const match = submitted.find((item) => item.video_url === url && item.asset_id);
-      if (!match?.asset_id) return url;
-      for (let i = 0; i < 20; i += 1) {
-        const status = await generationApi.getAssetStatus(projectId, match.asset_id);
-        if (status.data.status === 'Active') return `asset://${match.asset_id}`;
-        if (status.data.status === 'Failed') return url;
+  const prepareReferenceAssets = async (
+    imageIds: string[],
+    videoUrls: string[],
+    currentAuditState: Record<string, AssetAuditState>,
+  ) => {
+    const auditState: Record<string, AssetAuditState> = { ...currentAuditState };
+    const imageKeys = imageIds.map((imageId) => `image:${imageId}`);
+    const videoKeys = videoUrls.map((url) => `video:${url}`);
+    const activeImageIds = imageIds.filter((imageId) => auditState[`image:${imageId}`]?.status === 'Active');
+    const activeVideoUrls = videoUrls.filter((url) => auditState[`video:${url}`]?.status === 'Active' && auditState[`video:${url}`]?.assetId);
+    const pendingImageIds = imageIds.filter((imageId) => !activeImageIds.includes(imageId));
+    const pendingVideoUrls = videoUrls.filter((url) => !activeVideoUrls.includes(url));
+
+    if (pendingImageIds.length || pendingVideoUrls.length) {
+      const submit = await generationApi.submitAsset(projectId, {
+        image_ids: pendingImageIds,
+        video_urls: pendingVideoUrls,
+        project_name: 'default',
+      });
+      const records: any[] = [
+        ...(submit.data.submitted || []),
+        ...(submit.data.skipped || []).filter((item: any) => typeof item === 'object'),
+      ];
+      records.forEach((record) => {
+        const key = record.image_id ? `image:${record.image_id}` : record.video_url ? `video:${record.video_url}` : '';
+        if (!key) return;
+        auditState[key] = {
+          refType: record.image_id ? 'image' : 'video',
+          refKey: record.image_id || record.video_url,
+          assetId: record.asset_id,
+          status: record.status || auditState[key]?.status || 'Processing',
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    }
+
+    const keysToPoll = [...imageKeys, ...videoKeys].filter((key) => auditState[key]?.assetId && auditState[key]?.status !== 'Active');
+    for (const key of keysToPoll) {
+      const assetId = auditState[key].assetId!;
+      let latestStatus = auditState[key].status || 'Processing';
+      let latestError = auditState[key].error;
+      for (let i = 0; i < 30; i += 1) {
+        const response = await generationApi.getAssetStatus(projectId, assetId);
+        latestStatus = response.data.status || latestStatus;
+        latestError = response.data.error || response.data.message || latestError;
+        auditState[key] = { ...auditState[key], status: latestStatus, error: latestError, updatedAt: new Date().toISOString() };
+        if (latestStatus === 'Active' || latestStatus === 'Failed') break;
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-      return url;
-    }));
-    return resolved;
+    }
+
+    const failed = [...imageKeys, ...videoKeys].filter((key) => auditState[key]?.status !== 'Active');
+    if (failed.length) {
+      const detail = failed.map((key) => `${key}=${auditState[key]?.status || '未提交'}`).join('，');
+      const error = new Error(`素材审核未通过：${detail}`) as Error & { auditState?: Record<string, AssetAuditState> };
+      error.auditState = auditState;
+      throw error;
+    }
+
+    return {
+      imageIds,
+      videoUrls: videoUrls.map((url) => {
+        const audit = auditState[`video:${url}`];
+        return audit?.assetId ? `asset://${audit.assetId}` : url;
+      }),
+      auditState,
+    };
   };
 
   const runWorkflow = async () => {
@@ -854,26 +947,45 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     try {
       await saveCanvas(true);
       await canvasApi.validateWorkflow(projectId, activeCanvasId);
+      let workingNodes = nodes;
       for (const nodeId of order) {
-        const node = nodes.find((item) => item.node_id === nodeId);
+        let node = workingNodes.find((item) => item.node_id === nodeId);
         if (!node) continue;
+        const inputs = incomingOutputs(nodeId, outputMap);
+        const inputHash = buildInputHash(node, inputs);
+        if (isDynamicNode(node.type) && node.config.last_result && node.config.input_hash === inputHash) {
+          outputMap[nodeId] = node.config.last_result;
+          setStatus(nodeId, 'succeeded');
+          continue;
+        }
         setStatus(nodeId, 'running');
-        const result = await executeNode(node, incomingOutputs(nodeId, outputMap));
-        outputMap[nodeId] = result;
-        storeOutput(nodeId, result);
-        setStatus(nodeId, 'succeeded');
+        try {
+          const result = await executeNode(node, inputs);
+          outputMap[nodeId] = result.output;
+          workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, {
+            last_result: result.output,
+            input_hash: inputHash,
+            ...(result.auditState ? { audit_state: result.auditState } : {}),
+          });
+          storeOutput(nodeId, result.output, inputHash, result.auditState);
+          setStatus(nodeId, 'succeeded');
+        } catch (nodeError: any) {
+          const auditState = nodeError?.auditState as Record<string, AssetAuditState> | undefined;
+          if (auditState) {
+            workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, { audit_state: auditState });
+            setNodes(workingNodes);
+            await saveCanvas(true, workingNodes, edges);
+          }
+          throw { nodeId, message: nodeError?.message || '节点运行失败' };
+        }
       }
-      const nextNodes = nodes.map((node) => outputMap[node.node_id]
-        ? { ...node, config: { ...node.config, last_result: outputMap[node.node_id] } }
-        : node);
-      await saveCanvas(true, nextNodes, edges);
+      await saveCanvas(true, workingNodes, edges);
       await loadCanvasHistory();
       toast.toast('工作流运行完成', 'success');
     } catch (error: any) {
       const message = error?.response?.data?.detail || error?.message || '工作流运行失败';
       toast.toast(message, 'error');
-      const runningNode = Object.entries(nodeStatus).find(([, state]) => state.status === 'running')?.[0];
-      if (runningNode) setStatus(runningNode, 'failed', message);
+      if (error?.nodeId) setStatus(error.nodeId, 'failed', message);
     } finally {
       setRunning(false);
     }
@@ -946,6 +1058,31 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
     if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
     return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
+  };
+
+  const renderAuditState = (node: CanvasNode) => {
+    const entries = Object.entries(node.config.audit_state || {});
+    if (!entries.length) return null;
+    return (
+      <div className="mt-3 rounded-lg border border-gray-800 bg-gray-950 p-3">
+        <div className="mb-2 text-xs font-medium text-gray-300">素材审核状态</div>
+        <div className="space-y-2">
+          {entries.map(([key, audit]) => (
+            <div key={key} className="rounded bg-gray-900 p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-gray-300">{key}</span>
+                <span className={audit.status === 'Active' ? 'text-green-300' : audit.status === 'Failed' ? 'text-red-300' : 'text-yellow-300'}>
+                  {audit.status || '未知'}
+                </span>
+              </div>
+              {audit.assetId && <div className="mt-1 truncate text-[10px] text-gray-500">asset: {audit.assetId}</div>}
+              {audit.error && <div className="mt-1 text-[10px] text-red-300">{audit.error}</div>}
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 text-[10px] text-gray-500">审核失败时再次运行会复用上游已生成图片，只重新处理这些素材。</div>
+      </div>
+    );
   };
 
   const renderPropertyPanel = () => {
@@ -1082,6 +1219,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         <div>
           <div className="mb-2 text-xs text-gray-400">最近结果</div>
           {renderNodePreview(selectedNode)}
+          {renderAuditState(selectedNode)}
           {nodeStatus[selectedNode.node_id]?.error && <div className="mt-2 text-xs text-red-300">{nodeStatus[selectedNode.node_id].error}</div>}
         </div>
       </div>
