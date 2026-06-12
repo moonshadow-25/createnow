@@ -364,6 +364,29 @@ function normalizeEdges(edges: any[] | undefined): CanvasEdge[] {
   })).filter((edge) => edge.source_node_id && edge.target_node_id);
 }
 
+function buildCanvasPayload(
+  canvasName: string,
+  zoom: number,
+  pan: { x: number; y: number },
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+) {
+  return {
+    name: canvasName || '新画布',
+    zoom,
+    pan_x: pan.x,
+    pan_y: pan.y,
+    schema_version: 3,
+    nodes,
+    edges,
+    variables: { ui: 'new-canvas' },
+  };
+}
+
+function serializeCanvasPayload(payload: ReturnType<typeof buildCanvasPayload>): string {
+  return stableStringify(payload);
+}
+
 function buildTopologicalOrder(nodes: CanvasNode[], edges: CanvasEdge[]): string[] {
   const ids = new Set(nodes.map((node) => node.node_id));
   const indegree = new Map<string, number>();
@@ -447,6 +470,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingVideoIdsRef = useRef<Set<string>>(new Set());
   const nodeDragMovedRef = useRef(false);
+  const lastSavedSnapshotRef = useRef<string>('');
+  const autoSaveReadyRef = useRef(false);
+  const activeCanvasIdRef = useRef('');
   const [canvases, setCanvases] = useState<CanvasRecord[]>([]);
   const [activeCanvasId, setActiveCanvasId] = useState<string>('');
   const [canvasName, setCanvasName] = useState('新画布');
@@ -531,13 +557,20 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       }
       setCanvases(list);
       const first = list[0];
+      const nextNodes = normalizeNodes(first.nodes);
+      const nextEdges = normalizeEdges(first.edges);
+      const nextZoom = Number(first.zoom || 1);
+      const nextPan = { x: Number(first.pan_x || 0), y: Number(first.pan_y || 0) };
       setActiveCanvasId(first.canvas_id);
       setCanvasName(first.name || '默认画布');
-      setNodes(normalizeNodes(first.nodes));
-      setEdges(normalizeEdges(first.edges));
-      setZoom(Number(first.zoom || 1));
-      setPan({ x: Number(first.pan_x || 0), y: Number(first.pan_y || 0) });
-      setOutputs(Object.fromEntries(normalizeNodes(first.nodes).map((node) => [node.node_id, node.config.last_result]).filter(([, output]) => Boolean(output))) as Record<string, NodeOutput>);
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      setZoom(nextZoom);
+      setPan(nextPan);
+      setOutputs(Object.fromEntries(nextNodes.map((node) => [node.node_id, node.config.last_result]).filter(([, output]) => Boolean(output))) as Record<string, NodeOutput>);
+      activeCanvasIdRef.current = first.canvas_id;
+      lastSavedSnapshotRef.current = serializeCanvasPayload(buildCanvasPayload(first.name || '默认画布', nextZoom, nextPan, nextNodes, nextEdges));
+      autoSaveReadyRef.current = true;
     } catch (error: any) {
       toast.toast(error?.response?.data?.detail || '画布加载失败', 'error');
     } finally {
@@ -573,17 +606,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (!activeCanvasId) return;
     setSaving(true);
     try {
-      const payload = {
-        name: canvasName || '新画布',
-        zoom,
-        pan_x: pan.x,
-        pan_y: pan.y,
-        schema_version: 3,
-        nodes: nextNodes,
-        edges: nextEdges,
-        variables: { ui: 'new-canvas' },
-      };
+      const payload = buildCanvasPayload(canvasName, zoom, pan, nextNodes, nextEdges);
       const response = await canvasApi.update(projectId, activeCanvasId, payload);
+      lastSavedSnapshotRef.current = serializeCanvasPayload(payload);
+      activeCanvasIdRef.current = activeCanvasId;
       setCanvases((prev) => prev.map((item) => item.canvas_id === activeCanvasId ? response.data : item));
       if (!silent) toast.toast('画布已保存', 'success');
     } catch (error: any) {
@@ -591,7 +617,34 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     } finally {
       setSaving(false);
     }
-  }, [activeCanvasId, canvasName, edges, nodes, pan.x, pan.y, projectId, toast, zoom]);
+  }, [activeCanvasId, canvasName, edges, nodes, pan, projectId, toast, zoom]);
+
+  useEffect(() => {
+    if (!autoSaveReadyRef.current || !activeCanvasId || loading || running) return;
+    const payload = buildCanvasPayload(canvasName, zoom, pan, nodes, edges);
+    const snapshot = serializeCanvasPayload(payload);
+    if (activeCanvasIdRef.current !== activeCanvasId) {
+      activeCanvasIdRef.current = activeCanvasId;
+      lastSavedSnapshotRef.current = snapshot;
+      return;
+    }
+    if (snapshot === lastSavedSnapshotRef.current) return;
+
+    const timer = window.setTimeout(async () => {
+      setSaving(true);
+      try {
+        const response = await canvasApi.update(projectId, activeCanvasId, payload);
+        lastSavedSnapshotRef.current = snapshot;
+        setCanvases((prev) => prev.map((item) => item.canvas_id === activeCanvasId ? response.data : item));
+      } catch (error: any) {
+        toast.toast(error?.response?.data?.detail || '画布自动保存失败', 'error');
+      } finally {
+        setSaving(false);
+      }
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [activeCanvasId, canvasName, edges, loading, nodes, pan, projectId, running, toast, zoom]);
 
   const createCanvas = async () => {
     try {
@@ -608,6 +661,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setSelectedEdgeId(null);
       setZoom(1);
       setPan({ x: 0, y: 0 });
+      activeCanvasIdRef.current = canvas.canvas_id;
+      lastSavedSnapshotRef.current = serializeCanvasPayload(buildCanvasPayload(canvas.name, 1, { x: 0, y: 0 }, [], []));
+      autoSaveReadyRef.current = true;
     } catch (error: any) {
       toast.toast(error?.response?.data?.detail || '创建画布失败', 'error');
     }
@@ -616,16 +672,22 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const switchCanvas = (canvasId: string) => {
     const canvas = canvases.find((item) => item.canvas_id === canvasId);
     if (!canvas) return;
+    const nextNodes = normalizeNodes(canvas.nodes);
+    const nextEdges = normalizeEdges(canvas.edges);
+    const nextZoom = Number(canvas.zoom || 1);
+    const nextPan = { x: Number(canvas.pan_x || 0), y: Number(canvas.pan_y || 0) };
     setActiveCanvasId(canvas.canvas_id);
     setCanvasName(canvas.name || '新画布');
-    const nextNodes = normalizeNodes(canvas.nodes);
     setNodes(nextNodes);
-    setEdges(normalizeEdges(canvas.edges));
-    setZoom(Number(canvas.zoom || 1));
-    setPan({ x: Number(canvas.pan_x || 0), y: Number(canvas.pan_y || 0) });
+    setEdges(nextEdges);
+    setZoom(nextZoom);
+    setPan(nextPan);
     setOutputs(Object.fromEntries(nextNodes.map((node) => [node.node_id, node.config.last_result]).filter(([, output]) => Boolean(output))) as Record<string, NodeOutput>);
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
+    activeCanvasIdRef.current = canvas.canvas_id;
+    lastSavedSnapshotRef.current = serializeCanvasPayload(buildCanvasPayload(canvas.name || '新画布', nextZoom, nextPan, nextNodes, nextEdges));
+    autoSaveReadyRef.current = true;
   };
 
   const deleteCanvas = async () => {
@@ -688,6 +750,19 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   const updateNodeConfig = (nodeId: string, patch: CanvasNode['config']) => {
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch } } : node));
+  };
+
+  const updateStaticNodeConfig = (nodeId: string, patch: CanvasNode['config']) => {
+    setOutputs((prev) => {
+      const copy = { ...prev };
+      delete copy[nodeId];
+      return copy;
+    });
+    setNodes((prev) => prev.map((node) => {
+      if (node.node_id !== nodeId) return node;
+      const { last_result: _lastResult, input_hash: _inputHash, ...config } = node.config;
+      return { ...node, config: { ...config, ...patch } };
+    }));
   };
 
   const updateNodeLabel = (nodeId: string, label: string) => {
@@ -1232,7 +1307,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           prompt: '画布上传',
         });
         const record = response.data;
-        updateNodeConfig(selectedNode.node_id, {
+        updateStaticNodeConfig(selectedNode.node_id, {
           image_id: record.image_id,
           image_url: getImageUrlFromRecord(projectId, record),
           file_name: file.name,
@@ -1240,7 +1315,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       } else {
         const response = await generationApi.uploadMedia(projectId, file);
         const record = response.data;
-        updateNodeConfig(selectedNode.node_id, {
+        updateStaticNodeConfig(selectedNode.node_id, {
           media_id: record.media_id,
           media_url: record.url,
           media_type: record.media_type,
@@ -1271,7 +1346,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         updatedAt: new Date().toISOString(),
       },
     } : undefined;
-    updateNodeConfig(selectedNode.node_id, {
+    updateStaticNodeConfig(selectedNode.node_id, {
       image_id: asset.image_id,
       image_url: imageUrl,
       asset_id: asset.asset_id,
