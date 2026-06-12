@@ -324,6 +324,17 @@ function isDynamicNode(type: NodeKind): boolean {
   return type.startsWith('gen.');
 }
 
+function canReuseNodeOutput(node: CanvasNode, output?: NodeOutput): boolean {
+  if (!output) return false;
+  const status = String((output.raw as any)?.status || '').toLowerCase();
+  if (['pending', 'processing', 'running', 'in_progress', 'created', 'failed', 'error'].includes(status)) return false;
+
+  if (node.type === 'gen.llm') return Boolean(output.text?.trim());
+  if (node.type === 'gen.image' || node.type === 'gen.image_edit') return Boolean(output.image_url?.trim());
+  if (isVideoNode(node.type)) return Boolean(output.video_url?.trim());
+  return true;
+}
+
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -1264,8 +1275,13 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         if (!node) continue;
         const inputs = incomingOutputs(nodeId, outputMap);
         const inputHash = buildInputHash(node, inputs);
-        if (!forceRerunIds.has(nodeId) && isDynamicNode(node.type) && node.config.last_result && node.config.input_hash === inputHash) {
-          outputMap[nodeId] = node.config.last_result;
+        if (
+          !forceRerunIds.has(nodeId) &&
+          isDynamicNode(node.type) &&
+          node.config.input_hash === inputHash &&
+          canReuseNodeOutput(node, node.config.last_result)
+        ) {
+          outputMap[nodeId] = node.config.last_result!;
           setStatus(nodeId, 'succeeded');
           continue;
         }
