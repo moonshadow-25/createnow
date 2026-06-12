@@ -1378,7 +1378,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         </button>
       </div>
     );
-    if (videoUrl) return <video src={videoUrl} draggable={false} className="h-20 w-full rounded-lg bg-black object-contain" controls />;
+    if (videoUrl) return (
+      <div className="relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: Math.max(80, (node.height || NODE_HEIGHT) - 96) }}>
+        <video src={videoUrl} draggable={false} className="h-full w-full bg-black object-cover" controls />
+      </div>
+    );
     if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
     if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
     return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
