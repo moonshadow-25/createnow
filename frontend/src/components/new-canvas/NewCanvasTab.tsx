@@ -470,7 +470,7 @@ async function readChatStream(projectId: string, message: string): Promise<strin
 }
 
 export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType = '', videoApiType = '' }: NewCanvasTabProps) {
-  const toast = useToast();
+  const { toast } = useToast();
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingVideoIdsRef = useRef<Set<string>>(new Set());
@@ -578,7 +578,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       lastSavedSnapshotRef.current = serializeCanvasPayload(buildCanvasPayload(first.name || '默认画布', nextZoom, nextPan, nextNodes, nextEdges));
       autoSaveReadyRef.current = true;
     } catch (error: any) {
-      toast.toast(error?.response?.data?.detail || '画布加载失败', 'error');
+      toast(error?.response?.data?.detail || '画布加载失败', 'error');
     } finally {
       setLoading(false);
     }
@@ -598,7 +598,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setHistoryImages((imageResponse.data || []) as HistoryImage[]);
       setHistoryVideos((videoResponse.data || []) as HistoryVideo[]);
     } catch (error: any) {
-      toast.toast(error?.response?.data?.detail || '画布历史加载失败', 'error');
+      toast(error?.response?.data?.detail || '画布历史加载失败', 'error');
     } finally {
       setHistoryLoading(false);
     }
@@ -617,9 +617,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       lastSavedSnapshotRef.current = serializeCanvasPayload(payload);
       activeCanvasIdRef.current = activeCanvasId;
       setCanvases((prev) => prev.map((item) => item.canvas_id === activeCanvasId ? response.data : item));
-      if (!silent) toast.toast('画布已保存', 'success');
+      if (!silent) toast('画布已保存', 'success');
     } catch (error: any) {
-      toast.toast(error?.response?.data?.detail || '画布保存失败', 'error');
+      toast(error?.response?.data?.detail || '画布保存失败', 'error');
     } finally {
       setSaving(false);
     }
@@ -643,7 +643,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         lastSavedSnapshotRef.current = snapshot;
         setCanvases((prev) => prev.map((item) => item.canvas_id === activeCanvasId ? response.data : item));
       } catch (error: any) {
-        toast.toast(error?.response?.data?.detail || '画布自动保存失败', 'error');
+        toast(error?.response?.data?.detail || '画布自动保存失败', 'error');
       } finally {
         setSaving(false);
       }
@@ -671,7 +671,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       lastSavedSnapshotRef.current = serializeCanvasPayload(buildCanvasPayload(canvas.name, 1, { x: 0, y: 0 }, [], []));
       autoSaveReadyRef.current = true;
     } catch (error: any) {
-      toast.toast(error?.response?.data?.detail || '创建画布失败', 'error');
+      toast(error?.response?.data?.detail || '创建画布失败', 'error');
     }
   };
 
@@ -698,7 +698,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   const deleteCanvas = async () => {
     if (!activeCanvasId || canvases.length <= 1) {
-      toast.toast('至少保留一个画布', 'error');
+      toast('至少保留一个画布', 'error');
       return;
     }
     try {
@@ -707,7 +707,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setCanvases(next);
       switchCanvas(next[0].canvas_id);
     } catch (error: any) {
-      toast.toast(error?.response?.data?.detail || '删除画布失败', 'error');
+      toast(error?.response?.data?.detail || '删除画布失败', 'error');
     }
   };
 
@@ -758,6 +758,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch } } : node));
   };
 
+  const buildStaticNodeUpdate = (currentNodes: CanvasNode[], nodeId: string, patch: CanvasNode['config'], output?: NodeOutput) => currentNodes.map((node) => {
+    if (node.node_id !== nodeId) return node;
+    const { last_result: _lastResult, input_hash: _inputHash, ...config } = node.config;
+    return { ...node, config: { ...config, ...patch, ...(output ? { last_result: output } : {}) } };
+  });
+
   const updateStaticNodeConfig = (nodeId: string, patch: CanvasNode['config'], output?: NodeOutput) => {
     setOutputs((prev) => {
       const copy = { ...prev };
@@ -765,11 +771,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       else delete copy[nodeId];
       return copy;
     });
-    setNodes((prev) => prev.map((node) => {
-      if (node.node_id !== nodeId) return node;
-      const { last_result: _lastResult, input_hash: _inputHash, ...config } = node.config;
-      return { ...node, config: { ...config, ...patch, ...(output ? { last_result: output } : {}) } };
-    }));
+    const nextNodes = buildStaticNodeUpdate(nodes, nodeId, patch, output);
+    setNodes(nextNodes);
+    return nextNodes;
   };
 
   const updateNodeLabel = (nodeId: string, label: string) => {
@@ -1141,9 +1145,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     try {
       const updated = await pollVideoUntilDone(videoId);
       setHistoryVideos((prev) => prev.map((video) => video.video_id === videoId ? { ...video, ...updated } : video));
-      if (!silent) toast.toast('视频轮询已更新', 'success');
+      if (!silent) toast('视频轮询已更新', 'success');
     } catch (error: any) {
-      if (!silent) toast.toast(error?.response?.data?.detail || error?.message || '视频轮询失败', 'error');
+      if (!silent) toast(error?.response?.data?.detail || error?.message || '视频轮询失败', 'error');
     } finally {
       pollingVideoIdsRef.current.delete(videoId);
       setPollingVideoIds(new Set(pollingVideoIdsRef.current));
@@ -1232,15 +1236,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (running) return;
     const order = buildTopologicalOrder(nodes, edges);
     if (!nodes.length) {
-      toast.toast('请先添加节点', 'error');
+      toast('请先添加节点', 'error');
       return;
     }
     if (!order.length) {
-      toast.toast('工作流存在环路，请检查连线', 'error');
+      toast('工作流存在环路，请检查连线', 'error');
       return;
     }
     if (mode === 'from-selected' && !selectedNodeId) {
-      toast.toast('请先选择要重跑的节点', 'error');
+      toast('请先选择要重跑的节点', 'error');
       return;
     }
     const forceRerunIds = mode === 'all'
@@ -1288,10 +1292,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       }
       await saveCanvas(true, workingNodes, edges);
       await loadCanvasHistory();
-      toast.toast('工作流运行完成', 'success');
+      toast('工作流运行完成', 'success');
     } catch (error: any) {
       const message = error?.response?.data?.detail || error?.message || '工作流运行失败';
-      toast.toast(message, 'error');
+      toast(message, 'error');
       if (error?.nodeId) setStatus(error.nodeId, 'failed', message);
     } finally {
       setRunning(false);
@@ -1325,11 +1329,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           media: [{ type: 'image', id: record.image_id, url: imageUrl, name: file.name }],
           raw: record,
         };
-        updateStaticNodeConfig(targetInfo.nodeId, {
+        const nextNodes = updateStaticNodeConfig(targetInfo.nodeId, {
           image_id: record.image_id,
           image_url: imageUrl,
           file_name: file.name,
         }, output);
+        await saveCanvas(true, nextNodes, edges);
       } else {
         const response = await generationApi.uploadMedia(projectId, file);
         const record = response.data;
@@ -1337,16 +1342,17 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         const output: NodeOutput = targetInfo.target === 'video'
           ? { video_url: mediaUrl, media: [{ type: 'video', id: record.media_id, url: mediaUrl, name: file.name }], raw: record }
           : { audio_url: mediaUrl, media: [{ type: 'audio', id: record.media_id, url: mediaUrl, name: file.name }], raw: record };
-        updateStaticNodeConfig(targetInfo.nodeId, {
+        const nextNodes = updateStaticNodeConfig(targetInfo.nodeId, {
           media_id: record.media_id,
           media_url: mediaUrl,
           media_type: record.media_type,
           file_name: file.name,
         }, output);
+        await saveCanvas(true, nextNodes, edges);
       }
-      toast.toast('上传成功', 'success');
+      toast('上传成功', 'success');
     } catch (error: any) {
-      toast.toast(error?.response?.data?.detail || '上传失败', 'error');
+      toast(error?.response?.data?.detail || '上传失败', 'error');
     } finally {
       uploadTargetRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1357,7 +1363,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (!selectedNode) return;
     const imageUrl = getBackendMediaUrl(getAssetImageUrl(asset));
     if (!asset.image_id && !imageUrl) {
-      toast.toast('该资产暂无主图', 'error');
+      toast('该资产暂无主图', 'error');
       return;
     }
     const existingAuditState = asset.image_id && asset.volcengine_asset_id ? {
@@ -1380,7 +1386,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         audit: existingAuditState && asset.image_id ? existingAuditState[`image:${asset.image_id}`] : undefined,
       }],
     };
-    updateStaticNodeConfig(selectedNode.node_id, {
+    const nextNodes = updateStaticNodeConfig(selectedNode.node_id, {
       image_id: asset.image_id,
       image_url: imageUrl,
       asset_id: asset.asset_id,
@@ -1390,6 +1396,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       existing_asset_audit_status: asset.volcengine_asset_status,
       ...(existingAuditState ? { audit_state: existingAuditState } : {}),
     }, output);
+    void saveCanvas(true, nextNodes, edges);
     setAssetPickerOpen(false);
   };
 

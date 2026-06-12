@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
 import { CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { translateError } from '@/utils/errorMessages';
 
@@ -23,7 +23,7 @@ export const ToastContext = React.createContext<ToastContextType | null>(null);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = (message: string, type: ToastType = 'info', duration = 3000, originalText?: string) => {
+  const addToast = useCallback((message: string, type: ToastType = 'info', duration = 3000, originalText?: string) => {
     const id = Date.now().toString();
     let displayMessage = message;
     let copyText = originalText;
@@ -46,14 +46,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         setToasts(prev => prev.filter(t => t.id !== id));
       }, duration);
     }
-  };
+  }, []);
 
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({ toasts, toast: addToast, removeToast }), [addToast, removeToast, toasts]);
 
   return (
-    <ToastContext.Provider value={{ toasts, toast: addToast, removeToast }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
 
       <div className="fixed bottom-4 right-4 z-[999999] flex flex-col gap-2">
