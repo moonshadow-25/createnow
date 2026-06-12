@@ -289,14 +289,19 @@ function getDefinition(type: NodeKind): NodeDefinition {
   return NODE_DEFINITIONS.find((item) => item.type === type) || NODE_DEFINITIONS[0];
 }
 
+function getBackendMediaUrl(path: string): string {
+  if (!path || path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return path;
+  return `${import.meta.env.DEV ? 'http://localhost:8501' : ''}${path}`;
+}
+
 function getImageUrlFromRecord(projectId: string, record: any): string {
-  if (record?.local_path) return `/api/projects/${projectId}/images/files/${record.local_path}`;
-  return record?.image_path || record?.image_url || '';
+  if (record?.local_path) return getBackendMediaUrl(`/api/projects/${projectId}/images/files/${record.local_path}`);
+  return getBackendMediaUrl(record?.image_path || record?.image_url || '');
 }
 
 function getVideoUrlFromRecord(projectId: string, record: any): string {
-  if (record?.local_path) return `/api/projects/${projectId}/videos/files/${record.local_path}`;
-  return record?.video_path || record?.video_url || '';
+  if (record?.local_path) return getBackendMediaUrl(`/api/projects/${projectId}/videos/files/${record.local_path}`);
+  return getBackendMediaUrl(record?.video_path || record?.video_url || '');
 }
 
 function isPendingVideoStatus(status?: string): boolean {
@@ -470,6 +475,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingVideoIdsRef = useRef<Set<string>>(new Set());
   const nodeDragMovedRef = useRef(false);
+  const uploadTargetRef = useRef<{ nodeId: string; target: 'image' | 'video' | 'audio' } | null>(null);
   const lastSavedSnapshotRef = useRef<string>('');
   const autoSaveReadyRef = useRef(false);
   const activeCanvasIdRef = useRef('');
@@ -752,16 +758,17 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch } } : node));
   };
 
-  const updateStaticNodeConfig = (nodeId: string, patch: CanvasNode['config']) => {
+  const updateStaticNodeConfig = (nodeId: string, patch: CanvasNode['config'], output?: NodeOutput) => {
     setOutputs((prev) => {
       const copy = { ...prev };
-      delete copy[nodeId];
+      if (output) copy[nodeId] = output;
+      else delete copy[nodeId];
       return copy;
     });
     setNodes((prev) => prev.map((node) => {
       if (node.node_id !== nodeId) return node;
       const { last_result: _lastResult, input_hash: _inputHash, ...config } = node.config;
-      return { ...node, config: { ...config, ...patch } };
+      return { ...node, config: { ...config, ...patch, ...(output ? { last_result: output } : {}) } };
     }));
   };
 
@@ -1292,14 +1299,18 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   };
 
   const openUpload = (target: 'image' | 'video' | 'audio') => {
+    if (!selectedNode) return;
+    uploadTargetRef.current = { nodeId: selectedNode.node_id, target };
     setUploadTarget(target);
     fileInputRef.current?.click();
   };
 
   const handleUpload = async (file: File) => {
-    if (!selectedNode) return;
+    const targetInfo = uploadTargetRef.current;
+    const targetNode = targetInfo ? nodes.find((node) => node.node_id === targetInfo.nodeId) : null;
+    if (!targetInfo || !targetNode) return;
     try {
-      if (uploadTarget === 'image') {
+      if (targetInfo.target === 'image') {
         const response = await generationApi.uploadImage(projectId, {
           asset_id: crypto.randomUUID(),
           asset_type: 'storyboard',
@@ -1307,32 +1318,44 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           prompt: '画布上传',
         });
         const record = response.data;
-        updateStaticNodeConfig(selectedNode.node_id, {
+        const imageUrl = getImageUrlFromRecord(projectId, record);
+        const output: NodeOutput = {
           image_id: record.image_id,
-          image_url: getImageUrlFromRecord(projectId, record),
+          image_url: imageUrl,
+          media: [{ type: 'image', id: record.image_id, url: imageUrl, name: file.name }],
+          raw: record,
+        };
+        updateStaticNodeConfig(targetInfo.nodeId, {
+          image_id: record.image_id,
+          image_url: imageUrl,
           file_name: file.name,
-        });
+        }, output);
       } else {
         const response = await generationApi.uploadMedia(projectId, file);
         const record = response.data;
-        updateStaticNodeConfig(selectedNode.node_id, {
+        const mediaUrl = getBackendMediaUrl(record.url || '');
+        const output: NodeOutput = targetInfo.target === 'video'
+          ? { video_url: mediaUrl, media: [{ type: 'video', id: record.media_id, url: mediaUrl, name: file.name }], raw: record }
+          : { audio_url: mediaUrl, media: [{ type: 'audio', id: record.media_id, url: mediaUrl, name: file.name }], raw: record };
+        updateStaticNodeConfig(targetInfo.nodeId, {
           media_id: record.media_id,
-          media_url: record.url,
+          media_url: mediaUrl,
           media_type: record.media_type,
           file_name: file.name,
-        });
+        }, output);
       }
       toast.toast('上传成功', 'success');
     } catch (error: any) {
       toast.toast(error?.response?.data?.detail || '上传失败', 'error');
     } finally {
+      uploadTargetRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const selectAssetForNode = (asset: any, assetType: CanvasAssetType) => {
     if (!selectedNode) return;
-    const imageUrl = getAssetImageUrl(asset);
+    const imageUrl = getBackendMediaUrl(getAssetImageUrl(asset));
     if (!asset.image_id && !imageUrl) {
       toast.toast('该资产暂无主图', 'error');
       return;
@@ -1346,6 +1369,17 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         updatedAt: new Date().toISOString(),
       },
     } : undefined;
+    const output: NodeOutput = {
+      image_id: asset.image_id,
+      image_url: imageUrl,
+      media: [{
+        type: 'image',
+        id: asset.image_id,
+        url: imageUrl,
+        name: asset.name || selectedNode.label,
+        audit: existingAuditState && asset.image_id ? existingAuditState[`image:${asset.image_id}`] : undefined,
+      }],
+    };
     updateStaticNodeConfig(selectedNode.node_id, {
       image_id: asset.image_id,
       image_url: imageUrl,
@@ -1355,7 +1389,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       existing_asset_audit_id: asset.volcengine_asset_id,
       existing_asset_audit_status: asset.volcengine_asset_status,
       ...(existingAuditState ? { audit_state: existingAuditState } : {}),
-    });
+    }, output);
     setAssetPickerOpen(false);
   };
 
