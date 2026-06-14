@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import {
+  getStickFigureBaseSize,
+  getStickFigureJointRadius,
   moveStickFigurePose,
   normalizeStickFigurePose,
   type DirectorStageMarker,
@@ -34,12 +36,6 @@ const bonePairs: [StickFigureJoint, StickFigureJoint][] = [
   ['rightKnee', 'rightFoot'],
 ];
 
-const getBaseSize = (width: number, height: number) => Math.max(8, Math.min(width, height) * 0.028);
-const getJointRadius = (joint: StickFigureJoint, baseSize: number) => {
-  if (joint === 'head') return baseSize * 1.35;
-  return baseSize / 2;
-};
-
 function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: SVGSVGElement): StickFigurePoint {
   const rect = svg.getBoundingClientRect();
   return {
@@ -61,7 +57,7 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
       : marker));
   };
 
-  const baseSize = getBaseSize(width, height);
+  const baseSize = getStickFigureBaseSize(width, height);
 
   return (
     <svg
@@ -108,7 +104,7 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
           ))}
           {Object.entries(marker.pose).map(([joint, point]) => {
             const key = joint as StickFigureJoint;
-            const radius = getJointRadius(key, baseSize);
+            const radius = getStickFigureJointRadius(key, baseSize);
             return (
               <circle
                 key={key}

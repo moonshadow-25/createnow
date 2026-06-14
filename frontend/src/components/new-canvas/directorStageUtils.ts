@@ -56,6 +56,15 @@ export const STICK_FIGURE_JOINTS: { key: StickFigureJoint; label: string }[] = [
   { key: 'rightFoot', label: 'rightFoot' },
 ];
 
+export function getStickFigureBaseSize(width: number, height: number) {
+  return Math.max(8, Math.min(width, height) * 0.028);
+}
+
+export function getStickFigureJointRadius(joint: StickFigureJoint, baseSize: number) {
+  if (joint === 'head') return baseSize * 1.35;
+  return baseSize / 2;
+}
+
 export function getDirectorStagePalette(index: number) {
   return DIRECTOR_STAGE_COLORS[index % DIRECTOR_STAGE_COLORS.length];
 }
@@ -116,7 +125,15 @@ export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | 
 }
 
 export function moveStickFigurePose(pose: StickFigurePose, joint: StickFigureJoint, point: StickFigurePoint): StickFigurePose {
-  return { ...pose, [joint]: clampPoint(point) };
+  const nextPoint = clampPoint(point);
+  if (joint === 'head') {
+    const dx = nextPoint.x - pose.head.x;
+    const dy = nextPoint.y - pose.head.y;
+    return Object.fromEntries(
+      STICK_FIGURE_JOINTS.map(({ key }) => [key, clampPoint({ x: pose[key].x + dx, y: pose[key].y + dy })]),
+    ) as StickFigurePose;
+  }
+  return { ...pose, [joint]: nextPoint };
 }
 
 
@@ -180,9 +197,9 @@ function drawLine(context: CanvasRenderingContext2D, from: StickFigurePoint, to:
 
 export function drawStickFigure(context: CanvasRenderingContext2D, marker: DirectorStageCompositeMarker, width: number, height: number) {
   const pose = marker.pose;
-  const boneWidth = Math.max(12, Math.min(width, height) * 0.012);
-  const jointRadius = boneWidth / 2;
-  const headRadius = Math.max(18, boneWidth * 1.35);
+  const boneWidth = getStickFigureBaseSize(width, height);
+  const jointRadius = getStickFigureJointRadius('neck', boneWidth);
+  const headRadius = getStickFigureJointRadius('head', boneWidth);
   context.save();
   context.lineCap = 'round';
   context.lineJoin = 'round';
