@@ -42,7 +42,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [outputs, setOutputs] = useState<Record<string, NodeOutput>>({});
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string; imageId?: string } | null>(null);
-  const [assetTab, setAssetTab] = useState<CanvasAssetType>('character');
   const [uploadTarget, setUploadTarget] = useState<'image' | 'video' | 'audio'>('image');
   const [rightPanelTab, setRightPanelTab] = useState<'node' | 'history'>('node');
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
@@ -50,7 +49,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [historyImages, setHistoryImages] = useState<HistoryImage[]>([]);
   const [historyVideos, setHistoryVideos] = useState<HistoryVideo[]>([]);
   const [pollingVideoIds, setPollingVideoIds] = useState<Set<string>>(new Set());
-  const { characters, scenes, props, storyboards } = useAssetStore();
+  const { characters, scenes, props } = useAssetStore();
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.node_id === selectedNodeId) || null,
@@ -1449,13 +1448,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
       {assetPickerOpen && selectedNode && (
         <CanvasAssetPickerDialog
-          assetTab={assetTab}
           characters={characters}
           scenes={scenes}
           props={props}
-          storyboards={storyboards}
           selectedNode={selectedNode}
-          onAssetTabChange={setAssetTab}
           onSelectAsset={selectAssetForNode}
           onClose={() => setAssetPickerOpen(false)}
         />
