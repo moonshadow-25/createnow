@@ -830,10 +830,22 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const findClosestCompatibleInput = (clientX: number, clientY: number, sourceNodeId: string, type: PortType) => {
     const point = screenToWorld(clientX, clientY);
     let best: { nodeId: string; port: string; type: PortType; distance: number } | null = null;
+
     for (const node of nodes) {
       if (node.node_id === sourceNodeId) continue;
-      for (const input of getDefinition(node.type).inputs) {
-        if (input.type !== type) continue;
+      const inputs = getDefinition(node.type).inputs.filter((input) => input.type === type);
+      if (!inputs.length) continue;
+
+      const insideNode = point.x >= node.x
+        && point.x <= node.x + (node.width || NODE_WIDTH)
+        && point.y >= node.y
+        && point.y <= node.y + (node.height || NODE_HEIGHT);
+      if (insideNode) {
+        const input = inputs[0];
+        return { nodeId: node.node_id, port: input.key, type: input.type, distance: 0 };
+      }
+
+      for (const input of inputs) {
         const portPosition = getPortPosition(node.node_id, input.key, 'in');
         const distance = Math.hypot(point.x - portPosition.x, point.y - portPosition.y);
         if (distance <= PORT_SNAP_RADIUS && (!best || distance < best.distance)) {
