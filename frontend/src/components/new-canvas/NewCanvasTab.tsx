@@ -1379,7 +1379,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       </div>
 
       {selectedNode && (
-        <div className="w-80 flex-shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900">
+        <div className="w-[30rem] flex-shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900">
         <div className="sticky top-0 z-10 flex border-b border-gray-800 bg-gray-900">
           <button
             onClick={() => setRightPanelTab('node')}
