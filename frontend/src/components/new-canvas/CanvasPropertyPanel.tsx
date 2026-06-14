@@ -51,11 +51,15 @@ export function CanvasPropertyPanel({
         <div className="space-y-2">
           {incoming.map((edge, index) => {
             const source = nodes.find((item) => item.node_id === edge.source_node_id);
-            const audit = source?.config.audit_state?.[`image:${source?.config.image_id}`]
-              || source?.config.audit_state?.[`video:${source?.config.media_url}`]
-              || auditState[`image:${source?.config.image_id || ''}`]
-              || auditState[`video:${source?.config.media_url || ''}`];
-            const status = audit?.status || (audit?.assetId ? 'Processing' : undefined);
+            const output = source?.config.last_result;
+            const imageId = output?.image_id || source?.config.image_id || '';
+            const videoUrl = output?.video_url || (source?.config.media_type === 'video' ? source.config.media_url : '') || '';
+            const imageKey = imageId ? `image:${imageId}` : '';
+            const videoKey = videoUrl ? `video:${videoUrl}` : '';
+            const audit = (imageKey ? source?.config.audit_state?.[imageKey] || auditState[imageKey] : undefined)
+              || (videoKey ? source?.config.audit_state?.[videoKey] || auditState[videoKey] : undefined);
+            const hasAuditableInput = Boolean(imageKey || videoKey);
+            const status = audit?.status || (audit?.assetId ? 'Processing' : hasAuditableInput ? 'Pending' : undefined);
             return (
               <div key={edge.edge_id} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-700 text-[10px] text-white">{index + 1}</span>
@@ -64,7 +68,7 @@ export function CanvasPropertyPanel({
                   <div className="text-[10px] text-gray-500">{edge.target_port} ← {edge.source_port}</div>
                   {status && (
                     <div className={status === 'Active' ? 'mt-1 text-[10px] text-green-300' : status === 'Failed' ? 'mt-1 text-[10px] text-red-300' : 'mt-1 text-[10px] text-yellow-300'}>
-                      {status === 'Active' ? '审核通过' : status === 'Failed' ? '审核失败' : '审核中'}
+                      {status === 'Active' ? '审核通过' : status === 'Failed' ? '审核失败' : status === 'Pending' ? '待提交审核' : '审核中'}
                     </div>
                   )}
                 </div>
