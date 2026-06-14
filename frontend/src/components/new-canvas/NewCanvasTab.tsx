@@ -164,6 +164,8 @@ const NODE_WIDTH = 280;
 const NODE_HEIGHT = 174;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
+const PORT_SNAP_RADIUS = 48;
+const EDGE_HIT_STROKE = 24;
 
 const NODE_DEFINITIONS: NodeDefinition[] = [
   {
@@ -522,7 +524,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState<{ nodeId: string; port: string; type: PortType } | null>(null);
+  const [connecting, setConnecting] = useState<{ nodeId: string; port: string; type: PortType; pointer?: { x: number; y: number } } | null>(null);
   const [draggingNode, setDraggingNode] = useState<{ nodeId: string; dx: number; dy: number } | null>(null);
   const [resizingNode, setResizingNode] = useState<{ nodeId: string; startX: number; startY: number; width: number; height: number } | null>(null);
   const [panning, setPanning] = useState<{ x: number; y: number } | null>(null);
@@ -821,10 +823,56 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, label } : node));
   };
 
+  const getNodeOutputPort = (node: CanvasNode) => getDefinition(node.type).outputs[0];
+
+  const findClosestCompatibleInput = (clientX: number, clientY: number, sourceNodeId: string, type: PortType) => {
+    const point = screenToWorld(clientX, clientY);
+    let best: { nodeId: string; port: string; type: PortType; distance: number } | null = null;
+    for (const node of nodes) {
+      if (node.node_id === sourceNodeId) continue;
+      for (const input of getDefinition(node.type).inputs) {
+        if (input.type !== type) continue;
+        const portPosition = getPortPosition(node.node_id, input.key, 'in');
+        const distance = Math.hypot(point.x - portPosition.x, point.y - portPosition.y);
+        if (distance <= PORT_SNAP_RADIUS && (!best || distance < best.distance)) {
+          best = { nodeId: node.node_id, port: input.key, type: input.type, distance };
+        }
+      }
+    }
+    return best;
+  };
+
+  const addEdge = (sourceNodeId: string, sourcePort: string, sourceType: PortType, targetNodeId: string, targetPort: string, targetType: PortType) => {
+    const nextOrder = Math.max(0, ...edges
+      .filter((item) => item.target_node_id === targetNodeId && item.target_port === targetPort)
+      .map((item) => item.order || 0)) + 1;
+    const edge: CanvasEdge = {
+      edge_id: newId('edge'),
+      source_node_id: sourceNodeId,
+      source_port: sourcePort,
+      source_port_type: sourceType,
+      target_node_id: targetNodeId,
+      target_port: targetPort,
+      target_port_type: targetType,
+      order: nextOrder,
+    };
+    setEdges((prev) => [...prev.filter((item) => !(item.target_node_id === targetNodeId && item.target_port === targetPort && item.source_node_id === sourceNodeId)), edge]);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(edge.edge_id);
+  };
+
   const handleCanvasWheel = (event: React.WheelEvent) => {
     event.preventDefault();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
     const direction = event.deltaY > 0 ? -0.08 : 0.08;
-    setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((prev + direction).toFixed(2)))));
+    const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((zoom + direction).toFixed(2))));
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    const worldX = (mouseX - pan.x) / zoom;
+    const worldY = (mouseY - pan.y) / zoom;
+    setZoom(nextZoom);
+    setPan({ x: mouseX - worldX * nextZoom, y: mouseY - worldY * nextZoom });
   };
 
   const handleMouseMove = (event: React.MouseEvent) => {
@@ -844,14 +892,18 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setNodes((prev) => prev.map((node) => node.node_id === draggingNode.nodeId ? { ...node, x: point.x - draggingNode.dx, y: point.y - draggingNode.dy } : node));
       return;
     }
+    if (connecting) {
+      setConnecting({ ...connecting, pointer: screenToWorld(event.clientX, event.clientY) });
+      return;
+    }
     if (panning) {
       setPan({ x: event.clientX - panning.x, y: event.clientY - panning.y });
     }
   };
 
-  const handleNodeMouseDown = (event: React.MouseEvent, node: CanvasNode) => {
+  const handleNodeHeaderMouseDown = (event: React.MouseEvent, node: CanvasNode) => {
     const target = event.target as HTMLElement;
-    if (target.closest('[data-port]') || target.closest('button')) return;
+    if (target.closest('button')) return;
     event.stopPropagation();
     window.getSelection()?.removeAllRanges();
     nodeDragMovedRef.current = false;
@@ -859,14 +911,32 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setDraggingNode({ nodeId: node.node_id, dx: point.x - node.x, dy: point.y - node.y });
   };
 
-  const finishPointerAction = () => {
+  const handleNodeContentMouseDown = (event: React.MouseEvent, node: CanvasNode) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-port]') || target.closest('button') || target.closest('input, textarea, select, video, audio')) return;
+    const outputPort = getNodeOutputPort(node);
+    if (!outputPort) return;
+    event.stopPropagation();
+    window.getSelection()?.removeAllRanges();
+    nodeDragMovedRef.current = false;
+    setSelectedNodeId(node.node_id);
+    setSelectedEdgeId(null);
+    setConnecting({ nodeId: node.node_id, port: outputPort.key, type: outputPort.type, pointer: screenToWorld(event.clientX, event.clientY) });
+  };
+
+  const finishPointerAction = (event?: React.MouseEvent) => {
+    if (connecting && event) {
+      const target = findClosestCompatibleInput(event.clientX, event.clientY, connecting.nodeId, connecting.type);
+      if (target) addEdge(connecting.nodeId, connecting.port, connecting.type, target.nodeId, target.port, target.type);
+    }
+    setConnecting(null);
     setDraggingNode(null);
     setResizingNode(null);
     setPanning(null);
   };
 
   const handleOutputPortClick = (nodeId: string, port: string, type: PortType) => {
-    setConnecting({ nodeId, port, type });
+    setConnecting({ nodeId, port, type, pointer: getPortPosition(nodeId, port, 'out') });
   };
 
   const handleInputPortClick = (nodeId: string, port: string, type: PortType) => {
@@ -875,23 +945,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setConnecting(null);
       return;
     }
-    if (connecting.type !== type) {
-      return;
-    }
-    const nextOrder = Math.max(0, ...edges
-      .filter((item) => item.target_node_id === nodeId && item.target_port === port)
-      .map((item) => item.order || 0)) + 1;
-    const edge: CanvasEdge = {
-      edge_id: newId('edge'),
-      source_node_id: connecting.nodeId,
-      source_port: connecting.port,
-      source_port_type: connecting.type,
-      target_node_id: nodeId,
-      target_port: port,
-      target_port_type: type,
-      order: nextOrder,
-    };
-    setEdges((prev) => [...prev.filter((item) => !(item.target_node_id === nodeId && item.target_port === port && item.source_node_id === connecting.nodeId)), edge]);
+    if (connecting.type !== type) return;
+    addEdge(connecting.nodeId, connecting.port, connecting.type, nodeId, port, type);
     setConnecting(null);
   };
 
@@ -899,6 +954,25 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setEdges((prev) => prev.filter((edge) => edge.edge_id !== edgeId));
     setSelectedEdgeId(null);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (selectedNodeId) {
+        event.preventDefault();
+        removeNode(selectedNodeId);
+        return;
+      }
+      if (selectedEdgeId) {
+        event.preventDefault();
+        removeEdge(selectedEdgeId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedEdgeId, selectedNodeId, nodes, edges]);
 
   const getPortPosition = (nodeId: string, port: string, side: 'in' | 'out') => {
     const node = nodes.find((item) => item.node_id === nodeId);
@@ -1507,10 +1581,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         <button
           type="button"
           onClick={(event) => { event.stopPropagation(); setPreviewImage({ url: imageUrl, title: node.label }); }}
-          className="absolute right-1 top-1 hidden rounded bg-black/70 p-1 text-white hover:bg-black/90 group-hover:block"
+          className="absolute left-1/2 top-1/2 hidden h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white shadow-2xl ring-1 ring-white/30 hover:bg-black/90 group-hover:flex"
           title="放大查看"
         >
-          <ZoomIn size={14} />
+          <ZoomIn size={28} />
         </button>
       </div>
     );
@@ -1811,7 +1885,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   return (
     <div className="flex h-full min-h-0 bg-gray-950 text-white">
-      <div className="flex w-72 flex-shrink-0 flex-col border-r border-gray-800 bg-gray-900">
+      <div className="group/sidebar relative z-30 h-full w-3 flex-shrink-0 border-r border-gray-800 bg-gray-900 transition-all duration-200 hover:w-72">
+        <div className="pointer-events-none absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500 group-hover/sidebar:opacity-0">节点</div>
+        <div className="flex h-full w-72 -translate-x-[276px] flex-col bg-gray-900 opacity-0 shadow-2xl transition-all duration-200 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100">
         <div className="border-b border-gray-800 p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-lg font-semibold">新画布</div>
@@ -1869,6 +1945,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             })}
           </div>
         </div>
+        </div>
       </div>
 
       <div className="relative min-w-0 flex-1 overflow-hidden">
@@ -1889,6 +1966,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
               setPanning({ x: event.clientX - pan.x, y: event.clientY - pan.y });
               setSelectedNodeId(null);
               setSelectedEdgeId(null);
+              setRightPanelTab('node');
             }
           }}
           onMouseMove={handleMouseMove}
@@ -1905,7 +1983,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                 const selected = selectedEdgeId === edge.edge_id;
                 return (
                   <g key={edge.edge_id} className="pointer-events-auto cursor-pointer" onClick={(event) => { event.stopPropagation(); setSelectedEdgeId(edge.edge_id); setSelectedNodeId(null); }}>
-                    <path d={path} stroke="transparent" strokeWidth={12} fill="none" />
+                    <path d={path} stroke="transparent" strokeWidth={EDGE_HIT_STROKE} fill="none" />
                     <path d={path} stroke={selected ? '#60a5fa' : '#64748b'} strokeWidth={selected ? 3 : 2} fill="none" />
                     {edge.order != null && (
                       <g transform={`translate(${end.x - 22}, ${end.y - 10})`}>
@@ -1916,6 +1994,13 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                   </g>
                 );
               })}
+              {connecting && connecting.pointer && (() => {
+                const start = getPortPosition(connecting.nodeId, connecting.port, 'out');
+                const end = connecting.pointer;
+                const dx = Math.max(80, Math.abs(end.x - start.x) / 2);
+                const path = `M ${start.x} ${start.y} C ${start.x + dx} ${start.y}, ${end.x - dx} ${end.y}, ${end.x} ${end.y}`;
+                return <path d={path} stroke="#60a5fa" strokeWidth="3" strokeDasharray="8 8" strokeOpacity="0.5" fill="none" pointerEvents="none" />;
+              })()}
             </svg>
 
             {nodes.map((node) => {
@@ -1926,7 +2011,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                 <div
                   key={node.node_id}
                   data-node-id={node.node_id}
-                  onMouseDown={(event) => handleNodeMouseDown(event, node)}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (nodeDragMovedRef.current) {
@@ -1935,11 +2019,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                     }
                     setSelectedNodeId(node.node_id);
                     setSelectedEdgeId(null);
+                    setRightPanelTab('node');
                   }}
                   className={`absolute select-none rounded-xl border bg-gray-900 shadow-2xl transition ${selectedNodeId === node.node_id ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-gray-700'} ${state === 'running' ? 'ring-2 ring-yellow-400/40' : ''} ${state === 'failed' ? 'border-red-500' : ''}`}
                   style={{ left: node.x, top: node.y, width: node.width || NODE_WIDTH, minHeight: node.height || NODE_HEIGHT }}
                 >
-                  <div className={`rounded-t-xl bg-gradient-to-r ${definition.color} px-3 py-2`}>
+                  <div
+                    className={`cursor-move rounded-t-xl bg-gradient-to-r ${definition.color} px-3 py-2`}
+                    onMouseDown={(event) => handleNodeHeaderMouseDown(event, node)}
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-sm font-semibold"><Icon size={16} />{node.label}</div>
                       {state === 'running' && <Loader2 size={16} className="animate-spin" />}
@@ -1975,7 +2063,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                     </button>
                   ))}
 
-                  <div className="space-y-2 p-3">
+                  <div className="space-y-2 p-3" onMouseDown={(event) => handleNodeContentMouseDown(event, node)}>
                     <div className="text-xs text-gray-400">{definition.description}</div>
                     {renderNodePreview(node)}
                     <div className="flex flex-wrap gap-1 text-[10px] text-gray-500">
@@ -2006,7 +2094,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         </div>
       </div>
 
-      <div className="w-80 flex-shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900">
+      {selectedNode && (
+        <div className="w-80 flex-shrink-0 overflow-y-auto border-l border-gray-800 bg-gray-900">
         <div className="sticky top-0 z-10 flex border-b border-gray-800 bg-gray-900">
           <button
             onClick={() => setRightPanelTab('node')}
@@ -2022,7 +2111,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           </button>
         </div>
         {rightPanelTab === 'node' ? renderPropertyPanel() : renderHistoryPanel()}
-      </div>
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
