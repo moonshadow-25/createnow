@@ -1122,31 +1122,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
   };
 
-  const renderAuditState = (node: CanvasNode) => {
-    const entries = Object.entries(isVideoNode(node.type) ? collectVisibleAuditStateForNode(node.node_id) : (node.config.audit_state || {}));
-    if (!entries.length) return null;
-    return (
-      <div className="mt-3 rounded-lg border border-gray-800 bg-gray-950 p-3">
-        <div className="mb-2 text-xs font-medium text-gray-300">素材审核状态</div>
-        <div className="space-y-2">
-          {entries.map(([key, audit]) => (
-            <div key={key} className="rounded bg-gray-900 p-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-gray-300">{key}</span>
-                <span className={audit.status === 'Active' ? 'text-green-300' : audit.status === 'Failed' ? 'text-red-300' : 'text-yellow-300'}>
-                  {audit.status || '未知'}
-                </span>
-              </div>
-              {audit.assetId && <div className="mt-1 truncate text-[10px] text-gray-500">asset: {audit.assetId}</div>}
-              {audit.error && <div className="mt-1 text-[10px] text-red-300">{audit.error}</div>}
-            </div>
-          ))}
-        </div>
-        <div className="mt-2 text-[10px] text-gray-500">审核失败时再次运行会复用上游已生成图片，只重新处理这些素材。</div>
-      </div>
-    );
-  };
-
   if (loading) {
     return <div className="flex h-full items-center justify-center bg-gray-950 text-gray-300"><Loader2 className="mr-2 animate-spin" />加载画布...</div>;
   }
@@ -1401,7 +1376,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             updateNodeLabel={updateNodeLabel}
             updateNodeConfig={updateNodeConfig}
             renderNodePreview={renderNodePreview}
-            renderAuditState={renderAuditState}
+            getInputAuditState={collectVisibleAuditStateForNode}
             onOpenAssetPicker={() => setAssetPickerOpen(true)}
             onOpenUpload={openUpload}
           />

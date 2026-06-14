@@ -6,7 +6,7 @@ import {
   getDefinition,
 } from './nodeDefinitions';
 import { isVideoNode } from './canvasUtils';
-import type { CanvasEdge, CanvasNode } from './types';
+import type { AssetAuditState, CanvasEdge, CanvasNode } from './types';
 
 type CanvasPropertyPanelProps = {
   selectedNode: CanvasNode | null;
@@ -20,7 +20,7 @@ type CanvasPropertyPanelProps = {
   updateNodeLabel: (nodeId: string, label: string) => void;
   updateNodeConfig: (nodeId: string, config: Partial<CanvasNode['config']>) => void;
   renderNodePreview: (node: CanvasNode, compact?: boolean) => React.ReactNode;
-  renderAuditState: (node: CanvasNode) => React.ReactNode;
+  getInputAuditState: (nodeId: string) => Record<string, AssetAuditState>;
   onOpenAssetPicker: () => void;
   onOpenUpload: (target: 'image' | 'video' | 'audio') => void;
 };
@@ -37,25 +37,36 @@ export function CanvasPropertyPanel({
   updateNodeLabel,
   updateNodeConfig,
   renderNodePreview,
-  renderAuditState,
+  getInputAuditState,
   onOpenAssetPicker,
   onOpenUpload,
 }: CanvasPropertyPanelProps) {
   const renderInputOrderPanel = (node: CanvasNode) => {
     const incoming = getIncomingEdges(node.node_id);
     if (!incoming.length) return null;
+    const auditState = getInputAuditState(node.node_id);
     return (
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
         <div className="mb-2 text-xs font-medium text-gray-300">输入顺序</div>
         <div className="space-y-2">
           {incoming.map((edge, index) => {
             const source = nodes.find((item) => item.node_id === edge.source_node_id);
+            const audit = source?.config.audit_state?.[`image:${source?.config.image_id}`]
+              || source?.config.audit_state?.[`video:${source?.config.media_url}`]
+              || auditState[`image:${source?.config.image_id || ''}`]
+              || auditState[`video:${source?.config.media_url || ''}`];
+            const status = audit?.status || (audit?.assetId ? 'Processing' : undefined);
             return (
               <div key={edge.edge_id} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-700 text-[10px] text-white">{index + 1}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-gray-200">{source?.label || edge.source_node_id}</div>
                   <div className="text-[10px] text-gray-500">{edge.target_port} ← {edge.source_port}</div>
+                  {status && (
+                    <div className={status === 'Active' ? 'mt-1 text-[10px] text-green-300' : status === 'Failed' ? 'mt-1 text-[10px] text-red-300' : 'mt-1 text-[10px] text-yellow-300'}>
+                      {status === 'Active' ? '审核通过' : status === 'Failed' ? '审核失败' : '审核中'}
+                    </div>
+                  )}
                 </div>
                 <button onClick={() => moveInputEdge(edge.edge_id, -1)} disabled={index === 0} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">上</button>
                 <button onClick={() => moveInputEdge(edge.edge_id, 1)} disabled={index === incoming.length - 1} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">下</button>
@@ -208,7 +219,6 @@ export function CanvasPropertyPanel({
       <div>
         <div className="mb-2 text-xs text-gray-400">最近结果</div>
         {renderNodePreview(selectedNode, true)}
-        {renderAuditState(selectedNode)}
         {nodeError && <div className="mt-2 text-xs text-red-300">{nodeError}</div>}
       </div>
     </div>

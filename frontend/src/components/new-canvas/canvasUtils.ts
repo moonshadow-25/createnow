@@ -88,9 +88,10 @@ export function buildInputHash(node: CanvasNode, inputOutputs: NodeOutput[]): st
 
 export function mergePrompt(prompt: string | undefined, inputText: string): string {
   const base = (prompt || '').trim();
-  if (!base) return inputText.trim();
-  if (base.includes('{{input}}')) return base.split('{{input}}').join(inputText.trim());
-  return [base, inputText.trim()].filter(Boolean).join('\n');
+  const input = inputText.trim();
+  if (!base) return input;
+  if (base.includes('{{input}}')) return base.split('{{input}}').join(input);
+  return base;
 }
 
 export function normalizeNodes(nodes: any[] | undefined): CanvasNode[] {
