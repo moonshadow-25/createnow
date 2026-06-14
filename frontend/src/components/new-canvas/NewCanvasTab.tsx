@@ -11,7 +11,7 @@ import { CanvasNodePreview } from './CanvasNodePreview';
 import { CanvasPropertyPanel } from './CanvasPropertyPanel';
 import { buildDirectorStagePrompt } from './directorStageUtils';
 import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NODE_WIDTH, PORT_SNAP_RADIUS, SIDEBAR_OPEN_DISTANCE, getDefinition } from './nodeDefinitions';
-import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
+import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, imageMediaFromOutputs, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, projectOutputForPort, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
 import type { AssetAuditState, CanvasAssetType, CanvasEdge, CanvasNode, CanvasRecord, HistoryImage, HistoryItem, HistoryVideo, NewCanvasTabProps, NodeKind, NodeOutput, PortType, RefMedia, RunMode, RunStatus } from './types';
 
 export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType = '', videoApiType = '' }: NewCanvasTabProps) {
@@ -612,15 +612,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>, targetPort?: string) => incomingEdges(nodeId, targetPort)
-    .map((edge) => outputMap[edge.source_node_id])
-    .filter(Boolean);
-
-  const imageMediaFromOutputs = (items: NodeOutput[]): RefMedia[] => items.flatMap((output) => {
-    const mediaImages = (output.media || []).filter((item) => item.type === 'image' && (item.id || item.url));
-    if (mediaImages.length) return mediaImages;
-    if (output.image_id || output.image_url) return [{ type: 'image' as const, id: output.image_id, url: output.image_url || '', name: '图片' }];
-    return [];
-  });
+    .map((edge) => projectOutputForPort(outputMap[edge.source_node_id], edge.source_port))
+    .filter((item): item is NodeOutput => Boolean(item));
 
   const setStatus = (nodeId: string, status: RunStatus, error?: string) => {
     setNodeStatus((prev) => ({ ...prev, [nodeId]: { status, error } }));

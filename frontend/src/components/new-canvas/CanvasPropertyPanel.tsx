@@ -8,7 +8,7 @@ import {
 } from './nodeDefinitions';
 import { DirectorStageEditor } from './DirectorStageEditor';
 import { isVideoNode } from './canvasUtils';
-import type { AssetAuditState, CanvasEdge, CanvasNode } from './types';
+import type { AssetAuditState, CanvasEdge, CanvasNode, NodeOutput, RefMedia } from './types';
 
 type CanvasPropertyPanelProps = {
   projectId: string;
@@ -30,6 +30,15 @@ type CanvasPropertyPanelProps = {
   toast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
+type InputOrderItem = {
+  edge: CanvasEdge;
+  source?: CanvasNode;
+  label: string;
+  type: string;
+  media?: RefMedia;
+  text?: string;
+};
+
 export function CanvasPropertyPanel({
   projectId,
   selectedNode,
@@ -49,40 +58,78 @@ export function CanvasPropertyPanel({
   onOpenUpload,
   toast,
 }: CanvasPropertyPanelProps) {
+  const getSourceOutput = (source?: CanvasNode): NodeOutput | undefined => {
+    if (!source) return undefined;
+    if (source.config.last_result) return source.config.last_result;
+    if (source.type === 'static.image') return {
+      image_id: source.config.image_id,
+      image_url: source.config.image_url,
+      media: source.config.image_id ? [{
+        type: 'image',
+        id: source.config.image_id,
+        url: source.config.image_url || '',
+        name: source.config.asset_name || source.label,
+        audit: source.config.existing_asset_audit_id ? {
+          refType: 'image',
+          refKey: source.config.image_id,
+          assetId: source.config.existing_asset_audit_id,
+          status: source.config.existing_asset_audit_status || 'Active',
+        } : undefined,
+      }] : [],
+    };
+    if (source.type === 'static.video') return { video_url: source.config.media_url };
+    if (source.type === 'static.audio') return { audio_url: source.config.media_url };
+    return undefined;
+  };
+
+  const projectOutputForPort = (output: NodeOutput | undefined, sourcePort?: string): NodeOutput | undefined => {
+    if (!output) return undefined;
+    if (sourcePort === 'image') return { image_id: output.image_id, image_url: output.image_url, media: (output.media || []).filter((item) => item.type === 'image') };
+    if (sourcePort === 'text') return output.text ? { text: output.text } : {};
+    if (sourcePort === 'video') return { video_id: output.video_id, video_url: output.video_url, media: (output.media || []).filter((item) => item.type === 'video') };
+    if (sourcePort === 'audio') return { audio_url: output.audio_url, media: (output.media || []).filter((item) => item.type === 'audio') };
+    return output;
+  };
+
   const renderInputOrderPanel = (node: CanvasNode) => {
     const incoming = getIncomingEdges(node.node_id);
     if (!incoming.length) return null;
     const auditState = getInputAuditState(node.node_id);
     const canvasAuditState = getCanvasAuditState();
+    const items: InputOrderItem[] = incoming.flatMap((edge) => {
+      const source = nodes.find((item) => item.node_id === edge.source_node_id);
+      const output = projectOutputForPort(getSourceOutput(source), edge.source_port);
+      const media = (output?.media || []).filter((item) => item.type === edge.target_port && (item.id || item.url));
+      if (media.length) return media.map((item, mediaIndex) => ({ edge, source, media: item, label: item.name || `${source?.label || edge.source_node_id} #${mediaIndex + 1}`, type: item.type }));
+      if (edge.target_port === 'text' && output?.text) return [{ edge, source, text: output.text, label: source?.label || edge.source_node_id, type: 'text' }];
+      return [{ edge, source, label: source?.label || edge.source_node_id, type: edge.target_port }];
+    });
     return (
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
         <div className="mb-2 text-xs font-medium text-gray-300">输入顺序</div>
         <div className="space-y-2">
-          {incoming.map((edge, index) => {
-            const source = nodes.find((item) => item.node_id === edge.source_node_id);
-            const output = source?.config.last_result;
-            const imageId = output?.image_id || source?.config.image_id || '';
-            const videoUrl = output?.video_url || (source?.config.media_type === 'video' ? source.config.media_url : '') || '';
-            const imageKey = imageId ? `image:${imageId}` : '';
-            const videoKey = videoUrl ? `video:${videoUrl}` : '';
-            const audit = (imageKey ? source?.config.audit_state?.[imageKey] || auditState[imageKey] || canvasAuditState[imageKey] : undefined)
-              || (videoKey ? source?.config.audit_state?.[videoKey] || auditState[videoKey] || canvasAuditState[videoKey] : undefined);
+          {items.map((item, index) => {
+            const imageKey = item.media?.type === 'image' && item.media.id ? `image:${item.media.id}` : '';
+            const videoKey = item.media?.type === 'video' ? `video:${item.media.url}` : '';
+            const audit = item.media?.audit
+              || (imageKey ? item.source?.config.audit_state?.[imageKey] || auditState[imageKey] || canvasAuditState[imageKey] : undefined)
+              || (videoKey ? item.source?.config.audit_state?.[videoKey] || auditState[videoKey] || canvasAuditState[videoKey] : undefined);
             const hasAuditableInput = Boolean(imageKey || videoKey);
             const status = audit?.status || (audit?.assetId ? 'Processing' : hasAuditableInput ? 'Pending' : undefined);
             return (
-              <div key={edge.edge_id} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
+              <div key={`${item.edge.edge_id}-${index}`} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-700 text-[10px] text-white">{index + 1}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-gray-200">{source?.label || edge.source_node_id}</div>
-                  <div className="text-[10px] text-gray-500">{edge.target_port} ← {edge.source_port}</div>
+                  <div className="truncate text-gray-200">{item.label}</div>
+                  <div className="text-[10px] text-gray-500">{item.type} · {item.edge.target_port} ← {item.edge.source_port}</div>
                   {status && (
                     <div className={status === 'Active' ? 'mt-1 text-[10px] text-green-300' : status === 'Failed' ? 'mt-1 text-[10px] text-red-300' : 'mt-1 text-[10px] text-yellow-300'}>
                       {status === 'Active' ? '审核通过' : status === 'Failed' ? '审核失败' : status === 'Pending' ? '待提交审核' : '审核中'}
                     </div>
                   )}
                 </div>
-                <button onClick={() => moveInputEdge(edge.edge_id, -1)} disabled={index === 0} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">上</button>
-                <button onClick={() => moveInputEdge(edge.edge_id, 1)} disabled={index === incoming.length - 1} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">下</button>
+                <button onClick={() => moveInputEdge(item.edge.edge_id, -1)} disabled={index === 0} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">上</button>
+                <button onClick={() => moveInputEdge(item.edge.edge_id, 1)} disabled={index === items.length - 1} className="rounded bg-gray-800 px-2 py-1 text-[10px] disabled:opacity-30">下</button>
               </div>
             );
           })}

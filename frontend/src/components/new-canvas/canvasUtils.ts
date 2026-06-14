@@ -86,6 +86,35 @@ export function buildInputHash(node: CanvasNode, inputOutputs: NodeOutput[]): st
   return stableStringify({ type: node.type, config, inputs: inputOutputs });
 }
 
+export function projectOutputForPort(output: NodeOutput | undefined, sourcePort?: string): NodeOutput | undefined {
+  if (!output) return undefined;
+  if (sourcePort === 'image') return {
+    image_id: output.image_id,
+    image_url: output.image_url,
+    media: (output.media || []).filter((item) => item.type === 'image'),
+  };
+  if (sourcePort === 'text') return output.text ? { text: output.text } : {};
+  if (sourcePort === 'video') return {
+    video_id: output.video_id,
+    video_url: output.video_url,
+    media: (output.media || []).filter((item) => item.type === 'video'),
+  };
+  if (sourcePort === 'audio') return {
+    audio_url: output.audio_url,
+    media: (output.media || []).filter((item) => item.type === 'audio'),
+  };
+  return output;
+}
+
+export function imageMediaFromOutputs(items: NodeOutput[]): NonNullable<NodeOutput['media']> {
+  return items.flatMap((output) => {
+    const mediaImages = (output.media || []).filter((item) => item.type === 'image' && (item.id || item.url));
+    if (mediaImages.length) return mediaImages;
+    if (output.image_id || output.image_url) return [{ type: 'image' as const, id: output.image_id, url: output.image_url || '', name: '图片' }];
+    return [];
+  });
+}
+
 export function mergePrompt(prompt: string | undefined, inputText: string): string {
   const base = (prompt || '').trim();
   const input = inputText.trim();
