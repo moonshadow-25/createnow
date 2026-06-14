@@ -5,6 +5,7 @@ Generation API - 图像生成相关端点
 import logging
 import uuid
 from datetime import datetime
+from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Request
 from pydantic import BaseModel
@@ -56,6 +57,17 @@ def _get_projects_dir():
     if data_root:
         return data_root / "projects"
     return settings.PROJECTS_DIR
+
+
+def _resolve_project_image_file_url(project_id: str, url: str):
+    prefix = f"/api/projects/{project_id}/images/files/"
+    if not url.startswith(prefix):
+        return None
+    relative_path = unquote(url[len(prefix):]).replace("\\", "/")
+    if ".." in relative_path.split("/"):
+        return None
+    local_file_path = _get_projects_dir() / project_id / "images" / "files" / relative_path
+    return local_file_path if local_file_path.exists() else None
 
 
 router = APIRouter()
@@ -590,7 +602,16 @@ async def edit_image(project_id: str, request: ImageEditRequest):
     for url in request.reference_image_urls:
         url = url.strip()
         logger.info(f"[图生图] 处理URL: {url[:100] if url else 'empty'}, startswith http: {url.startswith(('http://', 'https://')) if url else False}, startswith data: {url.startswith('data:image') if url else False}")
-        if url and url.startswith(("http://", "https://", "data:image")):
+        local_file_path = _resolve_project_image_file_url(project_id, url) if url else None
+        if local_file_path:
+            try:
+                from app.services.image_download_service import ImageDownloadService
+                base64_url = ImageDownloadService.image_to_base64_url(local_file_path)
+                reference_image_paths.append(base64_url)
+                logger.info(f"[图生图] ✓ 接受项目本地图片: {url[:100]}")
+            except Exception as e:
+                logger.warning(f"[图生图] ✗ 读取项目本地图片失败 {url[:100]}: {e}")
+        elif url and url.startswith(("http://", "https://", "data:image")):
             reference_image_paths.append(url)
             logger.info(f"[图生图] ✓ 接受URL: {url[:100]}")
         else:
