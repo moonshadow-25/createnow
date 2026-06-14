@@ -82,48 +82,43 @@ export function createDefaultStickFigurePose(x: number, y: number): StickFigureP
 
 
 export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | undefined, fallbackX: number, fallbackY: number): StickFigurePose {
-  const pose = marker?.pose || createDefaultStickFigurePose(marker?.x ?? fallbackX, marker?.y ?? fallbackY);
+  const defaults = createDefaultStickFigurePose(marker?.x ?? fallbackX, marker?.y ?? fallbackY);
+  const pose = marker?.pose || defaults;
+  const pick = (key: StickFigureJoint, fallback?: StickFigurePoint) => clampPoint((pose as any)[key] || fallback || defaults[key]);
   if ('body' in pose) {
     return {
-      head: clampPoint(pose.head),
-      neck: clampPoint((pose as any).neck || pose.body),
-      hip: clampPoint((pose as any).hip || pose.body || pose.leftFoot),
-      leftElbow: clampPoint((pose as any).leftElbow || pose.leftHand),
-      rightElbow: clampPoint((pose as any).rightElbow || pose.rightHand),
-      leftHand: clampPoint(pose.leftHand),
-      rightHand: clampPoint(pose.rightHand),
-      leftKnee: clampPoint((pose as any).leftKnee || pose.leftFoot),
-      rightKnee: clampPoint((pose as any).rightKnee || pose.rightFoot),
-      leftFoot: clampPoint(pose.leftFoot),
-      rightFoot: clampPoint(pose.rightFoot),
+      head: pick('head'),
+      neck: pick('neck', (pose as any).body),
+      hip: pick('hip', (pose as any).body || (pose as any).leftFoot),
+      leftElbow: pick('leftElbow', (pose as any).leftHand),
+      rightElbow: pick('rightElbow', (pose as any).rightHand),
+      leftHand: pick('leftHand'),
+      rightHand: pick('rightHand'),
+      leftKnee: pick('leftKnee', (pose as any).leftFoot),
+      rightKnee: pick('rightKnee', (pose as any).rightFoot),
+      leftFoot: pick('leftFoot'),
+      rightFoot: pick('rightFoot'),
     };
   }
   return {
-    head: clampPoint(pose.head),
-    neck: clampPoint(pose.neck),
-    hip: clampPoint(pose.hip),
-    leftElbow: clampPoint(pose.leftElbow),
-    rightElbow: clampPoint(pose.rightElbow),
-    leftHand: clampPoint(pose.leftHand),
-    rightHand: clampPoint(pose.rightHand),
-    leftKnee: clampPoint(pose.leftKnee),
-    rightKnee: clampPoint(pose.rightKnee),
-    leftFoot: clampPoint(pose.leftFoot),
-    rightFoot: clampPoint(pose.rightFoot),
+    head: pick('head'),
+    neck: pick('neck'),
+    hip: pick('hip'),
+    leftElbow: pick('leftElbow'),
+    rightElbow: pick('rightElbow'),
+    leftHand: pick('leftHand'),
+    rightHand: pick('rightHand'),
+    leftKnee: pick('leftKnee'),
+    rightKnee: pick('rightKnee'),
+    leftFoot: pick('leftFoot'),
+    rightFoot: pick('rightFoot'),
   };
 }
 
 export function moveStickFigurePose(pose: StickFigurePose, joint: StickFigureJoint, point: StickFigurePoint): StickFigurePose {
-  const nextPoint = clampPoint(point);
-    if (joint === 'head' || joint === 'neck' || joint === 'hip') {
-      const dx = nextPoint.x - pose[joint].x;
-      const dy = nextPoint.y - pose[joint].y;
-      return Object.fromEntries(
-        STICK_FIGURE_JOINTS.map(({ key }) => [key, clampPoint({ x: pose[key].x + dx, y: pose[key].y + dy })]),
-      ) as StickFigurePose;
-    }
-    return { ...pose, [joint]: nextPoint };
+  return { ...pose, [joint]: clampPoint(point) };
 }
+
 
 export function syncDirectorStageMarkers({ incomingEdges, nodes, currentMarkers }: DirectorStageSyncArgs): DirectorStageMarker[] {
   const markerByEdgeId = new Map(currentMarkers.map((marker) => [marker.edgeId, marker]));

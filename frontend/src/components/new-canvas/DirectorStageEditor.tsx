@@ -107,7 +107,7 @@ export function DirectorStageEditor({
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <div className="text-xs font-medium text-gray-300">场景图</div>
-            <div className="text-[10px] text-gray-500">拖拽头部或颈部移动整体，拖拽肘/手/膝/脚调整姿势</div>
+            <div className="text-[10px] text-gray-500">拖拽颈骨、胯骨、肘、手、膝、脚可调整姿势</div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onOpenAssetPicker} className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">选择资产</button>
