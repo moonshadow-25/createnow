@@ -304,6 +304,16 @@ function getVideoUrlFromRecord(projectId: string, record: any): string {
   return getBackendMediaUrl(record?.video_path || record?.video_url || '');
 }
 
+function buildVideoNodeOutput(projectId: string, record: any, fallbackName: string): NodeOutput {
+  const videoUrl = getVideoUrlFromRecord(projectId, record);
+  return {
+    video_id: record.video_id,
+    video_url: videoUrl,
+    media: videoUrl ? [{ type: 'video', id: record.video_id, url: videoUrl, name: record.prompt || fallbackName }] : [],
+    raw: record,
+  };
+}
+
 function isPendingVideoStatus(status?: string): boolean {
   return !status || ['pending', 'processing', 'running', 'in_progress', 'created'].includes(status);
 }
@@ -324,9 +334,15 @@ function isDynamicNode(type: NodeKind): boolean {
   return type.startsWith('gen.');
 }
 
+function getOutputStatus(output?: NodeOutput): string {
+  const raw = output?.raw;
+  if (!raw || typeof raw !== 'object' || !('status' in raw)) return '';
+  return String((raw as { status?: unknown }).status || '').toLowerCase();
+}
+
 function canReuseNodeOutput(node: CanvasNode, output?: NodeOutput): boolean {
   if (!output) return false;
-  const status = String((output.raw as any)?.status || '').toLowerCase();
+  const status = getOutputStatus(output);
   if (['pending', 'processing', 'running', 'in_progress', 'created', 'failed', 'error'].includes(status)) return false;
 
   if (node.type === 'gen.llm') return Boolean(output.text?.trim());
@@ -606,8 +622,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         generationApi.listCanvasImages(projectId),
         generationApi.listCanvasVideos(projectId),
       ]);
-      setHistoryImages((imageResponse.data || []) as HistoryImage[]);
-      setHistoryVideos((videoResponse.data || []) as HistoryVideo[]);
+      const images = (imageResponse.data || []) as HistoryImage[];
+      const videos = (videoResponse.data || []) as HistoryVideo[];
+      setHistoryImages(images);
+      setHistoryVideos(videos);
+      videos
+        .filter((video) => video.status === 'completed' && Boolean(getVideoUrlFromRecord(projectId, video)))
+        .forEach((video) => {
+          void syncVideoOutputToCanvasNodes(video);
+        });
     } catch (error: any) {
       toast(error?.response?.data?.detail || '画布历史加载失败', 'error');
     } finally {
@@ -999,7 +1022,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return workingNodes.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch } } : node);
   };
 
-  const executeNode = async (node: CanvasNode, inputOutputs: NodeOutput[]): Promise<{ output: NodeOutput; auditState?: Record<string, AssetAuditState> }> => {
+  const executeNode = async (
+    node: CanvasNode,
+    inputOutputs: NodeOutput[],
+    onPendingOutput?: (output: NodeOutput) => void,
+  ): Promise<{ output: NodeOutput; auditState?: Record<string, AssetAuditState> }> => {
     if (node.type === 'static.image') {
       if (!node.config.image_id && !node.config.image_url) throw new Error('静态图片节点缺少图片');
       const audit = node.config.image_id && node.config.existing_asset_audit_id ? {
@@ -1120,14 +1147,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         model: videoApiType === 'createnow' ? node.config.model : undefined,
       });
       let video = response.data;
-      if (video.video_id) video = await pollVideoUntilDone(video.video_id);
-      const videoUrl = getVideoUrlFromRecord(projectId, video);
-      return { output: {
-        video_id: video.video_id,
-        video_url: videoUrl,
-        media: videoUrl ? [{ type: 'video', id: video.video_id, url: videoUrl, name: video.prompt || node.label }] : [],
-        raw: video,
-      }, auditState: prepared.auditState };
+      if (video.video_id) {
+        onPendingOutput?.(buildVideoNodeOutput(projectId, video, node.label));
+        video = await pollVideoUntilDone(video.video_id);
+      }
+      return { output: buildVideoNodeOutput(projectId, video, node.label), auditState: prepared.auditState };
     }
 
     throw new Error(`不支持的节点类型：${node.type}`);
@@ -1145,6 +1169,42 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return current;
   };
 
+  const syncVideoOutputToCanvasNodes = async (videoRecord: any) => {
+    if (!videoRecord?.video_id) return false;
+    let nextNodes: CanvasNode[] | null = null;
+    const output = buildVideoNodeOutput(projectId, videoRecord, '视频结果');
+    setNodes((currentNodes) => {
+      let didUpdate = false;
+      const updatedNodes = currentNodes.map((node) => {
+        if (node.config.last_result?.video_id !== videoRecord.video_id) return node;
+        const currentOutput = node.config.last_result;
+        if (currentOutput?.video_url === output.video_url && getOutputStatus(currentOutput) === getOutputStatus(output)) return node;
+        didUpdate = true;
+        return {
+          ...node,
+          config: {
+            ...node.config,
+            last_result: output,
+          },
+        };
+      });
+      if (didUpdate) nextNodes = updatedNodes;
+      return didUpdate ? updatedNodes : currentNodes;
+    });
+    if (!nextNodes) return false;
+    setOutputs((prev) => {
+      const next = { ...prev };
+      nextNodes!.forEach((node) => {
+        if (node.config.last_result?.video_id === videoRecord.video_id) {
+          next[node.node_id] = output;
+        }
+      });
+      return next;
+    });
+    await saveCanvas(true, nextNodes, edges);
+    return true;
+  };
+
   const continuePollingHistoryVideo = async (videoId: string, silent = false, force = false) => {
     if (force) {
       pollingVideoIdsRef.current.delete(videoId);
@@ -1156,6 +1216,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     try {
       const updated = await pollVideoUntilDone(videoId);
       setHistoryVideos((prev) => prev.map((video) => video.video_id === videoId ? { ...video, ...updated } : video));
+      await syncVideoOutputToCanvasNodes(updated);
       if (!silent) toast('视频轮询已更新', 'success');
     } catch (error: any) {
       if (!silent) toast(error?.response?.data?.detail || error?.message || '视频轮询失败', 'error');
@@ -1287,7 +1348,16 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         }
         setStatus(nodeId, 'running');
         try {
-          const result = await executeNode(node, inputs);
+          const result = await executeNode(node, inputs, async (pendingOutput) => {
+            outputMap[nodeId] = pendingOutput;
+            workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, {
+              last_result: pendingOutput,
+              input_hash: inputHash,
+            });
+            setNodes(workingNodes);
+            setOutputs((prev) => ({ ...prev, [nodeId]: pendingOutput }));
+            await saveCanvas(true, workingNodes, edges);
+          });
           outputMap[nodeId] = result.output;
           workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, {
             last_result: result.output,
