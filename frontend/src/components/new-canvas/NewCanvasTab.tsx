@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle, Loader2, Play, Plus, Save, Trash2, X, ZoomIn } from 'lucide-react';
+import { CheckCircle, Loader2, Play, Plus, Save, Trash2, X } from 'lucide-react';
 import { canvasApi, generationApi } from '@/services/api';
 import { useAssetStore } from '@/store/assetStore';
 import { useToast } from '@/components/common/Toast';
@@ -7,10 +7,11 @@ import { ImagePreviewModal } from '@/components/common/ImagePreviewModal';
 import { getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 import { CanvasAssetPickerDialog } from './CanvasAssetPickerDialog';
 import { CanvasHistoryPanel } from './CanvasHistoryPanel';
+import { CanvasNodePreview } from './CanvasNodePreview';
 import { CanvasPropertyPanel } from './CanvasPropertyPanel';
 import { buildDirectorStagePrompt } from './directorStageUtils';
 import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NODE_WIDTH, PORT_SNAP_RADIUS, SIDEBAR_OPEN_DISTANCE, getDefinition } from './nodeDefinitions';
-import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, pickRenderableOutput, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
+import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
 import type { AssetAuditState, CanvasAssetType, CanvasEdge, CanvasNode, CanvasRecord, HistoryImage, HistoryItem, HistoryVideo, NewCanvasTabProps, NodeKind, NodeOutput, PortType, RefMedia, RunMode, RunStatus } from './types';
 
 export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType = '', videoApiType = '' }: NewCanvasTabProps) {
@@ -1147,46 +1148,20 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setAssetPickerOpen(false);
   };
 
-  const renderNodePreview = (node: CanvasNode, compact = false) => {
-    const output = pickRenderableOutput(outputs[node.node_id], node.config.last_result);
-    const imageUrl = output?.image_url || (node.type === 'director.stage' ? node.config.director_composite_image_url || node.config.image_url : node.config.image_url);
-    const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
-    const videoStatus = getOutputStatus(output);
-    const videoId = output?.video_id;
-    const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
-    const text = output?.text;
-    const previewHeight = compact ? 112 : Math.max(80, (node.height || NODE_HEIGHT) - 96);
-    if (imageUrl) return (
-      <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: previewHeight }}>
-        <img src={imageUrl} alt={node.label} draggable={false} className="h-full w-full object-cover" />
-        <button
-          type="button"
-          onClick={(event) => { event.stopPropagation(); setPreviewImage({ url: imageUrl, title: node.label }); }}
-          className="absolute left-1/2 top-1/2 hidden h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white shadow-2xl ring-1 ring-white/30 hover:bg-black/90 group-hover:flex"
-          title="放大查看"
-        >
-          <ZoomIn size={28} />
-        </button>
-      </div>
-    );
-    if (videoUrl) return (
-      <div className="relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: previewHeight }}>
-        <video src={videoUrl} draggable={false} className="h-full w-full bg-black object-cover" controls />
-      </div>
-    );
-    if (isVideoNode(node.type) && videoId) {
-      const isFailed = ['failed', 'error'].includes(videoStatus);
-      return (
-        <div className={`flex h-20 flex-col items-center justify-center rounded-lg border text-xs ${isFailed ? 'border-red-800 bg-red-950/30 text-red-300' : 'border-blue-900 bg-blue-950/30 text-blue-300'}`}>
-          <div className="font-medium">{isFailed ? '视频生成失败' : '视频生成中'}</div>
-          <div className="mt-1 text-[10px] text-gray-500">{videoId.slice(0, 8)} · {videoStatus || 'pending'}</div>
-        </div>
-      );
-    }
-    if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
-    if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
-    return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
-  };
+  const renderNodePreview = (node: CanvasNode, compact = false) => (
+    <CanvasNodePreview
+      node={node}
+      output={outputs[node.node_id]}
+      compact={compact}
+      nodeHeight={node.height || NODE_HEIGHT}
+      onDirectorMarkersChange={(nodeId, nextMarkers) => updateNodeConfig(nodeId, {
+        director_markers: nextMarkers,
+        director_composite_image_id: undefined,
+        director_composite_image_url: undefined,
+      })}
+      onOpenImagePreview={(url, title) => setPreviewImage({ url, title })}
+    />
+  );
 
   if (loading) {
     return <div className="flex h-full items-center justify-center bg-gray-950 text-gray-300"><Loader2 className="mr-2 animate-spin" />加载画布...</div>;

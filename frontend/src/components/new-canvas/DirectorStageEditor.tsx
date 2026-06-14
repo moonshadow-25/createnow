@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, RotateCcw, Save, Upload } from 'lucide-react';
 import { generationApi } from '@/services/api';
 import { getImageUrlFromRecord } from './canvasUtils';
+import { StickFigureOverlay } from './StickFigureOverlay';
 import {
   buildDirectorStagePrompt,
   renderDirectorStageComposite,
@@ -22,13 +23,6 @@ type DirectorStageEditorProps = {
   toast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
-type DragState = {
-  markerId: string;
-  rect: DOMRect;
-};
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
 export function DirectorStageEditor({
   projectId,
   node,
@@ -40,8 +34,6 @@ export function DirectorStageEditor({
   onOpenUpload,
   toast,
 }: DirectorStageEditorProps) {
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const [dragState, setDragState] = useState<DragState | null>(null);
   const [saving, setSaving] = useState(false);
   const sceneUrl = node.config.image_url || '';
   const markers = useMemo(() => node.config.director_markers || [], [node.config.director_markers]);
@@ -52,25 +44,11 @@ export function DirectorStageEditor({
     if (changed) updateNodeConfig(node.node_id, { director_markers: synced });
   }, [incomingEdges, markers, node.node_id, nodes, updateNodeConfig]);
 
-  useEffect(() => {
-    if (!dragState) return;
-    const handlePointerMove = (event: PointerEvent) => {
-      const x = clamp((event.clientX - dragState.rect.left) / dragState.rect.width, 0, 1);
-      const y = clamp((event.clientY - dragState.rect.top) / dragState.rect.height, 0, 1);
-      updateMarker(dragState.markerId, { x, y });
-    };
-    const handlePointerUp = () => setDragState(null);
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp, { once: true });
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-    };
-  }, [dragState]);
-
-  const updateMarker = (markerId: string, patch: Partial<DirectorStageMarker>) => {
+  const updateMarkers = (nextMarkers: DirectorStageMarker[]) => {
     updateNodeConfig(node.node_id, {
-      director_markers: markers.map((marker) => marker.id === markerId ? { ...marker, ...patch } : marker),
+      director_markers: nextMarkers,
+      director_composite_image_id: undefined,
+      director_composite_image_url: undefined,
     });
   };
 
@@ -129,71 +107,36 @@ export function DirectorStageEditor({
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <div className="text-xs font-medium text-gray-300">场景图</div>
-            <div className="text-[10px] text-gray-500">上传或选择一张场景图，分辨率会作为合成图尺寸</div>
+            <div className="text-[10px] text-gray-500">拖拽头部或身体移动整体，拖拽手脚调整姿势</div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onOpenAssetPicker} className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">选择资产</button>
             <button type="button" onClick={() => onOpenUpload('image')} className="rounded bg-gray-700 px-2 py-1 text-xs hover:bg-gray-600"><Upload size={12} /></button>
           </div>
         </div>
-        <div ref={stageRef} className="relative aspect-video overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
+        <div className="relative aspect-video overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
           {sceneUrl ? (
             <img src={sceneUrl} alt="导演台场景图" draggable={false} className="h-full w-full object-contain" />
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-gray-500">未选择场景图</div>
           )}
-          {sceneUrl && markers.map((marker) => (
-            <button
-              key={marker.id}
-              type="button"
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const rect = stageRef.current?.getBoundingClientRect();
-                if (rect) setDragState({ markerId: marker.id, rect });
-              }}
-              className="absolute flex h-20 w-16 -translate-x-1/2 -translate-y-1/2 cursor-grab flex-col items-center justify-center border-2 border-white/60 bg-black/20 text-[10px] font-bold text-white shadow-xl active:cursor-grabbing"
-              style={{
-                left: `${marker.x * 100}%`,
-                top: `${marker.y * 100}%`,
-                transform: `translate(-50%, -50%) rotate(${marker.rotation}deg) scale(${marker.scale})`,
-                borderRadius: '999px 999px 18px 18px',
-                background: `linear-gradient(145deg, ${marker.color}, #111827)`,
-              }}
-              title={`${marker.label} · ${marker.colorName}`}
-            >
-              <span className="mb-1 h-5 w-5 rounded-full bg-white/90" />
-              <span>{marker.label}</span>
-            </button>
-          ))}
+          {sceneUrl && <StickFigureOverlay markers={markers} editable onMarkersChange={updateMarkers} />}
         </div>
         <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
-          <span>{markers.length ? `${markers.length} 个输入标记` : '连接图片后会自动创建小人标记'}</span>
+          <span>{markers.length ? `${markers.length} 个火柴人标记` : '连接图片后会自动创建火柴人标记'}</span>
           {node.config.director_composite_image_url && <span className="text-green-300">已保存位置</span>}
         </div>
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
-        <div className="mb-2 text-xs font-medium text-gray-300">小人标记</div>
-        <div className="space-y-3">
+        <div className="mb-2 text-xs font-medium text-gray-300">输入绑定</div>
+        <div className="space-y-2">
           {markers.map((marker) => (
-            <div key={marker.id} className="rounded bg-gray-900 p-2">
-              <div className="mb-2 flex items-center gap-2 text-xs">
-                <span className="h-4 w-4 rounded-full" style={{ backgroundColor: marker.color }} />
-                <span className="font-medium text-gray-200">{marker.label}</span>
-                <span className="min-w-0 flex-1 truncate text-gray-500">{marker.sourceLabel}</span>
-                <span className="text-[10px] text-gray-400">{marker.colorName}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-400">
-                <label>
-                  缩放
-                  <input type="range" min="0.45" max="1.65" step="0.05" value={marker.scale} onChange={(event) => updateMarker(marker.id, { scale: Number(event.target.value) })} className="w-full" />
-                </label>
-                <label>
-                  旋转
-                  <input type="range" min="-180" max="180" step="1" value={marker.rotation} onChange={(event) => updateMarker(marker.id, { rotation: Number(event.target.value) })} className="w-full" />
-                </label>
-              </div>
+            <div key={marker.id} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
+              <span className="h-4 w-4 rounded-full" style={{ backgroundColor: marker.color }} />
+              <span className="font-medium text-gray-200">{marker.label}</span>
+              <span className="min-w-0 flex-1 truncate text-gray-500">{marker.sourceLabel}</span>
+              <span className="text-[10px] text-gray-400">{marker.colorName}</span>
             </div>
           ))}
           {!markers.length && <div className="rounded bg-gray-900 p-3 text-xs text-gray-500">暂无输入图片，请从其他图片节点连线到导演台。</div>}
