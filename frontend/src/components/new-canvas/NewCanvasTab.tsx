@@ -589,6 +589,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return visible;
   };
 
+  const collectCanvasAuditState = () => nodes.reduce<Record<string, AssetAuditState>>((acc, node) => {
+    Object.assign(acc, node.config.audit_state || {});
+    return acc;
+  }, {});
+
   const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>) => {
     const inputs = edges
       .filter((edge) => edge.target_node_id === nodeId)
@@ -1377,6 +1382,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             updateNodeConfig={updateNodeConfig}
             renderNodePreview={renderNodePreview}
             getInputAuditState={collectVisibleAuditStateForNode}
+            getCanvasAuditState={collectCanvasAuditState}
             onOpenAssetPicker={() => setAssetPickerOpen(true)}
             onOpenUpload={openUpload}
           />

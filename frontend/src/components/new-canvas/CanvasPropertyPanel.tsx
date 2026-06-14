@@ -21,6 +21,7 @@ type CanvasPropertyPanelProps = {
   updateNodeConfig: (nodeId: string, config: Partial<CanvasNode['config']>) => void;
   renderNodePreview: (node: CanvasNode, compact?: boolean) => React.ReactNode;
   getInputAuditState: (nodeId: string) => Record<string, AssetAuditState>;
+  getCanvasAuditState: () => Record<string, AssetAuditState>;
   onOpenAssetPicker: () => void;
   onOpenUpload: (target: 'image' | 'video' | 'audio') => void;
 };
@@ -38,6 +39,7 @@ export function CanvasPropertyPanel({
   updateNodeConfig,
   renderNodePreview,
   getInputAuditState,
+  getCanvasAuditState,
   onOpenAssetPicker,
   onOpenUpload,
 }: CanvasPropertyPanelProps) {
@@ -45,6 +47,7 @@ export function CanvasPropertyPanel({
     const incoming = getIncomingEdges(node.node_id);
     if (!incoming.length) return null;
     const auditState = getInputAuditState(node.node_id);
+    const canvasAuditState = getCanvasAuditState();
     return (
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
         <div className="mb-2 text-xs font-medium text-gray-300">输入顺序</div>
@@ -56,8 +59,8 @@ export function CanvasPropertyPanel({
             const videoUrl = output?.video_url || (source?.config.media_type === 'video' ? source.config.media_url : '') || '';
             const imageKey = imageId ? `image:${imageId}` : '';
             const videoKey = videoUrl ? `video:${videoUrl}` : '';
-            const audit = (imageKey ? source?.config.audit_state?.[imageKey] || auditState[imageKey] : undefined)
-              || (videoKey ? source?.config.audit_state?.[videoKey] || auditState[videoKey] : undefined);
+            const audit = (imageKey ? source?.config.audit_state?.[imageKey] || auditState[imageKey] || canvasAuditState[imageKey] : undefined)
+              || (videoKey ? source?.config.audit_state?.[videoKey] || auditState[videoKey] || canvasAuditState[videoKey] : undefined);
             const hasAuditableInput = Boolean(imageKey || videoKey);
             const status = audit?.status || (audit?.assetId ? 'Processing' : hasAuditableInput ? 'Pending' : undefined);
             return (
