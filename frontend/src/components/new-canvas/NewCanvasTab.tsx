@@ -18,6 +18,7 @@ import {
 import { canvasApi, generationApi } from '@/services/api';
 import { useAssetStore } from '@/store/assetStore';
 import { useToast } from '@/components/common/Toast';
+import { ExpandableText } from '@/components/common/ExpandableText';
 import { getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
 type NodeKind =
@@ -166,7 +167,7 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
 const PORT_SNAP_RADIUS = 48;
 const EDGE_HIT_STROKE = 24;
-const SIDEBAR_OPEN_DISTANCE = 24;
+const SIDEBAR_OPEN_DISTANCE = 48;
 
 const NODE_DEFINITIONS: NodeDefinition[] = [
   {
@@ -1597,7 +1598,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
     const text = output?.text;
     if (imageUrl) return (
-      <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: Math.max(80, (node.height || NODE_HEIGHT) - 96) }}>
+      <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: 112 }}>
         <img src={imageUrl} alt={node.label} draggable={false} className="h-full w-full object-cover" />
         <button
           type="button"
@@ -1610,7 +1611,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       </div>
     );
     if (videoUrl) return (
-      <div className="relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: Math.max(80, (node.height || NODE_HEIGHT) - 96) }}>
+      <div className="relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: 112 }}>
         <video src={videoUrl} draggable={false} className="h-full w-full bg-black object-cover" controls />
       </div>
     );
@@ -1730,7 +1731,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             <textarea
               value={selectedNode.config.prompt || ''}
               onChange={(event) => updateNodeConfig(selectedNode.node_id, { prompt: event.target.value })}
-              rows={5}
+              rows={15}
               placeholder="可使用 {{input}} 引用上游文本"
               className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
             />
@@ -1850,9 +1851,21 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             const imageUrl = getImageUrlFromRecord(projectId, item.image);
             return (
               <div key={`image-${item.id}`} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-                {imageUrl && <img src={imageUrl} alt={item.title} draggable={false} className="mb-2 h-28 w-full rounded bg-gray-900 object-contain" />}
+                {imageUrl && (
+                  <div className="group relative mb-2 h-28 w-full overflow-hidden rounded bg-gray-900">
+                    <img src={imageUrl} alt={item.title} draggable={false} className="h-full w-full object-contain" />
+                    <button
+                      type="button"
+                      onClick={() => setPreviewImage({ url: imageUrl, title: item.title, imageId: item.id })}
+                      className="absolute left-1/2 top-1/2 hidden h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white shadow-2xl ring-1 ring-white/30 hover:bg-black/90 group-hover:flex"
+                      title="放大查看"
+                    >
+                      <ZoomIn size={24} />
+                    </button>
+                  </div>
+                )}
                 <div className="mb-1 text-[10px] text-blue-300">图片</div>
-                <div className="line-clamp-2 text-xs text-gray-300">{item.title}</div>
+                <ExpandableText text={item.title} maxLines={2} className="text-xs text-gray-300" />
                 <div className="mt-1 text-[10px] text-gray-600">{item.createdAt || item.id}</div>
               </div>
             );
@@ -1868,7 +1881,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                   <span className="text-purple-300">视频</span>
                   <span className={pending ? 'text-yellow-300' : item.video.status === 'failed' ? 'text-red-300' : 'text-green-300'}>{item.video.status || 'pending'}</span>
                 </div>
-                <div className="line-clamp-2 text-xs text-gray-300">{item.title}</div>
+                <ExpandableText text={item.title} maxLines={2} className="text-xs text-gray-300" />
                 <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-gray-600">
                   <span>{item.createdAt || item.id}</span>
                   {(pending || item.video.status === 'failed') && (
@@ -1891,7 +1904,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             >
               <div className="mb-1 text-[10px] text-amber-300">文本</div>
               <div className="mb-1 text-xs font-medium text-blue-300">{item.title}</div>
-              <div className="line-clamp-5 whitespace-pre-wrap text-xs text-gray-300">{item.text}</div>
+              <ExpandableText text={item.text} maxLines={5} className="whitespace-pre-wrap text-xs text-gray-300" />
             </button>
           );
         })}
@@ -2157,18 +2170,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       />
 
       {previewImage && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-6" onMouseDown={() => setPreviewImage(null)}>
-          <div className="relative flex max-h-[92vh] max-w-[92vw] flex-col rounded-xl border border-gray-700 bg-gray-950 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-gray-100">{previewImage.title}</div>
-                {previewImage.imageId && <div className="truncate text-xs text-gray-500">{previewImage.imageId}</div>}
-              </div>
-              <button onClick={() => setPreviewImage(null)} className="rounded-lg bg-gray-800 p-2 hover:bg-gray-700"><X size={18} /></button>
-            </div>
-            <div className="flex min-h-0 items-center justify-center p-3">
-              <img src={previewImage.url} alt={previewImage.title} draggable={false} className="max-h-[78vh] max-w-[88vw] object-contain" />
-            </div>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-6" onMouseDown={() => setPreviewImage(null)}>
+          <div className="max-h-[90vh] max-w-[90vw]" onMouseDown={(event) => event.stopPropagation()}>
+            <img src={previewImage.url} alt={previewImage.title} draggable={false} className="max-h-[80vh] max-w-full rounded-lg object-contain" />
+            <div className="mt-3 text-sm text-gray-200">{previewImage.title}</div>
+            {previewImage.imageId && <div className="mt-1 text-xs text-gray-500">{previewImage.imageId}</div>}
           </div>
         </div>
       )}
