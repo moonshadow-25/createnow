@@ -166,6 +166,7 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
 const PORT_SNAP_RADIUS = 48;
 const EDGE_HIT_STROKE = 24;
+const SIDEBAR_OPEN_DISTANCE = 24;
 
 const NODE_DEFINITIONS: NodeDefinition[] = [
   {
@@ -900,6 +901,13 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (panning) {
       setPan({ x: event.clientX - panning.x, y: event.clientY - panning.y });
     }
+  };
+
+  const handleCanvasMouseMove = (event: React.MouseEvent) => {
+    if (!leftPanelOpen && event.clientX <= SIDEBAR_OPEN_DISTANCE) {
+      setLeftPanelOpen(true);
+    }
+    handleMouseMove(event);
   };
 
   const handleNodeHeaderMouseDown = (event: React.MouseEvent, node: CanvasNode) => {
@@ -1887,9 +1895,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   return (
     <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
       <div
-        className="absolute left-0 top-0 z-40 h-full"
+        className="pointer-events-none absolute left-0 top-0 z-40 h-full"
         style={{ width: 6 }}
-        onMouseEnter={() => setLeftPanelOpen(true)}
       />
       <div className="pointer-events-none absolute left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500">节点</div>
       {leftPanelOpen && (
@@ -1981,7 +1988,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
               setRightPanelTab('node');
             }
           }}
-          onMouseMove={handleMouseMove}
+          onMouseMove={handleCanvasMouseMove}
           onMouseUp={finishPointerAction}
           onMouseLeave={finishPointerAction}
         >
