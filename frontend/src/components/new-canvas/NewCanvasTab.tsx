@@ -711,8 +711,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
     if (node.type === 'gen.image_edit') {
       const imageMedia = imageMediaFromOutputs(imageInputs);
-      const referenceImageIds = imageMedia.map((item) => item.id).filter(Boolean) as string[];
-      const referenceImageUrls = imageMedia.map((item) => item.url).filter(Boolean);
+      const referenceImageIds = imageMedia
+        .filter((item) => Boolean(item.id))
+        .map((item) => item.id as string);
+      const referenceImageUrls = imageMedia
+        .filter((item) => !item.id && Boolean(item.url))
+        .map((item) => item.url);
       if (!prompt) throw new Error('图生图节点缺少提示词');
       if (!referenceImageIds.length && !referenceImageUrls.length) throw new Error('图生图节点缺少参考图');
       const response = await generationApi.editCanvasImage(projectId, {
