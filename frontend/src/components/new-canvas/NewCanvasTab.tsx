@@ -1887,16 +1887,18 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   return (
     <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
       <div
-        className="absolute left-0 top-0 z-40 h-full w-1.5"
+        className="absolute left-0 top-0 z-40 h-full"
+        style={{ width: 6 }}
         onMouseEnter={() => setLeftPanelOpen(true)}
       />
       <div className="pointer-events-none absolute left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500">节点</div>
       {leftPanelOpen && (
         <div
-          className="absolute left-0 top-0 z-50 h-full w-72 overflow-hidden border-r border-gray-800 bg-gray-900 shadow-2xl"
+          className="absolute left-0 top-0 z-50 h-full overflow-hidden border-r border-gray-800 bg-gray-900 shadow-2xl"
+          style={{ width: 288 }}
           onMouseLeave={() => setLeftPanelOpen(false)}
         >
-          <div className="flex h-full w-72 flex-col">
+          <div className="flex h-full flex-col" style={{ width: 288 }}>
         <div className="border-b border-gray-800 p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-lg font-semibold">新画布</div>
