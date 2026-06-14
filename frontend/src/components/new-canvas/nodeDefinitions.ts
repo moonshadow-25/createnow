@@ -78,7 +78,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     color: 'from-red-500 to-orange-600',
     inputs: [{ key: 'text', label: '提示词', type: 'text' }],
     outputs: [{ key: 'video', label: '视频', type: 'video' }],
-    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
+    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9', generate_audio: true },
   },
   {
     type: 'gen.video.image',
@@ -88,7 +88,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     color: 'from-indigo-500 to-violet-600',
     inputs: [{ key: 'image', label: '参考图', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
     outputs: [{ key: 'video', label: '视频', type: 'video' }],
-    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
+    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9', generate_audio: true },
   },
   {
     type: 'gen.video.multi',
@@ -103,7 +103,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
       { key: 'text', label: '提示词', type: 'text' },
     ],
     outputs: [{ key: 'video', label: '视频', type: 'video' }],
-    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9' },
+    defaults: { prompt: '', duration: 6, resolution: '720p', ratio: '16:9', generate_audio: true },
   },
 ];
 

@@ -1154,33 +1154,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             {canvases.map((canvas) => <option key={canvas.canvas_id} value={canvas.canvas_id}>{canvas.name}</option>)}
           </select>
           <input value={canvasName} onChange={(event) => setCanvasName(event.target.value)} className="w-full rounded bg-gray-950 px-3 py-2 text-sm outline-none ring-1 ring-gray-700" />
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <button onClick={() => saveCanvas(false)} disabled={saving} className="flex items-center justify-center gap-1 rounded bg-gray-700 px-2 py-2 text-xs hover:bg-gray-600 disabled:opacity-50">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}保存
             </button>
-            <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center justify-center gap-1 rounded bg-green-700 px-2 py-2 text-xs hover:bg-green-600 disabled:opacity-50">
-              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}继续
-            </button>
             <button onClick={deleteCanvas} className="flex items-center justify-center gap-1 rounded bg-red-900/60 px-2 py-2 text-xs text-red-200 hover:bg-red-900">
               <Trash2 size={14} />删除
-            </button>
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => runWorkflow('from-selected')}
-              disabled={running || !selectedNodeId}
-              className="rounded bg-gray-800 px-2 py-2 text-xs text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-45"
-              title="重跑当前选中节点及其下游"
-            >
-              从选中重跑
-            </button>
-            <button
-              onClick={() => runWorkflow('all')}
-              disabled={running}
-              className="rounded bg-gray-800 px-2 py-2 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-              title="重跑所有动态节点"
-            >
-              全部重跑
             </button>
           </div>
         </div>
@@ -1188,7 +1167,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mb-3 text-sm font-medium text-gray-300">添加节点</div>
           <div className="space-y-2">
-            {NODE_DEFINITIONS.map((definition) => {
+            {NODE_DEFINITIONS.filter((definition) => definition.type !== 'gen.video.image').map((definition) => {
               const Icon = definition.icon;
               return (
                 <button key={definition.type} onClick={() => addNode(definition.type)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-left hover:border-blue-500 hover:bg-gray-750">
@@ -1210,6 +1189,25 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
           <span>缩放 {Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
+          <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center gap-1 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600 disabled:opacity-50">
+            {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}继续
+          </button>
+          <button
+            onClick={() => runWorkflow('from-selected')}
+            disabled={running || !selectedNodeId}
+            className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-45"
+            title="重跑当前选中节点及其下游"
+          >
+            从选中重跑
+          </button>
+          <button
+            onClick={() => runWorkflow('all')}
+            disabled={running}
+            className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:opacity-50"
+            title="重跑所有动态节点"
+          >
+            全部重跑
+          </button>
           {connecting && <span className="text-blue-300">正在连接：{connecting.type}</span>}
           {selectedEdgeId && <button onClick={() => removeEdge(selectedEdgeId)} className="rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700">删除连线</button>}
         </div>

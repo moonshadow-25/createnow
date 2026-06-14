@@ -1,4 +1,5 @@
 import { Trash2 } from 'lucide-react';
+import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
 import {
   IMAGE_SIZE_OPTIONS,
   VIDEO_RATIO_OPTIONS,
@@ -169,57 +170,67 @@ export function CanvasPropertyPanel({
       )}
 
       {isVideoNode(selectedNode.type) && (
-        <div className="grid grid-cols-2 gap-2">
-          <label className="block">
-            <span className="text-xs text-gray-400">时长</span>
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={selectedNode.config.duration || 6}
-              onChange={(event) => updateNodeConfig(selectedNode.node_id, { duration: Number(event.target.value) || 6 })}
-              className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-gray-400">清晰度</span>
-            <select
-              value={selectedNode.config.resolution || '720p'}
-              onChange={(event) => updateNodeConfig(selectedNode.node_id, { resolution: event.target.value })}
-              className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-            >
-              {VIDEO_RESOLUTION_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs text-gray-400">比例</span>
-            <select
-              value={selectedNode.config.ratio || '16:9'}
-              onChange={(event) => updateNodeConfig(selectedNode.node_id, { ratio: event.target.value })}
-              className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-            >
-              {VIDEO_RATIO_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label className="mt-6 flex items-center gap-2 text-xs text-gray-300">
-            <input
-              type="checkbox"
-              checked={Boolean(selectedNode.config.generate_audio)}
-              onChange={(event) => updateNodeConfig(selectedNode.node_id, { generate_audio: event.target.checked })}
-            />
-            生成音频
-          </label>
-          {videoApiType === 'createnow' && (
-            <label className="col-span-2 block">
-              <span className="text-xs text-gray-400">模型</span>
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <label className="block">
+              <span className="text-xs text-gray-400">时长</span>
               <input
-                value={selectedNode.config.model || ''}
-                onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
+                type="number"
+                min={1}
+                max={30}
+                value={selectedNode.config.duration || 6}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { duration: Number(event.target.value) || 6 })}
                 className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-                placeholder="默认配置"
               />
             </label>
-          )}
+            <label className="block">
+              <span className="text-xs text-gray-400">清晰度</span>
+              <select
+                value={selectedNode.config.resolution || '720p'}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { resolution: event.target.value })}
+                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              >
+                {VIDEO_RESOLUTION_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs text-gray-400">比例</span>
+              <select
+                value={selectedNode.config.ratio || '16:9'}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { ratio: event.target.value })}
+                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              >
+                {VIDEO_RATIO_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+            {videoApiType === 'createnow' ? (
+              <label className="block">
+                <span className="text-xs text-gray-400">模型</span>
+                <input
+                  list="canvas-video-model-options"
+                  value={selectedNode.config.model || ''}
+                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
+                  className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+                  placeholder="默认配置"
+                />
+                <datalist id="canvas-video-model-options">
+                  {(CREATENOW_MODEL_SUGGESTIONS.video || []).map((item) => (
+                    <option key={item.model} value={item.model}>{item.label}</option>
+                  ))}
+                </datalist>
+              </label>
+            ) : <div />}
+            <label className="flex h-9 items-center gap-2 rounded bg-gray-900 px-2 text-xs text-gray-300 ring-1 ring-gray-700">
+              <input
+                type="checkbox"
+                checked={selectedNode.config.generate_audio !== false}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { generate_audio: event.target.checked })}
+              />
+              音频
+            </label>
+          </div>
         </div>
       )}
 
