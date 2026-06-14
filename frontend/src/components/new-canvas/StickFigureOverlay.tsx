@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   moveStickFigurePose,
+  normalizeStickFigurePose,
   STICK_FIGURE_JOINTS,
   type DirectorStageMarker,
   type StickFigureJoint,
@@ -38,8 +39,13 @@ function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: 
 export function StickFigureOverlay({ markers, editable = false, onMarkersChange }: StickFigureOverlayProps) {
   const [dragState, setDragState] = useState<DragState | null>(null);
 
+  const normalizedMarkers = markers.map((marker) => ({
+    ...marker,
+    pose: normalizeStickFigurePose(marker, marker.x ?? marker.pose?.body?.x ?? 0.5, marker.y ?? marker.pose?.body?.y ?? 0.5),
+  }));
+
   const updateMarkerJoint = (markerId: string, joint: StickFigureJoint, point: StickFigurePoint) => {
-    onMarkersChange?.(markers.map((marker) => marker.id === markerId
+    onMarkersChange?.(normalizedMarkers.map((marker) => marker.id === markerId
       ? { ...marker, pose: moveStickFigurePose(marker.pose, joint, point) }
       : marker));
   };
@@ -60,7 +66,7 @@ export function StickFigureOverlay({ markers, editable = false, onMarkersChange 
         if (dragState?.pointerId === event.pointerId) setDragState(null);
       }}
     >
-      {markers.map((marker) => (
+      {normalizedMarkers.map((marker) => (
         <g key={marker.id}>
           {linePairs.map(([from, to]) => (
             <line
