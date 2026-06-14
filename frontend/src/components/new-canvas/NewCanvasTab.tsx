@@ -607,12 +607,20 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return acc;
   }, {});
 
-  const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>) => {
-    const inputs = edges
-      .filter((edge) => edge.target_node_id === nodeId)
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-    return inputs.map((edge) => outputMap[edge.source_node_id]).filter(Boolean);
-  };
+  const incomingEdges = (nodeId: string, targetPort?: string) => edges
+    .filter((edge) => edge.target_node_id === nodeId && (!targetPort || edge.target_port === targetPort))
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>, targetPort?: string) => incomingEdges(nodeId, targetPort)
+    .map((edge) => outputMap[edge.source_node_id])
+    .filter(Boolean);
+
+  const imageMediaFromOutputs = (items: NodeOutput[]): RefMedia[] => items.flatMap((output) => {
+    const mediaImages = (output.media || []).filter((item) => item.type === 'image' && (item.id || item.url));
+    if (mediaImages.length) return mediaImages;
+    if (output.image_id || output.image_url) return [{ type: 'image' as const, id: output.image_id, url: output.image_url || '', name: '图片' }];
+    return [];
+  });
 
   const setStatus = (nodeId: string, status: RunStatus, error?: string) => {
     setNodeStatus((prev) => ({ ...prev, [nodeId]: { status, error } }));
@@ -638,6 +646,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const executeNode = async (
     node: CanvasNode,
     inputOutputs: NodeOutput[],
+    portInputs: Partial<Record<PortType, NodeOutput[]>> | undefined,
     onPendingOutput?: (output: NodeOutput) => void,
   ): Promise<{ output: NodeOutput; auditState?: Record<string, AssetAuditState> }> => {
     if (node.type === 'static.image') {
@@ -676,7 +685,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       return { output: { audio_url: node.config.media_url, media } };
     }
 
-    const inputText = inputOutputs.map(textFromOutput).filter(Boolean).join('\n');
+    const textInputs = portInputs?.text || inputOutputs;
+    const imageInputs = portInputs?.image || inputOutputs;
+    const videoInputs = portInputs?.video || inputOutputs;
+    const audioInputs = portInputs?.audio || inputOutputs;
+    const inputText = textInputs.map(textFromOutput).filter(Boolean).join('\n');
     const prompt = mergePrompt(node.config.prompt, inputText);
 
     if (node.type === 'gen.llm') {
@@ -704,8 +717,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     }
 
     if (node.type === 'gen.image_edit') {
-      const referenceImageIds = inputOutputs.map((output) => output.image_id).filter(Boolean) as string[];
-      const referenceImageUrls = inputOutputs.map((output) => output.image_url).filter(Boolean) as string[];
+      const imageMedia = imageMediaFromOutputs(imageInputs);
+      const referenceImageIds = imageMedia.map((item) => item.id).filter(Boolean) as string[];
+      const referenceImageUrls = imageMedia.map((item) => item.url).filter(Boolean);
       if (!prompt) throw new Error('图生图节点缺少提示词');
       if (!referenceImageIds.length && !referenceImageUrls.length) throw new Error('图生图节点缺少参考图');
       const response = await generationApi.editCanvasImage(projectId, {
@@ -726,49 +740,52 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     }
 
     if (node.type === 'director.stage') {
-      const upstreamImages = inputOutputs
-        .map((output) => ({ id: output.image_id, url: output.image_url }))
-        .filter((item) => item.id || item.url);
+      const upstreamImages = imageMediaFromOutputs(imageInputs);
       const compositeImage = {
+        type: 'image' as const,
         id: node.config.director_composite_image_id,
-        url: node.config.director_composite_image_url,
+        url: node.config.director_composite_image_url || '',
+        name: '导演台合成图',
       };
       const directorPrompt = (node.config.prompt || buildDirectorStagePrompt(node.config.director_markers || [])).trim();
       if (!directorPrompt) throw new Error('导演台缺少提示词');
       if (!upstreamImages.length) throw new Error('导演台缺少输入图片');
       if (!node.config.image_id && !node.config.image_url) throw new Error('导演台缺少场景图');
       if (!compositeImage.id && !compositeImage.url) throw new Error('请先点击“保存位置”生成导演台合成图');
-      const referenceImageUrls = [...upstreamImages, compositeImage].map((item) => item.url).filter(Boolean) as string[];
-      const response = await generationApi.editCanvasImage(projectId, {
-        prompt: directorPrompt,
-        size: node.config.size,
-        referenceImageIds: [],
-        referenceImageUrls,
-        model: imageApiType === 'createnow' ? node.config.model : undefined,
-      });
-      const record = response.data;
-      const imageUrl = getImageUrlFromRecord(projectId, record);
+      const media: RefMedia[] = [
+        ...upstreamImages.map((item, index) => ({ ...item, name: item.name || `图${index + 1}` })),
+        compositeImage,
+      ];
+      const firstImage = media[0];
       return { output: {
-        image_id: record.image_id,
-        image_url: imageUrl,
-        media: [{ type: 'image', id: record.image_id, url: imageUrl, name: record.prompt || node.label }],
-        raw: record,
+        image_id: firstImage.id,
+        image_url: firstImage.url,
+        media,
+        text: directorPrompt,
+        raw: {
+          kind: 'director.stage',
+          images: media,
+          prompt: directorPrompt,
+        },
       } };
     }
 
     if (isVideoNode(node.type)) {
       if (!prompt) throw new Error('视频节点缺少提示词');
-      const media = inputOutputs.flatMap((output) => output.media || []);
-      const imageIds = inputOutputs.map((output) => output.image_id).filter(Boolean) as string[];
+      const imageMedia = imageMediaFromOutputs(imageInputs);
+      const videoMedia = videoInputs.flatMap((output) => output.media || []).filter((item) => item.type === 'video');
+      const audioMedia = audioInputs.flatMap((output) => output.media || []).filter((item) => item.type === 'audio');
+      const imageIds = imageMedia.map((item) => item.id).filter(Boolean) as string[];
       const videoUrls = [
-        ...inputOutputs.map((output) => output.video_url).filter(Boolean) as string[],
-        ...media.filter((item) => item.type === 'video').map((item) => item.url),
+        ...videoInputs.map((output) => output.video_url).filter(Boolean) as string[],
+        ...videoMedia.map((item) => item.url).filter(Boolean),
       ];
       const audioUrls = [
-        ...inputOutputs.map((output) => output.audio_url).filter(Boolean) as string[],
-        ...media.filter((item) => item.type === 'audio').map((item) => item.url),
+        ...audioInputs.map((output) => output.audio_url).filter(Boolean) as string[],
+        ...audioMedia.map((item) => item.url).filter(Boolean),
       ];
-      const upstreamAuditState = media.reduce<Record<string, AssetAuditState>>((acc, item) => {
+      const referenceMedia = [...imageMedia, ...videoMedia, ...audioMedia];
+      const upstreamAuditState = referenceMedia.reduce<Record<string, AssetAuditState>>((acc, item) => {
         if (item.audit && item.type === 'image' && item.id) acc[`image:${item.id}`] = item.audit;
         if (item.audit && item.type === 'video' && item.url) acc[`video:${item.url}`] = item.audit;
         return acc;
@@ -787,7 +804,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         resolution: node.config.resolution || '720p',
         ratio: node.config.ratio || '16:9',
         generate_audio: node.config.generate_audio,
-        reference_media: media,
+        reference_media: referenceMedia,
         model: videoApiType === 'createnow' ? node.config.model : undefined,
       });
       let video = response.data;
@@ -979,6 +996,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         let node = workingNodes.find((item) => item.node_id === nodeId);
         if (!node) continue;
         const inputs = incomingOutputs(nodeId, outputMap);
+        const portInputs: Partial<Record<PortType, NodeOutput[]>> = {
+          image: incomingOutputs(nodeId, outputMap, 'image'),
+          text: incomingOutputs(nodeId, outputMap, 'text'),
+          video: incomingOutputs(nodeId, outputMap, 'video'),
+          audio: incomingOutputs(nodeId, outputMap, 'audio'),
+        };
         const inputHash = buildInputHash(node, inputs);
         if (
           !forceRerunIds.has(nodeId) &&
@@ -992,7 +1015,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         }
         setStatus(nodeId, 'running');
         try {
-          const result = await executeNode(node, inputs, async (pendingOutput) => {
+          const result = await executeNode(node, inputs, portInputs, async (pendingOutput) => {
             outputMap[nodeId] = pendingOutput;
             workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, {
               last_result: pendingOutput,

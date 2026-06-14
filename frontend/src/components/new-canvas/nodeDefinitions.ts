@@ -73,11 +73,11 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'director.stage',
     label: '导演台',
-    description: '用场景图和小人标记编排多图位置，再调用图生图输出画面',
+    description: '编排多图位置，输出有序图片序列和提示词',
     icon: Clapperboard,
     color: 'from-violet-500 to-indigo-600',
     inputs: [{ key: 'image', label: '输入图', type: 'image' }],
-    outputs: [{ key: 'image', label: '图片', type: 'image' }],
+    outputs: [{ key: 'image', label: '图片序列', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
     defaults: { prompt: '', size: '16x9', director_markers: [] },
   },
   {
