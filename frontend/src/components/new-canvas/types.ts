@@ -7,6 +7,7 @@ export type NodeKind =
   | 'gen.llm'
   | 'gen.image'
   | 'gen.image_edit'
+  | 'director.stage'
   | 'gen.video.text'
   | 'gen.video.image'
   | 'gen.video.multi';
@@ -65,6 +66,10 @@ export type CanvasNode = {
     generate_audio?: boolean;
     image_id?: string;
     image_url?: string;
+    director_markers?: import('./directorStageUtils').DirectorStageMarker[];
+    director_composite_image_id?: string;
+    director_composite_image_url?: string;
+    director_prompt_edited?: boolean;
     media_id?: string;
     media_url?: string;
     media_type?: 'video' | 'audio';

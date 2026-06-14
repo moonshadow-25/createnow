@@ -8,6 +8,7 @@ import { getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 import { CanvasAssetPickerDialog } from './CanvasAssetPickerDialog';
 import { CanvasHistoryPanel } from './CanvasHistoryPanel';
 import { CanvasPropertyPanel } from './CanvasPropertyPanel';
+import { buildDirectorStagePrompt } from './directorStageUtils';
 import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NODE_WIDTH, PORT_SNAP_RADIUS, SIDEBAR_OPEN_DISTANCE, getDefinition } from './nodeDefinitions';
 import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, pickRenderableOutput, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
 import type { AssetAuditState, CanvasAssetType, CanvasEdge, CanvasNode, CanvasRecord, HistoryImage, HistoryItem, HistoryVideo, NewCanvasTabProps, NodeKind, NodeOutput, PortType, RefMedia, RunMode, RunStatus } from './types';
@@ -319,6 +320,17 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return nextNodes;
   };
 
+  const updateDirectorStageConfig = (nodeId: string, patch: CanvasNode['config'], output?: NodeOutput) => {
+    setOutputs((prev) => {
+      const copy = { ...prev };
+      if (output) copy[nodeId] = output;
+      else delete copy[nodeId];
+      return copy;
+    });
+    const nextNodes = nodes.map((node) => node.node_id === nodeId ? { ...node, config: { ...node.config, ...patch, ...(output ? { last_result: output } : {}) } } : node);
+    setNodes(nextNodes);
+    return nextNodes;
+  };
   const updateNodeLabel = (nodeId: string, label: string) => {
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, label } : node));
   };
@@ -712,6 +724,37 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       } };
     }
 
+    if (node.type === 'director.stage') {
+      const upstreamImages = inputOutputs
+        .map((output) => ({ id: output.image_id, url: output.image_url }))
+        .filter((item) => item.id || item.url);
+      const compositeImage = {
+        id: node.config.director_composite_image_id,
+        url: node.config.director_composite_image_url,
+      };
+      const directorPrompt = (node.config.prompt || buildDirectorStagePrompt(node.config.director_markers || [])).trim();
+      if (!directorPrompt) throw new Error('导演台缺少提示词');
+      if (!upstreamImages.length) throw new Error('导演台缺少输入图片');
+      if (!node.config.image_id && !node.config.image_url) throw new Error('导演台缺少场景图');
+      if (!compositeImage.id && !compositeImage.url) throw new Error('请先点击“保存位置”生成导演台合成图');
+      const referenceImageUrls = [...upstreamImages, compositeImage].map((item) => item.url).filter(Boolean) as string[];
+      const response = await generationApi.editCanvasImage(projectId, {
+        prompt: directorPrompt,
+        size: node.config.size,
+        referenceImageIds: [],
+        referenceImageUrls,
+        model: imageApiType === 'createnow' ? node.config.model : undefined,
+      });
+      const record = response.data;
+      const imageUrl = getImageUrlFromRecord(projectId, record);
+      return { output: {
+        image_id: record.image_id,
+        image_url: imageUrl,
+        media: [{ type: 'image', id: record.image_id, url: imageUrl, name: record.prompt || node.label }],
+        raw: record,
+      } };
+    }
+
     if (isVideoNode(node.type)) {
       if (!prompt) throw new Error('视频节点缺少提示词');
       const media = inputOutputs.flatMap((output) => output.media || []);
@@ -1015,12 +1058,23 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           media: [{ type: 'image', id: record.image_id, url: imageUrl, name: file.name }],
           raw: record,
         };
-        const nextNodes = updateStaticNodeConfig(targetInfo.nodeId, {
-          image_id: record.image_id,
-          image_url: imageUrl,
-          file_name: file.name,
-        }, output);
-        await saveCanvas(true, nextNodes, edges);
+        if (targetNode.type === 'director.stage') {
+          const nextNodes = updateDirectorStageConfig(targetInfo.nodeId, {
+            image_id: record.image_id,
+            image_url: imageUrl,
+            file_name: file.name,
+            director_composite_image_id: undefined,
+            director_composite_image_url: undefined,
+          });
+          await saveCanvas(true, nextNodes, edges);
+        } else {
+          const nextNodes = updateStaticNodeConfig(targetInfo.nodeId, {
+            image_id: record.image_id,
+            image_url: imageUrl,
+            file_name: file.name,
+          }, output);
+          await saveCanvas(true, nextNodes, edges);
+        }
       } else {
         const response = await generationApi.uploadMedia(projectId, file);
         const record = response.data;
@@ -1072,7 +1126,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         audit: existingAuditState && asset.image_id ? existingAuditState[`image:${asset.image_id}`] : undefined,
       }],
     };
-    const nextNodes = updateStaticNodeConfig(selectedNode.node_id, {
+    const nextPatch = {
       image_id: asset.image_id,
       image_url: imageUrl,
       asset_id: asset.asset_id,
@@ -1081,14 +1135,21 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       existing_asset_audit_id: asset.volcengine_asset_id,
       existing_asset_audit_status: asset.volcengine_asset_status,
       ...(existingAuditState ? { audit_state: existingAuditState } : {}),
-    }, output);
+      ...(selectedNode.type === 'director.stage' ? {
+        director_composite_image_id: undefined,
+        director_composite_image_url: undefined,
+      } : {}),
+    };
+    const nextNodes = selectedNode.type === 'director.stage'
+      ? updateDirectorStageConfig(selectedNode.node_id, nextPatch)
+      : updateStaticNodeConfig(selectedNode.node_id, nextPatch, output);
     void saveCanvas(true, nextNodes, edges);
     setAssetPickerOpen(false);
   };
 
   const renderNodePreview = (node: CanvasNode, compact = false) => {
     const output = pickRenderableOutput(outputs[node.node_id], node.config.last_result);
-    const imageUrl = output?.image_url || node.config.image_url;
+    const imageUrl = output?.image_url || (node.type === 'director.stage' ? node.config.director_composite_image_url || node.config.image_url : node.config.image_url);
     const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
     const videoStatus = getOutputStatus(output);
     const videoId = output?.video_id;
@@ -1368,6 +1429,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         </div>
         {rightPanelTab === 'node' ? (
           <CanvasPropertyPanel
+            projectId={projectId}
             selectedNode={selectedNode}
             nodes={nodes}
             nodeError={selectedNode ? nodeStatus[selectedNode.node_id]?.error : undefined}
@@ -1383,6 +1445,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             getCanvasAuditState={collectCanvasAuditState}
             onOpenAssetPicker={() => setAssetPickerOpen(true)}
             onOpenUpload={openUpload}
+            toast={toast}
           />
         ) : (
           <CanvasHistoryPanel

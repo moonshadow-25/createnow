@@ -47,7 +47,7 @@ export function textFromOutput(output?: NodeOutput): string {
 }
 
 export function isDynamicNode(type: NodeKind): boolean {
-  return type.startsWith('gen.');
+  return type.startsWith('gen.') || type === 'director.stage';
 }
 
 export function getOutputStatus(output?: NodeOutput): string {
@@ -62,7 +62,7 @@ export function canReuseNodeOutput(node: CanvasNode, output?: NodeOutput): boole
   if (['pending', 'processing', 'running', 'in_progress', 'created', 'failed', 'error'].includes(status)) return false;
 
   if (node.type === 'gen.llm') return Boolean(output.text?.trim());
-  if (node.type === 'gen.image' || node.type === 'gen.image_edit') return Boolean(output.image_url?.trim());
+  if (node.type === 'gen.image' || node.type === 'gen.image_edit' || node.type === 'director.stage') return Boolean(output.image_url?.trim());
   if (isVideoNode(node.type)) return Boolean(output.video_url?.trim());
   return true;
 }

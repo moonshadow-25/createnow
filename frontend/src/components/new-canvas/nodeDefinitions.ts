@@ -1,4 +1,4 @@
-import { Box, Brain, Image as ImageIcon, Music, Play, Video, Zap } from 'lucide-react';
+import { Box, Brain, Clapperboard, Image as ImageIcon, Music, Play, Video, Zap } from 'lucide-react';
 import type { NodeDefinition, NodeKind } from './types';
 
 export const NODE_WIDTH = 280;
@@ -69,6 +69,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     inputs: [{ key: 'image', label: '参考图', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
     outputs: [{ key: 'image', label: '图片', type: 'image' }],
     defaults: { prompt: '', size: '16x9' },
+  },
+  {
+    type: 'director.stage',
+    label: '导演台',
+    description: '用场景图和小人标记编排多图位置，再调用图生图输出画面',
+    icon: Clapperboard,
+    color: 'from-violet-500 to-indigo-600',
+    inputs: [{ key: 'image', label: '输入图', type: 'image' }],
+    outputs: [{ key: 'image', label: '图片', type: 'image' }],
+    defaults: { prompt: '', size: '16x9', director_markers: [] },
   },
   {
     type: 'gen.video.text',

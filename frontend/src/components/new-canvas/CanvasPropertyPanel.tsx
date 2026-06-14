@@ -6,10 +6,12 @@ import {
   VIDEO_RESOLUTION_OPTIONS,
   getDefinition,
 } from './nodeDefinitions';
+import { DirectorStageEditor } from './DirectorStageEditor';
 import { isVideoNode } from './canvasUtils';
 import type { AssetAuditState, CanvasEdge, CanvasNode } from './types';
 
 type CanvasPropertyPanelProps = {
+  projectId: string;
   selectedNode: CanvasNode | null;
   nodes: CanvasNode[];
   nodeError?: string;
@@ -25,9 +27,11 @@ type CanvasPropertyPanelProps = {
   getCanvasAuditState: () => Record<string, AssetAuditState>;
   onOpenAssetPicker: () => void;
   onOpenUpload: (target: 'image' | 'video' | 'audio') => void;
+  toast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
 
 export function CanvasPropertyPanel({
+  projectId,
   selectedNode,
   nodes,
   nodeError,
@@ -43,6 +47,7 @@ export function CanvasPropertyPanel({
   getCanvasAuditState,
   onOpenAssetPicker,
   onOpenUpload,
+  toast,
 }: CanvasPropertyPanelProps) {
   const renderInputOrderPanel = (node: CanvasNode) => {
     const incoming = getIncomingEdges(node.node_id);
@@ -109,6 +114,20 @@ export function CanvasPropertyPanel({
       <div className="rounded-lg bg-gray-900 p-3 text-xs text-gray-400">{definition.description}</div>
 
       {renderInputOrderPanel(selectedNode)}
+
+      {selectedNode.type === 'director.stage' && (
+        <DirectorStageEditor
+          projectId={projectId}
+          node={selectedNode}
+          nodes={nodes}
+          incomingEdges={getIncomingEdges(selectedNode.node_id, 'image')}
+          imageApiType={imageApiType}
+          updateNodeConfig={updateNodeConfig}
+          onOpenAssetPicker={onOpenAssetPicker}
+          onOpenUpload={onOpenUpload}
+          toast={toast}
+        />
+      )}
 
       {(selectedNode.type === 'static.image' || selectedNode.type === 'static.video' || selectedNode.type === 'static.audio') && (
         <div className="space-y-2">
