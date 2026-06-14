@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Loader2, RotateCcw, Save, Upload } from 'lucide-react';
 import { generationApi } from '@/services/api';
 import { getImageUrlFromRecord } from './canvasUtils';
-import { StickFigureOverlay } from './StickFigureOverlay';
+import { StickFigureStage } from './StickFigureStage';
 import {
   buildDirectorStagePrompt,
   renderDirectorStageComposite,
@@ -107,7 +107,7 @@ export function DirectorStageEditor({
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <div className="text-xs font-medium text-gray-300">场景图</div>
-            <div className="text-[10px] text-gray-500">拖拽头部或身体移动整体，拖拽手脚调整姿势</div>
+            <div className="text-[10px] text-gray-500">拖拽头部或颈部移动整体，拖拽肘/手/膝/脚调整姿势</div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onOpenAssetPicker} className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500">选择资产</button>
@@ -116,11 +116,10 @@ export function DirectorStageEditor({
         </div>
         <div className="relative aspect-video overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
           {sceneUrl ? (
-            <img src={sceneUrl} alt="导演台场景图" draggable={false} className="h-full w-full object-contain" />
+            <StickFigureStage imageUrl={sceneUrl} markers={markers} editable alt="导演台场景图" onMarkersChange={updateMarkers} />
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-gray-500">未选择场景图</div>
           )}
-          {sceneUrl && <StickFigureOverlay markers={markers} editable onMarkersChange={updateMarkers} />}
         </div>
         <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
           <span>{markers.length ? `${markers.length} 个火柴人标记` : '连接图片后会自动创建火柴人标记'}</span>

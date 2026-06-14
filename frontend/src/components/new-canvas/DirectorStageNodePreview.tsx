@@ -1,5 +1,5 @@
 import { ZoomIn } from 'lucide-react';
-import { StickFigureOverlay } from './StickFigureOverlay';
+import { StickFigureStage } from './StickFigureStage';
 import type { CanvasNode } from './types';
 
 type DirectorStageNodePreviewProps = {
@@ -21,15 +21,12 @@ export function DirectorStageNodePreview({
 }: DirectorStageNodePreviewProps) {
   return (
     <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height }}>
-      <img src={imageUrl} alt={node.label} draggable={false} className="h-full w-full object-cover" />
-      {editable && (
-        <div onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-          <StickFigureOverlay
-            markers={node.config.director_markers || []}
-            editable
-            onMarkersChange={(nextMarkers) => onMarkersChange(node.node_id, nextMarkers)}
-          />
+      {editable ? (
+        <div onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} className="absolute inset-0">
+          <StickFigureStage imageUrl={imageUrl} markers={node.config.director_markers || []} editable alt={node.label} onMarkersChange={(nextMarkers) => onMarkersChange(node.node_id, nextMarkers)} />
         </div>
+      ) : (
+        <StickFigureStage imageUrl={imageUrl} markers={node.config.director_markers || []} alt={node.label} />
       )}
       <button
         type="button"
