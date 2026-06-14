@@ -21,7 +21,9 @@ export function CanvasNodePreview({
   onOpenImagePreview,
 }: CanvasNodePreviewProps) {
   const renderableOutput = pickRenderableOutput(output, node.config.last_result);
-  const imageUrl = renderableOutput?.image_url || (node.type === 'director.stage' ? node.config.director_composite_image_url || node.config.image_url : node.config.image_url);
+  const imageUrl = node.type === 'director.stage'
+    ? node.config.image_url
+    : renderableOutput?.image_url || node.config.image_url;
   const videoUrl = renderableOutput?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
   const videoStatus = getOutputStatus(renderableOutput);
   const videoId = renderableOutput?.video_id;

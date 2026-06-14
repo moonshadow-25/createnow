@@ -1,7 +1,7 @@
 import type { CanvasEdge, CanvasNode } from './types';
 
 export type StickFigurePoint = { x: number; y: number };
-export type StickFigureJoint = 'head' | 'neck' | 'leftElbow' | 'rightElbow' | 'leftHand' | 'rightHand' | 'leftKnee' | 'rightKnee' | 'leftFoot' | 'rightFoot';
+export type StickFigureJoint = 'head' | 'neck' | 'hip' | 'leftElbow' | 'rightElbow' | 'leftHand' | 'rightHand' | 'leftKnee' | 'rightKnee' | 'leftFoot' | 'rightFoot';
 export type StickFigurePose = Record<StickFigureJoint, StickFigurePoint>;
 
 export type DirectorStageMarker = {
@@ -45,6 +45,7 @@ const clampPoint = (point: StickFigurePoint): StickFigurePoint => ({ x: clamp(po
 export const STICK_FIGURE_JOINTS: { key: StickFigureJoint; label: string }[] = [
   { key: 'head', label: 'head' },
   { key: 'neck', label: 'neck' },
+  { key: 'hip', label: 'hip' },
   { key: 'leftElbow', label: 'leftElbow' },
   { key: 'rightElbow', label: 'rightElbow' },
   { key: 'leftHand', label: 'leftHand' },
@@ -67,6 +68,7 @@ export function createDefaultStickFigurePose(x: number, y: number): StickFigureP
   return {
     head: { x, y: clamp(y - 0.08) },
     neck: { x, y: clamp(y - 0.03) },
+    hip: { x, y: clamp(y + 0.05) },
     leftElbow: { x: clamp(x - 0.07), y: clamp(y - 0.01) },
     rightElbow: { x: clamp(x + 0.07), y: clamp(y - 0.01) },
     leftHand: { x: clamp(x - 0.12), y: clamp(y + 0.04) },
@@ -85,6 +87,7 @@ export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | 
     return {
       head: clampPoint(pose.head),
       neck: clampPoint((pose as any).neck || pose.body),
+      hip: clampPoint((pose as any).hip || pose.body || pose.leftFoot),
       leftElbow: clampPoint((pose as any).leftElbow || pose.leftHand),
       rightElbow: clampPoint((pose as any).rightElbow || pose.rightHand),
       leftHand: clampPoint(pose.leftHand),
@@ -98,6 +101,7 @@ export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | 
   return {
     head: clampPoint(pose.head),
     neck: clampPoint(pose.neck),
+    hip: clampPoint(pose.hip),
     leftElbow: clampPoint(pose.leftElbow),
     rightElbow: clampPoint(pose.rightElbow),
     leftHand: clampPoint(pose.leftHand),
@@ -111,30 +115,14 @@ export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | 
 
 export function moveStickFigurePose(pose: StickFigurePose, joint: StickFigureJoint, point: StickFigurePoint): StickFigurePose {
   const nextPoint = clampPoint(point);
-  if (joint === 'head') {
-    const dx = nextPoint.x - pose.head.x;
-    const dy = nextPoint.y - pose.head.y;
-    return Object.fromEntries(
-      STICK_FIGURE_JOINTS.map(({ key }) => [key, clampPoint({ x: pose[key].x + dx, y: pose[key].y + dy })]),
-    ) as StickFigurePose;
-  }
-  if (joint === 'neck') {
-    const dx = nextPoint.x - pose.neck.x;
-    const dy = nextPoint.y - pose.neck.y;
-    return {
-      ...pose,
-      neck: nextPoint,
-      leftElbow: clampPoint({ x: pose.leftElbow.x + dx, y: pose.leftElbow.y + dy }),
-      rightElbow: clampPoint({ x: pose.rightElbow.x + dx, y: pose.rightElbow.y + dy }),
-      leftKnee: clampPoint({ x: pose.leftKnee.x + dx, y: pose.leftKnee.y + dy }),
-      rightKnee: clampPoint({ x: pose.rightKnee.x + dx, y: pose.rightKnee.y + dy }),
-      leftHand: clampPoint({ x: pose.leftHand.x + dx, y: pose.leftHand.y + dy }),
-      rightHand: clampPoint({ x: pose.rightHand.x + dx, y: pose.rightHand.y + dy }),
-      leftFoot: clampPoint({ x: pose.leftFoot.x + dx, y: pose.leftFoot.y + dy }),
-      rightFoot: clampPoint({ x: pose.rightFoot.x + dx, y: pose.rightFoot.y + dy }),
-    };
-  }
-  return { ...pose, [joint]: nextPoint };
+    if (joint === 'head' || joint === 'neck' || joint === 'hip') {
+      const dx = nextPoint.x - pose[joint].x;
+      const dy = nextPoint.y - pose[joint].y;
+      return Object.fromEntries(
+        STICK_FIGURE_JOINTS.map(({ key }) => [key, clampPoint({ x: pose[key].x + dx, y: pose[key].y + dy })]),
+      ) as StickFigurePose;
+    }
+    return { ...pose, [joint]: nextPoint };
 }
 
 export function syncDirectorStageMarkers({ incomingEdges, nodes, currentMarkers }: DirectorStageSyncArgs): DirectorStageMarker[] {
@@ -209,13 +197,14 @@ export function drawStickFigure(context: CanvasRenderingContext2D, marker: Direc
   context.shadowBlur = boneWidth * 0.4;
   context.beginPath();
   drawLine(context, pose.head, pose.neck, width, height);
+  drawLine(context, pose.neck, pose.hip, width, height);
   drawLine(context, pose.neck, pose.leftElbow, width, height);
   drawLine(context, pose.leftElbow, pose.leftHand, width, height);
   drawLine(context, pose.neck, pose.rightElbow, width, height);
   drawLine(context, pose.rightElbow, pose.rightHand, width, height);
-  drawLine(context, pose.neck, pose.leftKnee, width, height);
+  drawLine(context, pose.hip, pose.leftKnee, width, height);
   drawLine(context, pose.leftKnee, pose.leftFoot, width, height);
-  drawLine(context, pose.neck, pose.rightKnee, width, height);
+  drawLine(context, pose.hip, pose.rightKnee, width, height);
   drawLine(context, pose.rightKnee, pose.rightFoot, width, height);
   context.stroke();
   context.shadowColor = 'transparent';
@@ -223,6 +212,7 @@ export function drawStickFigure(context: CanvasRenderingContext2D, marker: Direc
   const jointMap: Array<[StickFigureJoint, number]> = [
     ['head', headRadius],
     ['neck', jointRadius],
+    ['hip', jointRadius],
     ['leftElbow', jointRadius],
     ['rightElbow', jointRadius],
     ['leftHand', jointRadius],

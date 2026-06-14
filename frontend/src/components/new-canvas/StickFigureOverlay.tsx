@@ -23,20 +23,21 @@ type DragState = {
 
 const bonePairs: [StickFigureJoint, StickFigureJoint][] = [
   ['head', 'neck'],
+  ['neck', 'hip'],
   ['neck', 'leftElbow'],
   ['leftElbow', 'leftHand'],
   ['neck', 'rightElbow'],
   ['rightElbow', 'rightHand'],
-  ['neck', 'leftKnee'],
+  ['hip', 'leftKnee'],
   ['leftKnee', 'leftFoot'],
-  ['neck', 'rightKnee'],
+  ['hip', 'rightKnee'],
   ['rightKnee', 'rightFoot'],
 ];
 
-const getJointRadius = (joint: StickFigureJoint) => {
-  if (joint === 'head') return 16;
-  if (joint === 'neck') return 12;
-  return 12;
+const getBaseSize = (width: number, height: number) => Math.max(8, Math.min(width, height) * 0.028);
+const getJointRadius = (joint: StickFigureJoint, baseSize: number) => {
+  if (joint === 'head') return baseSize * 1.35;
+  return baseSize / 2;
 };
 
 function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: SVGSVGElement): StickFigurePoint {
@@ -59,6 +60,8 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
       ? { ...marker, pose: moveStickFigurePose(marker.pose, joint, point) }
       : marker));
   };
+
+  const baseSize = getBaseSize(width, height);
 
   return (
     <svg
@@ -87,7 +90,7 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
               x2={marker.pose[to].x * width}
               y2={marker.pose[to].y * height}
               stroke="rgba(0,0,0,0.5)"
-              strokeWidth={16}
+              strokeWidth={baseSize * 1.35}
               strokeLinecap="round"
             />
           ))}
@@ -99,13 +102,13 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
               x2={marker.pose[to].x * width}
               y2={marker.pose[to].y * height}
               stroke={marker.color}
-              strokeWidth={12}
+              strokeWidth={baseSize}
               strokeLinecap="round"
             />
           ))}
           {Object.entries(marker.pose).map(([joint, point]) => {
             const key = joint as StickFigureJoint;
-            const radius = getJointRadius(key);
+            const radius = getJointRadius(key, baseSize);
             return (
               <circle
                 key={key}
