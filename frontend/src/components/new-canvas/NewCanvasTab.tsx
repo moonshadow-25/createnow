@@ -351,6 +351,13 @@ function canReuseNodeOutput(node: CanvasNode, output?: NodeOutput): boolean {
   return true;
 }
 
+function pickRenderableOutput(runtimeOutput?: NodeOutput, persistedOutput?: NodeOutput): NodeOutput | undefined {
+  if (!runtimeOutput) return persistedOutput;
+  if (!persistedOutput) return runtimeOutput;
+  if (runtimeOutput.video_id && runtimeOutput.video_id === persistedOutput.video_id && !runtimeOutput.video_url && persistedOutput.video_url) return persistedOutput;
+  return runtimeOutput;
+}
+
 function stableStringify(value: unknown): string {
   if (value == null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -1487,9 +1494,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   };
 
   const renderNodePreview = (node: CanvasNode) => {
-    const output = outputs[node.node_id] || node.config.last_result;
+    const output = pickRenderableOutput(outputs[node.node_id], node.config.last_result);
     const imageUrl = output?.image_url || node.config.image_url;
     const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
+    const videoStatus = getOutputStatus(output);
+    const videoId = output?.video_id;
     const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
     const text = output?.text;
     if (imageUrl) return (
@@ -1510,6 +1519,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         <video src={videoUrl} draggable={false} className="h-full w-full bg-black object-cover" controls />
       </div>
     );
+    if (isVideoNode(node.type) && videoId) {
+      const isFailed = ['failed', 'error'].includes(videoStatus);
+      return (
+        <div className={`flex h-20 flex-col items-center justify-center rounded-lg border text-xs ${isFailed ? 'border-red-800 bg-red-950/30 text-red-300' : 'border-blue-900 bg-blue-950/30 text-blue-300'}`}>
+          <div className="font-medium">{isFailed ? '视频生成失败' : '视频生成中'}</div>
+          <div className="mt-1 text-[10px] text-gray-500">{videoId.slice(0, 8)} · {videoStatus || 'pending'}</div>
+        </div>
+      );
+    }
     if (audioUrl) return <div className="rounded-lg bg-gray-950 p-2"><audio src={audioUrl} controls className="w-full" /></div>;
     if (text) return <div className="line-clamp-4 rounded-lg bg-gray-950 p-2 text-xs text-gray-300">{text}</div>;
     return <div className="flex h-20 items-center justify-center rounded-lg bg-gray-950 text-xs text-gray-500">暂无结果</div>;
