@@ -1885,12 +1885,18 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   }
 
   return (
-    <div className="flex h-full min-h-0 bg-gray-950 text-white">
-      <div className="group/sidebar relative z-30 h-full w-3 flex-shrink-0 overflow-visible border-r border-gray-800 bg-gray-900"
+    <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
+      <div
+        className="absolute left-0 top-0 z-40 h-full w-3"
         onMouseEnter={() => setLeftPanelOpen(true)}
-        onMouseLeave={() => setLeftPanelOpen(false)}>
-        <div className="pointer-events-none absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500 transition-opacity duration-150 group-hover/sidebar:opacity-0">节点</div>
-        <div className={`absolute left-0 top-0 flex h-full w-72 flex-col border-r border-gray-800 bg-gray-900 shadow-2xl transition-transform duration-150 ${leftPanelOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%-12px)] opacity-0'}`}>
+      >
+        <div className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500">节点</div>
+      </div>
+      {leftPanelOpen && (
+        <div
+          className="absolute left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-gray-800 bg-gray-900 shadow-2xl"
+          onMouseLeave={() => setLeftPanelOpen(false)}
+        >
         <div className="border-b border-gray-800 p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-lg font-semibold">新画布</div>
@@ -1949,7 +1955,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           </div>
         </div>
         </div>
-      </div>
+      )}
 
       <div className="relative min-w-0 flex-1 overflow-hidden">
         <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
