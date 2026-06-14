@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Check, Plus, X, ZoomIn } from 'lucide-react';
+import { Check, Plus, ZoomIn } from 'lucide-react';
+import { ImagePreviewModal } from '@/components/common/ImagePreviewModal';
 import { collectProjectAssetTags, filterAssetsByTags, toggleTag } from '@/utils/assetTags';
 import type { UsedAssetIdsByType } from '@/utils/assetTags';
 
@@ -17,6 +18,8 @@ export interface AssetPickerPanelProps {
   onToggleCharacter: (id: string, asset: any) => void;
   onToggleScene: (id: string, asset: any) => void;
   onToggleProp: (id: string, asset: any) => void;
+  showSelectedCount?: boolean;
+  onSelectAsset?: (asset: any, tab: AssetPickerTab) => void;
   usedAssetIdsByType?: UsedAssetIdsByType;
   showOnlyUsedFilter?: boolean;
   showAddEmptyAction?: boolean;
@@ -34,37 +37,6 @@ export function getAssetImageUrl(asset: any): string {
 export function getAssetThumbnailUrl(asset: any): string {
   const url = getAssetImageUrl(asset);
   return url ? url.replace('/images/files/', '/thumbnails/') : '';
-}
-
-function AssetPreviewModal({ asset, onClose }: { asset: any; onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-6"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={onClose}
-    >
-      <div className="relative max-w-[92vw] max-h-[92vh]" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute -top-10 right-0 text-gray-300 hover:text-white"
-          aria-label="关闭大图预览"
-        >
-          <X size={24} />
-        </button>
-        <img
-          src={getAssetImageUrl(asset)}
-          alt={asset.name || '资产大图'}
-          className="max-w-[92vw] max-h-[86vh] object-contain rounded-lg shadow-2xl bg-gray-900"
-        />
-        {asset.name && (
-          <div className="absolute left-0 right-0 bottom-0 bg-black/60 text-white text-sm px-3 py-2 rounded-b-lg truncate">
-            {asset.name}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 interface AssetGridItemProps {
@@ -158,6 +130,8 @@ export function AssetPickerPanel({
   onToggleCharacter,
   onToggleScene,
   onToggleProp,
+  showSelectedCount = true,
+  onSelectAsset,
   usedAssetIdsByType,
   showOnlyUsedFilter = true,
   showAddEmptyAction = true,
@@ -204,10 +178,15 @@ export function AssetPickerPanel({
     activeTab === 'character' ? selectedCharacters.includes(id)
     : activeTab === 'scene' ? selectedScenes.includes(id)
     : selectedProps.includes(id);
-  const onToggle = (asset: any) =>
+  const onToggle = (asset: any) => {
+    if (onSelectAsset) {
+      onSelectAsset(asset, activeTab);
+      return;
+    }
     activeTab === 'character' ? onToggleCharacter(asset.asset_id, asset)
     : activeTab === 'scene' ? onToggleScene(asset.asset_id, asset)
     : onToggleProp(asset.asset_id, asset);
+  };
 
   return (
     <div className={`flex min-h-0 flex-col ${className}`}>
@@ -224,7 +203,7 @@ export function AssetPickerPanel({
             {tab.label}
             <span className="ml-1.5 text-xs">
               ({tab.count}
-              {tab.selectedCount > 0 && <span className="text-yellow-400">·已选{tab.selectedCount}</span>}
+              {showSelectedCount && tab.selectedCount > 0 && <span className="text-yellow-400">·已选{tab.selectedCount}</span>}
               )
             </span>
           </button>
@@ -317,7 +296,14 @@ export function AssetPickerPanel({
         )}
       </div>
 
-      {previewAsset && <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
+      {previewAsset && (
+        <ImagePreviewModal
+          imageUrl={getAssetImageUrl(previewAsset)}
+          title={previewAsset.name || '资产大图'}
+          alt={previewAsset.name || '资产大图'}
+          onClose={() => setPreviewAsset(null)}
+        />
+      )}
     </div>
   );
 }
