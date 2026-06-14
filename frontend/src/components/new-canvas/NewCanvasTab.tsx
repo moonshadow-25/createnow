@@ -454,19 +454,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setPanning(null);
   };
 
-  const handleOutputPortClick = (nodeId: string, port: string, type: PortType) => {
-    setConnecting({ nodeId, port, type, pointer: getPortPosition(nodeId, port, 'out') });
-  };
-
-  const handleInputPortClick = (nodeId: string, port: string, type: PortType) => {
-    if (!connecting) return;
-    if (connecting.nodeId === nodeId) {
-      setConnecting(null);
-      return;
-    }
-    if (connecting.type !== type) return;
-    addEdge(connecting.nodeId, connecting.port, connecting.type, nodeId, port, type);
-    setConnecting(null);
+  const handleOutputPortMouseDown = (event: React.MouseEvent, nodeId: string, port: string, type: PortType) => {
+    event.stopPropagation();
+    event.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    nodeDragMovedRef.current = false;
+    setSelectedNodeId(nodeId);
+    setSelectedEdgeId(null);
+    setConnecting({ nodeId, port, type, pointer: screenToWorld(event.clientX, event.clientY) });
   };
 
   const removeEdge = (edgeId: string) => {
@@ -1323,7 +1318,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                     <button
                       key={port.key}
                       data-port="in"
-                      onClick={(event) => { event.stopPropagation(); handleInputPortClick(node.node_id, port.key, port.type); }}
+                      onMouseDown={(event) => { event.stopPropagation(); }}
                       className="absolute -left-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-blue-100 ring-1 ring-blue-500/70 shadow-lg hover:bg-blue-950"
                       style={{ top: ((node.height || NODE_HEIGHT) / (definition.inputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
@@ -1336,7 +1331,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                     <button
                       key={port.key}
                       data-port="out"
-                      onClick={(event) => { event.stopPropagation(); handleOutputPortClick(node.node_id, port.key, port.type); }}
+                      onMouseDown={(event) => handleOutputPortMouseDown(event, node.node_id, port.key, port.type)}
                       className="absolute -right-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-green-100 ring-1 ring-green-500/70 shadow-lg hover:bg-green-950"
                       style={{ top: ((node.height || NODE_HEIGHT) / (definition.outputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
