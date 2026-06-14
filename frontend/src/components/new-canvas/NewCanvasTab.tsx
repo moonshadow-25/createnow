@@ -538,6 +538,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [assetTab, setAssetTab] = useState<CanvasAssetType>('character');
   const [uploadTarget, setUploadTarget] = useState<'image' | 'video' | 'audio'>('image');
   const [rightPanelTab, setRightPanelTab] = useState<'node' | 'history'>('node');
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyImages, setHistoryImages] = useState<HistoryImage[]>([]);
   const [historyVideos, setHistoryVideos] = useState<HistoryVideo[]>([]);
@@ -1885,9 +1886,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   return (
     <div className="flex h-full min-h-0 bg-gray-950 text-white">
-      <div className="group/sidebar relative z-30 h-full w-3 flex-shrink-0 overflow-visible border-r border-gray-800 bg-gray-900">
+      <div className="group/sidebar relative z-30 h-full w-3 flex-shrink-0 overflow-visible border-r border-gray-800 bg-gray-900"
+        onMouseEnter={() => setLeftPanelOpen(true)}
+        onMouseLeave={() => setLeftPanelOpen(false)}>
         <div className="pointer-events-none absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500 transition-opacity duration-150 group-hover/sidebar:opacity-0">节点</div>
-        <div className="absolute left-0 top-0 flex h-full w-72 -translate-x-[calc(100%-12px)] flex-col border-r border-gray-800 bg-gray-900 opacity-0 shadow-2xl transition-all duration-150 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100">
+        <div className={`absolute left-0 top-0 flex h-full w-72 flex-col border-r border-gray-800 bg-gray-900 shadow-2xl transition-transform duration-150 ${leftPanelOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%-12px)] opacity-0'}`}>
         <div className="border-b border-gray-800 p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-lg font-semibold">新画布</div>
