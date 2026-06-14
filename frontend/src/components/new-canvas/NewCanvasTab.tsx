@@ -1589,7 +1589,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setAssetPickerOpen(false);
   };
 
-  const renderNodePreview = (node: CanvasNode) => {
+  const renderNodePreview = (node: CanvasNode, compact = false) => {
     const output = pickRenderableOutput(outputs[node.node_id], node.config.last_result);
     const imageUrl = output?.image_url || node.config.image_url;
     const videoUrl = output?.video_url || (node.config.media_type === 'video' ? node.config.media_url : '');
@@ -1597,8 +1597,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     const videoId = output?.video_id;
     const audioUrl = output?.audio_url || (node.config.media_type === 'audio' ? node.config.media_url : '');
     const text = output?.text;
+    const previewHeight = compact ? 112 : Math.max(80, (node.height || NODE_HEIGHT) - 96);
     if (imageUrl) return (
-      <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: 112 }}>
+      <div className="group relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: previewHeight }}>
         <img src={imageUrl} alt={node.label} draggable={false} className="h-full w-full object-cover" />
         <button
           type="button"
@@ -1611,7 +1612,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       </div>
     );
     if (videoUrl) return (
-      <div className="relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: 112 }}>
+      <div className="relative w-full overflow-hidden rounded-lg bg-gray-950" style={{ height: previewHeight }}>
         <video src={videoUrl} draggable={false} className="h-full w-full bg-black object-cover" controls />
       </div>
     );
@@ -1821,7 +1822,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
         <div>
           <div className="mb-2 text-xs text-gray-400">最近结果</div>
-          {renderNodePreview(selectedNode)}
+          {renderNodePreview(selectedNode, true)}
           {renderAuditState(selectedNode)}
           {nodeStatus[selectedNode.node_id]?.error && <div className="mt-2 text-xs text-red-300">{nodeStatus[selectedNode.node_id].error}</div>}
         </div>
