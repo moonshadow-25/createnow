@@ -197,16 +197,16 @@ function drawLine(context: CanvasRenderingContext2D, from: StickFigurePoint, to:
 
 export function drawStickFigure(context: CanvasRenderingContext2D, marker: DirectorStageCompositeMarker, width: number, height: number) {
   const pose = marker.pose;
-  const lineWidth = Math.max(4, Math.min(width, height) * 0.01);
-  const jointRadius = Math.max(5, Math.min(width, height) * 0.012);
-  const headRadius = Math.max(10, Math.min(width, height) * 0.026);
+  const boneWidth = Math.max(12, Math.min(width, height) * 0.012);
+  const jointRadius = boneWidth / 2;
+  const headRadius = Math.max(18, boneWidth * 1.35);
   context.save();
   context.lineCap = 'round';
   context.lineJoin = 'round';
   context.strokeStyle = marker.color;
-  context.lineWidth = lineWidth;
+  context.lineWidth = boneWidth;
   context.shadowColor = 'rgba(0, 0, 0, 0.35)';
-  context.shadowBlur = lineWidth * 0.75;
+  context.shadowBlur = boneWidth * 0.4;
   context.beginPath();
   drawLine(context, pose.head, pose.neck, width, height);
   drawLine(context, pose.neck, pose.leftElbow, width, height);
@@ -222,7 +222,7 @@ export function drawStickFigure(context: CanvasRenderingContext2D, marker: Direc
   context.fillStyle = marker.color;
   const jointMap: Array<[StickFigureJoint, number]> = [
     ['head', headRadius],
-    ['neck', jointRadius * 1.1],
+    ['neck', jointRadius],
     ['leftElbow', jointRadius],
     ['rightElbow', jointRadius],
     ['leftHand', jointRadius],
@@ -238,7 +238,7 @@ export function drawStickFigure(context: CanvasRenderingContext2D, marker: Direc
     context.arc(point.x * width, point.y * height, radius, 0, Math.PI * 2);
     context.fill();
     context.strokeStyle = '#ffffff';
-    context.lineWidth = Math.max(1.5, lineWidth * 0.3);
+    context.lineWidth = 2;
     context.stroke();
   });
   context.restore();

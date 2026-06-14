@@ -9,6 +9,8 @@ import {
 
 export type StickFigureOverlayProps = {
   markers: DirectorStageMarker[];
+  width: number;
+  height: number;
   editable?: boolean;
   onMarkersChange?: (markers: DirectorStageMarker[]) => void;
 };
@@ -31,17 +33,10 @@ const bonePairs: [StickFigureJoint, StickFigureJoint][] = [
   ['rightKnee', 'rightFoot'],
 ];
 
-const jointRadius: Record<StickFigureJoint, number> = {
-  head: 0.032,
-  neck: 0.016,
-  leftElbow: 0.015,
-  rightElbow: 0.015,
-  leftHand: 0.016,
-  rightHand: 0.016,
-  leftKnee: 0.015,
-  rightKnee: 0.015,
-  leftFoot: 0.016,
-  rightFoot: 0.016,
+const getJointRadius = (joint: StickFigureJoint) => {
+  if (joint === 'head') return 16;
+  if (joint === 'neck') return 12;
+  return 12;
 };
 
 function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: SVGSVGElement): StickFigurePoint {
@@ -52,7 +47,7 @@ function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: 
   };
 }
 
-export function StickFigureOverlay({ markers, editable = false, onMarkersChange }: StickFigureOverlayProps) {
+export function StickFigureOverlay({ markers, width, height, editable = false, onMarkersChange }: StickFigureOverlayProps) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const normalizedMarkers = markers.map((marker) => ({
     ...marker,
@@ -68,11 +63,12 @@ export function StickFigureOverlay({ markers, editable = false, onMarkersChange 
   return (
     <svg
       className="absolute inset-0 h-full w-full touch-none"
-      viewBox="0 0 1 1"
+      viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
       onPointerMove={(event) => {
         if (!editable || !dragState || event.pointerId !== dragState.pointerId) return;
-        updateMarkerJoint(dragState.markerId, dragState.joint, getSvgPoint(event, event.currentTarget));
+        const point = getSvgPoint(event, event.currentTarget);
+        updateMarkerJoint(dragState.markerId, dragState.joint, point);
       }}
       onPointerUp={(event) => {
         if (dragState?.pointerId === event.pointerId) setDragState(null);
@@ -86,41 +82,39 @@ export function StickFigureOverlay({ markers, editable = false, onMarkersChange 
           {bonePairs.map(([from, to]) => (
             <line
               key={`${from}-${to}-shadow`}
-              x1={marker.pose[from].x}
-              y1={marker.pose[from].y}
-              x2={marker.pose[to].x}
-              y2={marker.pose[to].y}
-              stroke="rgba(0,0,0,0.55)"
-              strokeWidth={0.016}
+              x1={marker.pose[from].x * width}
+              y1={marker.pose[from].y * height}
+              x2={marker.pose[to].x * width}
+              y2={marker.pose[to].y * height}
+              stroke="rgba(0,0,0,0.5)"
+              strokeWidth={16}
               strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
             />
           ))}
           {bonePairs.map(([from, to]) => (
             <line
               key={`${from}-${to}`}
-              x1={marker.pose[from].x}
-              y1={marker.pose[from].y}
-              x2={marker.pose[to].x}
-              y2={marker.pose[to].y}
+              x1={marker.pose[from].x * width}
+              y1={marker.pose[from].y * height}
+              x2={marker.pose[to].x * width}
+              y2={marker.pose[to].y * height}
               stroke={marker.color}
-              strokeWidth={0.01}
+              strokeWidth={12}
               strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
             />
           ))}
           {Object.entries(marker.pose).map(([joint, point]) => {
             const key = joint as StickFigureJoint;
+            const radius = getJointRadius(key);
             return (
               <circle
                 key={key}
-                cx={point.x}
-                cy={point.y}
-                r={jointRadius[key]}
+                cx={point.x * width}
+                cy={point.y * height}
+                r={radius}
                 fill={marker.color}
                 stroke="#ffffff"
-                strokeWidth={0.0035}
-                vectorEffect="non-scaling-stroke"
+                strokeWidth={2}
                 className={editable ? 'cursor-grab active:cursor-grabbing' : ''}
                 onPointerDown={(event) => {
                   if (!editable) return;

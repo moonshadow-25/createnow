@@ -79,7 +79,7 @@ export function StickFigureStage({
           className="absolute"
           style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
         >
-          <StickFigureOverlay markers={markers} editable={editable} onMarkersChange={onMarkersChange} />
+          <StickFigureOverlay markers={markers} width={rect.width} height={rect.height} editable={editable} onMarkersChange={onMarkersChange} />
         </div>
       )}
     </div>
