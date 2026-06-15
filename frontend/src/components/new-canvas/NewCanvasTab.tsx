@@ -336,8 +336,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? { ...node, label } : node));
   };
 
-  const getNodeOutputPort = (node: CanvasNode) => getDefinition(node.type).outputs[0];
-
   const findClosestCompatibleInput = (clientX: number, clientY: number, sourceNodeId: string, type: PortType) => {
     const point = screenToWorld(clientX, clientY);
     let best: { nodeId: string; port: string; type: PortType; distance: number } | null = null;
@@ -446,14 +444,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const handleNodeContentMouseDown = (event: React.MouseEvent, node: CanvasNode) => {
     const target = event.target as HTMLElement;
     if (target.closest('[data-port]') || target.closest('button') || target.closest('input, textarea, select, video, audio')) return;
-    const outputPort = getNodeOutputPort(node);
-    if (!outputPort) return;
     event.stopPropagation();
     window.getSelection()?.removeAllRanges();
-    nodeDragMovedRef.current = false;
     setSelectedNodeId(node.node_id);
     setSelectedEdgeId(null);
-    setConnecting({ nodeId: node.node_id, port: outputPort.key, type: outputPort.type, pointer: screenToWorld(event.clientX, event.clientY) });
   };
 
   const finishPointerAction = (event?: React.MouseEvent) => {
@@ -1270,7 +1264,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
         <div
           ref={canvasRef}
-          className="h-full w-full cursor-grab select-none overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.22)_1px,transparent_0)] [background-size:24px_24px]"
+          className="h-full w-full select-none overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.22)_1px,transparent_0)] [background-size:24px_24px]"
           onWheel={handleCanvasWheel}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
@@ -1353,7 +1347,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       key={port.key}
                       data-port="in"
                       onMouseDown={(event) => { event.stopPropagation(); }}
-                      className="absolute -left-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-blue-100 ring-1 ring-blue-500/70 shadow-lg hover:bg-blue-950"
+                      className="absolute -left-3 flex cursor-default items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-blue-100 ring-1 ring-blue-500/70 shadow-lg hover:bg-blue-950"
                       style={{ top: ((node.height || NODE_HEIGHT) / (definition.inputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
                     >
@@ -1366,7 +1360,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                       key={port.key}
                       data-port="out"
                       onMouseDown={(event) => handleOutputPortMouseDown(event, node.node_id, port.key, port.type)}
-                      className="absolute -right-3 flex items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-green-100 ring-1 ring-green-500/70 shadow-lg hover:bg-green-950"
+                      className="absolute -right-3 flex cursor-pointer items-center gap-1 rounded-full bg-gray-950/95 px-1.5 py-0.5 text-[10px] text-green-100 ring-1 ring-green-500/70 shadow-lg hover:bg-green-950"
                       style={{ top: ((node.height || NODE_HEIGHT) / (definition.outputs.length + 1)) * (index + 1) - 10 }}
                       title={`${port.label} (${port.type})`}
                     >

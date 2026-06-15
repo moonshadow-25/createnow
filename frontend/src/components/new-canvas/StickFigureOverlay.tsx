@@ -2,8 +2,11 @@ import { useState } from 'react';
 import {
   getStickFigureBaseSize,
   getStickFigureJointRadius,
+  getStickFigureScale,
   moveStickFigurePose,
   normalizeStickFigurePose,
+  scaleStickFigurePose,
+  unscaleStickFigurePoint,
   type DirectorStageMarker,
   type StickFigureJoint,
   type StickFigurePoint,
@@ -46,15 +49,25 @@ function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: 
 
 export function StickFigureOverlay({ markers, width, height, editable = false, onMarkersChange }: StickFigureOverlayProps) {
   const [dragState, setDragState] = useState<DragState | null>(null);
-  const normalizedMarkers = markers.map((marker) => ({
-    ...marker,
-    pose: normalizeStickFigurePose(marker, marker.x ?? marker.pose?.neck?.x ?? 0.5, marker.y ?? marker.pose?.neck?.y ?? 0.5),
-  }));
+  const normalizedMarkers = markers.map((marker) => {
+    const pose = normalizeStickFigurePose(marker, marker.x ?? marker.pose?.neck?.x ?? 0.5, marker.y ?? marker.pose?.neck?.y ?? 0.5);
+    const scale = getStickFigureScale(marker);
+    return {
+      ...marker,
+      scale,
+      pose,
+      displayPose: scale === 1 ? pose : scaleStickFigurePose(pose, scale),
+    };
+  });
 
   const updateMarkerJoint = (markerId: string, joint: StickFigureJoint, point: StickFigurePoint) => {
-    onMarkersChange?.(normalizedMarkers.map((marker) => marker.id === markerId
-      ? { ...marker, pose: moveStickFigurePose(marker.pose, joint, point) }
-      : marker));
+    onMarkersChange?.(normalizedMarkers.map(({ displayPose, ...marker }) => {
+      if (marker.id !== markerId) return marker;
+      const scale = getStickFigureScale(marker);
+      const anchor = displayPose.neck;
+      const nextPoint = unscaleStickFigurePoint(point, anchor, scale);
+      return { ...marker, pose: moveStickFigurePose(marker.pose, joint, nextPoint) };
+    }));
   };
 
   const baseSize = getStickFigureBaseSize(width, height);
@@ -76,57 +89,60 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
         if (dragState?.pointerId === event.pointerId) setDragState(null);
       }}
     >
-      {normalizedMarkers.map((marker) => (
-        <g key={marker.id}>
-          {bonePairs.map(([from, to]) => (
-            <line
-              key={`${from}-${to}-shadow`}
-              x1={marker.pose[from].x * width}
-              y1={marker.pose[from].y * height}
-              x2={marker.pose[to].x * width}
-              y2={marker.pose[to].y * height}
-              stroke="rgba(0,0,0,0.5)"
-              strokeWidth={baseSize * 1.35}
-              strokeLinecap="round"
-            />
-          ))}
-          {bonePairs.map(([from, to]) => (
-            <line
-              key={`${from}-${to}`}
-              x1={marker.pose[from].x * width}
-              y1={marker.pose[from].y * height}
-              x2={marker.pose[to].x * width}
-              y2={marker.pose[to].y * height}
-              stroke={marker.color}
-              strokeWidth={baseSize}
-              strokeLinecap="round"
-            />
-          ))}
-          {Object.entries(marker.pose).map(([joint, point]) => {
-            const key = joint as StickFigureJoint;
-            const radius = getStickFigureJointRadius(key, baseSize);
-            return (
-              <circle
-                key={key}
-                cx={point.x * width}
-                cy={point.y * height}
-                r={radius}
-                fill={marker.color}
-                stroke="#ffffff"
-                strokeWidth={2}
-                className={editable ? 'cursor-grab active:cursor-grabbing' : ''}
-                onPointerDown={(event) => {
-                  if (!editable) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  setDragState({ markerId: marker.id, joint: key, pointerId: event.pointerId });
-                }}
+      {normalizedMarkers.map((marker) => {
+        const pose = marker.displayPose;
+        return (
+          <g key={marker.id}>
+            {bonePairs.map(([from, to]) => (
+              <line
+                key={`${from}-${to}-shadow`}
+                x1={pose[from].x * width}
+                y1={pose[from].y * height}
+                x2={pose[to].x * width}
+                y2={pose[to].y * height}
+                stroke="rgba(0,0,0,0.5)"
+                strokeWidth={baseSize * 1.35}
+                strokeLinecap="round"
               />
-            );
-          })}
-        </g>
-      ))}
+            ))}
+            {bonePairs.map(([from, to]) => (
+              <line
+                key={`${from}-${to}`}
+                x1={pose[from].x * width}
+                y1={pose[from].y * height}
+                x2={pose[to].x * width}
+                y2={pose[to].y * height}
+                stroke={marker.color}
+                strokeWidth={baseSize}
+                strokeLinecap="round"
+              />
+            ))}
+            {Object.entries(pose).map(([joint, point]) => {
+              const key = joint as StickFigureJoint;
+              const radius = getStickFigureJointRadius(key, baseSize);
+              return (
+                <circle
+                  key={key}
+                  cx={point.x * width}
+                  cy={point.y * height}
+                  r={radius}
+                  fill={marker.color}
+                  stroke="#ffffff"
+                  strokeWidth={2}
+                  className={editable ? 'cursor-grab active:cursor-grabbing' : ''}
+                  onPointerDown={(event) => {
+                    if (!editable) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    setDragState({ markerId: marker.id, joint: key, pointerId: event.pointerId });
+                  }}
+                />
+              );
+            })}
+          </g>
+        );
+      })}
     </svg>
   );
 }

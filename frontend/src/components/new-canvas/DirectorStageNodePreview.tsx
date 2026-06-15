@@ -31,7 +31,7 @@ export function DirectorStageNodePreview({
       <button
         type="button"
         onClick={(event) => { event.stopPropagation(); onOpenPreview(imageUrl, node.label); }}
-        className="absolute left-1/2 top-1/2 hidden h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white shadow-2xl ring-1 ring-white/30 hover:bg-black/90 group-hover:flex"
+        className="absolute left-1/2 top-1/2 hidden h-14 w-14 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/70 text-white shadow-2xl ring-1 ring-white/30 hover:bg-black/90 group-hover:flex"
         title="放大查看"
       >
         <ZoomIn size={28} />

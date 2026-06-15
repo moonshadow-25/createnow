@@ -26,7 +26,7 @@ export type DirectorStageSyncArgs = {
   currentMarkers: DirectorStageMarker[];
 };
 
-export type DirectorStageCompositeMarker = Pick<DirectorStageMarker, 'color' | 'colorName' | 'label' | 'pose'>;
+export type DirectorStageCompositeMarker = Pick<DirectorStageMarker, 'color' | 'colorName' | 'label' | 'pose' | 'scale'>;
 
 export const DIRECTOR_STAGE_COLORS = [
   { color: '#ef4444', colorName: '红色' },
@@ -41,6 +41,7 @@ export const DIRECTOR_STAGE_COLORS = [
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 const clampPoint = (point: StickFigurePoint): StickFigurePoint => ({ x: clamp(point.x), y: clamp(point.y) });
+const clampScale = (value: number) => Math.min(1.8, Math.max(0.6, value));
 
 export const STICK_FIGURE_JOINTS: { key: StickFigureJoint; label: string }[] = [
   { key: 'head', label: 'head' },
@@ -58,6 +59,33 @@ export const STICK_FIGURE_JOINTS: { key: StickFigureJoint; label: string }[] = [
 
 export function getStickFigureBaseSize(width: number, height: number) {
   return Math.max(8, Math.min(width, height) * 0.028);
+}
+
+export function getStickFigureScale(marker: Partial<DirectorStageMarker> | undefined) {
+  return clampScale(marker?.scale ?? 1);
+}
+
+export function scaleStickFigurePoint(point: StickFigurePoint, anchor: StickFigurePoint, scale: number): StickFigurePoint {
+  if (scale === 1) return clampPoint(point);
+  return clampPoint({
+    x: anchor.x + (point.x - anchor.x) * scale,
+    y: anchor.y + (point.y - anchor.y) * scale,
+  });
+}
+
+export function unscaleStickFigurePoint(point: StickFigurePoint, anchor: StickFigurePoint, scale: number): StickFigurePoint {
+  if (scale === 1) return clampPoint(point);
+  return clampPoint({
+    x: anchor.x + (point.x - anchor.x) / scale,
+    y: anchor.y + (point.y - anchor.y) / scale,
+  });
+}
+
+export function scaleStickFigurePose(pose: StickFigurePose, scale: number): StickFigurePose {
+  const anchor = pose.neck;
+  return Object.fromEntries(
+    STICK_FIGURE_JOINTS.map(({ key }) => [key, scaleStickFigurePoint(pose[key], anchor, scale)]),
+  ) as StickFigurePose;
 }
 
 export function getStickFigureJointRadius(joint: StickFigureJoint, baseSize: number) {
@@ -139,8 +167,9 @@ export function moveStickFigurePose(pose: StickFigurePose, joint: StickFigureJoi
 
 export function syncDirectorStageMarkers({ incomingEdges, nodes, currentMarkers }: DirectorStageSyncArgs): DirectorStageMarker[] {
   const markerByEdgeId = new Map(currentMarkers.map((marker) => [marker.edgeId, marker]));
+  const markerBySource = new Map(currentMarkers.map((marker) => [`${marker.sourceNodeId}:${marker.sourcePort}`, marker]));
   return incomingEdges.map((edge, index) => {
-    const existing = markerByEdgeId.get(edge.edge_id);
+    const existing = markerByEdgeId.get(edge.edge_id) || markerBySource.get(`${edge.source_node_id}:${edge.source_port}`);
     const sourceNode = nodes.find((node) => node.node_id === edge.source_node_id);
     const palette = getDirectorStagePalette(index);
     const x = existing?.x ?? 0.22 + (index % 3) * 0.22;
@@ -151,10 +180,11 @@ export function syncDirectorStageMarkers({ incomingEdges, nodes, currentMarkers 
       sourceNodeId: edge.source_node_id,
       sourcePort: edge.source_port,
       sourceLabel: sourceNode?.label || existing?.sourceLabel || getDirectorStageInputLabel(index),
-      color: existing?.color || palette.color,
-      colorName: existing?.colorName || palette.colorName,
+      color: palette.color,
+      colorName: palette.colorName,
       label: getDirectorStageInputLabel(index),
       pose: normalizeStickFigurePose(existing, clamp(x, 0.08, 0.88), clamp(y, 0.08, 0.82)),
+      scale: getStickFigureScale(existing),
     };
   });
 }
@@ -196,7 +226,7 @@ function drawLine(context: CanvasRenderingContext2D, from: StickFigurePoint, to:
 }
 
 export function drawStickFigure(context: CanvasRenderingContext2D, marker: DirectorStageCompositeMarker, width: number, height: number) {
-  const pose = marker.pose;
+  const pose = scaleStickFigurePose(marker.pose, getStickFigureScale(marker));
   const boneWidth = getStickFigureBaseSize(width, height);
   const jointRadius = getStickFigureJointRadius('neck', boneWidth);
   const headRadius = getStickFigureJointRadius('head', boneWidth);

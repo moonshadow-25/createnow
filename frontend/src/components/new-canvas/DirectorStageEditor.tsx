@@ -52,6 +52,10 @@ export function DirectorStageEditor({
     });
   };
 
+  const updateMarkerScale = (markerId: string, scale: number) => {
+    updateMarkers(markers.map((marker) => marker.id === markerId ? { ...marker, scale } : marker));
+  };
+
   const handlePromptChange = (prompt: string) => {
     updateNodeConfig(node.node_id, { prompt, director_prompt_edited: true });
   };
@@ -130,14 +134,32 @@ export function DirectorStageEditor({
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
         <div className="mb-2 text-xs font-medium text-gray-300">输入绑定</div>
         <div className="space-y-2">
-          {markers.map((marker) => (
-            <div key={marker.id} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
-              <span className="h-4 w-4 rounded-full" style={{ backgroundColor: marker.color }} />
-              <span className="font-medium text-gray-200">{marker.label}</span>
-              <span className="min-w-0 flex-1 truncate text-gray-500">{marker.sourceLabel}</span>
-              <span className="text-[10px] text-gray-400">{marker.colorName}</span>
-            </div>
-          ))}
+          {markers.map((marker) => {
+            const scale = marker.scale ?? 1;
+            return (
+              <div key={marker.id} className="rounded bg-gray-900 p-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-4 w-4 rounded-full" style={{ backgroundColor: marker.color }} />
+                  <span className="font-medium text-gray-200">{marker.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-gray-500">{marker.sourceLabel}</span>
+                  <span className="text-[10px] text-gray-400">{marker.colorName}</span>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500">缩放</span>
+                  <input
+                    type="range"
+                    min="0.6"
+                    max="1.8"
+                    step="0.05"
+                    value={scale}
+                    onChange={(event) => updateMarkerScale(marker.id, Number(event.target.value))}
+                    className="h-1 flex-1 cursor-pointer accent-blue-400"
+                  />
+                  <span className="w-12 text-right text-[10px] text-gray-400">{Math.round(scale * 100)}%</span>
+                </div>
+              </div>
+            );
+          })}
           {!markers.length && <div className="rounded bg-gray-900 p-3 text-xs text-gray-500">暂无输入图片，请从其他图片节点连线到导演台。</div>}
         </div>
       </div>
