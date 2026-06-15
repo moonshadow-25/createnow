@@ -65,7 +65,6 @@ function App() {
 
   const [deployMode, setDeployMode] = useState<'selfhosted' | 'saas' | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-  const [appName, setAppName] = useState('ViPro');
 
   // 启动时获取部署模式 + 恢复认证状态
   useEffect(() => {
@@ -74,7 +73,6 @@ function App() {
       .then((cfg) => {
         const mode = cfg.deploy_mode === 'saas' ? 'saas' : 'selfhosted';
         setDeployMode(mode);
-        setAppName(String(cfg.app_name || 'ViPro').trim() || 'ViPro');
         if (mode === 'saas') {
           saasAuth.restoreFromStorage();
         } else {
@@ -84,7 +82,6 @@ function App() {
       .catch(() => {
         // 无法获取配置时默认 selfhosted
         setDeployMode('selfhosted');
-        setAppName('ViPro');
         adminAuth.restoreFromStorage();
       });
   }, []);
@@ -130,7 +127,7 @@ function App() {
             <div className="vip-app-shell__content">
               <BrowserRouter>
                 <Routes>
-                  <Route path="/" element={<HomePage initialAppName={appName} onAppNameChange={setAppName} />} />
+                  <Route path="/" element={<HomePage />} />
                   <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorRoute />} />
                   <Route path="/project/:projectId" element={<ProjectPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
@@ -141,7 +138,7 @@ function App() {
         ) : (
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<HomePage initialAppName={appName} onAppNameChange={setAppName} />} />
+              <Route path="/" element={<HomePage />} />
               <Route path="/project/:projectId/storyboard/:storyboardId/edit" element={<StoryboardEditorRoute />} />
               <Route path="/project/:projectId" element={<ProjectPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
