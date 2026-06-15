@@ -89,7 +89,7 @@ export function scaleStickFigurePose(pose: StickFigurePose, scale: number): Stic
 }
 
 export function getStickFigureJointRadius(joint: StickFigureJoint, baseSize: number) {
-  if (joint === 'head') return baseSize * 1.35;
+  if (joint === 'head') return baseSize * 1.75;
   return baseSize / 2;
 }
 
@@ -103,17 +103,17 @@ export function getDirectorStageInputLabel(index: number) {
 
 export function createDefaultStickFigurePose(x: number, y: number): StickFigurePose {
   return {
-    head: { x, y: clamp(y - 0.08) },
-    neck: { x, y: clamp(y - 0.03) },
-    hip: { x, y: clamp(y + 0.05) },
-    leftElbow: { x: clamp(x - 0.07), y: clamp(y - 0.01) },
-    rightElbow: { x: clamp(x + 0.07), y: clamp(y - 0.01) },
-    leftHand: { x: clamp(x - 0.12), y: clamp(y + 0.04) },
-    rightHand: { x: clamp(x + 0.12), y: clamp(y + 0.04) },
-    leftKnee: { x: clamp(x - 0.05), y: clamp(y + 0.11) },
-    rightKnee: { x: clamp(x + 0.05), y: clamp(y + 0.11) },
-    leftFoot: { x: clamp(x - 0.05), y: clamp(y + 0.19) },
-    rightFoot: { x: clamp(x + 0.05), y: clamp(y + 0.19) },
+    head: { x, y: clamp(y - 0.13) },
+    neck: { x, y: clamp(y - 0.055) },
+    hip: { x, y: clamp(y + 0.055) },
+    leftElbow: { x: clamp(x - 0.075), y: clamp(y - 0.01) },
+    rightElbow: { x: clamp(x + 0.075), y: clamp(y - 0.01) },
+    leftHand: { x: clamp(x - 0.14), y: clamp(y + 0.035) },
+    rightHand: { x: clamp(x + 0.14), y: clamp(y + 0.035) },
+    leftKnee: { x: clamp(x - 0.055), y: clamp(y + 0.15) },
+    rightKnee: { x: clamp(x + 0.055), y: clamp(y + 0.15) },
+    leftFoot: { x: clamp(x - 0.12), y: clamp(y + 0.27) },
+    rightFoot: { x: clamp(x + 0.12), y: clamp(y + 0.27) },
   };
 }
 
