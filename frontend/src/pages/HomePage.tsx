@@ -61,7 +61,7 @@ export default function HomePage() {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [appName, setAppName] = useState('ViPro');
+  const [appName, setAppName] = useState('');
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -246,7 +246,7 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold">{appName}</span>
+            <span className="text-3xl font-bold">{appName || ' '}</span>
             <span className="text-sm font-medium text-gray-400 border border-gray-400 px-2 py-0.5 rounded-md">满血API</span>
             <AppVersionBadge canCheckUpdate={canCheckUpdate} onClick={() => setShowUpdateModal(true)} />
           </h1>
