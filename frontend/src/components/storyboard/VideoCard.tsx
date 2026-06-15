@@ -235,9 +235,9 @@ export const VideoCard = memo(({
           </button>
         </div>
 
-        {/* 轮询响应（轮询中/异常时默认展开）*/}
-        {video.last_poll_response && (
-          <details className="mt-2" open={shouldShowDiagnostics}>
+        {/* 轮询响应（正常占位时可手动展开）*/}
+        {video.last_poll_response && !shouldShowDiagnostics && (
+          <details className="mt-2">
             <summary className="text-xs text-blue-400 cursor-pointer">调试信息</summary>
             <pre className="mt-1 p-2 bg-gray-800 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
               {JSON.stringify(video.last_poll_response, null, 2)}
