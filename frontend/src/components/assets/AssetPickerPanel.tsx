@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, Plus, ZoomIn } from 'lucide-react';
+import { Check, Plus, Search, ZoomIn } from 'lucide-react';
 import { ImagePreviewModal } from '@/components/common/ImagePreviewModal';
 import { collectProjectAssetTags, filterAssetsByTags, toggleTag } from '@/utils/assetTags';
 import type { UsedAssetIdsByType } from '@/utils/assetTags';
@@ -143,6 +143,7 @@ export function AssetPickerPanel({
 }: AssetPickerPanelProps) {
   const [activeTab, setActiveTab] = useState<AssetPickerTab>('character');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [onlyUsedInEpisode, setOnlyUsedInEpisode] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<any | null>(null);
 
@@ -173,7 +174,11 @@ export function AssetPickerPanel({
   const usedFilteredAssets = showOnlyUsedFilter && onlyUsedInEpisode && usedIds
     ? baseAssets.filter((asset) => usedIds.has(asset.asset_id))
     : baseAssets;
-  const currentAssets = filterAssetsByTags(usedFilteredAssets, selectedTags);
+  const tagFilteredAssets = filterAssetsByTags(usedFilteredAssets, selectedTags);
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const currentAssets = normalizedSearchQuery
+    ? tagFilteredAssets.filter((asset) => (asset.name || '').toLocaleLowerCase().includes(normalizedSearchQuery))
+    : tagFilteredAssets;
   const isSelected = (id: string) =>
     activeTab === 'character' ? selectedCharacters.includes(id)
     : activeTab === 'scene' ? selectedScenes.includes(id)
@@ -210,7 +215,7 @@ export function AssetPickerPanel({
         ))}
       </div>
 
-      {(allTags.length > 0 || (showOnlyUsedFilter && usedAssetIdsByType)) && (
+      {(baseAssets.length > 0 || allTags.length > 0 || (showOnlyUsedFilter && usedAssetIdsByType)) && (
         <div className="mb-3 space-y-2 rounded-lg bg-gray-700/50 p-3">
           <div className="flex flex-wrap items-center gap-2">
             {showOnlyUsedFilter && usedAssetIdsByType && (
@@ -226,16 +231,29 @@ export function AssetPickerPanel({
                 本集使用
               </button>
             )}
-            {selectedTags.length > 0 && (
+            {(selectedTags.length > 0 || searchQuery) && (
               <button
                 type="button"
-                onClick={() => setSelectedTags([])}
+                onClick={() => {
+                  setSelectedTags([]);
+                  setSearchQuery('');
+                }}
                 className="text-xs text-gray-400 hover:text-white"
               >
-                清空tag
+                清空筛选
               </button>
             )}
             <span className="text-xs text-gray-500">当前显示 {currentAssets.length} 个</span>
+          </div>
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="按名称搜索资产"
+              className="w-full rounded-lg border border-gray-600 bg-gray-800 py-1.5 pl-8 pr-3 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
+            />
           </div>
           {allTags.length > 0 && (
             <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
