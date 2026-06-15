@@ -50,6 +50,10 @@ interface VideoRecord {
   reference_media?: RefMedia[];
 }
 
+function isInternalAssetVideo(media: RefMedia): boolean {
+  return media.type === 'video' && media.url?.startsWith('asset://');
+}
+
 function getReferenceMediaKey(media: RefMedia): string {
   if (media.type === 'video' || media.type === 'audio') {
     return `${media.type}:${media.url || media.id || media.name || ''}`;
@@ -61,6 +65,7 @@ function dedupeReferenceMedia(mediaList?: RefMedia[]): RefMedia[] {
   const deduped: RefMedia[] = [];
   const seen = new Set<string>();
   for (const media of mediaList || []) {
+    if (isInternalAssetVideo(media)) continue;
     const key = getReferenceMediaKey(media);
     if (!key || seen.has(key)) continue;
     seen.add(key);

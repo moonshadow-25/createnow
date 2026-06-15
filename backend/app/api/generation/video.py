@@ -190,6 +190,8 @@ def _build_url_reference_media(media_type: str, urls: Optional[List[str]]) -> Li
     for index, url in enumerate(urls or [], start=1):
         if not url or _is_data_url(url):
             continue
+        if media_type == "video" and str(url).startswith("asset://"):
+            continue
         refs.append({
             "type": media_type,
             "url": url,
