@@ -380,6 +380,15 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       order: nextOrder,
     };
     setEdges((prev) => [...prev.filter((item) => !(item.target_node_id === targetNodeId && item.target_port === targetPort && item.source_node_id === sourceNodeId)), edge]);
+    if (targetType === 'text') {
+      setNodes((prev) => prev.map((node) => {
+        if (node.node_id !== targetNodeId || !node.type.startsWith('gen.')) return node;
+        const currentPrompt = node.config.prompt || '';
+        if (currentPrompt.includes('{{input}}')) return node;
+        const nextPrompt = currentPrompt.trim() ? `${currentPrompt.trim()}\n{{input}}` : '{{input}}';
+        return { ...node, config: { ...node.config, prompt: nextPrompt } };
+      }));
+    }
     setSelectedNodeId(null);
     setSelectedEdgeId(edge.edge_id);
   };
@@ -1188,6 +1197,31 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   return (
     <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
+      <div className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
+        <span>缩放 {Math.round(zoom * 100)}%</span>
+        <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
+        <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center gap-1 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600 disabled:opacity-50">
+          {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}继续
+        </button>
+        <button
+          onClick={() => runWorkflow('from-selected')}
+          disabled={running || !selectedNodeId}
+          className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-45"
+          title="重跑当前选中节点及其下游"
+        >
+          从选中重跑
+        </button>
+        <button
+          onClick={() => runWorkflow('all')}
+          disabled={running}
+          className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:opacity-50"
+          title="重跑所有动态节点"
+        >
+          全部重跑
+        </button>
+        {connecting && <span className="text-blue-300">正在连接：{connecting.type}</span>}
+        {selectedEdgeId && <button onClick={() => removeEdge(selectedEdgeId)} className="rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700">删除连线</button>}
+      </div>
       <button
         type="button"
         onClick={() => setLeftPanelOpen((open) => !open)}
@@ -1243,32 +1277,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       )}
 
       <div className="relative min-w-0 flex-1 overflow-hidden">
-        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
-          <span>缩放 {Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
-          <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center gap-1 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600 disabled:opacity-50">
-            {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}继续
-          </button>
-          <button
-            onClick={() => runWorkflow('from-selected')}
-            disabled={running || !selectedNodeId}
-            className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-45"
-            title="重跑当前选中节点及其下游"
-          >
-            从选中重跑
-          </button>
-          <button
-            onClick={() => runWorkflow('all')}
-            disabled={running}
-            className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:opacity-50"
-            title="重跑所有动态节点"
-          >
-            全部重跑
-          </button>
-          {connecting && <span className="text-blue-300">正在连接：{connecting.type}</span>}
-          {selectedEdgeId && <button onClick={() => removeEdge(selectedEdgeId)} className="rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700">删除连线</button>}
-        </div>
-
         <div
           ref={canvasRef}
           className="h-full w-full select-none overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.22)_1px,transparent_0)] [background-size:24px_24px]"
