@@ -128,13 +128,16 @@ def _audio_record_url(project_id: str, audio: Dict[str, Any]) -> str:
     return ""
 
 
-def _media_key(item: Dict[str, Any]) -> str:
+def _media_keys(item: Dict[str, Any]) -> List[str]:
     media_type = item.get("type") or ""
     media_id = item.get("id") or ""
     url = item.get("url") or ""
-    if not media_type or not (media_id or url):
-        return ""
-    return f"{media_type}:{media_id or url}"
+    keys: List[str] = []
+    if media_type and media_id:
+        keys.append(f"{media_type}:id:{media_id}")
+    if media_type and url:
+        keys.append(f"{media_type}:url:{url}")
+    return keys
 
 
 def _merge_reference_media(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -147,10 +150,10 @@ def _merge_reference_media(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]
             url = item.get("url") or ""
             if _is_data_url(url):
                 item = {k: v for k, v in item.items() if k != "url"}
-            key = _media_key(item)
-            if not key or key in seen:
+            keys = _media_keys(item)
+            if not keys or any(key in seen for key in keys):
                 continue
-            seen.add(key)
+            seen.update(keys)
             merged.append(item)
     return merged
 

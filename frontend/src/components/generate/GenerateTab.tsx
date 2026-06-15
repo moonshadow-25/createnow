@@ -570,7 +570,21 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     setResolution(normalizeResolutionValue(video.resolution));
     setRatio(inferRatioFromVideo(video));
     if (video.generate_audio != null) setGenerateAudio(video.generate_audio);
-    setSelectedMedia(video.reference_media || []);
+    setSelectedMedia(() => {
+      const deduped: RefMedia[] = [];
+      const seen = new Set<string>();
+      for (const media of video.reference_media || []) {
+        const key = media.type === 'image'
+          ? `image:${media.id || media.url || media.name || ''}`
+          : media.type === 'video'
+            ? `video:${media.id || media.url || media.name || ''}`
+            : `audio:${media.id || media.url || media.name || ''}`;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(media);
+      }
+      return deduped;
+    });
     // 清空审核状态，让用户重新触发（若需要）
     setAssetStatuses({});
   };
