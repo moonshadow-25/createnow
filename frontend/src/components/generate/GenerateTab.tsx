@@ -50,6 +50,25 @@ interface VideoRecord {
   reference_media?: RefMedia[];
 }
 
+function getReferenceMediaKey(media: RefMedia): string {
+  if (media.type === 'video' || media.type === 'audio') {
+    return `${media.type}:${media.url || media.id || media.name || ''}`;
+  }
+  return `image:${media.id || media.url || media.name || ''}`;
+}
+
+function dedupeReferenceMedia(mediaList?: RefMedia[]): RefMedia[] {
+  const deduped: RefMedia[] = [];
+  const seen = new Set<string>();
+  for (const media of mediaList || []) {
+    const key = getReferenceMediaKey(media);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(media);
+  }
+  return deduped;
+}
+
 interface ImageRecord {
   image_id: string;
   asset_id: string;
@@ -570,21 +589,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     setResolution(normalizeResolutionValue(video.resolution));
     setRatio(inferRatioFromVideo(video));
     if (video.generate_audio != null) setGenerateAudio(video.generate_audio);
-    setSelectedMedia(() => {
-      const deduped: RefMedia[] = [];
-      const seen = new Set<string>();
-      for (const media of video.reference_media || []) {
-        const key = media.type === 'image'
-          ? `image:${media.id || media.url || media.name || ''}`
-          : media.type === 'video'
-            ? `video:${media.id || media.url || media.name || ''}`
-            : `audio:${media.id || media.url || media.name || ''}`;
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        deduped.push(media);
-      }
-      return deduped;
-    });
+    setSelectedMedia(dedupeReferenceMedia(video.reference_media));
     // 清空审核状态，让用户重新触发（若需要）
     setAssetStatuses({});
   };
@@ -1375,6 +1380,8 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
   const previewH = isPortrait ? (normRes === '1080p' ? 400 : normRes === '480p' ? 220 : 300) : baseHeight;
   const previewW = isPortrait ? Math.round(previewH * 9 / 16) : isUltraWide ? Math.round(previewH * 21 / 9) : Math.round(previewH * 16 / 9);
 
+  const previewReferenceMedia = dedupeReferenceMedia(video.reference_media);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   // 用 ref 命令式控制播放，避免 autoPlay 声明式失效
   useEffect(() => {
@@ -1397,9 +1404,9 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
       >
         <div className="flex items-start gap-2">
           {/* 参考素材缩略图 */}
-          {video.reference_media && video.reference_media.length > 0 && (
+          {previewReferenceMedia.length > 0 && (
             <div className="flex items-center gap-1 flex-shrink-0">
-              {video.reference_media.slice(0, 4).map((m, i) => (
+              {previewReferenceMedia.slice(0, 4).map((m, i) => (
                 m.type === 'image' && m.url ? (
                   <img key={i} src={getThumbnailUrl(m.url)} alt={m.name} className="w-7 h-7 rounded object-cover border border-gray-600 flex-shrink-0" />
                 ) : m.type === 'video' ? (
@@ -1412,8 +1419,8 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
                   </div>
                 )
               ))}
-              {video.reference_media.length > 4 && (
-                <span className="text-xs text-gray-500">+{video.reference_media.length - 4}</span>
+              {previewReferenceMedia.length > 4 && (
+                <span className="text-xs text-gray-500">+{previewReferenceMedia.length - 4}</span>
               )}
             </div>
           )}
