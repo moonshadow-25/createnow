@@ -255,6 +255,7 @@ export default function HomePage() {
             >
               {appName}
             </button>
+            <span className="text-sm font-medium text-gray-400 border border-gray-400 px-2 py-0.5 rounded-md">满血API</span>
             <AppVersionBadge canCheckUpdate={canCheckUpdate} onClick={() => setShowUpdateModal(true)} />
           </h1>
           <div className="flex items-center gap-3 pr-10">
