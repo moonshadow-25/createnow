@@ -39,6 +39,11 @@ type InputOrderItem = {
   text?: string;
 };
 
+function getNodeDisplayName(node?: CanvasNode) {
+  if (!node) return '';
+  return node.config.asset_name || node.config.file_name || node.label;
+}
+
 export function CanvasPropertyPanel({
   projectId,
   selectedNode,
@@ -68,7 +73,7 @@ export function CanvasPropertyPanel({
         type: 'image',
         id: source.config.image_id,
         url: source.config.image_url || '',
-        name: source.config.asset_name || source.label,
+        name: getNodeDisplayName(source) || source.label,
         audit: source.config.existing_asset_audit_id ? {
           refType: 'image',
           refKey: source.config.image_id,
@@ -100,10 +105,13 @@ export function CanvasPropertyPanel({
       const source = nodes.find((item) => item.node_id === edge.source_node_id);
       const output = projectOutputForPort(getSourceOutput(source), edge.source_port);
       const media = (output?.media || []).filter((item) => item.type === edge.target_port && (item.id || item.url));
-      if (media.length) return media.map((item, mediaIndex) => ({ edge, source, media: item, label: item.name || `${source?.label || edge.source_node_id} #${mediaIndex + 1}`, type: item.type }));
-      if (edge.target_port === 'text' && output?.text) return [{ edge, source, text: output.text, label: source?.label || edge.source_node_id, type: 'text' }];
-      return [{ edge, source, label: source?.label || edge.source_node_id, type: edge.target_port }];
+      const sourceLabel = getNodeDisplayName(source) || edge.source_node_id;
+      if (media.length) return media.map((item, mediaIndex) => ({ edge, source, media: item, label: item.name || `${sourceLabel} #${mediaIndex + 1}`, type: item.type }));
+      if (edge.target_port === 'text' && output?.text) return [{ edge, source, text: output.text, label: sourceLabel, type: 'text' }];
+      return [{ edge, source, label: sourceLabel, type: edge.target_port }];
     });
+    const markerByEdgeId = new Map((node.config.director_markers || []).map((marker) => [marker.edgeId, marker]));
+    const markerBySource = new Map((node.config.director_markers || []).map((marker) => [`${marker.sourceNodeId}:${marker.sourcePort}`, marker]));
     return (
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3">
         <div className="mb-2 text-xs font-medium text-gray-300">输入顺序</div>
@@ -116,12 +124,21 @@ export function CanvasPropertyPanel({
               || (videoKey ? item.source?.config.audit_state?.[videoKey] || auditState[videoKey] || canvasAuditState[videoKey] : undefined);
             const hasAuditableInput = Boolean(imageKey || videoKey);
             const status = audit?.status || (audit?.assetId ? 'Processing' : hasAuditableInput ? 'Pending' : undefined);
+            const marker = markerByEdgeId.get(item.edge.edge_id) || markerBySource.get(`${item.edge.source_node_id}:${item.edge.source_port}`);
             return (
               <div key={`${item.edge.edge_id}-${index}`} className="flex items-center gap-2 rounded bg-gray-900 p-2 text-xs">
-                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-700 text-[10px] text-white">{index + 1}</span>
+                {marker ? (
+                  <div className="flex flex-shrink-0 items-center gap-1 rounded-full bg-gray-950 px-2 py-1 ring-1 ring-gray-700">
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: marker.color }} />
+                    <span className="text-[10px] font-medium text-gray-100">{marker.label}</span>
+                  </div>
+                ) : (
+                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-700 text-[10px] text-white">{index + 1}</span>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-gray-200">{item.label}</div>
                   <div className="text-[10px] text-gray-500">{item.type} · {item.edge.target_port} ← {item.edge.source_port}</div>
+                  {marker && <div className="mt-1 text-[10px] text-gray-400">{marker.colorName}火柴人 · {marker.sourceLabel}</div>}
                   {status && (
                     <div className={status === 'Active' ? 'mt-1 text-[10px] text-green-300' : status === 'Failed' ? 'mt-1 text-[10px] text-red-300' : 'mt-1 text-[10px] text-yellow-300'}>
                       {status === 'Active' ? '审核通过' : status === 'Failed' ? '审核失败' : status === 'Pending' ? '待提交审核' : '审核中'}
@@ -168,7 +185,6 @@ export function CanvasPropertyPanel({
           node={selectedNode}
           nodes={nodes}
           incomingEdges={getIncomingEdges(selectedNode.node_id, 'image')}
-          imageApiType={imageApiType}
           updateNodeConfig={updateNodeConfig}
           onOpenAssetPicker={onOpenAssetPicker}
           onOpenUpload={onOpenUpload}
@@ -300,11 +316,13 @@ export function CanvasPropertyPanel({
         </div>
       )}
 
-      <div>
-        <div className="mb-2 text-xs text-gray-400">最近结果</div>
-        {renderNodePreview(selectedNode, true)}
-        {nodeError && <div className="mt-2 text-xs text-red-300">{nodeError}</div>}
-      </div>
+      {selectedNode.type !== 'director.stage' && (
+        <div>
+          <div className="mb-2 text-xs text-gray-400">最近结果</div>
+          {renderNodePreview(selectedNode, true)}
+          {nodeError && <div className="mt-2 text-xs text-red-300">{nodeError}</div>}
+        </div>
+      )}
     </div>
   );
 }

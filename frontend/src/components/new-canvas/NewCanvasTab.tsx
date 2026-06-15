@@ -601,6 +601,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     return acc;
   }, {});
 
+  const getNodeDisplayName = (node: CanvasNode) => node.config.asset_name || node.config.file_name || node.label;
+
+  const getDirectorSourceBadges = (nodeId: string) => nodes
+    .filter((node) => node.type === 'director.stage')
+    .flatMap((node) => (node.config.director_markers || [])
+      .filter((marker) => marker.sourceNodeId === nodeId)
+      .map((marker) => ({ label: marker.label, color: marker.color, colorName: marker.colorName, directorLabel: node.label })));
+
   const incomingEdges = (nodeId: string, targetPort?: string) => edges
     .filter((edge) => edge.target_node_id === nodeId && (!targetPort || edge.target_port === targetPort))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -1313,6 +1321,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
               const definition = getDefinition(node.type);
               const Icon = definition.icon;
               const state = nodeStatus[node.node_id]?.status || 'idle';
+              const directorBadges = getDirectorSourceBadges(node.node_id);
+              const description = ['static.image', 'static.video', 'static.audio'].includes(node.type)
+                ? getNodeDisplayName(node)
+                : definition.description;
               return (
                 <div
                   key={node.node_id}
@@ -1370,7 +1382,17 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
                   ))}
 
                   <div className="space-y-2 p-3" onMouseDown={(event) => handleNodeContentMouseDown(event, node)}>
-                    <div className="text-xs text-gray-400">{definition.description}</div>
+                    <div className="truncate text-xs text-gray-400" title={description}>{description}</div>
+                    {directorBadges.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {directorBadges.map((badge) => (
+                          <span key={`${badge.directorLabel}-${badge.label}-${badge.color}`} className="inline-flex items-center gap-1 rounded-full bg-gray-950/90 px-2 py-0.5 text-[10px] text-gray-100 ring-1 ring-gray-700" title={`${badge.directorLabel} · ${badge.colorName}火柴人`}>
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: badge.color }} />
+                            {badge.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {renderNodePreview(node)}
                     <div className="flex flex-wrap gap-1 text-[10px] text-gray-500">
                       {definition.inputs.map((port) => <span key={`in-${port.key}`} className="rounded bg-blue-950 px-1.5 py-0.5">入:{port.label}</span>)}

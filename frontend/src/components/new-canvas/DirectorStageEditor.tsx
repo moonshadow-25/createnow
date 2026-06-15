@@ -16,7 +16,6 @@ type DirectorStageEditorProps = {
   node: CanvasNode;
   nodes: CanvasNode[];
   incomingEdges: CanvasEdge[];
-  imageApiType: string;
   updateNodeConfig: (nodeId: string, config: Partial<CanvasNode['config']>) => void;
   onOpenAssetPicker: () => void;
   onOpenUpload: (target: 'image' | 'video' | 'audio') => void;
@@ -28,7 +27,6 @@ export function DirectorStageEditor({
   node,
   nodes,
   incomingEdges,
-  imageApiType,
   updateNodeConfig,
   onOpenAssetPicker,
   onOpenUpload,
@@ -183,18 +181,6 @@ export function DirectorStageEditor({
           className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
         />
       </label>
-
-      {imageApiType === 'createnow' && (
-        <label className="block">
-          <span className="text-xs text-gray-400">模型</span>
-          <input
-            value={node.config.model || ''}
-            onChange={(event) => updateNodeConfig(node.node_id, { model: event.target.value })}
-            className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-            placeholder="默认配置"
-          />
-        </label>
-      )}
     </div>
   );
 }
