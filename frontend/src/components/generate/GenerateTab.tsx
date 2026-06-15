@@ -224,6 +224,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<RefMedia | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const [hasLoadedImages, setHasLoadedImages] = useState(false);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());
@@ -908,35 +909,36 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               {selectedMedia.map((item, idx) => {
                 const statusKey = getAssetStatusKey(item);
                 const volStatus = statusKey ? assetStatuses[statusKey]?.status : undefined;
+                const openPreview = () => setPreviewMedia(item);
                 return (
                   <div key={`${item.type}-${idx}`} className="relative group flex-shrink-0">
                     {item.type === 'image' ? (
-                      <div className="w-16 h-16">
+                      <button type="button" onClick={openPreview} className="w-16 h-16 relative cursor-zoom-in" title="点击查看大图">
                         {item.url ? (
-                          <img src={item.url} alt={item.name} className="w-16 h-16 object-cover rounded border border-gray-600" />
+                          <img src={item.url} alt={item.name} className="w-16 h-16 object-cover rounded border border-gray-600 hover:border-blue-400 transition-colors" />
                         ) : (
-                          <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                          <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center hover:border-blue-400 transition-colors">
                             <Image size={16} className="text-gray-400" />
                           </div>
                         )}
                         {mode === 'video' && showAssetSubmit && volStatus && (
                           <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
                         )}
-                      </div>
+                      </button>
                     ) : item.type === 'video' ? (
-                      <div className="w-16 h-16 relative">
-                        <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                      <button type="button" onClick={openPreview} className="w-16 h-16 relative cursor-pointer" title="点击播放视频">
+                        <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center hover:border-blue-400 transition-colors">
                           <Film size={16} className="text-blue-400" />
                         </div>
                         {mode === 'video' && showAssetSubmit && volStatus && (
                           <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center ${volStatus === 'Active' ? 'bg-green-500' : volStatus === 'Processing' ? 'bg-yellow-500' : volStatus === 'Failed' ? 'bg-red-500' : 'bg-gray-500'}`} />
                         )}
-                      </div>
+                      </button>
                     ) : (
-                      <div className="flex items-center gap-2 h-16 px-3 bg-gray-700 rounded border border-gray-600 max-w-[220px]" title={item.name}>
+                      <button type="button" onClick={openPreview} className="flex items-center gap-2 h-16 px-3 bg-gray-700 rounded border border-gray-600 hover:border-purple-400 transition-colors max-w-[220px]" title="点击播放音频">
                         <Music size={14} className="text-purple-400 flex-shrink-0" />
                         <span className="text-xs text-gray-300 truncate">{item.name}</span>
-                      </div>
+                      </button>
                     )}
                     <button
                       onClick={() => setSelectedMedia(prev => prev.filter((_, i) => i !== idx))}
@@ -1218,6 +1220,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                       isPlaying={playingVideoId === video.video_id}
                       onPlay={() => setPlayingVideoId(playingVideoId === video.video_id ? null : video.video_id)}
                       onRegenerate={() => handleRegenerate(video)}
+                      onPreviewMedia={(media) => setPreviewMedia(media)}
                       onRetryPoll={() => startPolling(video.video_id)}
                     />
                   ))}
@@ -1263,6 +1266,42 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
           libraryOnly
           initialVideos={filteredVideos}
         />
+      )}
+
+      {previewMedia && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-6"
+          onClick={() => setPreviewMedia(null)}
+        >
+          <div className="max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            {previewMedia.type === 'image' ? (
+              <img
+                src={previewMedia.url}
+                alt={previewMedia.name}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg"
+              />
+            ) : previewMedia.type === 'video' ? (
+              <video
+                src={previewMedia.url}
+                className="max-w-[90vw] max-h-[80vh] rounded-lg bg-black"
+                controls
+                autoPlay
+                playsInline
+              />
+            ) : (
+              <div className="min-w-[320px] rounded-lg bg-gray-800 border border-gray-700 p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm text-gray-200">
+                  <Music size={16} className="text-purple-400" />
+                  <span className="truncate">{previewMedia.name || '参考音频'}</span>
+                </div>
+                <audio src={previewMedia.url} controls autoPlay className="w-full" />
+              </div>
+            )}
+            <div className="mt-3 text-sm text-gray-200 break-all">
+              {previewMedia.name || previewMedia.url}
+            </div>
+          </div>
+        </div>
       )}
 
       {expandedImage && (
@@ -1366,10 +1405,11 @@ interface VideoItemProps {
   isPlaying: boolean;
   onPlay: () => void;
   onRegenerate: () => void;
+  onPreviewMedia: (media: RefMedia) => void;
   onRetryPoll: () => void;
 }
 
-function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerate, onRetryPoll }: VideoItemProps) {
+function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerate, onPreviewMedia, onRetryPoll }: VideoItemProps) {
   const videoUrl = getVideoUrl(video, projectId);
   const displayRatio = inferRatioFromVideo(video);
   const resLabel = `${displayRatio} ${normalizeResolutionValue(video.resolution)}`;
@@ -1408,15 +1448,44 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
             <div className="flex items-center gap-1 flex-shrink-0">
               {previewReferenceMedia.slice(0, 4).map((m, i) => (
                 m.type === 'image' && m.url ? (
-                  <img key={i} src={getThumbnailUrl(m.url)} alt={m.name} className="w-7 h-7 rounded object-cover border border-gray-600 flex-shrink-0" />
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreviewMedia(m);
+                    }}
+                    className="w-7 h-7 rounded overflow-hidden border border-gray-600 hover:border-blue-400 transition-colors flex-shrink-0 cursor-zoom-in"
+                    title="点击查看大图"
+                  >
+                    <img src={getThumbnailUrl(m.url)} alt={m.name} className="w-full h-full object-cover" />
+                  </button>
                 ) : m.type === 'video' ? (
-                  <div key={i} className="w-7 h-7 rounded bg-gray-700 border border-gray-600 flex items-center justify-center flex-shrink-0">
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreviewMedia(m);
+                    }}
+                    className="w-7 h-7 rounded bg-gray-700 border border-gray-600 hover:border-blue-400 transition-colors flex items-center justify-center flex-shrink-0"
+                    title="点击播放视频"
+                  >
                     <Film size={12} className="text-blue-400" />
-                  </div>
+                  </button>
                 ) : (
-                  <div key={i} className="w-7 h-7 rounded bg-gray-700 border border-gray-600 flex items-center justify-center flex-shrink-0">
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPreviewMedia(m);
+                    }}
+                    className="w-7 h-7 rounded bg-gray-700 border border-gray-600 hover:border-purple-400 transition-colors flex items-center justify-center flex-shrink-0"
+                    title="点击播放音频"
+                  >
                     <Music size={12} className="text-purple-400" />
-                  </div>
+                  </button>
                 )
               ))}
               {previewReferenceMedia.length > 4 && (
