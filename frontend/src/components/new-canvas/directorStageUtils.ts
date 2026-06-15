@@ -226,8 +226,9 @@ function drawLine(context: CanvasRenderingContext2D, from: StickFigurePoint, to:
 }
 
 export function drawStickFigure(context: CanvasRenderingContext2D, marker: DirectorStageCompositeMarker, width: number, height: number) {
-  const pose = scaleStickFigurePose(marker.pose, getStickFigureScale(marker));
-  const boneWidth = getStickFigureBaseSize(width, height);
+  const scale = getStickFigureScale(marker);
+  const pose = scaleStickFigurePose(marker.pose, scale);
+  const boneWidth = getStickFigureBaseSize(width, height) * scale;
   const jointRadius = getStickFigureJointRadius('neck', boneWidth);
   const headRadius = getStickFigureJointRadius('head', boneWidth);
   context.save();

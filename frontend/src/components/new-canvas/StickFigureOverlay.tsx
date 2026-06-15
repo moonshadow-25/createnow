@@ -91,6 +91,7 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
     >
       {normalizedMarkers.map((marker) => {
         const pose = marker.displayPose;
+        const markerBaseSize = baseSize * getStickFigureScale(marker);
         return (
           <g key={marker.id}>
             {bonePairs.map(([from, to]) => (
@@ -101,7 +102,7 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
                 x2={pose[to].x * width}
                 y2={pose[to].y * height}
                 stroke="rgba(0,0,0,0.5)"
-                strokeWidth={baseSize * 1.35}
+                strokeWidth={markerBaseSize * 1.35}
                 strokeLinecap="round"
               />
             ))}
@@ -113,13 +114,13 @@ export function StickFigureOverlay({ markers, width, height, editable = false, o
                 x2={pose[to].x * width}
                 y2={pose[to].y * height}
                 stroke={marker.color}
-                strokeWidth={baseSize}
+                strokeWidth={markerBaseSize}
                 strokeLinecap="round"
               />
             ))}
             {Object.entries(pose).map(([joint, point]) => {
               const key = joint as StickFigureJoint;
-              const radius = getStickFigureJointRadius(key, baseSize);
+              const radius = getStickFigureJointRadius(key, markerBaseSize);
               return (
                 <circle
                   key={key}
