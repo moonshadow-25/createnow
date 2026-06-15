@@ -31,7 +31,12 @@ interface ParticipantUser {
   readonly?: boolean;
 }
 
-export default function HomePage() {
+interface HomePageProps {
+  initialAppName?: string;
+  onAppNameChange?: (name: string) => void;
+}
+
+export default function HomePage({ initialAppName = 'ViPro', onAppNameChange }: HomePageProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const {
@@ -61,7 +66,7 @@ export default function HomePage() {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [appName, setAppName] = useState('ViPro');
+  const [appName, setAppName] = useState(initialAppName);
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -83,15 +88,6 @@ export default function HomePage() {
   useEffect(() => {
     fetchAuthInfo();
   }, [fetchAuthInfo]);
-
-  useEffect(() => {
-    versionApi.getFrontendConfig()
-      .then((res) => {
-        const name = String(res.data?.app_name || '').trim();
-        setAppName(name || 'ViPro');
-      })
-      .catch(() => setAppName('ViPro'));
-  }, []);
 
   // SaaS 登录后获取用户信息
   useEffect(() => {
@@ -204,7 +200,9 @@ export default function HomePage() {
     }
     try {
       const res = await versionApi.updateUiConfig({ app_name: nextName });
-      setAppName(res.data?.app_name || nextName);
+      const savedName = res.data?.app_name || nextName;
+      setAppName(savedName);
+      onAppNameChange?.(savedName);
       toast('首页名称已更新', 'success');
     } catch (err: any) {
       toast(err?.response?.data?.detail || '更新首页名称失败', 'error');
