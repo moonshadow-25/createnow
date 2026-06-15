@@ -52,6 +52,8 @@ export const VideoCard = memo(({
 }: VideoCardProps) => {
   const videoUrl = getVideoUrl(video, projectId);
   const authorLabel = (video.created_by || '').trim() || '未知';
+  const status = video.status || 'pending';
+  const shouldShowDiagnostics = isPolling || status === 'poll_failed' || status === 'failed';
 
   // 压缩状态显示（包含所有元数据在一行）
   const getCompactStatus = (video: VideoRecord) => {
@@ -130,15 +132,27 @@ export const VideoCard = memo(({
             poster={posterUrl}
             preload="none"
           />
+        ) : shouldShowDiagnostics ? (
+          <div className="w-full h-full overflow-y-auto p-3 text-xs text-gray-300">
+            <div className="mb-2 flex items-center gap-2 text-orange-300">
+              {isPolling ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+              <span>{isPolling ? '轮询中，等待视频结果' : status === 'failed' ? '视频生成失败' : '轮询异常，可手动继续'}</span>
+            </div>
+            {video.error && <div className="mb-2 break-words text-red-300">{video.error}</div>}
+            {video.task_id && <div className="mb-2 text-gray-500">Task: {video.task_id}</div>}
+            {video.last_poll_response ? (
+              <pre className="max-h-48 overflow-auto rounded bg-gray-800 p-2 text-gray-300">
+                {JSON.stringify(video.last_poll_response, null, 2)}
+              </pre>
+            ) : (
+              <div className="text-gray-500">暂无轮询响应</div>
+            )}
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-500">
             <div className="text-center">
-              {isPolling ? (
-                <Loader2 size={32} className="mx-auto mb-2 animate-spin" />
-              ) : (
-                <Play size={32} className="mx-auto mb-2 opacity-50" />
-              )}
-              <div>视频生成中...</div>
+              <Play size={32} className="mx-auto mb-2 opacity-50" />
+              <div>等待视频结果...</div>
               {video.task_id && (
                 <div className="text-xs mt-1 text-gray-600">
                   Task: {video.task_id}
@@ -221,9 +235,9 @@ export const VideoCard = memo(({
           </button>
         </div>
 
-        {/* 轮询响应（折叠显示）*/}
+        {/* 轮询响应（轮询中/异常时默认展开）*/}
         {video.last_poll_response && (
-          <details className="mt-2">
+          <details className="mt-2" open={shouldShowDiagnostics}>
             <summary className="text-xs text-blue-400 cursor-pointer">调试信息</summary>
             <pre className="mt-1 p-2 bg-gray-800 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
               {JSON.stringify(video.last_poll_response, null, 2)}

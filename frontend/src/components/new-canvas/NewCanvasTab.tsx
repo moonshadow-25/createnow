@@ -14,6 +14,8 @@ import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NOD
 import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, imageMediaFromOutputs, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, projectOutputForPort, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
 import type { AssetAuditState, CanvasAssetType, CanvasEdge, CanvasNode, CanvasRecord, HistoryImage, HistoryItem, HistoryVideo, NewCanvasTabProps, NodeKind, NodeOutput, PortType, RefMedia, RunMode, RunStatus } from './types';
 
+const VIDEO_POLL_INTERVAL_MS = 30000;
+
 export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType = '', videoApiType = '' }: NewCanvasTabProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -829,7 +831,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       const response = await generationApi.pollVideo(projectId, videoId);
       current = response.data;
       if (!isPendingVideoStatus(current.status)) break;
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_INTERVAL_MS));
     }
     if (current?.status === 'failed') throw new Error(current.error || '视频生成失败');
     return current;
