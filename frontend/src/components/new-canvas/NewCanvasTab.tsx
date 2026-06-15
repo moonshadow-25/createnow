@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle, Loader2, Play, Plus, Save, Trash2, X } from 'lucide-react';
+import { CheckCircle, Layers, Loader2, Play, Plus, Save, Trash2, X } from 'lucide-react';
 import { canvasApi, generationApi } from '@/services/api';
 import { useAssetStore } from '@/store/assetStore';
 import { useToast } from '@/components/common/Toast';
@@ -10,7 +10,7 @@ import { CanvasHistoryPanel } from './CanvasHistoryPanel';
 import { CanvasNodePreview } from './CanvasNodePreview';
 import { CanvasPropertyPanel } from './CanvasPropertyPanel';
 import { buildDirectorStagePrompt } from './directorStageUtils';
-import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NODE_WIDTH, PORT_SNAP_RADIUS, SIDEBAR_OPEN_DISTANCE, getDefinition } from './nodeDefinitions';
+import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NODE_WIDTH, PORT_SNAP_RADIUS, getDefinition } from './nodeDefinitions';
 import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, imageMediaFromOutputs, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, projectOutputForPort, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
 import type { AssetAuditState, CanvasAssetType, CanvasEdge, CanvasNode, CanvasRecord, HistoryImage, HistoryItem, HistoryVideo, NewCanvasTabProps, NodeKind, NodeOutput, PortType, RefMedia, RunMode, RunStatus } from './types';
 
@@ -425,9 +425,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   };
 
   const handleCanvasMouseMove = (event: React.MouseEvent) => {
-    if (!leftPanelOpen && event.clientX <= SIDEBAR_OPEN_DISTANCE) {
-      setLeftPanelOpen(true);
-    }
     handleMouseMove(event);
   };
 
@@ -1191,16 +1188,18 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   return (
     <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
-      <div
-        className="pointer-events-none absolute left-0 top-0 z-40 h-full"
-        style={{ width: 6 }}
-      />
-      <div className="pointer-events-none absolute left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-lg border border-l-0 border-gray-700 bg-gray-900 px-1 py-6 text-[10px] text-gray-500">节点</div>
+      <button
+        type="button"
+        onClick={() => setLeftPanelOpen((open) => !open)}
+        className={`absolute left-0 top-1/2 z-40 -translate-y-1/2 rounded-r-lg border border-l-0 px-1 py-6 text-[10px] shadow-lg transition ${leftPanelOpen ? 'border-blue-500 bg-blue-950 text-blue-100' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-blue-500 hover:text-gray-200'}`}
+        title="节点"
+      >
+        <span className="flex flex-col items-center gap-1"><Layers size={12} />节点</span>
+      </button>
       {leftPanelOpen && (
         <div
           className="absolute left-0 top-0 z-50 h-full overflow-hidden border-r border-gray-800 bg-gray-900 shadow-2xl"
           style={{ width: 288 }}
-          onMouseLeave={() => setLeftPanelOpen(false)}
         >
           <div className="flex h-full flex-col" style={{ width: 288 }}>
         <div className="border-b border-gray-800 p-4">
@@ -1244,7 +1243,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       )}
 
       <div className="relative min-w-0 flex-1 overflow-hidden">
-        <div className="absolute left-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
+        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
           <span>缩放 {Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
           <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center gap-1 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600 disabled:opacity-50">
@@ -1281,6 +1280,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
               setSelectedNodeId(null);
               setSelectedEdgeId(null);
               setRightPanelTab('node');
+              setLeftPanelOpen(false);
             }
           }}
           onMouseMove={handleCanvasMouseMove}
