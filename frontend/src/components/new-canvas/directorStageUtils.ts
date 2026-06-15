@@ -66,11 +66,11 @@ export function getStickFigureScale(marker: Partial<DirectorStageMarker> | undef
 }
 
 export function scaleStickFigurePoint(point: StickFigurePoint, anchor: StickFigurePoint, scale: number): StickFigurePoint {
-  if (scale === 1) return clampPoint(point);
-  return clampPoint({
+  if (scale === 1) return point;
+  return {
     x: anchor.x + (point.x - anchor.x) * scale,
     y: anchor.y + (point.y - anchor.y) * scale,
-  });
+  };
 }
 
 export function unscaleStickFigurePoint(point: StickFigurePoint, anchor: StickFigurePoint, scale: number): StickFigurePoint {
