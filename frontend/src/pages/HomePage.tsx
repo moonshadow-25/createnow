@@ -14,7 +14,7 @@ import { ProjectRatingModal } from '@/components/project/ProjectRatingModal';
 import { ProjectParticipantsModal } from '@/components/project/ProjectParticipantsModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
 import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2, WalletCards } from 'lucide-react';
-import { adminAuthApi, adminUserApi } from '@/services/api';
+import { versionApi, adminAuthApi, adminUserApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
 import { CostDashboard } from '@/components/dashboard/CostDashboard';
@@ -61,6 +61,7 @@ export default function HomePage() {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [appName, setAppName] = useState('ViPro');
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -82,6 +83,15 @@ export default function HomePage() {
   useEffect(() => {
     fetchAuthInfo();
   }, [fetchAuthInfo]);
+
+  useEffect(() => {
+    versionApi.getFrontendConfig()
+      .then((res) => {
+        const name = String(res.data?.app_name || '').trim();
+        setAppName(name || 'ViPro');
+      })
+      .catch(() => setAppName('ViPro'));
+  }, []);
 
   // SaaS 登录后获取用户信息
   useEffect(() => {
@@ -180,6 +190,27 @@ export default function HomePage() {
     }
   };
 
+  const handleEditAppName = async () => {
+    if (!canCheckUpdate) return;
+    const nextName = prompt('请输入首页名称：', appName)?.trim();
+    if (nextName == null) return;
+    if (!nextName) {
+      toast('首页名称不能为空', 'error');
+      return;
+    }
+    if (nextName.length > 24) {
+      toast('首页名称不能超过 24 个字符', 'error');
+      return;
+    }
+    try {
+      const res = await versionApi.updateUiConfig({ app_name: nextName });
+      setAppName(res.data?.app_name || nextName);
+      toast('首页名称已更新', 'success');
+    } catch (err: any) {
+      toast(err?.response?.data?.detail || '更新首页名称失败', 'error');
+    }
+  };
+
   const handleEditSaved = async () => {
     setEditingProject(null);
     fetchProjects();
@@ -215,8 +246,15 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold">ViPro</span>
-            <span className="text-sm font-medium text-gray-400 border border-gray-400 px-2 py-0.5 rounded-md">满血API</span>
+            <button
+              type="button"
+              onClick={handleEditAppName}
+              disabled={!canCheckUpdate}
+              className={`text-3xl font-bold ${canCheckUpdate ? 'cursor-pointer rounded px-1 -mx-1 hover:bg-gray-800' : 'cursor-default'}`}
+              title={canCheckUpdate ? '点击修改首页名称' : undefined}
+            >
+              {appName}
+            </button>
             <AppVersionBadge canCheckUpdate={canCheckUpdate} onClick={() => setShowUpdateModal(true)} />
           </h1>
           <div className="flex items-center gap-3 pr-10">

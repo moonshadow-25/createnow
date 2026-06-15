@@ -134,9 +134,12 @@ async def get_frontend_config():
     global_cfg = _read_global_config()
     ui_cfg = global_cfg.get("ui", {}) if isinstance(global_cfg, dict) else {}
 
+    app_name = str(ui_cfg.get("app_name") or "ViPro").strip() or "ViPro"
+
     return {
         "deploy_mode": settings.DEPLOY_MODE,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
+        "app_name": app_name,
     }
 
 
@@ -153,20 +156,29 @@ async def update_ui_config(request: Request, body: dict):
     if not admin_user or admin_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可修改该配置")
 
-    hide_cost = bool(body.get("hide_cost_for_subaccounts", False))
-
     cfg = _read_global_config()
     if not isinstance(cfg, dict):
         cfg = {}
     ui_cfg = cfg.get("ui", {})
     if not isinstance(ui_cfg, dict):
         ui_cfg = {}
-    ui_cfg["hide_cost_for_subaccounts"] = hide_cost
+
+    if "hide_cost_for_subaccounts" in body:
+        ui_cfg["hide_cost_for_subaccounts"] = bool(body.get("hide_cost_for_subaccounts", False))
+    if "app_name" in body:
+        app_name = str(body.get("app_name") or "").strip()
+        if not app_name:
+            raise HTTPException(status_code=400, detail="应用名称不能为空")
+        if len(app_name) > 24:
+            raise HTTPException(status_code=400, detail="应用名称不能超过 24 个字符")
+        ui_cfg["app_name"] = app_name
+
     cfg["ui"] = ui_cfg
     _write_global_config(cfg)
 
     return {
         "success": True,
-        "hide_cost_for_subaccounts": hide_cost,
+        "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
+        "app_name": str(ui_cfg.get("app_name") or "ViPro").strip() or "ViPro",
     }
 
