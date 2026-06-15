@@ -25,19 +25,19 @@ function formatDate(iso: string | null) {
 
 export function ProjectParticipantsModal({ project, participants, loading, error, onClose }: Props) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-xl w-full max-w-2xl mx-4 p-6 shadow-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <div>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex justify-between items-center gap-4 px-6 py-5 border-b border-gray-700">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold">项目参与者</h2>
-            <p className="text-sm text-gray-400 mt-1">{project.name}</p>
+            <p className="text-sm text-gray-400 mt-1 truncate">{project.name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition">
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition shrink-0" aria-label="关闭参与者窗口">
             <X size={20} />
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 px-6 py-5 overflow-hidden flex-1 min-h-0">
           <div className="flex items-center justify-between text-sm text-gray-400">
             <span>参与人数</span>
             <span>{loading ? '加载中...' : `${participants.length} 人`}</span>
@@ -55,29 +55,31 @@ export function ProjectParticipantsModal({ project, participants, loading, error
               当前项目暂无参与者
             </div>
           ) : (
-            <div className="border border-gray-700 rounded-lg overflow-hidden divide-y divide-gray-700">
-              {participants.map((user) => (
-                <div key={user.id} className="px-4 py-3 flex items-center justify-between gap-4 bg-gray-800/50">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium truncate">{user.display_name || user.username}</span>
-                      {user.readonly && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300">只读</span>
-                      )}
+            <div className="max-h-[calc(90vh-220px)] overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {participants.map((user) => (
+                  <div key={user.id} className="px-4 py-3 flex items-center justify-between gap-4 bg-gray-800/50 border border-gray-700 rounded-lg min-w-0">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-white font-medium truncate">{user.display_name || user.username}</span>
+                        {user.readonly && (
+                          <span className="px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300 shrink-0">只读</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono mt-1 truncate">@{user.username}</div>
                     </div>
-                    <div className="text-xs text-gray-500 font-mono mt-1">@{user.username}</div>
+                    <div className="text-xs text-gray-500 text-right shrink-0">
+                      <div>上次登录</div>
+                      <div className="mt-1">{formatDate(user.last_login_at)}</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 text-right shrink-0">
-                    <div>上次登录</div>
-                    <div className="mt-1">{formatDate(user.last_login_at)}</div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        <div className="flex justify-end mt-6">
+        <div className="flex justify-end px-6 py-4 border-t border-gray-700">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
