@@ -246,15 +246,7 @@ export default function HomePage() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="flex items-baseline gap-2">
-            <button
-              type="button"
-              onClick={handleEditAppName}
-              disabled={!canCheckUpdate}
-              className={`text-3xl font-bold ${canCheckUpdate ? 'cursor-pointer rounded px-1 -mx-1 hover:bg-gray-800' : 'cursor-default'}`}
-              title={canCheckUpdate ? '点击修改首页名称' : undefined}
-            >
-              {appName}
-            </button>
+            <span className="text-3xl font-bold">{appName}</span>
             <span className="text-sm font-medium text-gray-400 border border-gray-400 px-2 py-0.5 rounded-md">满血API</span>
             <AppVersionBadge canCheckUpdate={canCheckUpdate} onClick={() => setShowUpdateModal(true)} />
           </h1>
@@ -370,7 +362,14 @@ export default function HomePage() {
             )}
             {!isSaasUser && adminUsername && (
               <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-700">
-                <span className="text-xs text-gray-400">{adminUsername}</span>
+                <button
+                  type="button"
+                  onClick={handleEditAppName}
+                  disabled={adminRole !== 'admin'}
+                  className={`text-xs text-gray-400 ${adminRole === 'admin' ? 'cursor-pointer hover:text-white' : 'cursor-default'}`}
+                >
+                  {adminUsername}
+                </button>
                 {isAdmin && (
                   <button
                     onClick={() => setShowChangePwd(true)}
