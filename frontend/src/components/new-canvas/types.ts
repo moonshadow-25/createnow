@@ -4,6 +4,7 @@ export type NodeKind =
   | 'static.image'
   | 'static.video'
   | 'static.audio'
+  | 'material.library'
   | 'gen.llm'
   | 'gen.image'
   | 'gen.image_edit'
@@ -15,7 +16,7 @@ export type NodeKind =
 export type PortType = 'text' | 'image' | 'video' | 'audio' | 'media' | 'json';
 export type RunStatus = 'idle' | 'running' | 'succeeded' | 'failed';
 export type RunMode = 'continue' | 'from-selected' | 'all';
-export type CanvasAssetType = 'character' | 'scene' | 'prop' | 'storyboard';
+export type CanvasAssetType = 'character' | 'scene' | 'prop' | 'storyboard' | 'material';
 
 export type AssetAuditState = {
   refType: 'image' | 'video';
@@ -32,7 +33,7 @@ export type RefMedia = {
   url: string;
   name: string;
   sourceAssetId?: string;
-  sourceAssetType?: CanvasAssetType;
+  sourceAssetType?: CanvasAssetType | 'material';
   audit?: AssetAuditState;
 };
 
@@ -76,6 +77,11 @@ export type CanvasNode = {
     asset_id?: string;
     asset_type?: CanvasAssetType;
     asset_name?: string;
+    material_id?: string;
+    material_name?: string;
+    selected_look_ids?: string[];
+    material_fixed_prefix?: string;
+    material_snapshot?: unknown;
     existing_asset_audit_id?: string;
     existing_asset_audit_status?: string;
     file_name?: string;

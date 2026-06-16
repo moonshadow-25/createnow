@@ -1,4 +1,5 @@
-import { Box, Brain, Clapperboard, Image as ImageIcon, Music, Play, Video, Zap } from 'lucide-react';
+import { Box, Brain, Clapperboard, Image as ImageIcon, Music, Play, Video, Zap, Library } from 'lucide-react';
+import { MATERIAL_NODE_DEFAULT_PREFIX } from './materialNodeUtils';
 import type { NodeDefinition, NodeKind } from './types';
 
 export const NODE_WIDTH = 280;
@@ -39,6 +40,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     inputs: [],
     outputs: [{ key: 'audio', label: '音频', type: 'audio' }],
     defaults: {},
+  },
+  {
+    type: 'material.library',
+    label: '素材库',
+    description: '选择素材和妆造，输出图片序列与提示词',
+    icon: Library,
+    color: 'from-fuchsia-500 to-purple-600',
+    inputs: [],
+    outputs: [{ key: 'image', label: '图片序列', type: 'image' }, { key: 'text', label: '提示词', type: 'text' }],
+    defaults: { material_fixed_prefix: MATERIAL_NODE_DEFAULT_PREFIX, prompt: '' },
   },
   {
     type: 'gen.llm',

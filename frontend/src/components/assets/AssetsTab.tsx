@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, RefreshCw, Wand2, Loader2, HardDrive, Zap, ChevronDown } from 'lucide-react';
+import { Plus, RefreshCw, Wand2, Loader2, HardDrive, Zap, ChevronDown, ImagePlus } from 'lucide-react';
 import { AssetCard } from './AssetCard';
 import { CreateAssetDialog } from './CreateAssetDialog';
+import { MaterialLibraryPanel } from './MaterialLibraryPanel';
 import { generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { useCurrentBatchTasks, useBatchPromptStore } from '@/store/batchPromptStore';
@@ -54,16 +55,21 @@ export function AssetsTab({
   onRefresh,
 }: AssetsTabProps) {
   const { toast } = useToast();
-  const [assetFilter, setAssetFilter] = useState<'all' | 'character' | 'scene' | 'prop'>('all');
+  const [assetFilter, setAssetFilter] = useState<'all' | 'character' | 'scene' | 'prop' | 'material'>('all');
   const [episodeFilter, setEpisodeFilter] = useState('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showCreateAsset, setShowCreateAsset] = useState(false);
   const [createAssetType, setCreateAssetType] = useState<'character' | 'scene' | 'prop'>('character');
 
+  const handleOpenCreate = (type: 'character' | 'scene' | 'prop') => {
+    setCreateAssetType(type);
+    setShowCreateAsset(true);
+  };
+
   // 获取批量生成状态
   const { tasks, isRunning } = useCurrentBatchTasks(
     projectId,
-    assetFilter === 'all' ? 'character' : assetFilter
+    assetFilter === 'all' ? 'character' : assetFilter === 'material' ? 'character' : assetFilter
   );
   const { startBatch, clearTasks } = useBatchPromptStore();
 
@@ -146,9 +152,9 @@ export function AssetsTab({
     }
   }, [assetFilter, clearTasks]);
 
-  const handleOpenCreate = (type: 'character' | 'scene' | 'prop') => {
-    setCreateAssetType(type);
-    setShowCreateAsset(true);
+  const handleOpenMaterialLibrary = () => {
+    setAssetFilter('material');
+    setShowMoreMenu(false);
   };
 
   const episodeOptions = useMemo(() => {
@@ -433,6 +439,16 @@ export function AssetsTab({
           >
             道具 ({tagFilteredAssets.props.length})
           </button>
+          <button
+            onClick={() => setAssetFilter('material')}
+            className={`px-4 py-2 rounded-lg transition ${
+              assetFilter === 'material'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            素材库
+          </button>
           <select
             value={episodeFilter}
             onChange={(e) => setEpisodeFilter(e.target.value)}
@@ -507,6 +523,13 @@ export function AssetsTab({
                       创建道具
                     </button>
                     <div className="border-t border-gray-600 my-1" />
+                    <button
+                      onClick={handleOpenMaterialLibrary}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
+                    >
+                      <ImagePlus size={14} />
+                      素材库
+                    </button>
                     <button
                       onClick={() => { onRefresh(); setShowMoreMenu(false); }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
@@ -630,7 +653,12 @@ export function AssetsTab({
         </div>
       </div>
 
+      {assetFilter === 'material' ? (
+        <MaterialLibraryPanel projectId={projectId} />
+      ) : (
+        <>
       <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/60 p-3">
+
         <div className="mb-2 flex items-center justify-between gap-3">
           <span className="text-sm font-medium text-gray-300">按tag筛选</span>
           {selectedTags.length > 0 && (
@@ -782,6 +810,8 @@ export function AssetsTab({
         <div className="text-gray-500 text-center py-12">
           {episodeFilter === 'all' ? '暂无道具' : '当前集暂无已使用道具'}
         </div>
+      )}
+        </>
       )}
 
       {/* 创建资产对话框 */}

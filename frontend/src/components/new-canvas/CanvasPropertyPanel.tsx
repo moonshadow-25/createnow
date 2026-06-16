@@ -26,6 +26,7 @@ type CanvasPropertyPanelProps = {
   getInputAuditState: (nodeId: string) => Record<string, AssetAuditState>;
   getCanvasAuditState: () => Record<string, AssetAuditState>;
   onOpenAssetPicker: () => void;
+  onOpenMaterialPicker: () => void;
   onOpenUpload: (target: 'image' | 'video' | 'audio') => void;
   toast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
@@ -60,6 +61,7 @@ export function CanvasPropertyPanel({
   getInputAuditState,
   getCanvasAuditState,
   onOpenAssetPicker,
+  onOpenMaterialPicker,
   onOpenUpload,
   toast,
 }: CanvasPropertyPanelProps) {
@@ -84,6 +86,9 @@ export function CanvasPropertyPanel({
     };
     if (source.type === 'static.video') return { video_url: source.config.media_url };
     if (source.type === 'static.audio') return { audio_url: source.config.media_url };
+    if (source.type === 'material.library' && source.config.material_snapshot) {
+      return source.config.last_result as NodeOutput | undefined;
+    }
     return undefined;
   };
 
@@ -209,6 +214,37 @@ export function CanvasPropertyPanel({
               <div className="mt-1 truncate text-[10px] text-gray-500">{selectedNode.config.existing_asset_audit_id}</div>
             </div>
           )}
+        </div>
+      )}
+
+      {selectedNode.type === 'material.library' && (
+        <div className="space-y-3 rounded-lg border border-gray-800 bg-gray-950 p-3">
+          <div className="space-y-2">
+            <button onClick={onOpenMaterialPicker} className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm hover:bg-purple-500">选择素材与妆造</button>
+            <div className="grid grid-cols-1 gap-2">
+              <label className="block">
+                <span className="text-xs text-gray-400">固定前缀</span>
+                <textarea
+                  value={selectedNode.config.material_fixed_prefix || ''}
+                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { material_fixed_prefix: event.target.value })}
+                  rows={5}
+                  className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
+                  placeholder="素材库节点的固定提示词前缀"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-400">补充提示词</span>
+                <textarea
+                  value={selectedNode.config.prompt || ''}
+                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { prompt: event.target.value })}
+                  rows={4}
+                  className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
+                  placeholder="可额外补充提示词"
+                />
+              </label>
+            </div>
+          </div>
+          <div className="text-xs text-gray-400">素材名称：{selectedNode.config.material_name || '未选择'}</div>
         </div>
       )}
 

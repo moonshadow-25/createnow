@@ -6,10 +6,12 @@ import { useToast } from '@/components/common/Toast';
 import { ImagePreviewModal } from '@/components/common/ImagePreviewModal';
 import { getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 import { CanvasAssetPickerDialog } from './CanvasAssetPickerDialog';
+import { CanvasMaterialPickerDialog } from './CanvasMaterialPickerDialog';
 import { CanvasHistoryPanel } from './CanvasHistoryPanel';
 import { CanvasNodePreview } from './CanvasNodePreview';
 import { CanvasPropertyPanel } from './CanvasPropertyPanel';
 import { buildDirectorStagePrompt } from './directorStageUtils';
+import { buildMaterialNodeOutput } from './materialNodeUtils';
 import { EDGE_HIT_STROKE, MAX_ZOOM, MIN_ZOOM, NODE_DEFINITIONS, NODE_HEIGHT, NODE_WIDTH, PORT_SNAP_RADIUS, getDefinition } from './nodeDefinitions';
 import { buildCanvasPayload, buildInputHash, buildTopologicalOrder, buildVideoNodeOutput, canReuseNodeOutput, collectDownstreamNodeIds, getBackendMediaUrl, getImageUrlFromRecord, getOutputStatus, getVideoUrlFromRecord, imageMediaFromOutputs, isDynamicNode, isPendingVideoStatus, isVideoNode, mergePrompt, newId, normalizeEdges, normalizeNodes, projectOutputForPort, readChatStream, serializeCanvasPayload, textFromOutput } from './canvasUtils';
 import type { AssetAuditState, CanvasAssetType, CanvasEdge, CanvasNode, CanvasRecord, HistoryImage, HistoryItem, HistoryVideo, NewCanvasTabProps, NodeKind, NodeOutput, PortType, RefMedia, RunMode, RunStatus } from './types';
@@ -45,6 +47,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [nodeStatus, setNodeStatus] = useState<Record<string, { status: RunStatus; error?: string }>>({});
   const [outputs, setOutputs] = useState<Record<string, NodeOutput>>({});
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string; imageId?: string } | null>(null);
   const [uploadTarget, setUploadTarget] = useState<'image' | 'video' | 'audio'>('image');
   const [rightPanelTab, setRightPanelTab] = useState<'node' | 'history'>('node');
@@ -688,6 +691,19 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       return { output: { audio_url: node.config.media_url, media } };
     }
 
+    if (node.type === 'material.library') {
+      const material = node.config.material_snapshot as any;
+      if (!material?.asset_id) throw new Error('素材库节点未选择素材');
+      const built = buildMaterialNodeOutput(
+        material,
+        node.config.selected_look_ids || [],
+        node.config.prompt || '',
+        node.config.material_fixed_prefix || '',
+      );
+      if (!built.output.media?.length) throw new Error('素材库节点没有可输出的图片');
+      return built;
+    }
+
     const textInputs = portInputs?.text || inputOutputs;
     const imageInputs = portInputs?.image || inputOutputs;
     const videoInputs = portInputs?.video || inputOutputs;
@@ -1178,6 +1194,34 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setAssetPickerOpen(false);
   };
 
+  const selectMaterialForNode = (material: any, lookIds: string[]) => {
+    if (!selectedNode) return;
+    const built = buildMaterialNodeOutput(
+      material,
+      lookIds,
+      selectedNode.config.prompt || '',
+      selectedNode.config.material_fixed_prefix || '',
+    );
+    const nextPatch: CanvasNode['config'] = {
+      material_id: material.asset_id,
+      material_name: material.name,
+      selected_look_ids: lookIds,
+      material_snapshot: material,
+      asset_id: material.asset_id,
+      asset_type: 'material',
+      asset_name: material.name,
+      image_id: built.output.image_id,
+      image_url: built.output.image_url,
+      audit_state: built.auditState,
+      last_result: built.output,
+    };
+    const nextNodes = nodes.map((node) => node.node_id === selectedNode.node_id ? { ...node, config: { ...node.config, ...nextPatch } } : node);
+    setNodes(nextNodes);
+    setOutputs((prev) => ({ ...prev, [selectedNode.node_id]: built.output }));
+    void saveCanvas(true, nextNodes, edges);
+    setMaterialPickerOpen(false);
+  };
+
   const renderNodePreview = (node: CanvasNode, compact = false) => (
     <CanvasNodePreview
       node={node}
@@ -1463,6 +1507,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             getInputAuditState={collectVisibleAuditStateForNode}
             getCanvasAuditState={collectCanvasAuditState}
             onOpenAssetPicker={() => setAssetPickerOpen(true)}
+            onOpenMaterialPicker={() => setMaterialPickerOpen(true)}
             onOpenUpload={openUpload}
             toast={toast}
           />
@@ -1510,6 +1555,16 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           selectedNode={selectedNode}
           onSelectAsset={selectAssetForNode}
           onClose={() => setAssetPickerOpen(false)}
+        />
+      )}
+
+      {materialPickerOpen && selectedNode && (
+        <CanvasMaterialPickerDialog
+          projectId={projectId}
+          selectedMaterialId={selectedNode.config.material_id}
+          selectedLookIds={selectedNode.config.selected_look_ids || []}
+          onSelect={selectMaterialForNode}
+          onClose={() => setMaterialPickerOpen(false)}
         />
       )}
     </div>

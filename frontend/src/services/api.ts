@@ -95,6 +95,33 @@ export const assetApi = {
     api.post(`/projects/${projectId}/assets/episode/reorder`, { episode_ids: episodeIds }),
 };
 
+// 素材库 API
+export const materialApi = {
+  list: (projectId: string) => api.get(`/projects/${projectId}/materials`),
+  get: (projectId: string, materialId: string) => api.get(`/projects/${projectId}/materials/${materialId}`),
+  create: (projectId: string, data: any) => api.post(`/projects/${projectId}/materials`, data),
+  update: (projectId: string, materialId: string, data: any) => api.put(`/projects/${projectId}/materials/${materialId}`, data),
+  delete: (projectId: string, materialId: string) => api.delete(`/projects/${projectId}/materials/${materialId}`),
+  uploadZip: (projectId: string, materialId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/projects/${projectId}/materials/${materialId}/zip`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  createLook: (projectId: string, materialId: string, data: any) => api.post(`/projects/${projectId}/materials/${materialId}/looks`, data),
+  updateLook: (projectId: string, materialId: string, lookId: string, data: any) =>
+    api.patch(`/projects/${projectId}/materials/${materialId}/looks/${lookId}`, data),
+  deleteLook: (projectId: string, materialId: string, lookId: string) =>
+    api.delete(`/projects/${projectId}/materials/${materialId}/looks/${lookId}`),
+  generateLook: (projectId: string, materialId: string, lookId: string, data: any) =>
+    api.post(`/projects/${projectId}/materials/${materialId}/looks/${lookId}/generate`, data),
+  submitNew: (projectId: string, materialId: string) =>
+    api.post(`/projects/${projectId}/materials/${materialId}/audit-submit-new`),
+  resubmitAll: (projectId: string, materialId: string) =>
+    api.post(`/projects/${projectId}/materials/${materialId}/audit-resubmit-all`),
+};
+
 // 对话相关API
 export const chatApi = {
   send: (projectId: string, message: string, conversationId?: string) => {

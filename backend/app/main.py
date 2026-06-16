@@ -35,6 +35,7 @@ from app.core.context import set_current_project_id, set_current_data_root
 from app.api import (
     projects_router,
     assets_router,
+    materials_router,
     conversation_router,
     generation_router
 )
@@ -686,6 +687,7 @@ async def health():
 # 所有API路由使用 /api 前缀（与前端API_BASE_URL一致）
 app.include_router(projects_router, prefix="/api")
 app.include_router(assets_router, prefix="/api")
+app.include_router(materials_router, prefix="/api")
 app.include_router(conversation_router, prefix="/api")
 app.include_router(generation_router, prefix="/api")
 app.include_router(storyboards_router, prefix="/api")
