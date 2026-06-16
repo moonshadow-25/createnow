@@ -680,7 +680,7 @@ async def generate_fusion_prompt(project_id: str, request: FusionPromptRequest):
         for info in assets_info
     ])
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，支持项目级覆盖
+    # 模板从全局提示词发布源读取，支持项目级覆盖
     from app.services.global_prompt_service import get_prompt_content
     _fusion_tpl = get_prompt_content("fusion_image_prompt", ai_config)
     if _fusion_tpl:

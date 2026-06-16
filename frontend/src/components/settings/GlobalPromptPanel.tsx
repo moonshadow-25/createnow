@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, RotateCcw, Save } from 'lucide-react';
+import { AlertTriangle, Save } from 'lucide-react';
 import { globalPromptApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 
@@ -47,9 +47,7 @@ export function GlobalPromptPanel() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [resetting, setResetting] = useState(false);
   const [data, setData] = useState<PromptsData | null>(null);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // 当前选中的 category tab
@@ -177,21 +175,6 @@ export function GlobalPromptPanel() {
     }
   };
 
-  // 重置
-  const handleReset = async () => {
-    setResetting(true);
-    try {
-      const res = await globalPromptApi.reset();
-      setData(res.data);
-      setShowResetConfirm(false);
-      toast('已恢复全部默认值', 'success');
-    } catch {
-      toast('重置失败', 'error');
-    } finally {
-      setResetting(false);
-    }
-  };
-
   if (loading) {
     return <div className="flex items-center justify-center h-40 text-gray-400 text-sm">加载中...</div>;
   }
@@ -307,23 +290,7 @@ export function GlobalPromptPanel() {
       </div>
 
       {/* 底部操作 */}
-      <div className="flex justify-between items-center px-4 py-3 border-t border-gray-700 shrink-0">
-        {showResetConfirm ? (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-yellow-400">确认恢复所有默认值？</span>
-            <button onClick={() => setShowResetConfirm(false)} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">取消</button>
-            <button onClick={handleReset} disabled={resetting} className="px-3 py-1 bg-red-700 hover:bg-red-600 disabled:opacity-50 rounded">
-              {resetting ? '重置中...' : '确认重置'}
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowResetConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded"
-          >
-            <RotateCcw size={14} />恢复全部默认
-          </button>
-        )}
+      <div className="flex justify-end items-center px-4 py-3 border-t border-gray-700 shrink-0">
         <button
           onClick={handleSave}
           disabled={saving}

@@ -102,16 +102,9 @@ async def lifespan(app: FastAPI):
     print(f"Data directory: {settings.DATA_DIR}")
     print(f"Projects directory: {settings.PROJECTS_DIR}")
     print(f"Deploy mode: {settings.DEPLOY_MODE}")
-    # 初始化全局提示词 JSON（首次启动时从代码常量生成）
-    from app.services.global_prompt_service import load_global_prompts, save_global_prompts, _get_json_path
-    json_path = _get_json_path()
-    if not json_path.exists():
-        print("[INFO] 生成 default_prompt_templates.json ...")
-        data = load_global_prompts()
-        save_global_prompts(data)
-        print(f"[INFO] 已创建: {json_path}")
-    else:
-        load_global_prompts()  # 预热缓存
+    # 预热全局提示词缓存（注册表 + .md 发布源）
+    from app.services.global_prompt_service import load_prompts
+    load_prompts()
     # selfhosted 模式：初始化默认管理员账号
     if settings.DEPLOY_MODE == "selfhosted":
         from app.services.user_service import ensure_default_admin

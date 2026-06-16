@@ -1,7 +1,7 @@
 """
 Generation API - 提示词模板辅助常量
 
-所有提示词内容存储在 data/config/default_prompt_templates.json。
+全局提示词注册表存储在 backend/app/default_prompt_templates.json，正文存储在 backend/app/prompts/**/*.md。
 此文件只保留：
   - TEMPLATE_TYPES：从 JSON 动态读取（向后兼容用）
   - OLD_TO_NEW_TEMPLATE_MAPPING：旧格式迁移用

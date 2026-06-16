@@ -543,7 +543,6 @@ export const storyboardApi = {
 export const globalPromptApi = {
   get: () => api.get('/global/prompt-templates'),
   update: (data: any) => api.put('/global/prompt-templates', data),
-  reset: () => api.post('/global/prompt-templates/reset'),
 };
 
 // 剧本创作相关API

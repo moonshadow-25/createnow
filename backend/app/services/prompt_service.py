@@ -6,7 +6,7 @@ from app.services.ai_service import LLMService
 class PromptService:
     """提示词生成服务"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     CHARACTER_ANALYSIS_PROMPT = """你是一个专业的影视角色分析专家。请从以下文本中提取角色信息。
 
 返回格式必须是JSON数组，每个角色包含：
@@ -23,7 +23,7 @@ class PromptService:
 文本内容：
 {text}"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     SCENE_ANALYSIS_PROMPT = """你是一个专业的影视场景分析专家。请从以下文本中提取场景信息。
 
 返回格式必须是JSON数组，每个场景包含：
@@ -39,7 +39,7 @@ class PromptService:
 文本内容：
 {text}"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     PROP_ANALYSIS_PROMPT = """你是一个专业的影视道具分析专家。请从以下文本中提取道具信息。
 
 返回格式必须是JSON数组，每个道具包含：
@@ -53,7 +53,7 @@ class PromptService:
 文本内容：
 {text}"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     SCRIPT_ANALYSIS_PROMPT = """你是一个专业的剧本分析专家。请分析以下剧本，提取结构化信息。
 
 返回格式必须是JSON对象，包含：
@@ -73,7 +73,7 @@ class PromptService:
 剧本内容：
 {text}"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     IMAGE_PROMPT_TEMPLATE = """你是一个专业的AI绘提示词专家。根据以下资产描述，生成优化的文生图提示词。
 
 {asset_type}描述：
@@ -88,7 +88,7 @@ class PromptService:
 
 返回JSON格式。"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     IMAGE_EDIT_PROMPT_TEMPLATE = """你是一个专业的AI图像编辑提示词专家。根据主角色和子角色的信息，生成用于图像编辑的提示词。
 
 【主角色信息】
@@ -120,7 +120,7 @@ class PromptService:
 }}
 """
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     VIDEO_PROMPT_TEMPLATE = """你是一个专业的AI视频生成提示词专家。根据以下分镜描述，生成优化的图生视频提示词。
 
 分镜信息：
@@ -146,7 +146,7 @@ class PromptService:
   "prompt": "视频生成提示词"
 }}"""
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     STORYBOARD_DESC_TEMPLATE = """你是一个专业的分镜设计师。根据以下剧本片段，生成详细的分镜描述。
 
 剧本内容：
@@ -677,7 +677,7 @@ class PromptService:
             print(f"[ERROR] generate_nine_grid_combined_prompts parse failed: {e}")
             return {"image_prompt": "", "video_prompt": []}
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     VIDEO_REVERSE_PROMPT_TEMPLATE = """你是一位专业的AI视频生成提示词专家，擅长根据图片反推视频生成提示词。
 
 【任务】
@@ -819,7 +819,7 @@ class PromptService:
         content = result.get("content", "")
         return content.strip()
 
-    # 模板在 data/config/default_prompt_templates.json 中修改，此处只是防止为空
+    # 模板从全局提示词发布源读取，此处只是防止为空
     AUTO_MATCH_ASSETS_PROMPT = """你是一个专业的影视分镜资产匹配专家。根据分镜描述、剧集剧本和资产库，智能匹配最适合的资产。
 
 【分镜信息】

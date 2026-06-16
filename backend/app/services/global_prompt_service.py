@@ -1,82 +1,90 @@
 """
 全局默认提示词服务
 
-.md 文件是唯一内容数据源，JSON 仅作为注册表（记录 key、label、category、content_file 路径）。
-添加/删除/修改提示词只需编辑 backend/app/prompts/{key}/{preset}.md。
-
+全局提示词是软件发布者维护的出厂默认提示词。
 注册表（JSON）：backend/app/default_prompt_templates.json
 内容文件（.md）：backend/app/prompts/{key}/{preset}.md
 
-⚠️ 已废弃：backend/config/default_prompt_templates.json
-   该文件曾作为"用户工作副本"，会烘焙 .md 内容为 inline content 导致 .md 编辑不生效。
-   现在即使该文件存在，_resolve_content_files 也会用 .md 覆盖 inline content。
-   不要再使用或创建该文件。
+JSON 负责 key、label、category、preset 元信息和 content_file 路径；
+带 content_file 的正文保存到 .md，未带 content_file 的 inline content 保存到注册表。
 """
+import copy
 import json
-from typing import Dict, Any, Optional
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 _cache: Optional[Dict] = None
 
-# backend/ 目录（global_prompt_service.py 上两级）
-_BACKEND_DIR = Path(__file__).parent.parent.parent
-
-# 出厂默认 JSON（随代码发布，跟踪于 git，仅用于 reset_to_defaults）
+# 出厂默认 JSON（随代码发布，跟踪于 git）
 _BUILTIN_JSON_PATH = Path(__file__).parent.parent / "default_prompt_templates.json"
 
 # 提示词内容文件目录（.md 文件）
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
-def _get_json_path() -> Path:
-    return _BACKEND_DIR / "config" / "default_prompt_templates.json"
+def _read_registry() -> Dict[str, Any]:
+    if not _BUILTIN_JSON_PATH.exists():
+        return {}
+    with open(_BUILTIN_JSON_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _write_registry(data: Dict[str, Any]) -> None:
+    _BUILTIN_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_BUILTIN_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
 
 
 def _resolve_content_files(data: Dict[str, Any]) -> None:
-    """就地解析所有 content_file 引用，将内容读入 preset["content"]
-
-    content_file 存在时始终从 .md 文件读取，忽略 JSON 中的 inline content。
-    这确保 .md 文件是唯一内容源，避免 JSON inline 与 .md 不同步的问题。
-    """
-    for key, entry in data.items():
-        for preset_name, preset in entry.get("presets", {}).items():
+    """就地解析所有 content_file 引用，将 .md 正文读入 preset["content"]。"""
+    for entry in data.values():
+        for preset in entry.get("presets", {}).values():
             if isinstance(preset, dict) and "content_file" in preset:
                 fpath = _PROMPTS_DIR / preset["content_file"]
                 preset["content"] = fpath.read_text(encoding="utf-8") if fpath.exists() else ""
 
 
+def _write_content_files(data: Dict[str, Any]) -> None:
+    """把带 content_file 的 preset 正文写回 .md 文件。"""
+    for entry in data.values():
+        for preset in entry.get("presets", {}).values():
+            if not isinstance(preset, dict):
+                continue
+            content_file = preset.get("content_file")
+            if not content_file or "content" not in preset:
+                continue
+            fpath = _PROMPTS_DIR / content_file
+            fpath.parent.mkdir(parents=True, exist_ok=True)
+            fpath.write_text(preset.get("content", ""), encoding="utf-8")
+
+
+def _registry_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    """生成可写入注册表的 payload：content_file 模板不在 JSON 中固化正文。"""
+    payload = copy.deepcopy(data)
+    for entry in payload.values():
+        for preset in entry.get("presets", {}).values():
+            if isinstance(preset, dict) and "content_file" in preset:
+                preset.pop("content", None)
+    return payload
+
+
 def load_prompts() -> Dict[str, Any]:
-    """读取全局提示词（内置默认作底，用户副本覆写；新模板从内置默认自动透出）"""
+    """读取全局提示词（注册表 + .md 正文）。"""
     global _cache
     if _cache is not None:
         return _cache
 
-    # 始终以内置出厂默认为底，确保新增模板自动可见
-    if _BUILTIN_JSON_PATH.exists():
-        with open(_BUILTIN_JSON_PATH, "r", encoding="utf-8") as f:
-            _cache = json.load(f)
-    else:
-        _cache = {}
-
-    # 用户工作副本覆写同名 key（保留用户自定义）
-    user_path = _get_json_path()
-    if user_path.exists():
-        with open(user_path, "r", encoding="utf-8") as f:
-            user_data = json.load(f)
-        for key, entry in user_data.items():
-            _cache[key] = entry
-
+    _cache = _read_registry()
     _resolve_content_files(_cache)
     return _cache
 
 
 def save_prompts(data: Dict[str, Any]) -> None:
-    """保存全局提示词到用户工作副本"""
+    """保存全局提示词到发布源文件。"""
     global _cache
-    path = _get_json_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    _write_content_files(data)
+    _write_registry(_registry_payload(data))
     _cache = data
 
 
@@ -147,18 +155,6 @@ def get_prompt_content(key: str, ai_config: dict = None) -> str:
     return _pick_default_content(presets)
 
 
-def reset_to_defaults() -> Dict[str, Any]:
-    """将用户工作副本重置为出厂默认 JSON"""
-    if not _BUILTIN_JSON_PATH.exists():
-        # 出厂文件不存在时返回当前值（不做任何修改）
-        return load_prompts()
-    with open(_BUILTIN_JSON_PATH, "r", encoding="utf-8") as f:
-        defaults = json.load(f)
-    _resolve_content_files(defaults)
-    save_prompts(defaults)
-    return defaults
-
-
 # ── 向后兼容的瘦包装（旧调用方无需修改）────────────────────────────────────────
 
 def get_group_b_template(key: str) -> str:
@@ -179,52 +175,3 @@ def get_group_a_presets() -> Dict[str, Any]:
         for key, data in prompts.items()
         if data.get("category") == "生成模板" and "presets" in data
     }
-
-
-# ── 旧接口（GlobalPromptPanel 和 global_prompts.py 过渡期使用）──────────────────
-# 新的 GlobalPromptPanel 直接使用 load_prompts() / save_prompts()，不再用这两个函数。
-# 保留以防其他地方有调用。
-
-def load_global_prompts() -> Dict[str, Any]:
-    """向后兼容：返回旧的三分组格式"""
-    prompts = load_prompts()
-    group_a, group_b, group_c = {}, {}, {}
-    for key, data in prompts.items():
-        cat = data.get("category", "")
-        presets = data.get("presets", {})
-        if cat == "生成模板":
-            group_a[key] = presets
-        elif cat == "服务提示词":
-            group_b[key] = presets.get("default", {}).get("content", "")
-        elif cat == "系统提示词":
-            group_c[key] = presets.get("default", {}).get("content", "")
-    return {
-        "group_a_presets": group_a,
-        "group_b_service": group_b,
-        "group_c_inline": group_c,
-    }
-
-
-def save_global_prompts(data: Dict[str, Any]) -> None:
-    """向后兼容：接受旧的三分组格式并合并保存"""
-    prompts = load_prompts()
-    # 合并 group_a_presets
-    for key, presets in data.get("group_a_presets", {}).items():
-        if key in prompts:
-            prompts[key]["presets"] = presets
-    # 合并 group_b_service（单字符串 → default preset content）
-    # 同样跳过有 content_file 的 preset，防止固化已解析内容
-    for key, content in data.get("group_b_service", {}).items():
-        if key in prompts and isinstance(content, str):
-            default_preset = prompts[key]["presets"].get("default", {})
-            if "content_file" not in default_preset:
-                default_preset["content"] = content
-    # 合并 group_c_inline
-    # 注意：如果 preset 有 content_file，则 .md 文件是权威来源，不写 inline content，
-    # 防止每次保存把已解析的内容固化为 JSON 字段，永久屏蔽 .md 文件的更新。
-    for key, content in data.get("group_c_inline", {}).items():
-        if key in prompts and isinstance(content, str):
-            default_preset = prompts[key]["presets"].get("default", {})
-            if "content_file" not in default_preset:
-                default_preset["content"] = content
-    save_prompts(prompts)

@@ -2,17 +2,11 @@
 全局默认提示词管理 API
 GET  /global/prompt-templates  - 返回所有提示词（新扁平格式）
 PUT  /global/prompt-templates  - 更新一个或多个提示词的全局默认内容
-POST /global/prompt-templates/reset - 恢复出厂默认
 """
 from fastapi import APIRouter
 from typing import Dict, Any
 
-from app.services.global_prompt_service import (
-    load_prompts,
-    save_prompts,
-    invalidate_cache,
-    reset_to_defaults,
-)
+from app.services.global_prompt_service import load_prompts, save_prompts
 
 router = APIRouter(prefix="/global/prompt-templates", tags=["global-prompts"])
 
@@ -55,10 +49,3 @@ async def update_global_prompt_templates(data: Dict[str, Any]) -> Dict[str, Any]
 
     save_prompts(current)
     return current
-
-
-@router.post("/reset")
-async def reset_global_prompt_templates() -> Dict[str, Any]:
-    """将所有全局提示词重置为出厂默认值（backend/app/default_prompt_templates.json）"""
-    invalidate_cache()
-    return reset_to_defaults()
