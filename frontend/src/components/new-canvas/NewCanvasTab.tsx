@@ -1265,8 +1265,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   }
 
   return (
-    <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
-      <div className="fixed top-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
+    <div className="relative flex h-full min-h-0 flex-col bg-gray-950 text-white">
+      <div className="flex items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-2 text-xs text-gray-300">
         <button onClick={createCanvas} className="rounded bg-blue-600 px-2 py-1 hover:bg-blue-500" title="新建画布"><Plus size={14} /></button>
         <select value={activeCanvasId} onChange={(event) => switchCanvas(event.target.value)} className="rounded bg-gray-950 px-2 py-1 text-xs outline-none ring-1 ring-gray-700">
           {canvases.map((canvas) => <option key={canvas.canvas_id} value={canvas.canvas_id}>{canvas.name}</option>)}
@@ -1279,6 +1279,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           <Trash2 size={12} />删除
         </button>
       </div>
+      <div className="relative flex min-h-0 flex-1">
       <div className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
         <span>缩放 {Math.round(zoom * 100)}%</span>
         <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
@@ -1587,6 +1588,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           onClose={() => setMaterialPickerOpen(false)}
         />
       )}
+      </div>
     </div>
   );
 }
