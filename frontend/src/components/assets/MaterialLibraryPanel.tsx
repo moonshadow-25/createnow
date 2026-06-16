@@ -409,7 +409,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                 <div className="mb-4 grid gap-2 md:grid-cols-[180px_1fr_auto]">
                   <input value={lookName} onChange={(e) => setLookName(e.target.value)} placeholder="妆造名称" className="rounded bg-gray-900 px-3 py-2 text-sm outline-none ring-1 ring-gray-700" />
                   <input value={lookPrompt} onChange={(e) => setLookPrompt(e.target.value)} placeholder="补充提示词" className="rounded bg-gray-900 px-3 py-2 text-sm outline-none ring-1 ring-gray-700" />
-                  <button onClick={createLook} className="rounded bg-blue-600 px-3 py-2 text-sm hover:bg-blue-500">添加妆造</button>
+                  <button onClick={createLook} className="rounded bg-blue-600 px-3 py-2 text-sm hover:bg-blue-500">添加妆造项</button>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {(selected.looks || []).map((look) => (
@@ -433,12 +433,25 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                         className="mt-3 flex w-full items-center justify-center gap-1 rounded bg-purple-700 px-3 py-2 text-sm hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {busy === `generate-${look.look_id}` ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
-                        训练lora并生成定妆造
+                        上传服饰图并生成妆造图
                       </button>
                       {look.audit_asset_id && <div className="mt-2 truncate text-[10px] text-gray-500">assetid: {look.audit_asset_id}</div>}
                     </div>
                   ))}
-                  {!selected.looks?.length && <div className="rounded-lg border border-dashed border-gray-700 p-8 text-center text-sm text-gray-500">暂无妆造</div>}
+                  {!selected.looks?.length && (
+                    <div className="rounded-lg border border-dashed border-gray-700 p-8 text-center text-sm text-gray-500">
+                      <div className="mb-2 text-gray-300">还没有妆造图</div>
+                      <div className="mb-4 text-xs text-gray-500">先填写上方“妆造名称”，点击“添加妆造项”，再在妆造卡片中上传服饰图生成妆造图。</div>
+                      <button
+                        type="button"
+                        onClick={createLook}
+                        disabled={!lookName.trim()}
+                        className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        添加妆造项
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
