@@ -307,8 +307,8 @@ export function buildDirectorStagePrompt(markers: DirectorStageCompositeMarker[]
   if (!markers.length) return '请根据场景图摆放角色，并保持位置关系、比例和朝向自然。';
   const compositeIndex = markers.length + 1;
   const subjects = markers.map((_, index) => getMarkerSubject(index)).join('、');
-  const placementLines = markers.map((marker, index) => `@图${index + 1}中主体的位置严格参考@图${compositeIndex}中的${marker.colorName}火柴人，并且替换${marker.colorName}火柴人。`);
-  return `${subjects}在图${compositeIndex}中。\n\n${placementLines.join('\n')}`;
+  const placementLines = markers.map((marker, index) => `@图${index + 1}中主体的位置和姿态严格参考@图${compositeIndex}中的${marker.colorName}火柴人，并且替换${marker.colorName}火柴人。`);
+  return `${subjects}在图${compositeIndex}中。不要改变其他人物\n\n${placementLines.join('\n')}`;
 }
 
 function createOverlayContext(width: number, height: number) {
