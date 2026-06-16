@@ -70,7 +70,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   const loadMaterialNodePrefix = useCallback(async () => {
     const response = await generationApi.getPromptTemplates(projectId);
-    return response.data?.templates?.material_node?.content || '';
+    const materialNode = response.data?.material_node;
+    const activeId = materialNode?.active || 'default';
+    return materialNode?.templates?.[activeId]?.content || materialNode?.presets?.default?.content || '';
   }, [projectId]);
 
   const historyItems = useMemo<HistoryItem[]>(() => {
