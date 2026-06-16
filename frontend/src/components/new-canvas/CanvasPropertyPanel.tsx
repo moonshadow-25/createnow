@@ -220,7 +220,7 @@ export function CanvasPropertyPanel({
       {selectedNode.type === 'material.library' && (
         <div className="space-y-3 rounded-lg border border-gray-800 bg-gray-950 p-3">
           <div className="space-y-2">
-            <button onClick={onOpenMaterialPicker} className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm hover:bg-purple-500">选择素材与妆造</button>
+            <button onClick={onOpenMaterialPicker} className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm hover:bg-purple-500">选择lora</button>
             <label className="block">
               <span className="text-xs text-gray-400">补充提示词</span>
               <textarea

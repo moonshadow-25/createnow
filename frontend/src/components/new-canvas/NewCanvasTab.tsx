@@ -1266,6 +1266,19 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
   return (
     <div className="relative flex h-full min-h-0 bg-gray-950 text-white">
+      <div className="fixed top-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
+        <button onClick={createCanvas} className="rounded bg-blue-600 px-2 py-1 hover:bg-blue-500" title="新建画布"><Plus size={14} /></button>
+        <select value={activeCanvasId} onChange={(event) => switchCanvas(event.target.value)} className="rounded bg-gray-950 px-2 py-1 text-xs outline-none ring-1 ring-gray-700">
+          {canvases.map((canvas) => <option key={canvas.canvas_id} value={canvas.canvas_id}>{canvas.name}</option>)}
+        </select>
+        <input value={canvasName} onChange={(event) => setCanvasName(event.target.value)} className="w-32 rounded bg-gray-950 px-2 py-1 text-xs outline-none ring-1 ring-gray-700" />
+        <button onClick={() => saveCanvas(false)} disabled={saving} className="flex items-center gap-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600 disabled:opacity-50">
+          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}保存
+        </button>
+        <button onClick={deleteCanvas} className="flex items-center gap-1 rounded bg-red-900/60 px-2 py-1 text-red-200 hover:bg-red-900">
+          <Trash2 size={12} />删除
+        </button>
+      </div>
       <div className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
         <span>缩放 {Math.round(zoom * 100)}%</span>
         <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
@@ -1306,26 +1319,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         >
           <div className="flex h-full flex-col" style={{ width: 288 }}>
         <div className="border-b border-gray-800 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-lg font-semibold">新画布</div>
-            <button onClick={createCanvas} className="rounded-lg bg-blue-600 p-2 hover:bg-blue-500" title="新建画布"><Plus size={16} /></button>
-          </div>
-          <select value={activeCanvasId} onChange={(event) => switchCanvas(event.target.value)} className="mb-2 w-full rounded bg-gray-950 px-3 py-2 text-sm outline-none ring-1 ring-gray-700">
-            {canvases.map((canvas) => <option key={canvas.canvas_id} value={canvas.canvas_id}>{canvas.name}</option>)}
-          </select>
-          <input value={canvasName} onChange={(event) => setCanvasName(event.target.value)} className="w-full rounded bg-gray-950 px-3 py-2 text-sm outline-none ring-1 ring-gray-700" />
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button onClick={() => saveCanvas(false)} disabled={saving} className="flex items-center justify-center gap-1 rounded bg-gray-700 px-2 py-2 text-xs hover:bg-gray-600 disabled:opacity-50">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}保存
-            </button>
-            <button onClick={deleteCanvas} className="flex items-center justify-center gap-1 rounded bg-red-900/60 px-2 py-2 text-xs text-red-200 hover:bg-red-900">
-              <Trash2 size={14} />删除
-            </button>
-          </div>
+          <div className="text-lg font-semibold">添加节点</div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="mb-3 text-sm font-medium text-gray-300">添加节点</div>
           <div className="space-y-2">
             {NODE_DEFINITIONS.filter((definition) => definition.type !== 'gen.video.image').map((definition) => {
               const Icon = definition.icon;

@@ -42,8 +42,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   },
   {
     type: 'material.library',
-    label: '素材库',
-    description: '选择素材和妆造，输出图片序列与提示词',
+    label: 'lora',
+    description: '选择lora，输出图片序列与提示词',
     icon: Library,
     color: 'from-fuchsia-500 to-purple-600',
     inputs: [],

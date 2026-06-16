@@ -31,7 +31,7 @@ export function CanvasMaterialPickerDialog({ projectId, selectedMaterialId, sele
   const active = useMemo(() => materials.find((item) => item.asset_id === activeId), [materials, activeId]);
 
   const toggleLook = (lookId: string) => {
-    setLookIds((prev) => prev.includes(lookId) ? prev.filter((id) => id !== lookId) : [...prev, lookId]);
+    setLookIds([lookId]);
   };
 
   return (
@@ -39,8 +39,8 @@ export function CanvasMaterialPickerDialog({ projectId, selectedMaterialId, sele
       <div className="flex h-[78vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 text-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-800 p-4">
           <div>
-            <div className="text-lg font-semibold">选择素材库素材</div>
-            <div className="text-sm text-gray-400">选择一个素材和需要输出的妆造。</div>
+            <div className="text-lg font-semibold">选择lora</div>
+            <div className="text-sm text-gray-400">选择一个素材和需要输出的妆造（单选）。</div>
           </div>
           <button onClick={onClose} className="rounded bg-gray-800 p-2 hover:bg-gray-700"><X size={18} /></button>
         </div>
