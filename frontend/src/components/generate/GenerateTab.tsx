@@ -417,7 +417,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     local_path: undefined,
     size: imageSize,
     reference_image_ids: refs.filter(m => m.type === 'image' && m.id).map(m => m.id!),
-    reference_image_urls: refs.filter(m => m.type === 'image' && m.url).map(m => m.url),
+    reference_image_urls: refs.filter(m => m.type === 'image' && !m.id && m.url).map(m => m.url),
   }), [currentUserLabel, imageSize]);
 
   const buildImageReferenceMedia = useCallback((image: ImageRecord): RefMedia[] => {
@@ -515,7 +515,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
         try {
           const referenceImageIds = imageItems.map(m => m.id!);
           const referenceImageUrls = selectedMedia
-            .filter(m => m.type === 'image' && m.url)
+            .filter(m => m.type === 'image' && !m.id && m.url)
             .map(m => m.url);
           const response = await (imageItems.length > 0
             ? generationApi.editSquareImage(projectId, {
