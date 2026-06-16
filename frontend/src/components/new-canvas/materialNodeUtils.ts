@@ -41,7 +41,6 @@ export function buildMaterialNodeOutput(material: MaterialAsset, selectedLookIds
   addImage(material.front_image_id, material.front_image_url, `${material.name} 正脸`, material.front_audit_asset_id, material.front_audit_status);
   const selectedLooks = (material.looks || []).filter((look) => !selectedLookIds.length || selectedLookIds.includes(look.look_id));
   selectedLooks.forEach((look) => addImage(look.image_id, look.image_url, `${material.name} ${look.name}`, look.audit_asset_id, look.audit_status));
-  (material.angle_images || []).forEach((image, index) => addImage(image.image_id, image.image_url, `${material.name} 角度${index + 1}`, image.audit_asset_id, image.audit_status));
 
   const lookPrompts = selectedLooks.map((look) => look.prompt).filter(Boolean).join('\n');
   const text = [fixedPrefix, `素材：${material.name}`, material.description || '', lookPrompts, extraPrompt]
