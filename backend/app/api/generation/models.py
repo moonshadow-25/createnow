@@ -96,6 +96,7 @@ class VideoGenerateRequest(BaseModel):
     use_web_search: bool = False             # 联网搜索增强
     ratio: Optional[str] = None             # 宽高比（含 adaptive）
     generate_audio: Optional[bool] = None   # 是否生成音频（覆盖项目配置）
+    bitrate_mode: Optional[str] = None      # 火山引擎码率模式（如 high）
     reference_media: Optional[List[Dict]] = None  # 参考素材元数据（{type,id?,url,name}列表）
 
     @validator('image_ids', pre=True, always=True)

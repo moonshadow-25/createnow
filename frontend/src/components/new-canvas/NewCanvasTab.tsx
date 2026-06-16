@@ -832,6 +832,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         ...audioMedia.map((item) => item.url).filter(Boolean),
       ];
       const referenceMedia = [...imageMedia, ...videoMedia, ...audioMedia];
+      const hasLoraReference = imageMedia.some((item) => item.sourceAssetType === 'material');
+      const bitrateMode = hasLoraReference && imageMedia.length > 1 ? 'high' : undefined;
       const upstreamAuditState = referenceMedia.reduce<Record<string, AssetAuditState>>((acc, item) => {
         if (item.audit && item.type === 'image' && item.id) acc[`image:${item.id}`] = item.audit;
         if (item.audit && item.type === 'video' && item.url) acc[`video:${item.url}`] = item.audit;
@@ -852,6 +854,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         ratio: node.config.ratio || '16:9',
         generate_audio: node.config.generate_audio,
         reference_media: referenceMedia,
+        bitrate_mode: bitrateMode,
         model: videoApiType === 'createnow' ? node.config.model : undefined,
       });
       let video = response.data;

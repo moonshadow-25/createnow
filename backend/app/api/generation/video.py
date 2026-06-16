@@ -827,6 +827,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 ratio=request.ratio,
                 use_web_search=request.use_web_search,
                 model=request.model,
+                bitrate_mode=request.bitrate_mode,
             )
         elif len(image_urls) == 1:
             # 单图模式

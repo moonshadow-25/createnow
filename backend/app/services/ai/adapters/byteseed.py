@@ -287,6 +287,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
             "watermark": self.watermark,
             "generate_audio": kwargs.get("generate_audio", True if is_2_0 else self.generate_audio),
         }
+        if kwargs.get("bitrate_mode") == "high":
+            payload["bitrate_mode"] = "high"
 
         # 2.0 专属：联网搜索
         if is_2_0 and use_web_search:

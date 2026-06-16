@@ -168,6 +168,7 @@ class VideoGenService(AIService):
         ratio: str = None,
         use_web_search: bool = False,
         model: Optional[str] = None,
+        bitrate_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         """生成视频（多模态模式，支持图片+视频+音频参考）"""
         adapter = self._get_adapter()
@@ -181,6 +182,7 @@ class VideoGenService(AIService):
             ratio=ratio,
             use_web_search=use_web_search,
             model=model,
+            bitrate_mode=bitrate_mode,
         )
 
     async def poll_video_task(self, task_id: str) -> Dict[str, Any]:
