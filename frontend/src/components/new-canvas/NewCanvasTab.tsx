@@ -68,6 +68,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     .filter((item) => item.output?.text)
     .map((item) => ({ node_id: item.node.node_id, label: item.node.label, text: item.output?.text || '' })), [nodes, outputs]);
 
+  const loadMaterialNodePrefix = useCallback(async () => {
+    const response = await generationApi.getPromptTemplates(projectId);
+    return response.data?.templates?.material_node?.content || '';
+  }, [projectId]);
+
   const historyItems = useMemo<HistoryItem[]>(() => {
     const imageItems: HistoryItem[] = historyImages.map((image) => ({
       kind: 'image',
@@ -698,7 +703,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         material,
         node.config.selected_look_ids || [],
         node.config.prompt || '',
-        node.config.material_fixed_prefix || '',
+        await loadMaterialNodePrefix(),
       );
       if (!built.output.media?.length) throw new Error('素材库节点没有可输出的图片');
       return built;
@@ -1194,13 +1199,13 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setAssetPickerOpen(false);
   };
 
-  const selectMaterialForNode = (material: any, lookIds: string[]) => {
+  const selectMaterialForNode = async (material: any, lookIds: string[]) => {
     if (!selectedNode) return;
     const built = buildMaterialNodeOutput(
       material,
       lookIds,
       selectedNode.config.prompt || '',
-      selectedNode.config.material_fixed_prefix || '',
+      await loadMaterialNodePrefix(),
     );
     const nextPatch: CanvasNode['config'] = {
       material_id: material.asset_id,

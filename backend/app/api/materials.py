@@ -16,12 +16,12 @@ router = APIRouter(prefix="/projects/{project_id}/materials", tags=["materials"]
 
 MATERIAL_ASSET_TYPE = "material"
 MAX_ZIP_SIZE = 200 * 1024 * 1024
-MATERIAL_LOOK_PROMPT_TEMPLATE = (
-    "严格参照图1的人物面部特征和细节，参考其他角度的人物特征。"
-    "穿着图6的服饰和人物装造，生成一张人物定妆造，"
-    "左边40%是人物的头部正面高清细节大图，"
-    "右边60%是人物的上半身正面、45度侧面和侧面三视图。"
-)
+def _material_look_prompt_template() -> str:
+    templates = ProjectService.get_prompt_templates()
+    prompt = templates.get("material_look") if isinstance(templates, dict) else None
+    if isinstance(prompt, str) and prompt.strip():
+        return prompt.strip()
+    raise HTTPException(status_code=500, detail="缺少素材合成妆造服务提示词")
 
 
 def _get_projects_dir():
@@ -280,7 +280,7 @@ async def generate_look(project_id: str, material_id: str, look_id: str, request
     from app.api.generation.template_helpers import get_active_template
 
     ai_config = project.get("ai_config", {})
-    fixed_prefix = get_active_template(ai_config, "material_look") or MATERIAL_LOOK_PROMPT_TEMPLATE
+    fixed_prefix = _material_look_prompt_template()
     prompt_parts = [fixed_prefix, look.get("prompt") or "", request.prompt]
     prompt = "\n".join(part.strip() for part in prompt_parts if part and part.strip())
 

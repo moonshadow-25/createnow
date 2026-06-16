@@ -80,7 +80,6 @@ export type CanvasNode = {
     material_id?: string;
     material_name?: string;
     selected_look_ids?: string[];
-    material_fixed_prefix?: string;
     material_snapshot?: unknown;
     existing_asset_audit_id?: string;
     existing_asset_audit_status?: string;

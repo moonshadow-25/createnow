@@ -1,8 +1,6 @@
 import type { MaterialAsset } from '@/components/assets/MaterialLibraryPanel';
 import type { AssetAuditState, NodeOutput, RefMedia } from './types';
 
-export const MATERIAL_NODE_DEFAULT_PREFIX = '以下为同一人物素材参考，请保持人物身份、面部特征和妆造一致。';
-
 function normalizeUrl(url?: string) {
   if (!url) return '';
   if (url.startsWith('http') || url.startsWith('data:')) return url;
@@ -20,7 +18,7 @@ function imageAudit(imageId?: string, assetId?: string, status?: string): AssetA
   };
 }
 
-export function buildMaterialNodeOutput(material: MaterialAsset, selectedLookIds: string[] = [], extraPrompt = '', fixedPrefix = MATERIAL_NODE_DEFAULT_PREFIX): { output: NodeOutput; auditState: Record<string, AssetAuditState> } {
+export function buildMaterialNodeOutput(material: MaterialAsset, selectedLookIds: string[] = [], extraPrompt = '', fixedPrefix: string): { output: NodeOutput; auditState: Record<string, AssetAuditState> } {
   const media: RefMedia[] = [];
   const auditState: Record<string, AssetAuditState> = {};
   const addImage = (imageId: string | undefined, imageUrl: string | undefined, name: string, auditAssetId?: string, auditStatus?: string) => {

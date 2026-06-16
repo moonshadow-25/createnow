@@ -221,28 +221,16 @@ export function CanvasPropertyPanel({
         <div className="space-y-3 rounded-lg border border-gray-800 bg-gray-950 p-3">
           <div className="space-y-2">
             <button onClick={onOpenMaterialPicker} className="w-full rounded-lg bg-purple-600 px-3 py-2 text-sm hover:bg-purple-500">选择素材与妆造</button>
-            <div className="grid grid-cols-1 gap-2">
-              <label className="block">
-                <span className="text-xs text-gray-400">固定前缀</span>
-                <textarea
-                  value={selectedNode.config.material_fixed_prefix || ''}
-                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { material_fixed_prefix: event.target.value })}
-                  rows={5}
-                  className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
-                  placeholder="素材库节点的固定提示词前缀"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-gray-400">补充提示词</span>
-                <textarea
-                  value={selectedNode.config.prompt || ''}
-                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { prompt: event.target.value })}
-                  rows={4}
-                  className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
-                  placeholder="可额外补充提示词"
-                />
-              </label>
-            </div>
+            <label className="block">
+              <span className="text-xs text-gray-400">补充提示词</span>
+              <textarea
+                value={selectedNode.config.prompt || ''}
+                onChange={(event) => updateNodeConfig(selectedNode.node_id, { prompt: event.target.value })}
+                rows={4}
+                className="mt-1 w-full rounded bg-gray-900 px-3 py-2 text-sm text-white outline-none ring-1 ring-gray-700 focus:ring-blue-500"
+                placeholder="可额外补充提示词"
+              />
+            </label>
           </div>
           <div className="text-xs text-gray-400">素材名称：{selectedNode.config.material_name || '未选择'}</div>
         </div>
