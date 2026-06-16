@@ -3,7 +3,7 @@ import type { CanvasEdge, CanvasNode } from './types';
 export type StickFigurePoint = { x: number; y: number };
 export type StickFigureJoint = 'head' | 'neck' | 'hip' | 'leftElbow' | 'rightElbow' | 'leftHand' | 'rightHand' | 'leftKnee' | 'rightKnee' | 'leftFoot' | 'rightFoot';
 export type StickFigurePose = Record<StickFigureJoint, StickFigurePoint>;
-export type StickFigurePosePreset = 'standing' | 'sitting' | 'lying' | 'kneeling';
+export type StickFigurePosePreset = 'standing' | 'sitting' | 'lying' | 'kneeling' | 'suzaku' | 'qinglong' | 'baihu' | 'xuanwu';
 
 export type DirectorStageMarker = {
   id: string;
@@ -150,6 +150,66 @@ export function createStickFigurePosePreset(preset: StickFigurePosePreset, x: nu
       rightKnee: { x: x + 0.026911, y: y + 0.244814 },
       leftFoot: { x: x - 0.068874, y: y + 0.089747 },
       rightFoot: { x: x + 0.074198, y: y + 0.077174 },
+    };
+  }
+  if (preset === 'suzaku') {
+    return {
+      head: { x: x - 0.060972, y: y + 0.061108 },
+      neck: { x, y },
+      hip: { x: x + 0.139079, y: y + 0.040677 },
+      leftElbow: { x: x - 0.092464, y: y - 0.191677 },
+      rightElbow: { x: x + 0.297913, y: y - 0.183541 },
+      leftHand: { x: x + 0.06755, y: y - 0.054625 },
+      rightHand: { x: x + 0.142756, y: y + 0.028351 },
+      leftKnee: { x: x + 0.19849, y: y + 0.128688 },
+      rightKnee: { x: x + 0.223952, y: y + 0.038582 },
+      leftFoot: { x: x + 0.22759, y: y + 0.046964 },
+      rightFoot: { x: x + 0.204553, y: y + 0.134975 },
+    };
+  }
+  if (preset === 'qinglong') {
+    return {
+      head: { x: x - 0.06362, y: y - 0.125446 },
+      neck: { x, y },
+      hip: { x: x + 0.087022, y: y + 0.099124 },
+      leftElbow: { x: x - 0.013089, y: y + 0.058199 },
+      rightElbow: { x: x + 0.039047, y: y - 0.019334 },
+      leftHand: { x: x - 0.054313, y: y + 0.041435 },
+      rightHand: { x: x + 0.018435, y: y - 0.067531 },
+      leftKnee: { x: x + 0.159771, y: y + 0.279337 },
+      rightKnee: { x: x + 0.153708, y: y + 0.20809 },
+      leftFoot: { x: x + 0.171207, y: y + 0.435389 },
+      rightFoot: { x: x + 0.101572, y: y + 0.235331 },
+    };
+  }
+  if (preset === 'baihu') {
+    return {
+      head: { x: x - 0.065722, y: y - 0.097836 },
+      neck: { x, y },
+      hip: { x: x + 0.098585, y: y + 0.010356 },
+      leftElbow: { x: x - 0.022662, y: y + 0.100462 },
+      rightElbow: { x: x + 0.024624, y: y + 0.108844 },
+      leftHand: { x: x - 0.062499, y: y + 0.1862 },
+      rightHand: { x: x + 0.004187, y: y + 0.200869 },
+      leftKnee: { x: x + 0.109843, y: y + 0.109607 },
+      rightKnee: { x: x + 0.14258, y: y + 0.09913 },
+      leftFoot: { x: x + 0.080398, y: y + 0.205237 },
+      rightFoot: { x: x + 0.151068, y: y + 0.193427 },
+    };
+  }
+  if (preset === 'xuanwu') {
+    return {
+      head: { x: x - 0.059709, y: y - 0.095942 },
+      neck: { x, y },
+      hip: { x: x + 0.180221, y: y + 0.059039 },
+      leftElbow: { x: x + 0.031524, y: y + 0.068755 },
+      rightElbow: { x: x + 0.08201, y: y - 0.173561 },
+      leftHand: { x: x - 0.013329, y: y + 0.112011 },
+      rightHand: { x: x + 0.218253, y: y - 0.141544 },
+      leftKnee: { x: x + 0.242747, y: y + 0.073667 },
+      rightKnee: { x: x + 0.176579, y: y + 0.125406 },
+      leftFoot: { x: x + 0.220228, y: y - 0.136531 },
+      rightFoot: { x: x + 0.22144, y: y + 0.156838 },
     };
   }
   return {
