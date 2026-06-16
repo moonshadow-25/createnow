@@ -47,12 +47,14 @@ const GENERATION_KEY_ORDER = [
 // 普通模式下默认显示的 key（其余需点"高级"展开）
 const BASIC_KEYS = new Set(['image', 'video', 'storyboard_image_edit']);
 
-// 服务提示词：只显示全剧本导入相关的四个
+// 服务提示词：只显示用户需要编辑的服务模板
 const SERVICE_KEYS = new Set([
   'full_script_split_chunk',
   'full_script_split_chunk_boundary',
   'full_script_extract_chunk',
   'full_script_extract_merge',
+  'material_look',
+  'material_node',
 ]);
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────

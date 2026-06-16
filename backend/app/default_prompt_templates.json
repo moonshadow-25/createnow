@@ -271,26 +271,6 @@
       }
     }
   },
-  "material_look": {
-    "label": "素材合成妆造",
-    "category": "服务提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "content_file": "material_look/default.md"
-      }
-    }
-  },
-  "material_node": {
-    "label": "素材库节点",
-    "category": "服务提示词",
-    "presets": {
-      "default": {
-        "name": "默认",
-        "content_file": "material_node/default.md"
-      }
-    }
-  },
   "conversation_system_prompt": {
     "label": "对话系统提示词",
     "category": "系统提示词",

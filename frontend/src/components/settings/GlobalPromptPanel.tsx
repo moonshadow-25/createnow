@@ -31,12 +31,14 @@ const BASIC_KEYS = new Set([
   'image', 'video', 'storyboard_image_edit',
 ]);
 
-// 服务提示词：只显示全剧本导入相关的四个
+// 服务提示词：只显示用户需要编辑的服务模板
 const SERVICE_KEYS = new Set([
   'full_script_split_chunk',
   'full_script_split_chunk_boundary',
   'full_script_extract_chunk',
   'full_script_extract_merge',
+  'material_look',
+  'material_node',
 ]);
 
 // ── 组件 ──────────────────────────────────────────────────────────────────────
