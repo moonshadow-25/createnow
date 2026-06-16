@@ -242,13 +242,35 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     }
   };
 
+  const pollSubmittedAssets = async (assetIds: string[], materialId: string) => {
+    if (!assetIds.length) return;
+    const pending = new Set(assetIds);
+    for (let attempt = 0; attempt < 120 && pending.size > 0; attempt += 1) {
+      await Promise.all(Array.from(pending).map(async (assetId) => {
+        try {
+          const response = await generationApi.getAssetStatus(projectId, assetId);
+          const status = response.data?.status;
+          if (status === 'Active' || status === 'Failed') pending.delete(assetId);
+        } catch (error) {
+          console.error('Failed to poll material asset status:', error);
+        }
+      }));
+      const refreshed = await materialApi.get(projectId, materialId);
+      replaceMaterial(refreshed.data);
+      if (pending.size === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  };
+
   const submitNew = async () => {
     if (!selected) return;
     setBusy('audit-new');
     try {
       const response = await materialApi.submitNew(projectId, selected.asset_id);
       replaceMaterial(response.data.material);
-      toast(`已提交 ${response.data.submitted?.length || 0} 张新增图片审核`, 'success');
+      const assetIds = (response.data.submitted || []).map((item: any) => item.asset_id).filter(Boolean);
+      toast(`已提交 ${assetIds.length} 张新增图片审核`, 'success');
+      await pollSubmittedAssets(assetIds, selected.asset_id);
     } catch (error: any) {
       toast(error?.response?.data?.detail || '提交审核失败', 'error');
     } finally {
@@ -263,7 +285,9 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     try {
       const response = await materialApi.resubmitAll(projectId, selected.asset_id);
       replaceMaterial(response.data.material);
-      toast(`已重新提交 ${response.data.submitted?.length || 0} 张图片审核`, 'success');
+      const assetIds = (response.data.submitted || []).map((item: any) => item.asset_id).filter(Boolean);
+      toast(`已重新提交 ${assetIds.length} 张图片审核`, 'success');
+      await pollSubmittedAssets(assetIds, selected.asset_id);
     } catch (error: any) {
       toast(error?.response?.data?.detail || '重新提审失败', 'error');
     } finally {
@@ -402,8 +426,8 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                     {!canGenerateLooks && <div className="text-xs text-yellow-300">上传正脸和 5 张角度图后可生成妆造。</div>}
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={submitNew} disabled={busy === 'audit-new'} className="rounded bg-blue-700 px-3 py-1.5 text-sm hover:bg-blue-600 disabled:opacity-50">提交新增审核</button>
-                    <button onClick={resubmitAll} disabled={busy === 'audit-all'} className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600 disabled:opacity-50">重新提审全部</button>
+                    <button onClick={submitNew} disabled={busy === 'audit-new' || busy === 'audit-all'} className="rounded bg-blue-700 px-3 py-1.5 text-sm hover:bg-blue-600 disabled:opacity-50">{busy === 'audit-new' ? '审核轮询中...' : '提交新增审核'}</button>
+                    <button onClick={resubmitAll} disabled={busy === 'audit-new' || busy === 'audit-all'} className="rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600 disabled:opacity-50">{busy === 'audit-all' ? '审核轮询中...' : '重新提审全部'}</button>
                   </div>
                 </div>
                 <div className="mb-4 grid gap-2 md:grid-cols-[180px_1fr_auto]">
