@@ -109,17 +109,17 @@ export function createDefaultStickFigurePose(x: number, y: number): StickFigureP
 export function createStickFigurePosePreset(preset: StickFigurePosePreset, x: number, y: number): StickFigurePose {
   if (preset === 'sitting') {
     return {
-      head: { x: x - 0.002104, y: y - 0.095055 },
+      head: { x: x - 0.005674, y: y - 0.092816 },
       neck: { x, y },
-      hip: { x: x + 0.001449, y: y + 0.152612 },
-      leftElbow: { x: x - 0.0325, y: y + 0.064601 },
-      rightElbow: { x: x + 0.029336, y: y + 0.058315 },
-      leftHand: { x: x - 0.054325, y: y + 0.137944 },
-      rightHand: { x: x + 0.052373, y: y + 0.146326 },
-      leftKnee: { x: x - 0.024013, y: y + 0.242719 },
-      rightKnee: { x: x + 0.026911, y: y + 0.244814 },
-      leftFoot: { x: x - 0.068874, y: y + 0.089747 },
-      rightFoot: { x: x + 0.074198, y: y + 0.077174 },
+      hip: { x: x + 0.005058, y: y + 0.146625 },
+      leftElbow: { x: x - 0.042229, y: y + 0.010418 },
+      rightElbow: { x: x + 0.040219, y: y + 0.031373 },
+      leftHand: { x: x - 0.076178, y: y + 0.043946 },
+      rightHand: { x: x + 0.046282, y: y + 0.138243 },
+      leftKnee: { x: x - 0.07502, y: y + 0.060097 },
+      rightKnee: { x: x - 0.039804, y: y + 0.077474 },
+      leftFoot: { x: x - 0.091995, y: y + 0.17535 },
+      rightFoot: { x: x - 0.041071, y: y + 0.229833 },
     };
   }
   if (preset === 'lying') {
@@ -139,17 +139,17 @@ export function createStickFigurePosePreset(preset: StickFigurePosePreset, x: nu
   }
   if (preset === 'kneeling') {
     return {
-      head: { x: x - 0.005674, y: y - 0.092816 },
+      head: { x: x - 0.002104, y: y - 0.095055 },
       neck: { x, y },
-      hip: { x: x + 0.005058, y: y + 0.146625 },
-      leftElbow: { x: x - 0.042229, y: y + 0.010418 },
-      rightElbow: { x: x + 0.040219, y: y + 0.031373 },
-      leftHand: { x: x - 0.076178, y: y + 0.043946 },
-      rightHand: { x: x + 0.046282, y: y + 0.138243 },
-      leftKnee: { x: x - 0.07502, y: y + 0.060097 },
-      rightKnee: { x: x - 0.039804, y: y + 0.077474 },
-      leftFoot: { x: x - 0.091995, y: y + 0.17535 },
-      rightFoot: { x: x - 0.041071, y: y + 0.229833 },
+      hip: { x: x + 0.001449, y: y + 0.152612 },
+      leftElbow: { x: x - 0.0325, y: y + 0.064601 },
+      rightElbow: { x: x + 0.029336, y: y + 0.058315 },
+      leftHand: { x: x - 0.054325, y: y + 0.137944 },
+      rightHand: { x: x + 0.052373, y: y + 0.146326 },
+      leftKnee: { x: x - 0.024013, y: y + 0.242719 },
+      rightKnee: { x: x + 0.026911, y: y + 0.244814 },
+      leftFoot: { x: x - 0.068874, y: y + 0.089747 },
+      rightFoot: { x: x + 0.074198, y: y + 0.077174 },
     };
   }
   return {
