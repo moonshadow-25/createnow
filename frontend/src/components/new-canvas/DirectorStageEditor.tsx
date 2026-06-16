@@ -5,9 +5,11 @@ import { getImageUrlFromRecord } from './canvasUtils';
 import { StickFigureStage } from './StickFigureStage';
 import {
   buildDirectorStagePrompt,
+  createStickFigurePosePreset,
   renderDirectorStageComposite,
   syncDirectorStageMarkers,
   type DirectorStageMarker,
+  type StickFigurePosePreset,
 } from './directorStageUtils';
 import type { CanvasEdge, CanvasNode } from './types';
 
@@ -21,6 +23,13 @@ type DirectorStageEditorProps = {
   onOpenUpload: (target: 'image' | 'video' | 'audio') => void;
   toast: (message: string, type?: 'success' | 'error' | 'info') => void;
 };
+
+const posePresets: { key: StickFigurePosePreset; label: string }[] = [
+  { key: 'standing', label: '站' },
+  { key: 'sitting', label: '坐' },
+  { key: 'lying', label: '躺' },
+  { key: 'kneeling', label: '跪' },
+];
 
 export function DirectorStageEditor({
   projectId,
@@ -52,6 +61,14 @@ export function DirectorStageEditor({
 
   const updateMarkerScale = (markerId: string, scale: number) => {
     updateMarkers(markers.map((marker) => marker.id === markerId ? { ...marker, scale } : marker));
+  };
+
+  const updateMarkerPosePreset = (markerId: string, preset: StickFigurePosePreset) => {
+    updateMarkers(markers.map((marker) => {
+      if (marker.id !== markerId) return marker;
+      const anchor = marker.pose?.neck || { x: marker.x ?? 0.5, y: marker.y ?? 0.5 };
+      return { ...marker, pose: createStickFigurePosePreset(preset, anchor.x, anchor.y) };
+    }));
   };
 
   const handlePromptChange = (prompt: string) => {
@@ -141,6 +158,21 @@ export function DirectorStageEditor({
                   <span className="font-medium text-gray-200">{marker.label}</span>
                   <span className="min-w-0 flex-1 truncate text-gray-500">{marker.sourceLabel}</span>
                   <span className="text-[10px] text-gray-400">{marker.colorName}</span>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500">姿势</span>
+                  <div className="flex flex-wrap gap-1">
+                    {posePresets.map((preset) => (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        onClick={() => updateMarkerPosePreset(marker.id, preset.key)}
+                        className="rounded bg-gray-800 px-2 py-1 text-[10px] text-gray-300 hover:bg-gray-700 hover:text-white"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-[10px] text-gray-500">缩放</span>

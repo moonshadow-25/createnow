@@ -3,6 +3,7 @@ import type { CanvasEdge, CanvasNode } from './types';
 export type StickFigurePoint = { x: number; y: number };
 export type StickFigureJoint = 'head' | 'neck' | 'hip' | 'leftElbow' | 'rightElbow' | 'leftHand' | 'rightHand' | 'leftKnee' | 'rightKnee' | 'leftFoot' | 'rightFoot';
 export type StickFigurePose = Record<StickFigureJoint, StickFigurePoint>;
+export type StickFigurePosePreset = 'standing' | 'sitting' | 'lying' | 'kneeling';
 
 export type DirectorStageMarker = {
   id: string;
@@ -40,7 +41,7 @@ export const DIRECTOR_STAGE_COLORS = [
 ];
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
-const clampPoint = (point: StickFigurePoint): StickFigurePoint => ({ x: clamp(point.x), y: clamp(point.y) });
+const keepPoint = (point: StickFigurePoint): StickFigurePoint => ({ x: point.x, y: point.y });
 const clampScale = (value: number) => Math.min(1.8, Math.max(0.6, value));
 
 export const STICK_FIGURE_JOINTS: { key: StickFigureJoint; label: string }[] = [
@@ -74,8 +75,8 @@ export function scaleStickFigurePoint(point: StickFigurePoint, anchor: StickFigu
 }
 
 export function unscaleStickFigurePoint(point: StickFigurePoint, anchor: StickFigurePoint, scale: number): StickFigurePoint {
-  if (scale === 1) return clampPoint(point);
-  return clampPoint({
+  if (scale === 1) return keepPoint(point);
+  return keepPoint({
     x: anchor.x + (point.x - anchor.x) / scale,
     y: anchor.y + (point.y - anchor.y) / scale,
   });
@@ -102,18 +103,67 @@ export function getDirectorStageInputLabel(index: number) {
 }
 
 export function createDefaultStickFigurePose(x: number, y: number): StickFigurePose {
+  return createStickFigurePosePreset('standing', x, y);
+}
+
+export function createStickFigurePosePreset(preset: StickFigurePosePreset, x: number, y: number): StickFigurePose {
+  if (preset === 'sitting') {
+    return {
+      head: { x, y: y - 0.13 },
+      neck: { x, y: y - 0.055 },
+      hip: { x, y: y + 0.055 },
+      leftElbow: { x: x - 0.075, y: y - 0.01 },
+      rightElbow: { x: x + 0.075, y: y - 0.01 },
+      leftHand: { x: x - 0.14, y: y + 0.035 },
+      rightHand: { x: x + 0.14, y: y + 0.035 },
+      leftKnee: { x: x - 0.12, y: y + 0.1 },
+      rightKnee: { x: x + 0.12, y: y + 0.1 },
+      leftFoot: { x: x - 0.18, y: y + 0.1 },
+      rightFoot: { x: x + 0.18, y: y + 0.1 },
+    };
+  }
+  if (preset === 'lying') {
+    return {
+      head: { x: x - 0.18, y: y - 0.01 },
+      neck: { x: x - 0.105, y },
+      hip: { x: x + 0.055, y },
+      leftElbow: { x: x - 0.055, y: y - 0.06 },
+      rightElbow: { x: x - 0.055, y: y + 0.06 },
+      leftHand: { x: x + 0.035, y: y - 0.075 },
+      rightHand: { x: x + 0.035, y: y + 0.075 },
+      leftKnee: { x: x + 0.16, y: y - 0.055 },
+      rightKnee: { x: x + 0.16, y: y + 0.055 },
+      leftFoot: { x: x + 0.27, y: y - 0.055 },
+      rightFoot: { x: x + 0.27, y: y + 0.055 },
+    };
+  }
+  if (preset === 'kneeling') {
+    return {
+      head: { x, y: y - 0.13 },
+      neck: { x, y: y - 0.055 },
+      hip: { x, y: y + 0.055 },
+      leftElbow: { x: x - 0.075, y: y - 0.01 },
+      rightElbow: { x: x + 0.075, y: y - 0.01 },
+      leftHand: { x: x - 0.14, y: y + 0.035 },
+      rightHand: { x: x + 0.14, y: y + 0.035 },
+      leftKnee: { x: x - 0.07, y: y + 0.15 },
+      rightKnee: { x: x + 0.07, y: y + 0.15 },
+      leftFoot: { x: x - 0.16, y: y + 0.16 },
+      rightFoot: { x: x + 0.16, y: y + 0.16 },
+    };
+  }
   return {
-    head: { x, y: clamp(y - 0.13) },
-    neck: { x, y: clamp(y - 0.055) },
-    hip: { x, y: clamp(y + 0.055) },
-    leftElbow: { x: clamp(x - 0.075), y: clamp(y - 0.01) },
-    rightElbow: { x: clamp(x + 0.075), y: clamp(y - 0.01) },
-    leftHand: { x: clamp(x - 0.14), y: clamp(y + 0.035) },
-    rightHand: { x: clamp(x + 0.14), y: clamp(y + 0.035) },
-    leftKnee: { x: clamp(x - 0.055), y: clamp(y + 0.15) },
-    rightKnee: { x: clamp(x + 0.055), y: clamp(y + 0.15) },
-    leftFoot: { x: clamp(x - 0.12), y: clamp(y + 0.27) },
-    rightFoot: { x: clamp(x + 0.12), y: clamp(y + 0.27) },
+    head: { x, y: y - 0.13 },
+    neck: { x, y: y - 0.055 },
+    hip: { x, y: y + 0.055 },
+    leftElbow: { x: x - 0.075, y: y - 0.01 },
+    rightElbow: { x: x + 0.075, y: y - 0.01 },
+    leftHand: { x: x - 0.14, y: y + 0.035 },
+    rightHand: { x: x + 0.14, y: y + 0.035 },
+    leftKnee: { x: x - 0.055, y: y + 0.15 },
+    rightKnee: { x: x + 0.055, y: y + 0.15 },
+    leftFoot: { x: x - 0.12, y: y + 0.27 },
+    rightFoot: { x: x + 0.12, y: y + 0.27 },
   };
 }
 
@@ -121,7 +171,7 @@ export function createDefaultStickFigurePose(x: number, y: number): StickFigureP
 export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | undefined, fallbackX: number, fallbackY: number): StickFigurePose {
   const defaults = createDefaultStickFigurePose(marker?.x ?? fallbackX, marker?.y ?? fallbackY);
   const pose = marker?.pose || defaults;
-  const pick = (key: StickFigureJoint, fallback?: StickFigurePoint) => clampPoint((pose as any)[key] || fallback || defaults[key]);
+  const pick = (key: StickFigureJoint, fallback?: StickFigurePoint) => keepPoint((pose as any)[key] || fallback || defaults[key]);
   if ('body' in pose) {
     return {
       head: pick('head'),
@@ -153,12 +203,12 @@ export function normalizeStickFigurePose(marker: Partial<DirectorStageMarker> | 
 }
 
 export function moveStickFigurePose(pose: StickFigurePose, joint: StickFigureJoint, point: StickFigurePoint): StickFigurePose {
-  const nextPoint = clampPoint(point);
+  const nextPoint = keepPoint(point);
   if (joint === 'head') {
     const dx = nextPoint.x - pose.head.x;
     const dy = nextPoint.y - pose.head.y;
     return Object.fromEntries(
-      STICK_FIGURE_JOINTS.map(({ key }) => [key, clampPoint({ x: pose[key].x + dx, y: pose[key].y + dy })]),
+      STICK_FIGURE_JOINTS.map(({ key }) => [key, keepPoint({ x: pose[key].x + dx, y: pose[key].y + dy })]),
     ) as StickFigurePose;
   }
   return { ...pose, [joint]: nextPoint };

@@ -42,8 +42,8 @@ const bonePairs: [StickFigureJoint, StickFigureJoint][] = [
 function getSvgPoint(event: React.PointerEvent<SVGElement> | PointerEvent, svg: SVGSVGElement): StickFigurePoint {
   const rect = svg.getBoundingClientRect();
   return {
-    x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
-    y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
+    x: (event.clientX - rect.left) / rect.width,
+    y: (event.clientY - rect.top) / rect.height,
   };
 }
 
