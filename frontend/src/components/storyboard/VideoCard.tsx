@@ -3,6 +3,7 @@ import { Download, Trash2, Clock, CheckCircle, XCircle, Loader2, Play, Subtitles
 
 import { getVideoUrl } from './utils/mediaUtils';
 import { ExpandableText } from '@/components/common/ExpandableText';
+import { translateError } from '@/utils/errorMessages';
 
 export interface VideoRecord {
   video_id: string;
@@ -54,6 +55,7 @@ export const VideoCard = memo(({
   const authorLabel = (video.created_by || '').trim() || '未知';
   const status = video.status || 'pending';
   const shouldShowDiagnostics = isPolling || status === 'poll_failed' || status === 'failed';
+  const translatedError = translateError(video.error);
 
   // 压缩状态显示（包含所有元数据在一行）
   const getCompactStatus = (video: VideoRecord) => {
@@ -138,7 +140,12 @@ export const VideoCard = memo(({
               {isPolling ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
               <span>{isPolling ? '轮询中，等待视频结果' : status === 'failed' ? '视频生成失败' : '轮询异常，可手动继续'}</span>
             </div>
-            {video.error && <div className="mb-2 break-words text-red-300">{video.error}</div>}
+            {video.error && (
+              <div className="mb-2 break-words text-red-300">
+                {translatedError && <div className="mb-1 text-yellow-300 font-medium">{translatedError}</div>}
+                <div>{video.error}</div>
+              </div>
+            )}
             {video.task_id && <div className="mb-2 text-gray-500">Task: {video.task_id}</div>}
             {video.last_poll_response ? (
               <pre className="max-h-48 overflow-auto rounded bg-gray-800 p-2 text-gray-300">

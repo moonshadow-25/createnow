@@ -11,7 +11,10 @@ interface ErrorTranslation {
 
 const ERROR_TRANSLATIONS: ErrorTranslation[] = [
   { keyword: 'input image may contain real person', cn: '输入图片包含真实人脸，请更换图片' },
-  { keyword: 'output video may contain sensitive information', cn: '生成视频含敏感内容，请调整提示词' },
+  { keyword: 'output video may contain sensitive information', cn: '生成视频可能包含敏感内容，请调整提示词或更换参考素材' },
+  { keyword: 'output video may be related to copyright restrictions', cn: '生成视频可能涉及版权限制，请调整提示词或更换参考素材' },
+  { keyword: 'must be less than or equal to 15.2 for model doubao', cn: '音频总时长超过模型上限（最多 15.2 秒），请缩短音频或减少对白/角色音色' },
+  { keyword: 'be greater than or equal to 1.8 for model', cn: '音频时长低于模型下限（至少 1.8 秒），请延长音频或补足对白/角色音色' },
   { keyword: 'input text may contain sensitive information', cn: '输入文本含敏感词，请修改文案' },
   { keyword: 'parameter duration specified in the request is not valid', cn: '视频时长参数无效，请调整时长' },
   { keyword: 'audio contents but got', cn: '角色音色超过上限（最多3个）' },

@@ -10,6 +10,7 @@ import { useToast } from '@/components/common/Toast';
 import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
+import { translateError } from '@/utils/errorMessages';
 import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
 import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
@@ -1426,6 +1427,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
   const previewW = isPortrait ? Math.round(previewH * 9 / 16) : isUltraWide ? Math.round(previewH * 21 / 9) : Math.round(previewH * 16 / 9);
 
   const previewReferenceMedia = dedupeReferenceMedia(video.reference_media);
+  const translatedError = translateError(video.error);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   // 用 ref 命令式控制播放，避免 autoPlay 声明式失效
@@ -1539,7 +1541,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
       ) : video.status === 'failed' ? (
         <div className="h-12 border-t border-gray-700 flex items-center px-3 gap-2 text-red-400">
           <XCircle size={14} className="flex-shrink-0" />
-          <span className="text-xs">生成失败{video.error ? `: ${video.error}` : ''}</span>
+          <span className="text-xs">生成失败{video.error ? `: ${translatedError || video.error}` : ''}</span>
         </div>
       ) : video.status === 'poll_failed' ? (
         <div className="border-t border-gray-700 px-3 py-2 text-orange-300 text-xs space-y-2">
@@ -1605,7 +1607,12 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
           <summary className="text-xs text-blue-400 cursor-pointer">调试信息</summary>
           <div className="mt-2 text-xs text-gray-400 space-y-1">
             {video.task_id && <div>Task: {video.task_id}</div>}
-            {video.error && <div className="text-red-300">错误: {video.error}</div>}
+            {video.error && (
+              <div className="text-red-300">
+                {translatedError && <div className="text-yellow-300 font-medium">{translatedError}</div>}
+                <div>错误: {video.error}</div>
+              </div>
+            )}
             <div>
               轮询次数: {video.poll_count ?? 0}
               {video.last_poll_time ? ` · 最近轮询: ${new Date(video.last_poll_time).toLocaleString('zh-CN')}` : ''}
