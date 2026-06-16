@@ -68,12 +68,28 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     .filter((item) => item.output?.text)
     .map((item) => ({ node_id: item.node.node_id, label: item.node.label, text: item.output?.text || '' })), [nodes, outputs]);
 
-  const loadMaterialNodePrefix = useCallback(async () => {
+  const materialNodePrefixRef = useRef<string | null>(null);
+
+  const fetchMaterialNodePrefix = useCallback(async () => {
     const response = await generationApi.getPromptTemplates(projectId);
     const materialNode = response.data?.material_node;
     const activeId = materialNode?.active || 'default';
     return materialNode?.templates?.[activeId]?.content || materialNode?.presets?.default?.content || '';
   }, [projectId]);
+
+  const loadMaterialNodePrefix = useCallback(async () => {
+    if (materialNodePrefixRef.current !== null) return materialNodePrefixRef.current;
+    const prefix = await fetchMaterialNodePrefix();
+    materialNodePrefixRef.current = prefix;
+    return prefix;
+  }, [fetchMaterialNodePrefix]);
+
+  useEffect(() => {
+    materialNodePrefixRef.current = null;
+    fetchMaterialNodePrefix()
+      .then((prefix) => { materialNodePrefixRef.current = prefix; })
+      .catch(() => { materialNodePrefixRef.current = null; });
+  }, [fetchMaterialNodePrefix]);
 
   const historyItems = useMemo<HistoryItem[]>(() => {
     const imageItems: HistoryItem[] = historyImages.map((image) => ({
