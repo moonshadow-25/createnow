@@ -1,11 +1,10 @@
-import asyncio
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
 
 from app.core.context import get_current_data_root
@@ -48,6 +47,7 @@ class MaterialUpdate(BaseModel):
     zip_size: Optional[int] = None
     training_status: Optional[str] = None
     training_started_at: Optional[str] = None
+    training_ready_at: Optional[str] = None
     training_completed_at: Optional[str] = None
 
 
@@ -79,6 +79,28 @@ class MaterialAuditRequest(BaseModel):
 
 def _now() -> str:
     return datetime.now().isoformat()
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _complete_training_if_ready(project_id: str, material: Dict[str, Any]) -> Dict[str, Any]:
+    if material.get("training_status") != "training":
+        return material
+    ready_at = _parse_datetime(material.get("training_ready_at"))
+    if not ready_at or datetime.now() < ready_at:
+        return material
+    material.update({
+        "training_status": "succeeded",
+        "training_completed_at": ready_at.isoformat(),
+    })
+    return _save_material(project_id, material)
 
 
 def _image_url(project_id: str, image: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -149,7 +171,7 @@ def _save_material(project_id: str, material: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("")
 async def list_materials(project_id: str):
     materials = AssetService.list_assets(project_id, MATERIAL_ASSET_TYPE, include_children=True)
-    return [_hydrate_material(project_id, item) for item in materials]
+    return [_hydrate_material(project_id, _complete_training_if_ready(project_id, item)) for item in materials]
 
 
 @router.post("")
@@ -171,7 +193,7 @@ async def create_material(project_id: str, request: MaterialCreate):
 
 @router.get("/{material_id}")
 async def get_material(project_id: str, material_id: str):
-    return _hydrate_material(project_id, _load_material(project_id, material_id))
+    return _hydrate_material(project_id, _complete_training_if_ready(project_id, _load_material(project_id, material_id)))
 
 
 @router.put("/{material_id}")
@@ -220,38 +242,28 @@ async def upload_material_zip(request: Request, project_id: str, material_id: st
         "zip_size": len(content),
         "training_status": "not_started",
         "training_started_at": None,
+        "training_ready_at": None,
         "training_completed_at": None,
     })
     return _hydrate_material(project_id, _save_material(project_id, material))
 
 
-async def _complete_material_training(project_id: str, material_id: str) -> None:
-    await asyncio.sleep(TRAINING_DURATION_SECONDS)
-    material = AssetService.load_asset(project_id, MATERIAL_ASSET_TYPE, material_id)
-    if not material or material.get("training_status") != "training":
-        return
-    material.update({
-        "training_status": "succeeded",
-        "training_completed_at": _now(),
-    })
-    _save_material(project_id, material)
-
-
 @router.post("/{material_id}/train")
-async def train_material(project_id: str, material_id: str, background_tasks: BackgroundTasks):
-    material = _load_material(project_id, material_id)
+async def train_material(project_id: str, material_id: str):
+    material = _complete_training_if_ready(project_id, _load_material(project_id, material_id))
     if not material.get("zip_media_url"):
         raise HTTPException(status_code=400, detail="请先上传 zip")
     if material.get("training_status") == "training":
         return _hydrate_material(project_id, material)
+    started_at = datetime.now()
+    ready_at = started_at + timedelta(seconds=TRAINING_DURATION_SECONDS)
     material.update({
         "training_status": "training",
-        "training_started_at": _now(),
+        "training_started_at": started_at.isoformat(),
+        "training_ready_at": ready_at.isoformat(),
         "training_completed_at": None,
     })
-    saved = _save_material(project_id, material)
-    background_tasks.add_task(_complete_material_training, project_id, material_id)
-    return _hydrate_material(project_id, saved)
+    return _hydrate_material(project_id, _save_material(project_id, material))
 
 
 @router.post("/{material_id}/looks")

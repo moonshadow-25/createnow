@@ -33,6 +33,7 @@ export interface MaterialAsset {
   zip_media_url?: string;
   training_status?: 'not_started' | 'training' | 'succeeded' | string;
   training_started_at?: string;
+  training_ready_at?: string;
   training_completed_at?: string;
   looks?: MaterialLook[];
 }
@@ -66,11 +67,16 @@ function trainingLabel(status?: string) {
   return '未训练';
 }
 
-function formatTrainingCountdown(startedAt?: string, nowMs = Date.now()) {
-  if (!startedAt) return '';
-  const startedTime = new Date(startedAt).getTime();
-  if (!Number.isFinite(startedTime)) return '';
-  const remainingSeconds = Math.max(0, Math.ceil((startedTime + TRAINING_DURATION_SECONDS * 1000 - nowMs) / 1000));
+function formatTrainingCountdown(readyAt?: string, startedAt?: string, nowMs = Date.now()) {
+  const readyTime = readyAt ? new Date(readyAt).getTime() : NaN;
+  const startedTime = startedAt ? new Date(startedAt).getTime() : NaN;
+  const targetTime = Number.isFinite(readyTime)
+    ? readyTime
+    : Number.isFinite(startedTime)
+      ? startedTime + TRAINING_DURATION_SECONDS * 1000
+      : NaN;
+  if (!Number.isFinite(targetTime)) return '';
+  const remainingSeconds = Math.max(0, Math.ceil((targetTime - nowMs) / 1000));
   const hours = Math.floor(remainingSeconds / 3600);
   const minutes = Math.floor((remainingSeconds % 3600) / 60);
   const seconds = remainingSeconds % 60;
@@ -384,7 +390,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
 
   const canGenerateLooks = Boolean(selected?.front_image_id && (selected?.angle_image_ids || []).length >= 5);
   const selectedTrainingCountdown = selected?.training_status === 'training'
-    ? formatTrainingCountdown(selected.training_started_at, nowMs) || '计算中'
+    ? formatTrainingCountdown(selected.training_ready_at, selected.training_started_at, nowMs) || '计算中'
     : '';
 
   return (
