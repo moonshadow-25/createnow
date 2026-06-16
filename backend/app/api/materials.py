@@ -16,12 +16,6 @@ router = APIRouter(prefix="/projects/{project_id}/materials", tags=["materials"]
 
 MATERIAL_ASSET_TYPE = "material"
 MAX_ZIP_SIZE = 200 * 1024 * 1024
-def _material_look_prompt_template() -> str:
-    templates = ProjectService.get_prompt_templates()
-    prompt = templates.get("material_look") if isinstance(templates, dict) else None
-    if isinstance(prompt, str) and prompt.strip():
-        return prompt.strip()
-    raise HTTPException(status_code=500, detail="缺少素材合成妆造服务提示词")
 
 
 def _get_projects_dir():
@@ -280,7 +274,9 @@ async def generate_look(project_id: str, material_id: str, look_id: str, request
     from app.api.generation.template_helpers import get_active_template
 
     ai_config = project.get("ai_config", {})
-    fixed_prefix = _material_look_prompt_template()
+    fixed_prefix = get_active_template(ai_config, "material_look")
+    if not fixed_prefix:
+        raise HTTPException(status_code=500, detail="缺少素材合成妆造服务提示词")
     prompt_parts = [fixed_prefix, look.get("prompt") or "", request.prompt]
     prompt = "\n".join(part.strip() for part in prompt_parts if part and part.strip())
 
