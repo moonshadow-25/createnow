@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ImagePlus, Loader2, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react';
+import { ImagePlus, Loader2, Plus, RefreshCw, Trash2, Upload, X, Zap } from 'lucide-react';
 import { generationApi, materialApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 
@@ -30,6 +30,9 @@ export interface MaterialAsset {
   zip_file_name?: string;
   zip_size?: number;
   zip_media_url?: string;
+  training_status?: 'not_started' | 'training' | 'succeeded' | string;
+  training_started_at?: string;
+  training_completed_at?: string;
   looks?: MaterialLook[];
 }
 
@@ -54,6 +57,12 @@ function auditLabel(status?: string) {
   if (status === 'Failed') return '审核失败';
   if (status === 'Processing') return '审核中';
   return '未审核';
+}
+
+function trainingLabel(status?: string) {
+  if (status === 'succeeded') return '训练成功';
+  if (status === 'training') return '训练中';
+  return '未训练';
 }
 
 function formatBytes(size?: number) {
@@ -101,6 +110,14 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   useEffect(() => {
     void loadMaterials();
   }, [projectId]);
+
+  useEffect(() => {
+    if (!materials.some((material) => material.training_status === 'training')) return;
+    const timer = window.setInterval(() => {
+      void loadMaterials();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [materials, projectId]);
 
   const replaceMaterial = (material: MaterialAsset) => {
     setMaterials((prev) => prev.map((item) => item.asset_id === material.asset_id ? material : item));
@@ -201,6 +218,19 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
       }
     } catch (error: any) {
       toast(error?.response?.data?.detail || '上传失败', 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const trainMaterial = async (material: MaterialAsset) => {
+    setBusy(`train-${material.asset_id}`);
+    try {
+      const response = await materialApi.train(projectId, material.asset_id);
+      replaceMaterial(response.data);
+      toast('已开始训练，预计 5 分钟完成', 'success');
+    } catch (error: any) {
+      toast(error?.response?.data?.detail || '训练启动失败', 'error');
     } finally {
       setBusy('');
     }
@@ -435,10 +465,22 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
               <div className="rounded-lg border border-gray-700 bg-gray-950 p-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-gray-300">zip 人脸库（可选）</div>
-                    <div className="text-xs text-gray-500">仅上传保存，本期不训练，大小小于 200MB。</div>
+                    <div className="text-sm font-medium text-gray-300">zip 人脸库</div>
+                    <div className="mt-1 text-xs text-gray-500">{trainingLabel(selected.training_status)}</div>
                   </div>
-                  <button onClick={() => openUpload({ kind: 'zip', material: selected })} className="flex items-center gap-1 rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"><Upload size={14} />上传 zip</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => openUpload({ kind: 'zip', material: selected })} className="flex items-center gap-1 rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"><Upload size={14} />上传 zip</button>
+                    {selected.zip_file_name && selected.training_status !== 'succeeded' && (
+                      <button
+                        onClick={() => trainMaterial(selected)}
+                        disabled={busy === `train-${selected.asset_id}` || selected.training_status === 'training'}
+                        className="flex items-center gap-1 rounded bg-purple-700 px-3 py-1.5 text-sm hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {(busy === `train-${selected.asset_id}` || selected.training_status === 'training') ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                        {selected.training_status === 'training' ? '训练中' : '训练'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {selected.zip_file_name ? <div className="text-sm text-gray-300">{selected.zip_file_name} <span className="text-xs text-gray-500">{formatBytes(selected.zip_size)}</span></div> : <div className="text-sm text-gray-500">未上传</div>}
               </div>

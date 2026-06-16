@@ -21,9 +21,10 @@ export function CanvasMaterialPickerDialog({ projectId, selectedMaterialId, sele
     setLoading(true);
     materialApi.list(projectId)
       .then((res) => {
-        const items = res.data || [];
+        const items = (res.data || []).filter((item: MaterialAsset) => item.training_status === 'succeeded');
         setMaterials(items);
         if (!activeId && items[0]) setActiveId(items[0].asset_id);
+        if (activeId && !items.some((item: MaterialAsset) => item.asset_id === activeId)) setActiveId(items[0]?.asset_id || '');
       })
       .finally(() => setLoading(false));
   }, [projectId]);
@@ -64,7 +65,7 @@ export function CanvasMaterialPickerDialog({ projectId, selectedMaterialId, sele
                   </div>
                 </button>
               ))}
-              {!materials.length && <div className="py-8 text-center text-sm text-gray-500">暂无素材，请先到资产页素材库添加。</div>}
+              {!materials.length && <div className="py-8 text-center text-sm text-gray-500">暂无训练成功的 lora，请先到资产页 lora 上传 zip 并完成训练。</div>}
             </div>
             <div className="min-h-0 overflow-y-auto p-4">
               {active ? (

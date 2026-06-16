@@ -716,7 +716,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
 
     if (node.type === 'material.library') {
       const material = node.config.material_snapshot as any;
-      if (!material?.asset_id) throw new Error('素材库节点未选择素材');
+      if (!material?.asset_id) throw new Error('lora 节点未选择素材');
+      if (material.training_status !== 'succeeded') throw new Error('lora 训练成功后才可以使用');
       const built = buildMaterialNodeOutput(
         material,
         node.config.selected_look_ids || [],

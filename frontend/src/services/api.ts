@@ -109,6 +109,7 @@ export const materialApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  train: (projectId: string, materialId: string) => api.post(`/projects/${projectId}/materials/${materialId}/train`),
   createLook: (projectId: string, materialId: string, data: any) => api.post(`/projects/${projectId}/materials/${materialId}/looks`, data),
   updateLook: (projectId: string, materialId: string, lookId: string, data: any) =>
     api.patch(`/projects/${projectId}/materials/${materialId}/looks/${lookId}`, data),

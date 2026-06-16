@@ -439,16 +439,6 @@ export function AssetsTab({
           >
             道具 ({tagFilteredAssets.props.length})
           </button>
-          <button
-            onClick={() => setAssetFilter('material')}
-            className={`px-4 py-2 rounded-lg transition ${
-              assetFilter === 'material'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            素材库
-          </button>
           <select
             value={episodeFilter}
             onChange={(e) => setEpisodeFilter(e.target.value)}
@@ -528,7 +518,7 @@ export function AssetsTab({
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700"
                     >
                       <ImagePlus size={14} />
-                      素材库
+                      lora
                     </button>
                     <button
                       onClick={() => { onRefresh(); setShowMoreMenu(false); }}
