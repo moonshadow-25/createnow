@@ -41,7 +41,7 @@ export function buildMaterialNodeOutput(material: MaterialAsset, selectedLookIds
   selectedLooks.forEach((look) => addImage(look.image_id, look.image_url, `${material.name} ${look.name}`, look.audit_asset_id, look.audit_status));
 
   const lookPrompts = selectedLooks.map((look) => look.prompt).filter(Boolean).join('\n');
-  const text = [fixedPrefix, `素材：${material.name}`, material.description || '', lookPrompts, extraPrompt]
+  const text = [fixedPrefix, lookPrompts, extraPrompt]
     .map((item) => (item || '').trim())
     .filter(Boolean)
     .join('\n');
