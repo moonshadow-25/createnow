@@ -17,6 +17,7 @@ router = APIRouter(prefix="/projects/{project_id}/materials", tags=["materials"]
 
 MATERIAL_ASSET_TYPE = "material"
 MAX_ZIP_SIZE = 200 * 1024 * 1024
+TRAINING_DURATION_SECONDS = 60 * 60
 
 
 def _get_projects_dir():
@@ -225,7 +226,7 @@ async def upload_material_zip(request: Request, project_id: str, material_id: st
 
 
 async def _complete_material_training(project_id: str, material_id: str) -> None:
-    await asyncio.sleep(300)
+    await asyncio.sleep(TRAINING_DURATION_SECONDS)
     material = AssetService.load_asset(project_id, MATERIAL_ASSET_TYPE, material_id)
     if not material or material.get("training_status") != "training":
         return

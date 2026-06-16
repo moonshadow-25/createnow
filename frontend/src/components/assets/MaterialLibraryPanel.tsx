@@ -5,6 +5,7 @@ import { useToast } from '@/components/common/Toast';
 
 const MAX_ZIP_SIZE = 200 * 1024 * 1024;
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/jpg';
+const TRAINING_DURATION_SECONDS = 60 * 60;
 
 export interface MaterialLook {
   look_id: string;
@@ -65,6 +66,17 @@ function trainingLabel(status?: string) {
   return '未训练';
 }
 
+function formatTrainingCountdown(startedAt?: string, nowMs = Date.now()) {
+  if (!startedAt) return '';
+  const startedTime = new Date(startedAt).getTime();
+  if (!Number.isFinite(startedTime)) return '';
+  const remainingSeconds = Math.max(0, Math.ceil((startedTime + TRAINING_DURATION_SECONDS * 1000 - nowMs) / 1000));
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function formatBytes(size?: number) {
   if (!size) return '';
   if (size > 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)}MB`;
@@ -81,6 +93,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   const [newDescription, setNewDescription] = useState('');
   const [lookName, setLookName] = useState('');
   const [lookPrompt, setLookPrompt] = useState('');
+  const [nowMs, setNowMs] = useState(Date.now());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<UploadTarget | null>(null);
   const pollingAssetIdsRef = useRef<Set<string>>(new Set());
@@ -118,6 +131,12 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [materials, projectId]);
+
+  useEffect(() => {
+    if (!materials.some((material) => material.training_status === 'training')) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [materials]);
 
   const replaceMaterial = (material: MaterialAsset) => {
     setMaterials((prev) => prev.map((item) => item.asset_id === material.asset_id ? material : item));
@@ -228,7 +247,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     try {
       const response = await materialApi.train(projectId, material.asset_id);
       replaceMaterial(response.data);
-      toast('已开始训练，预计 5 分钟完成', 'success');
+      toast('已开始训练，预计 1 小时完成', 'success');
     } catch (error: any) {
       toast(error?.response?.data?.detail || '训练启动失败', 'error');
     } finally {
@@ -364,6 +383,9 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   };
 
   const canGenerateLooks = Boolean(selected?.front_image_id && (selected?.angle_image_ids || []).length >= 5);
+  const selectedTrainingCountdown = selected?.training_status === 'training'
+    ? formatTrainingCountdown(selected.training_started_at, nowMs) || '计算中'
+    : '';
 
   return (
     <div className="space-y-4">
@@ -466,7 +488,9 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium text-gray-300">zip 人脸库</div>
-                    <div className="mt-1 text-xs text-gray-500">{trainingLabel(selected.training_status)}</div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {trainingLabel(selected.training_status)}{selectedTrainingCountdown ? ` · 剩余 ${selectedTrainingCountdown}` : ''}
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => openUpload({ kind: 'zip', material: selected })} className="flex items-center gap-1 rounded bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600"><Upload size={14} />上传 zip</button>
@@ -477,7 +501,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                         className="flex items-center gap-1 rounded bg-purple-700 px-3 py-1.5 text-sm hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {(busy === `train-${selected.asset_id}` || selected.training_status === 'training') ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                        {selected.training_status === 'training' ? '训练中' : '训练'}
+                        {selected.training_status === 'training' ? `训练中 ${selectedTrainingCountdown}` : '训练'}
                       </button>
                     )}
                   </div>
