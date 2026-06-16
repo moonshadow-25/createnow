@@ -74,6 +74,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   const [lookPrompt, setLookPrompt] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<UploadTarget | null>(null);
+  const pollingAssetIdsRef = useRef<Set<string>>(new Set());
 
   const selected = useMemo(
     () => materials.find((item) => item.asset_id === selectedId) || materials[0],
@@ -243,24 +244,47 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   };
 
   const pollSubmittedAssets = async (assetIds: string[], materialId: string) => {
-    if (!assetIds.length) return;
-    const pending = new Set(assetIds);
-    for (let attempt = 0; attempt < 120 && pending.size > 0; attempt += 1) {
-      await Promise.all(Array.from(pending).map(async (assetId) => {
-        try {
-          const response = await generationApi.getAssetStatus(projectId, assetId);
-          const status = response.data?.status;
-          if (status === 'Active' || status === 'Failed') pending.delete(assetId);
-        } catch (error) {
-          console.error('Failed to poll material asset status:', error);
-        }
-      }));
-      const refreshed = await materialApi.get(projectId, materialId);
-      replaceMaterial(refreshed.data);
-      if (pending.size === 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+    const freshAssetIds = assetIds.filter((assetId) => assetId && !pollingAssetIdsRef.current.has(assetId));
+    if (!freshAssetIds.length) return;
+    freshAssetIds.forEach((assetId) => pollingAssetIdsRef.current.add(assetId));
+    const pending = new Set(freshAssetIds);
+    try {
+      for (let attempt = 0; attempt < 120 && pending.size > 0; attempt += 1) {
+        await Promise.all(Array.from(pending).map(async (assetId) => {
+          try {
+            const response = await generationApi.getAssetStatus(projectId, assetId);
+            const status = response.data?.status;
+            if (status === 'Active' || status === 'Failed') pending.delete(assetId);
+          } catch (error) {
+            console.error('Failed to poll material asset status:', error);
+          }
+        }));
+        const refreshed = await materialApi.get(projectId, materialId);
+        replaceMaterial(refreshed.data);
+        if (pending.size === 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    } finally {
+      freshAssetIds.forEach((assetId) => pollingAssetIdsRef.current.delete(assetId));
     }
   };
+
+  useEffect(() => {
+    materials.forEach((material) => {
+      const processingAssetIds: string[] = [];
+      if (material.front_audit_asset_id && material.front_audit_status === 'Processing') {
+        processingAssetIds.push(material.front_audit_asset_id);
+      }
+      (material.looks || []).forEach((look) => {
+        if (look.audit_asset_id && look.audit_status === 'Processing') {
+          processingAssetIds.push(look.audit_asset_id);
+        }
+      });
+      if (processingAssetIds.length) {
+        void pollSubmittedAssets(processingAssetIds, material.asset_id);
+      }
+    });
+  }, [materials, projectId]);
 
   const submitNew = async () => {
     if (!selected) return;
