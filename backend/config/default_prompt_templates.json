@@ -148,14 +148,13 @@
     }
   },
   "material_look": {
-    "label": "素材妆造",
-    "category": "生成模板",
+    "label": "素材库妆造合成",
+    "category": "服务提示词",
     "presets": {
       "default": {
         "name": "默认",
-        "description": "素材库生成定妆造图的固定提示词前缀",
-        "variables": [],
-        "content": "严格参照图1的人物面部特征和细节，参考其他角度的人物特征。穿着图6的服饰和人物装造，生成一张人物定妆造，左边40%是人物的头部正面高清细节大图，右边60%是人物的上半身正面、45度侧面和侧面三视图。"
+        "description": "素材库使用正脸、角度图和服饰图合成定妆造图的固定服务提示词",
+        "content_file": "material_look/default.md"
       }
     }
   },
