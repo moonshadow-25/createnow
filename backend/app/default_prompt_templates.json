@@ -359,6 +359,28 @@
       }
     }
   },
+  "material_look": {
+    "label": "素材库妆造合成",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "素材库使用正脸、角度图和服饰图合成定妆造图的固定服务提示词",
+        "content_file": "material_look/default.md"
+      }
+    }
+  },
+  "material_node": {
+    "label": "素材库节点输出",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "画布素材库节点输出正脸图、妆造图和提示词时使用的固定服务提示词",
+        "content_file": "material_node/default.md"
+      }
+    }
+  },
   "video_subagent_contract": {
     "label": "视频子代理约束",
     "category": "系统提示词",
