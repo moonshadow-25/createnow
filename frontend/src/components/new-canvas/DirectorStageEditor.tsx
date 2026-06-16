@@ -29,10 +29,6 @@ const posePresets: { key: StickFigurePosePreset; label: string }[] = [
   { key: 'sitting', label: '坐' },
   { key: 'lying', label: '躺' },
   { key: 'kneeling', label: '跪' },
-  { key: 'suzaku', label: '朱雀' },
-  { key: 'qinglong', label: '青龙' },
-  { key: 'baihu', label: '白虎' },
-  { key: 'xuanwu', label: '玄武' },
 ];
 
 export function DirectorStageEditor({
