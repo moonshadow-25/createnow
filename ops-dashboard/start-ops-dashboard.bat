@@ -4,7 +4,7 @@ setlocal
 
 set SCRIPT_DIR=%~dp0
 set PROJECT_ROOT=%SCRIPT_DIR%..
-set PYTHON_EXE=%PROJECT_ROOT%env\python.exe
+set PYTHON_EXE=%SCRIPT_DIR%..\env\python.exe
 set OPS_PORT=%1
 if "%OPS_PORT%"=="" set OPS_PORT=8518
 
