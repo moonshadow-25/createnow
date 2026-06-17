@@ -1,6 +1,6 @@
 # CreateNow 客户版本巡检
 
-这是一个独立的运维小工具，不接入主项目页面和路由。第一阶段只读取客户实例状态，不触发更新。
+这是一个独立的运维小工具，不接入主项目页面和路由。支持读取客户实例状态，也支持对单个客户触发更新。
 
 ## 启动
 
@@ -55,13 +55,10 @@ ops-dashboard/data/targets.json
 - 登录客户实例 `/api/admin/login`
 - 读取本地版本 `/api/version`
 - 检查远程更新状态 `/api/version/check`
+- 对单个客户触发更新 `/api/version/update`
 - 展示在线、离线、认证失败、接口异常、是否有新版本
 
 ## 当前不做
 
-- 不调用 `/api/version/update`
-- 不修改客户机器文件
-- 不重启客户服务
-- 不调用 `/api/version/update`
-- 不修改客户机器文件
-- 不重启客户服务
+- 不提供批量更新按钮
+- 不直接修改客户机器文件，更新由客户实例自己的 `/api/version/update` 和 `update.bat` 执行

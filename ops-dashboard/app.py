@@ -35,6 +35,10 @@ class CheckRequest(BaseModel):
     targets: list[TargetInput]
 
 
+class UpdateRequest(BaseModel):
+    target: TargetInput
+
+
 def read_saved_targets() -> list[dict[str, Any]]:
     if not TARGETS_FILE.exists():
         return []
@@ -101,6 +105,46 @@ async def fetch_json(client: httpx.AsyncClient, url: str, token: str) -> dict[st
     return data if isinstance(data, dict) else {"value": data}
 
 
+async def trigger_remote_update(target: TargetInput) -> dict[str, Any]:
+    safe_name = target.name.strip() or target.url.strip()
+    result: dict[str, Any] = {
+        "name": safe_name,
+        "url": target.url.strip(),
+        "base_url": "",
+        "status": "update_failed",
+        "message": "",
+        "response": None,
+    }
+
+    try:
+        base_url = normalize_base_url(target.url)
+        result["base_url"] = base_url
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, verify=target.verify_ssl, follow_redirects=True) as client:
+            token = await login(client, base_url, target.username, target.password)
+            response = await client.post(
+                f"{base_url}/api/version/update",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if response.status_code in (401, 403):
+                raise PermissionError("账号无权触发更新")
+            response.raise_for_status()
+            data = response.json()
+            result["status"] = "update_started"
+            result["message"] = str(data.get("message") or "更新已启动，客户服务将自动重启")
+            result["response"] = data
+    except PermissionError as exc:
+        result["status"] = "auth_failed"
+        result["message"] = str(exc)
+    except httpx.HTTPStatusError as exc:
+        result["status"] = "update_failed"
+        result["message"] = f"HTTP {exc.response.status_code}: {exc.response.text[:160]}"
+    except Exception as exc:
+        result["status"] = "update_failed"
+        result["message"] = pick_error_message(exc)
+
+    return result
+
+
 async def check_target(target: TargetInput) -> dict[str, Any]:
     safe_name = target.name.strip() or target.url.strip()
     result: dict[str, Any] = {
@@ -165,6 +209,11 @@ async def get_targets() -> dict[str, Any]:
 async def save_targets(body: CheckRequest) -> dict[str, Any]:
     write_saved_targets(body.targets)
     return {"success": True, "count": len(body.targets)}
+
+
+@app.post("/api/update-target")
+async def update_target(body: UpdateRequest) -> dict[str, Any]:
+    return await trigger_remote_update(body.target)
 
 
 @app.post("/api/check-targets")

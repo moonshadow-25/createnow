@@ -72,7 +72,8 @@
             <th>状态</th>
             <th>当前版本</th>
             <th>最新版本</th>
-            <th>更新</th>
+            <th>更新状态</th>
+            <th>操作</th>
             <th>说明</th>
           </tr>
         </thead>
@@ -99,8 +100,14 @@
       auth_failed: '认证失败',
       http_error: '接口异常',
       offline: '离线',
+      updating: '更新中',
+      update_started: '已启动更新',
+      update_failed: '更新失败',
       checking: '检查中'
     };
+
+    let currentTargets = [];
+    let currentRows = [];
 
     function parseTargets(text) {
       return text.split('\n')
@@ -137,6 +144,7 @@
         const targets = data.targets || [];
         if (targets.length) {
           targetsInput.value = targetsToText(targets);
+          currentTargets = targets;
           setSaveHint(`已加载 ${targets.length} 个本机保存的客户。账号密码保存在 ops-dashboard/data/targets.json，请妥善保管。`, 'success');
         }
       } catch (error) {
@@ -176,7 +184,7 @@
     }
 
     function statusBadge(row) {
-      const cls = row.status === 'ok' ? 'ok' : row.status === 'version_only' ? 'warn' : 'bad';
+      const cls = ['ok', 'update_started'].includes(row.status) ? 'ok' : ['version_only', 'updating'].includes(row.status) ? 'warn' : 'bad';
       return `<span class="badge ${cls}">${statusText[row.status] || row.status}</span>`;
     }
 
@@ -191,19 +199,20 @@
       const ok = rows.filter(row => row.status === 'ok').length;
       const updates = rows.filter(row => row.has_update === true).length;
       const partial = rows.filter(row => row.status === 'version_only').length;
-      const failed = rows.filter(row => !['ok', 'version_only'].includes(row.status)).length;
+      const failed = rows.filter(row => !['ok', 'version_only', 'update_started'].includes(row.status)).length;
       summary.innerHTML = [
         ['总客户', total], ['正常', ok], ['有新版本', updates], ['部分成功', partial], ['失败', failed]
       ].map(([label, value]) => `<div class="card"><strong>${value}</strong><span>${label}</span></div>`).join('');
     }
 
     function renderResults(rows) {
+      currentRows = rows;
       if (!rows.length) {
-        resultsBody.innerHTML = '<tr><td colspan="7" class="empty">还没有巡检结果</td></tr>';
+        resultsBody.innerHTML = '<tr><td colspan="8" class="empty">还没有巡检结果</td></tr>';
         renderSummary([]);
         return;
       }
-      resultsBody.innerHTML = rows.map(row => `
+      resultsBody.innerHTML = rows.map((row, index) => `
         <tr>
           <td>${escapeHtml(row.name)}</td>
           <td class="mono">${escapeHtml(row.base_url || row.url)}</td>
@@ -211,11 +220,56 @@
           <td class="mono">${escapeHtml(versionOf(row.local))}${releaseOf(row.local)}</td>
           <td class="mono">${escapeHtml(versionOf(row.remote))}${releaseOf(row.remote)}</td>
           <td>${updateBadge(row)}</td>
+          <td>${renderUpdateAction(row, index)}</td>
           <td>${escapeHtml(row.message || '')}</td>
         </tr>
       `).join('');
       renderSummary(rows);
     }
+
+    function renderUpdateAction(row, index) {
+      if (row.status === 'updating') return '<button class="secondary" disabled>更新中...</button>';
+      if (row.status === 'update_started') return '<span class="badge ok">已触发</span>';
+      if (!currentTargets[index]) return '<span class="muted">-</span>';
+      if (!['ok', 'version_only'].includes(row.status)) return '<span class="muted">不可更新</span>';
+      const label = row.has_update === true ? '更新此客户' : '强制更新';
+      return `<button class="danger" data-update-index="${index}">${label}</button>`;
+    }
+
+    async function updateOne(index) {
+      const target = currentTargets[index];
+      const row = currentRows[index];
+      if (!target || !row) return;
+      const name = row.name || target.name || target.url;
+      const confirmed = confirm(`确认更新 ${name}？\n\n该操作会调用客户实例的 /api/version/update，客户服务会下载更新包并自动重启。`);
+      if (!confirmed) return;
+
+      currentRows[index] = { ...row, status: 'updating', message: '正在触发远程更新...' };
+      renderResults(currentRows);
+      try {
+        const response = await fetch('/api/update-target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target })
+        });
+        if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+        const result = await response.json();
+        currentRows[index] = {
+          ...row,
+          status: result.status || 'update_failed',
+          message: result.message || '更新请求已返回',
+        };
+      } catch (error) {
+        currentRows[index] = { ...row, status: 'update_failed', message: `触发更新失败：${error.message}` };
+      }
+      renderResults(currentRows);
+    }
+
+    resultsBody.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-update-index]');
+      if (!button) return;
+      updateOne(Number(button.dataset.updateIndex));
+    });
 
     async function checkTargets() {
       let targets;
@@ -229,6 +283,7 @@
         alert('请先输入客户信息');
         return;
       }
+      currentTargets = targets;
       checkBtn.disabled = true;
       checkBtn.textContent = '巡检中...';
       renderResults(targets.map(target => ({ ...target, status: 'checking', message: '等待返回', local: null, remote: null, has_update: null })));
@@ -240,7 +295,8 @@
         });
         if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
         const data = await response.json();
-        renderResults(data.results || []);
+        currentRows = data.results || [];
+        renderResults(currentRows);
       } catch (error) {
         alert(`巡检失败：${error.message}`);
       } finally {
@@ -267,6 +323,8 @@
     });
     clearBtn.addEventListener('click', () => {
       targetsInput.value = '';
+      currentTargets = [];
+      currentRows = [];
       renderResults([]);
     });
     renderSummary([]);
