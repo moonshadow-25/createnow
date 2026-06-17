@@ -39,8 +39,19 @@ ops-dashboard\start-ops-dashboard.bat 8520
 
 公网地址可以省略协议，默认按 `https://` 访问。自签名证书默认跳过校验，适配当前客户部署常见情况。
 
+## 保存客户信息
+
+页面会把输入的客户列表保存到本机文件：
+
+```text
+ops-dashboard/data/targets.json
+```
+
+该文件包含管理员账号密码，请只在可信本机使用，并注意不要外传。
+
 ## 当前功能
 
+- 保存和加载客户公网地址、管理员账号密码
 - 登录客户实例 `/api/admin/login`
 - 读取本地版本 `/api/version`
 - 检查远程更新状态 `/api/version/check`
@@ -51,4 +62,6 @@ ops-dashboard\start-ops-dashboard.bat 8520
 - 不调用 `/api/version/update`
 - 不修改客户机器文件
 - 不重启客户服务
-- 不保存客户账号密码
+- 不调用 `/api/version/update`
+- 不修改客户机器文件
+- 不重启客户服务

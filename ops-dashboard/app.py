@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -13,6 +14,8 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+DATA_DIR = BASE_DIR / "data"
+TARGETS_FILE = DATA_DIR / "targets.json"
 REQUEST_TIMEOUT = httpx.Timeout(12.0, connect=6.0)
 MAX_CONCURRENT_CHECKS = 8
 
@@ -30,6 +33,25 @@ class TargetInput(BaseModel):
 
 class CheckRequest(BaseModel):
     targets: list[TargetInput]
+
+
+def read_saved_targets() -> list[dict[str, Any]]:
+    if not TARGETS_FILE.exists():
+        return []
+    with open(TARGETS_FILE, "r", encoding="utf-8") as file:
+        data = json.load(file)
+    if isinstance(data, dict):
+        targets = data.get("targets", [])
+    else:
+        targets = data
+    return targets if isinstance(targets, list) else []
+
+
+def write_saved_targets(targets: list[TargetInput]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    data = {"targets": [target.model_dump() for target in targets]}
+    with open(TARGETS_FILE, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
 
 
 def normalize_base_url(raw_url: str) -> str:
@@ -132,6 +154,17 @@ async def check_target_with_limit(semaphore: asyncio.Semaphore, target: TargetIn
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/targets")
+async def get_targets() -> dict[str, Any]:
+    return {"targets": read_saved_targets()}
+
+
+@app.put("/api/targets")
+async def save_targets(body: CheckRequest) -> dict[str, Any]:
+    write_saved_targets(body.targets)
+    return {"success": True, "count": len(body.targets)}
 
 
 @app.post("/api/check-targets")

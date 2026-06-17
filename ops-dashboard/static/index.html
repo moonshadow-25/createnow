@@ -47,17 +47,18 @@
         <h1>CreateNow 客户版本巡检</h1>
         <p>第一阶段只读取状态：登录客户实例、查看本地版本、检查是否有新版本，不触发更新。</p>
       </div>
-      <p class="muted">数据只在本次浏览器页面中使用，不保存到磁盘。</p>
+      <p class="muted">客户列表保存到本机 <span class="mono">ops-dashboard/data/targets.json</span>，请妥善保管。</p>
     </header>
 
     <section class="panel">
       <div class="toolbar">
         <button id="checkBtn">开始巡检</button>
+        <button id="saveBtn" class="secondary">保存列表</button>
         <button id="sampleBtn" class="secondary">填入示例</button>
         <button id="clearBtn" class="danger">清空</button>
       </div>
       <textarea id="targets" spellcheck="false" placeholder="每行一个客户：名称,网址,账号,密码&#10;例如：客户A,https://demo.example.com,menglaoshi,menglaoshi123"></textarea>
-      <div class="hint">格式：客户名称,公网地址,管理员账号,管理员密码。公网地址可省略协议，默认按 https:// 访问；自签名证书会默认跳过校验。</div>
+      <div class="hint" id="saveHint">格式：客户名称,公网地址,管理员账号,管理员密码。公网地址可省略协议，默认按 https:// 访问；自签名证书会默认跳过校验。</div>
     </section>
 
     <section class="summary" id="summary"></section>
@@ -85,10 +86,12 @@
   <script>
     const targetsInput = document.getElementById('targets');
     const checkBtn = document.getElementById('checkBtn');
+    const saveBtn = document.getElementById('saveBtn');
     const sampleBtn = document.getElementById('sampleBtn');
     const clearBtn = document.getElementById('clearBtn');
     const resultsBody = document.getElementById('results');
     const summary = document.getElementById('summary');
+    const saveHint = document.getElementById('saveHint');
 
     const statusText = {
       ok: '正常',
@@ -109,6 +112,55 @@
           const [name, url, username, ...passwordParts] = parts;
           return { name, url, username, password: passwordParts.join(','), verify_ssl: false };
         });
+    }
+
+    function targetsToText(targets) {
+      return targets.map(target => [
+        target.name || '',
+        target.url || '',
+        target.username || '',
+        target.password || ''
+      ].join(',')).join('\n');
+    }
+
+    function setSaveHint(message, type = 'muted') {
+      const color = type === 'error' ? '#fca5a5' : type === 'success' ? '#86efac' : '#94a3b8';
+      saveHint.style.color = color;
+      saveHint.textContent = message;
+    }
+
+    async function loadTargets() {
+      try {
+        const response = await fetch('/api/targets');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const targets = data.targets || [];
+        if (targets.length) {
+          targetsInput.value = targetsToText(targets);
+          setSaveHint(`已加载 ${targets.length} 个本机保存的客户。账号密码保存在 ops-dashboard/data/targets.json，请妥善保管。`, 'success');
+        }
+      } catch (error) {
+        setSaveHint(`加载保存列表失败：${error.message}`, 'error');
+      }
+    }
+
+    async function saveTargets(showAlert = true) {
+      let targets;
+      try {
+        targets = parseTargets(targetsInput.value);
+      } catch (error) {
+        if (showAlert) alert(error.message);
+        throw error;
+      }
+      const response = await fetch('/api/targets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets })
+      });
+      if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+      const data = await response.json();
+      setSaveHint(`已保存 ${data.count || 0} 个客户到 ops-dashboard/data/targets.json。`, 'success');
+      return targets;
     }
 
     function versionOf(info) {
@@ -168,7 +220,7 @@
     async function checkTargets() {
       let targets;
       try {
-        targets = parseTargets(targetsInput.value);
+        targets = await saveTargets(false);
       } catch (error) {
         alert(error.message);
         return;
@@ -198,6 +250,18 @@
     }
 
     checkBtn.addEventListener('click', checkTargets);
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = '保存中...';
+      try {
+        await saveTargets(true);
+      } catch (error) {
+        setSaveHint(`保存失败：${error.message}`, 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '保存列表';
+      }
+    });
     sampleBtn.addEventListener('click', () => {
       targetsInput.value = '客户A,https://example-a.com,menglaoshi,menglaoshi123\n客户B,1.2.3.4:8508,menglaoshi,menglaoshi123';
     });
@@ -206,6 +270,7 @@
       renderResults([]);
     });
     renderSummary([]);
+    loadTargets();
   </script>
 </body>
 </html>
