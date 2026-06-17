@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CreateNow 客户巡检</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Microsoft YaHei", Arial, sans-serif; background: #0f172a; color: #e5e7eb; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #1e293b, #020617 62%); }
+    main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 48px; }
+    header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p { margin: 0; color: #94a3b8; line-height: 1.6; }
+    .panel { background: rgba(15, 23, 42, .82); border: 1px solid #334155; border-radius: 18px; box-shadow: 0 20px 70px rgba(0,0,0,.3); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px; border-bottom: 1px solid #334155; }
+    button { border: 0; border-radius: 10px; padding: 10px 14px; color: white; background: #2563eb; cursor: pointer; font-weight: 600; }
+    button:hover { background: #1d4ed8; }
+    button.secondary { background: #334155; }
+    button.secondary:hover { background: #475569; }
+    button.danger { background: #7f1d1d; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    textarea { width: 100%; min-height: 170px; box-sizing: border-box; resize: vertical; border: 0; outline: none; padding: 16px; color: #e5e7eb; background: transparent; font: 14px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .hint { padding: 0 16px 16px; font-size: 13px; color: #94a3b8; }
+    .summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+    .card { padding: 14px; border-radius: 14px; background: rgba(15, 23, 42, .76); border: 1px solid #334155; }
+    .card strong { display: block; font-size: 24px; margin-bottom: 4px; }
+    .card span { color: #94a3b8; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #1e293b; text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: #cbd5e1; background: rgba(30, 41, 59, .82); position: sticky; top: 0; }
+    td { color: #e2e8f0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .muted { color: #94a3b8; }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .ok { background: rgba(22, 163, 74, .18); color: #86efac; }
+    .warn { background: rgba(245, 158, 11, .17); color: #fcd34d; }
+    .bad { background: rgba(220, 38, 38, .18); color: #fca5a5; }
+    .info { background: rgba(37, 99, 235, .18); color: #93c5fd; }
+    .empty { padding: 28px 16px; text-align: center; color: #94a3b8; }
+    @media (max-width: 900px) { header { display: block; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } table { display: block; overflow-x: auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>CreateNow 客户版本巡检</h1>
+        <p>第一阶段只读取状态：登录客户实例、查看本地版本、检查是否有新版本，不触发更新。</p>
+      </div>
+      <p class="muted">数据只在本次浏览器页面中使用，不保存到磁盘。</p>
+    </header>
+
+    <section class="panel">
+      <div class="toolbar">
+        <button id="checkBtn">开始巡检</button>
+        <button id="sampleBtn" class="secondary">填入示例</button>
+        <button id="clearBtn" class="danger">清空</button>
+      </div>
+      <textarea id="targets" spellcheck="false" placeholder="每行一个客户：名称,网址,账号,密码&#10;例如：客户A,https://demo.example.com,menglaoshi,menglaoshi123"></textarea>
+      <div class="hint">格式：客户名称,公网地址,管理员账号,管理员密码。公网地址可省略协议，默认按 https:// 访问；自签名证书会默认跳过校验。</div>
+    </section>
+
+    <section class="summary" id="summary"></section>
+
+    <section class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>客户</th>
+            <th>地址</th>
+            <th>状态</th>
+            <th>当前版本</th>
+            <th>最新版本</th>
+            <th>更新</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody id="results">
+          <tr><td colspan="7" class="empty">还没有巡检结果</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const targetsInput = document.getElementById('targets');
+    const checkBtn = document.getElementById('checkBtn');
+    const sampleBtn = document.getElementById('sampleBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resultsBody = document.getElementById('results');
+    const summary = document.getElementById('summary');
+
+    const statusText = {
+      ok: '正常',
+      version_only: '部分成功',
+      auth_failed: '认证失败',
+      http_error: '接口异常',
+      offline: '离线',
+      checking: '检查中'
+    };
+
+    function parseTargets(text) {
+      return text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map((line, index) => {
+          const parts = line.split(',').map(part => part.trim());
+          if (parts.length < 4) throw new Error(`第 ${index + 1} 行格式不完整`);
+          const [name, url, username, ...passwordParts] = parts;
+          return { name, url, username, password: passwordParts.join(','), verify_ssl: false };
+        });
+    }
+
+    function versionOf(info) {
+      return info && info.version ? info.version : '-';
+    }
+
+    function releaseOf(info) {
+      return info && info.release_date ? `<div class="muted mono">${escapeHtml(info.release_date)}</div>` : '';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+    }
+
+    function statusBadge(row) {
+      const cls = row.status === 'ok' ? 'ok' : row.status === 'version_only' ? 'warn' : 'bad';
+      return `<span class="badge ${cls}">${statusText[row.status] || row.status}</span>`;
+    }
+
+    function updateBadge(row) {
+      if (row.has_update === true) return '<span class="badge warn">有新版本</span>';
+      if (row.has_update === false) return '<span class="badge ok">已最新</span>';
+      return '<span class="badge info">未知</span>';
+    }
+
+    function renderSummary(rows) {
+      const total = rows.length;
+      const ok = rows.filter(row => row.status === 'ok').length;
+      const updates = rows.filter(row => row.has_update === true).length;
+      const partial = rows.filter(row => row.status === 'version_only').length;
+      const failed = rows.filter(row => !['ok', 'version_only'].includes(row.status)).length;
+      summary.innerHTML = [
+        ['总客户', total], ['正常', ok], ['有新版本', updates], ['部分成功', partial], ['失败', failed]
+      ].map(([label, value]) => `<div class="card"><strong>${value}</strong><span>${label}</span></div>`).join('');
+    }
+
+    function renderResults(rows) {
+      if (!rows.length) {
+        resultsBody.innerHTML = '<tr><td colspan="7" class="empty">还没有巡检结果</td></tr>';
+        renderSummary([]);
+        return;
+      }
+      resultsBody.innerHTML = rows.map(row => `
+        <tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td class="mono">${escapeHtml(row.base_url || row.url)}</td>
+          <td>${statusBadge(row)}</td>
+          <td class="mono">${escapeHtml(versionOf(row.local))}${releaseOf(row.local)}</td>
+          <td class="mono">${escapeHtml(versionOf(row.remote))}${releaseOf(row.remote)}</td>
+          <td>${updateBadge(row)}</td>
+          <td>${escapeHtml(row.message || '')}</td>
+        </tr>
+      `).join('');
+      renderSummary(rows);
+    }
+
+    async function checkTargets() {
+      let targets;
+      try {
+        targets = parseTargets(targetsInput.value);
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      if (!targets.length) {
+        alert('请先输入客户信息');
+        return;
+      }
+      checkBtn.disabled = true;
+      checkBtn.textContent = '巡检中...';
+      renderResults(targets.map(target => ({ ...target, status: 'checking', message: '等待返回', local: null, remote: null, has_update: null })));
+      try {
+        const response = await fetch('/api/check-targets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targets })
+        });
+        if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+        const data = await response.json();
+        renderResults(data.results || []);
+      } catch (error) {
+        alert(`巡检失败：${error.message}`);
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.textContent = '开始巡检';
+      }
+    }
+
+    checkBtn.addEventListener('click', checkTargets);
+    sampleBtn.addEventListener('click', () => {
+      targetsInput.value = '客户A,https://example-a.com,menglaoshi,menglaoshi123\n客户B,1.2.3.4:8508,menglaoshi,menglaoshi123';
+    });
+    clearBtn.addEventListener('click', () => {
+      targetsInput.value = '';
+      renderResults([]);
+    });
+    renderSummary([]);
+  </script>
+</body>
+</html>
