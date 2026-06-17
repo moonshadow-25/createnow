@@ -96,6 +96,7 @@ interface ImageRecord {
   size?: string;
   reference_image_ids?: string[];
   reference_image_urls?: string[];
+  reference_media?: RefMedia[];
 }
 
 interface GenerateTabProps {
@@ -418,9 +419,14 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     size: imageSize,
     reference_image_ids: refs.filter(m => m.type === 'image' && m.id).map(m => m.id!),
     reference_image_urls: refs.filter(m => m.type === 'image' && !m.id && m.url).map(m => m.url),
+    reference_media: refs.filter(m => m.type === 'image'),
   }), [currentUserLabel, imageSize]);
 
   const buildImageReferenceMedia = useCallback((image: ImageRecord): RefMedia[] => {
+    if (image.reference_media?.length) {
+      return dedupeReferenceMedia(image.reference_media.filter(media => media.type === 'image'));
+    }
+
     const refs: RefMedia[] = [];
     const imageById = new Map(allImages.map(item => [item.image_id, item]));
     const referenceImageIds = image.reference_image_ids || [];
@@ -523,6 +529,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                 size: imageSize,
                 referenceImageIds,
                 referenceImageUrls,
+                referenceMedia: selectedMedia.filter(m => m.type === 'image'),
                 model: imageApiType === 'createnow' ? selectedImageModel.trim() || undefined : undefined,
               })
             : generationApi.generateSquareImage(projectId, {

@@ -138,6 +138,7 @@ class ImageEditRequest(BaseModel):
     size: Optional[str] = None       # 图片尺寸，格式如 "1024x1024" 或 "1x1"，为空时使用配置
     reference_image_ids: List[str] = []  # 参考图片ID列表（可选）
     reference_image_urls: List[str] = [] # 参考图片URL列表（可选），直接使用URL而不需要先上传
+    reference_media: Optional[List[Dict]] = None  # 参考素材快照（用于历史回填）
     template: Optional[str] = None   # 模板ID（可选），如 "character_sheet" 用于生成人设图
     model: Optional[str] = None      # 临时模型覆盖，仅用于本次生成，不修改项目配置
     generation_scope: Optional[str] = None  # 生成范围标记，如 canvas_generate

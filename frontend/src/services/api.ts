@@ -336,6 +336,7 @@ export const generationApi = {
     size?: string,
     referenceImageIds?: string[],
     referenceImageUrls?: string[],
+    referenceMedia?: any[],
     model?: string
   }) =>
     api.post(`/projects/${projectId}/generate/image-edit`, {
@@ -345,6 +346,7 @@ export const generationApi = {
       ...(data.size && { size: data.size }),
       reference_image_ids: data.referenceImageIds || [],
       reference_image_urls: data.referenceImageUrls || [],
+      reference_media: data.referenceMedia || [],
       ...(data.model ? { model: data.model } : {}),
     }),
   editCanvasImage: (projectId: string, data: {

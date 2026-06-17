@@ -394,6 +394,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                           generation_scope: str = None,
                           reference_image_ids: list = None,
                           reference_image_urls: list = None,
+                          reference_media: list = None,
                           model_override: str = None) -> dict:
     """可复用的图生图核心逻辑（供 HTTP handler 和对话工具共同调用）
 
@@ -460,6 +461,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
                 "size": size_str,
                 "reference_image_ids": reference_image_ids or [],
                 "reference_image_urls": reference_image_urls or [],
+                "reference_media": reference_media or [],
             }
             saved = ImageService.save_generation_record(project_id, record)
             saved_images.append(saved)
@@ -502,6 +504,7 @@ async def edit_image_core(project_id: str, asset_id: str, asset_type: str, promp
             "size": size_str,
             "reference_image_ids": reference_image_ids or [],
             "reference_image_urls": reference_image_urls or [],
+            "reference_media": reference_media or [],
         }
         saved = ImageService.save_generation_record(project_id, record)
         images = ImageService.list_images(project_id, asset_id)
@@ -635,6 +638,7 @@ async def edit_image(project_id: str, request: ImageEditRequest):
             generation_scope=request.generation_scope or (SQUARE_IMAGE_SCOPE if _is_virtual_image_asset(request.asset_type, request.asset_id) else None),
             reference_image_ids=request.reference_image_ids,
             reference_image_urls=request.reference_image_urls,
+            reference_media=request.reference_media,
             model_override=request.model,
         )
         return saved
