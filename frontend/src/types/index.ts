@@ -199,7 +199,7 @@ export interface Project {
   updated_at: string;
   stats?: ProjectStats;
   user_costs?: Record<string, ProjectUserCost>;
-  unknown_cost?: number;
+  unknown_costs?: ProjectUserCost;
   ai_config?: {
     llm: ApiConfig;
     vlm?: ApiConfig;

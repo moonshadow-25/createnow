@@ -5,7 +5,7 @@ import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pric
 interface ProjectCostDashboardProps {
   stats?: ProjectStats | null;
   userCosts?: Record<string, ProjectUserCost>;
-  unknownCost?: number;
+  unknownCosts?: ProjectUserCost;
   onClose: () => void;
 }
 
@@ -32,15 +32,18 @@ function calcCost(stats?: ProjectStats | null): CostSummary {
   return { image_cost, video_cost, other_cost, total_cost };
 }
 
-export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, onClose }: ProjectCostDashboardProps) {
+export function ProjectCostDashboard({ stats, userCosts = {}, unknownCosts, onClose }: ProjectCostDashboardProps) {
   const costs = calcCost(stats);
   const participants = Object.entries(userCosts)
     .map(([username, cost]) => ({ username, other_cost: 0, ...cost }))
     .filter(user => (user.total_cost || 0) > 0)
     .sort((a, b) => (b.total_cost || 0) - (a.total_cost || 0));
-  const projectCostTotal = unknownCost + costs.other_cost;
+  const unknownImageCost = unknownCosts?.image_cost || 0;
+  const unknownVideoCost = unknownCosts?.video_cost || 0;
+  const unknownTotalCost = unknownCosts?.total_cost || 0;
+  const projectCostTotal = unknownTotalCost + costs.other_cost;
   const participantRows = projectCostTotal > 0
-    ? [...participants, { username: '项目消耗', image_cost: 0, video_cost: 0, other_cost: costs.other_cost, total_cost: projectCostTotal }]
+    ? [...participants, { username: '项目消耗', image_cost: unknownImageCost, video_cost: unknownVideoCost, other_cost: costs.other_cost, total_cost: projectCostTotal }]
     : participants;
   const hasCost = costs.total_cost > 0 || participantRows.length > 0;
 

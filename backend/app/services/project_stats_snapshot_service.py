@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from app.core.config import settings
 from app.core.context import get_current_data_root
 
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 
 
 def _get_projects_dir() -> Path:
@@ -35,16 +35,22 @@ def read_snapshot(project_id: str) -> Optional[Dict]:
         return None
 
 
-def write_snapshot(project_id: str, stats: Dict, user_costs: Dict, unknown_cost: float) -> None:
+def write_snapshot(project_id: str, stats: Dict, user_costs: Dict, unknown_costs: Dict) -> None:
     path = _snapshot_path(project_id)
     path.parent.mkdir(parents=True, exist_ok=True)
+    unknown_total = float((unknown_costs or {}).get("total_cost") or 0)
     data = {
         "version": SNAPSHOT_VERSION,
         "project_id": project_id,
         "updated_at": datetime.now().isoformat(),
         "stats": stats,
         "user_costs": user_costs,
-        "unknown_cost": round(unknown_cost, 2),
+        "unknown_cost": round(unknown_total, 2),
+        "unknown_costs": {
+            "image_cost": round(float((unknown_costs or {}).get("image_cost") or 0), 2),
+            "video_cost": round(float((unknown_costs or {}).get("video_cost") or 0), 2),
+            "total_cost": round(unknown_total, 2),
+        },
     }
     tmp_path = path.with_suffix(".json.tmp")
     with open(tmp_path, "w", encoding="utf-8") as f:

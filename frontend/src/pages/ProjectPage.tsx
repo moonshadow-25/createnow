@@ -54,7 +54,7 @@ export default function ProjectPage() {
   const projectWithStats = projectId ? projects.find(p => p.project_id === projectId) : undefined;
   const dashboardStats = projectWithStats?.stats;
   const dashboardUserCosts = projectWithStats?.user_costs || {};
-  const dashboardUnknownCost = projectWithStats?.unknown_cost || 0;
+  const dashboardUnknownCosts = projectWithStats?.unknown_costs;
 
   useEffect(() => {
     if (!projectId) return;
@@ -356,7 +356,7 @@ export default function ProjectPage() {
         <ProjectCostDashboard
           stats={dashboardStats}
           userCosts={dashboardUserCosts}
-          unknownCost={dashboardUnknownCost}
+          unknownCosts={dashboardUnknownCosts}
           onClose={() => setShowProjectCostDashboard(false)}
         />
       )}

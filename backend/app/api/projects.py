@@ -127,9 +127,9 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
     }
 
 
-def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], float]:
+def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[str, float]]:
     user_costs: dict[str, dict] = {}
-    unknown_cost = 0.0
+    unknown_costs = {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0}
 
     for img in ImageService.list_images(project_id):
         username = (img.get("created_by") or "").strip()
@@ -139,7 +139,8 @@ def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], float]:
             entry["image_cost"] += cost
             entry["total_cost"] += cost
         else:
-            unknown_cost += cost
+            unknown_costs["image_cost"] += cost
+            unknown_costs["total_cost"] += cost
 
     for video in VideoService.list_videos(project_id):
         username = (video.get("created_by") or "").strip()
@@ -149,9 +150,10 @@ def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], float]:
             entry["video_cost"] += cost
             entry["total_cost"] += cost
         else:
-            unknown_cost += cost
+            unknown_costs["video_cost"] += cost
+            unknown_costs["total_cost"] += cost
 
-    return user_costs, unknown_cost
+    return user_costs, unknown_costs
 
 
 def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> dict:
@@ -187,11 +189,12 @@ def _get_project_home_stats(project_id: str) -> dict:
     has_runtime_cache = project_id in _images_cache or project_id in _videos_cache or project_id in _assets_cache
     if has_runtime_cache:
         stats = _build_project_stats(project_id)
-        user_costs, unknown_cost = _build_project_user_costs(project_id)
+        user_costs, unknown_costs = _build_project_user_costs(project_id)
         return {
             "stats": stats,
             "user_costs": user_costs,
-            "unknown_cost": unknown_cost,
+            "unknown_cost": unknown_costs["total_cost"],
+            "unknown_costs": unknown_costs,
         }
 
     snapshot = read_snapshot(project_id)
@@ -200,13 +203,14 @@ def _get_project_home_stats(project_id: str) -> dict:
         return snapshot
 
     stats = _build_project_stats(project_id)
-    user_costs, unknown_cost = _build_project_user_costs(project_id)
-    write_snapshot(project_id, stats, user_costs, unknown_cost)
+    user_costs, unknown_costs = _build_project_user_costs(project_id)
+    write_snapshot(project_id, stats, user_costs, unknown_costs)
     print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]}")
     return {
         "stats": stats,
         "user_costs": user_costs,
-        "unknown_cost": unknown_cost,
+        "unknown_cost": unknown_costs["total_cost"],
+        "unknown_costs": unknown_costs,
     }
 
 
@@ -345,7 +349,7 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
             item = _get_project_home_stats(p["project_id"])
             p["stats"] = item.get("stats")
             p["user_costs"] = item.get("user_costs") or {}
-            p["unknown_cost"] = item.get("unknown_cost") or 0
+            p["unknown_costs"] = item.get("unknown_costs") or {}
             project_costs.append(item)
         return {
             "projects": projects,
