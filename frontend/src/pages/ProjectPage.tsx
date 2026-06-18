@@ -58,10 +58,10 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (!projectId) return;
-    if (!projectWithStats?.stats) {
+    if (!projectWithStats?.stats || !projectWithStats?.unknown_costs) {
       fetchProjects();
     }
-  }, [projectId, projectWithStats?.stats, fetchProjects]);
+  }, [projectId, projectWithStats?.stats, projectWithStats?.unknown_costs, fetchProjects]);
 
   // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
   const TAB_LABELS: Record<string, string> = {
