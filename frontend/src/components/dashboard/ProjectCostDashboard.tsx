@@ -121,6 +121,7 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCosts, onCl
                   </table>
                 </div>
               )}
+              <p className="text-xs text-gray-500 mt-3">项目消耗包含早期统计中未被计入用户消耗的积分，其他为龙虾对话消耗的积分</p>
             </div>
           )}
         </div>

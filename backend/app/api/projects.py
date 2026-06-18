@@ -38,17 +38,13 @@ def _build_project_stats(project_id: str) -> dict:
     total_video_compute_units = 0.0
     storyboard_video_compute_units = 0.0
     failed_video_compute_units = 0.0
-    subtitle_removal_cost = 0.0
     for v in videos:
         compute_units = _gvc(v)
         if v.get("status") in {"failed", "poll_failed"}:
             failed_video_compute_units += compute_units
-        if v.get("operation_type") == "subtitle_removal":
-            subtitle_removal_cost += compute_units
-        else:
-            total_video_compute_units += compute_units
-            if v.get("storyboard_id"):
-                storyboard_video_compute_units += compute_units
+        total_video_compute_units += compute_units
+        if v.get("storyboard_id"):
+            storyboard_video_compute_units += compute_units
         # UI 指标：仅已完成视频
         if v.get("status") == "completed":
             duration = float(v.get("duration") or 0)
@@ -67,7 +63,7 @@ def _build_project_stats(project_id: str) -> dict:
     scenes = AssetService.list_assets(project_id, "scene")
     props = AssetService.list_assets(project_id, "prop")
     total_assets = len(characters) + len(scenes) + len(props)
-    other_cost = total_storyboards * 40 + total_assets * 4 + subtitle_removal_cost
+    other_cost = total_storyboards * 40 + total_assets * 4
     total_compute_spent = round(total_image_cost + total_video_compute_units + other_cost, 2)
 
     return {
