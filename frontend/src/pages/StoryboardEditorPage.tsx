@@ -93,6 +93,7 @@ export default function StoryboardEditorPage() {
   const storyboardImgRef = useRef<HTMLDivElement>(null);
   const assetNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const videoNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const assetStatusPollingRef = useRef<Set<string>>(new Set());
   // Latest values refs (for auto-save closures)
   const latestTextRef = useRef<any>({});
   const latestAssetsRef = useRef({ selectedCharacters: [] as string[], selectedScenes: [] as string[], selectedProps: [] as string[] });
@@ -345,43 +346,59 @@ export default function StoryboardEditorPage() {
     const allIds = [...charIds, ...sceneIds, ...propIds];
     if (allIds.length === 0) return;
 
-    // 1. 从已有资产数据中直接提取状态（零请求）
     const allAssets = [...characters, ...scenes, ...props];
     const updates: Record<string, AssetStatus> = {};
-    const processingIds: string[] = [];
+    const processingAssets: Array<{ localId: string; assetId: string; imageId?: string }> = [];
 
-    for (const assetId of allIds) {
-      const asset = allAssets.find(a => a.asset_id === assetId);
-      if (asset) {
-        updates[assetId] = {
-          asset_id: asset.volcengine_asset_id,
-          status: asset.volcengine_asset_status,
-          image_id: asset.image_id,
-        };
-        if (asset.volcengine_asset_status === 'Processing') {
-          processingIds.push(assetId);
-        }
+    for (const localId of allIds) {
+      const asset = allAssets.find(a => a.asset_id === localId);
+      if (!asset) continue;
+      updates[localId] = {
+        asset_id: asset.volcengine_asset_id,
+        status: asset.volcengine_asset_status,
+        image_id: asset.image_id,
+      };
+      if (asset.volcengine_asset_status === 'Processing' && asset.volcengine_asset_id) {
+        processingAssets.push({
+          localId,
+          assetId: asset.volcengine_asset_id,
+          imageId: asset.image_id,
+        });
       }
     }
     setAssetImageStatuses(prev => ({ ...prev, ...updates }));
 
-    // 2. 只对 Processing 状态的资产发请求获取最新状态
-    if (processingIds.length > 0) {
-      await Promise.all(processingIds.map(async (assetId) => {
+    const pollAssetStatus = async (localId: string, assetId: string, imageId?: string) => {
+      if (assetStatusPollingRef.current.has(assetId)) return;
+      assetStatusPollingRef.current.add(assetId);
+
+      const poll = async () => {
         try {
-          const res = await generationApi.listImages(projectId, assetId);
-          const imgs: any[] = res.data || [];
-          const primary = imgs.find(i => i.is_primary) || imgs[0];
-          if (primary) {
-            setAssetImageStatuses(prev => ({
-              ...prev,
-              [assetId]: { asset_id: primary.volcengine_asset_id, status: primary.volcengine_asset_status, image_id: primary.image_id },
-            }));
+          const res = await generationApi.getAssetStatus(projectId, assetId);
+          const status = res.data.status;
+          const nextImageId = res.data.image_id || imageId;
+          setAssetImageStatuses(prev => ({
+            ...prev,
+            [localId]: { asset_id: assetId, status, image_id: nextImageId },
+            ...(nextImageId ? { [nextImageId]: { asset_id: assetId, status, image_id: nextImageId } } : {}),
+          }));
+          if (status === 'Processing') {
+            setTimeout(poll, 5000);
+          } else {
+            assetStatusPollingRef.current.delete(assetId);
+            await reloadAssets();
+            await reloadStoryboard();
           }
-        } catch {}
-      }));
-    }
-  }, [projectId, characters, scenes, props]);
+        } catch {
+          assetStatusPollingRef.current.delete(assetId);
+        }
+      };
+
+      await poll();
+    };
+
+    await Promise.all(processingAssets.map(item => pollAssetStatus(item.localId, item.assetId, item.imageId)));
+  }, [projectId, characters, scenes, props, reloadAssets, reloadStoryboard]);
 
   // Load statuses when selected assets change
   useEffect(() => {
