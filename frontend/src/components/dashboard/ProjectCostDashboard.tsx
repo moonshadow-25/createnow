@@ -38,7 +38,10 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
     .map(([username, cost]) => ({ username, ...cost }))
     .filter(user => (user.total_cost || 0) > 0)
     .sort((a, b) => (b.total_cost || 0) - (a.total_cost || 0));
-  const hasCost = costs.total_cost > 0 || participants.length > 0 || unknownCost > 0;
+  const participantRows = unknownCost > 0
+    ? [...participants, { username: '历史用户', image_cost: 0, video_cost: 0, total_cost: unknownCost }]
+    : participants;
+  const hasCost = costs.total_cost > 0 || participantRows.length > 0;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -74,7 +77,7 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
           ) : (
             <div>
               <h3 className="text-sm font-medium text-gray-300 mb-3">参与用户</h3>
-              {participants.length === 0 ? (
+              {participantRows.length === 0 ? (
                 <div className="text-center text-gray-400 py-12 bg-gray-700/40 rounded-lg">暂无用户归属数据</div>
               ) : (
                 <div className="overflow-x-auto">
@@ -89,7 +92,7 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
                       </tr>
                     </thead>
                     <tbody>
-                      {participants.map(user => (
+                      {participantRows.map(user => (
                         <tr key={user.username} className="border-b border-gray-700/50 hover:bg-gray-700/30">
                           <td className="py-2 pr-4">{user.username}</td>
                           <td className="text-right py-2 pr-4 text-blue-400">{fmt(user.image_cost || 0)}</td>
@@ -102,17 +105,14 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
                     <tfoot>
                       <tr className="text-gray-300 font-semibold">
                         <td className="py-2 pr-4">合计</td>
-                        <td className="text-right py-2 pr-4 text-blue-400">{fmt(participants.reduce((s, u) => s + (u.image_cost || 0), 0))}</td>
-                        <td className="text-right py-2 pr-4 text-green-400">{fmt(participants.reduce((s, u) => s + (u.video_cost || 0), 0))}</td>
-                        <td className="text-right py-2 pr-4 text-yellow-400">{fmty(participants.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
-                        <td className="text-right py-2">{fmt(participants.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
+                        <td className="text-right py-2 pr-4 text-blue-400">{fmt(participantRows.reduce((s, u) => s + (u.image_cost || 0), 0))}</td>
+                        <td className="text-right py-2 pr-4 text-green-400">{fmt(participantRows.reduce((s, u) => s + (u.video_cost || 0), 0))}</td>
+                        <td className="text-right py-2 pr-4 text-yellow-400">{fmty(participantRows.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
+                        <td className="text-right py-2">{fmt(participantRows.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
-              )}
-              {unknownCost > 0 && (
-                <p className="text-xs text-gray-500 mt-3">* 历史记录（无归属）：{fmt(unknownCost)}，未计入参与用户列表</p>
               )}
             </div>
           )}
