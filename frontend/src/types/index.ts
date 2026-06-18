@@ -173,10 +173,14 @@ export interface ProjectStats {
   storyboards_with_image: number;
   storyboards_with_video: number;
   total_images: number;
+  generated_images?: number;
+  total_image_cost?: number;
   total_video_seconds: number;
   storyboard_video_seconds: number;
   total_video_compute_units?: number;
   storyboard_video_compute_units?: number;
+  failed_video_compute_units?: number;
+  other_cost?: number;
   total_compute_spent?: number;
 }
 
@@ -195,6 +199,7 @@ export interface Project {
   updated_at: string;
   stats?: ProjectStats;
   user_costs?: Record<string, ProjectUserCost>;
+  unknown_cost?: number;
   ai_config?: {
     llm: ApiConfig;
     vlm?: ApiConfig;

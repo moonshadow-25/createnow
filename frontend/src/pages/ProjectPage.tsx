@@ -21,7 +21,7 @@ type TabType = 'chat' | 'assets' | 'storyboard' | 'generate' | 'canvas';
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { currentProject, fetchProject } = useProjectStore();
+  const { currentProject, projects, fetchProject, fetchProjects } = useProjectStore();
   const { characters, scenes, props, episodes, storyboards, fetchAssets, loadedProjectId } = useAssetStore();
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
@@ -50,6 +50,18 @@ export default function ProjectPage() {
   // 画布 tab 首次访问后保持挂载，避免切换时节点状态丢失
   const [canvasMounted, setCanvasMounted] = useState(false);
   useEffect(() => { if (activeTab === 'canvas') setCanvasMounted(true); }, [activeTab]);
+
+  const projectWithStats = projectId ? projects.find(p => p.project_id === projectId) : undefined;
+  const dashboardStats = projectWithStats?.stats;
+  const dashboardUserCosts = projectWithStats?.user_costs || {};
+  const dashboardUnknownCost = projectWithStats?.unknown_cost || 0;
+
+  useEffect(() => {
+    if (!projectId) return;
+    if (!projectWithStats?.stats) {
+      fetchProjects();
+    }
+  }, [projectId, projectWithStats?.stats, fetchProjects]);
 
   // Vibe Drama：非分镜 tab 切换时设置上下文（分镜 tab 由 StoryboardDetail 负责）
   const TAB_LABELS: Record<string, string> = {
@@ -342,12 +354,9 @@ export default function ProjectPage() {
       {/* 设置弹框 */}
       {showProjectCostDashboard && projectId && (
         <ProjectCostDashboard
-          projectId={projectId}
-          episodes={episodes}
-          storyboards={storyboards}
-          characters={characters}
-          scenes={scenes}
-          props={props}
+          stats={dashboardStats}
+          userCosts={dashboardUserCosts}
+          unknownCost={dashboardUnknownCost}
           onClose={() => setShowProjectCostDashboard(false)}
         />
       )}
