@@ -35,11 +35,12 @@ function calcCost(stats?: ProjectStats | null): CostSummary {
 export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, onClose }: ProjectCostDashboardProps) {
   const costs = calcCost(stats);
   const participants = Object.entries(userCosts)
-    .map(([username, cost]) => ({ username, ...cost }))
+    .map(([username, cost]) => ({ username, other_cost: 0, ...cost }))
     .filter(user => (user.total_cost || 0) > 0)
     .sort((a, b) => (b.total_cost || 0) - (a.total_cost || 0));
-  const participantRows = unknownCost > 0
-    ? [...participants, { username: '历史用户', image_cost: 0, video_cost: 0, total_cost: unknownCost }]
+  const projectCostTotal = unknownCost + costs.other_cost;
+  const participantRows = projectCostTotal > 0
+    ? [...participants, { username: '项目消耗', image_cost: 0, video_cost: 0, other_cost: costs.other_cost, total_cost: projectCostTotal }]
     : participants;
   const hasCost = costs.total_cost > 0 || participantRows.length > 0;
 
@@ -87,6 +88,7 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
                         <th className="text-left py-2 pr-4">用户名</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
                         <th className="text-right py-2 pr-4">视频费用</th>
+                        <th className="text-right py-2 pr-4">其他</th>
                         <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">实际消耗</th>
                       </tr>
@@ -97,6 +99,7 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
                           <td className="py-2 pr-4">{user.username}</td>
                           <td className="text-right py-2 pr-4 text-blue-400">{fmt(user.image_cost || 0)}</td>
                           <td className="text-right py-2 pr-4 text-green-400">{fmt(user.video_cost || 0)}</td>
+                          <td className="text-right py-2 pr-4 text-purple-400">{fmt(user.other_cost || 0)}</td>
                           <td className="text-right py-2 pr-4 text-yellow-400">{fmty(user.total_cost || 0)}</td>
                           <td className="text-right py-2 font-medium">{fmt(user.total_cost || 0)}</td>
                         </tr>
@@ -107,6 +110,7 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCost = 0, o
                         <td className="py-2 pr-4">合计</td>
                         <td className="text-right py-2 pr-4 text-blue-400">{fmt(participantRows.reduce((s, u) => s + (u.image_cost || 0), 0))}</td>
                         <td className="text-right py-2 pr-4 text-green-400">{fmt(participantRows.reduce((s, u) => s + (u.video_cost || 0), 0))}</td>
+                        <td className="text-right py-2 pr-4 text-purple-400">{fmt(participantRows.reduce((s, u) => s + (u.other_cost || 0), 0))}</td>
                         <td className="text-right py-2 pr-4 text-yellow-400">{fmty(participantRows.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
                         <td className="text-right py-2">{fmt(participantRows.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
                       </tr>
