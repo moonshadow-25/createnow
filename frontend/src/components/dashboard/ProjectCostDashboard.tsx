@@ -73,14 +73,19 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
       video_cost: item.video_cost,
       total_cost: item.total_cost,
     }))
-    : costBreakdown.episode_costs.map((item, index) => ({
-      key: item.episode_id,
-      label: item.name || `第 ${item.episode_number || index + 1} 集`,
-      title: item.name || `第 ${item.episode_number || index + 1} 集`,
-      image_cost: item.image_cost,
-      video_cost: item.video_cost,
-      total_cost: item.total_cost,
-    }));
+    : [...costBreakdown.episode_costs]
+      .sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0))
+      .map((item, index) => {
+        const episodeNumber = item.episode_number || index + 1;
+        return {
+          key: item.episode_id,
+          label: String(episodeNumber),
+          title: `第${episodeNumber}集`,
+          image_cost: item.image_cost,
+          video_cost: item.video_cost,
+          total_cost: item.total_cost,
+        };
+      });
   const maxChartCost = Math.max(...chartItems.map(item => item.total_cost), 0);
   const yTicks = maxChartCost > 0 ? [maxChartCost, maxChartCost / 2, 0] : [0];
   const labelStep = chartItems.length > 18 ? Math.ceil(chartItems.length / 12) : 1;
