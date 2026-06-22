@@ -75,12 +75,12 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
     }))
     : [...costBreakdown.episode_costs]
       .sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0))
-      .map((item, index) => {
-        const episodeNumber = item.episode_number || index + 1;
+      .map(item => {
+        const episodeNumber = item.episode_number && item.episode_number < 999999 ? item.episode_number : null;
         return {
           key: item.episode_id,
-          label: String(episodeNumber),
-          title: `第${episodeNumber}集`,
+          label: episodeNumber ? String(episodeNumber) : '未知',
+          title: episodeNumber ? `第${episodeNumber}集` : '未知',
           image_cost: item.image_cost,
           video_cost: item.video_cost,
           total_cost: item.total_cost,
@@ -213,7 +213,13 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                         const showLabel = index === 0 || index === chartItems.length - 1 || index % labelStep === 0;
                         return (
                           <div key={item.key} className="flex-1 min-w-0 text-center">
-                            {showLabel && <span className="inline-block -rotate-45 origin-top whitespace-nowrap max-w-24 truncate">{item.label}</span>}
+                            {showLabel && (
+                              <span className={viewMode === 'daily'
+                                ? 'inline-block -rotate-45 origin-top whitespace-nowrap max-w-24 truncate'
+                                : 'inline-block whitespace-nowrap font-medium text-gray-300'}>
+                                {item.label}
+                              </span>
+                            )}
                           </div>
                         );
                       })}
