@@ -123,6 +123,37 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
     }
 
 
+def _build_project_daily_costs(project_id: str) -> list[dict]:
+    daily_costs: dict[str, dict] = {}
+
+    def add_cost(created_at: str, cost_type: str, cost: float) -> None:
+        if not created_at or cost <= 0:
+            return
+        date = str(created_at)[:10]
+        if len(date) != 10:
+            return
+        entry = daily_costs.setdefault(date, {"date": date, "image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+        entry[cost_type] += cost
+        entry["total_cost"] += cost
+
+    for img in ImageService.list_images(project_id):
+        add_cost(img.get("created_at"), "image_cost", get_image_cost(img))
+
+    for video in VideoService.list_videos(project_id):
+        add_cost(video.get("created_at"), "video_cost", get_video_cost(video))
+
+    return [
+        {
+            "date": item["date"],
+            "image_cost": round(item["image_cost"], 2),
+            "video_cost": round(item["video_cost"], 2),
+            "total_cost": round(item["total_cost"], 2),
+        }
+        for item in sorted(daily_costs.values(), key=lambda x: x["date"])
+        if item["total_cost"] > 0
+    ]
+
+
 def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[str, float]]:
     user_costs: dict[str, dict] = {}
     unknown_costs = {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0}
@@ -396,6 +427,15 @@ async def get_project_stats(project_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
     return _build_project_stats(project_id)
+
+
+@router.get("/{project_id}/cost-daily")
+async def get_project_daily_costs(project_id: str):
+    """获取项目按日期聚合的图片/视频消耗"""
+    project_dir = _get_projects_dir() / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _build_project_daily_costs(project_id)
 
 
 @router.delete("/{project_id}")

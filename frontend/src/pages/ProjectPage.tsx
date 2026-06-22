@@ -354,6 +354,7 @@ export default function ProjectPage() {
       {/* 设置弹框 */}
       {showProjectCostDashboard && projectId && (
         <ProjectCostDashboard
+          projectId={projectId}
           stats={dashboardStats}
           userCosts={dashboardUserCosts}
           unknownCosts={dashboardUnknownCosts}

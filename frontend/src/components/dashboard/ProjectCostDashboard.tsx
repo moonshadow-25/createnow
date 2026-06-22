@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { ProjectStats, ProjectUserCost } from '@/types';
+import { ProjectDailyCost, ProjectStats, ProjectUserCost } from '@/types';
+import { projectApi } from '@/services/api';
 import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 
 interface ProjectCostDashboardProps {
+  projectId: string;
   stats?: ProjectStats | null;
   userCosts?: Record<string, ProjectUserCost>;
   unknownCosts?: ProjectUserCost;
@@ -32,7 +35,10 @@ function calcCost(stats?: ProjectStats | null): CostSummary {
   return { image_cost, video_cost, other_cost, total_cost };
 }
 
-export function ProjectCostDashboard({ stats, userCosts = {}, unknownCosts, onClose }: ProjectCostDashboardProps) {
+export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknownCosts, onClose }: ProjectCostDashboardProps) {
+  const [dailyCosts, setDailyCosts] = useState<ProjectDailyCost[]>([]);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState('');
   const costs = calcCost(stats);
   const participants = Object.entries(userCosts)
     .map(([username, cost]) => ({ username, other_cost: 0, ...cost }))
@@ -46,6 +52,27 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCosts, onCl
     ? [...participants, { username: '项目消耗', image_cost: unknownImageCost, video_cost: unknownVideoCost, other_cost: costs.other_cost, total_cost: projectCostTotal }]
     : participants;
   const hasCost = costs.total_cost > 0 || participantRows.length > 0;
+  const maxDailyCost = Math.max(...dailyCosts.map(item => item.total_cost), 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDailyLoading(true);
+    setDailyError('');
+    projectApi.getDailyCost(projectId)
+      .then(res => {
+        if (!cancelled) setDailyCosts(res.data || []);
+      })
+      .catch(err => {
+        console.error('加载项目日期消耗失败', err);
+        if (!cancelled) setDailyError('按日期消耗加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setDailyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -74,6 +101,48 @@ export function ProjectCostDashboard({ stats, userCosts = {}, unknownCosts, onCl
                 <div className="text-xs text-gray-400 mt-1">{card.label}</div>
               </div>
             ))}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-300">按日期消耗</h3>
+              <div className="flex items-center gap-4 text-xs text-gray-400">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-400" />图片</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-400" />视频</span>
+              </div>
+            </div>
+            <div className="bg-gray-700/40 rounded-lg p-4 min-h-[220px]">
+              {dailyLoading ? (
+                <div className="h-[180px] flex items-center justify-center text-gray-400">加载按日期消耗中...</div>
+              ) : dailyError ? (
+                <div className="h-[180px] flex items-center justify-center text-red-300">{dailyError}</div>
+              ) : dailyCosts.length === 0 ? (
+                <div className="h-[180px] flex items-center justify-center text-gray-400">暂无按日期消耗数据</div>
+              ) : (
+                <div className="overflow-x-auto pb-1">
+                  <div className="flex items-end gap-3 min-w-max h-[180px] px-1">
+                    {dailyCosts.map(item => {
+                      const height = maxDailyCost > 0 ? Math.max((item.total_cost / maxDailyCost) * 132, 8) : 8;
+                      const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * height : 0;
+                      const videoHeight = Math.max(height - imageHeight, 0);
+                      return (
+                        <div key={item.date} className="w-16 flex flex-col items-center justify-end gap-2 group">
+                          <div className="text-[10px] text-gray-300 opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
+                            {fmt(item.total_cost)}
+                          </div>
+                          <div className="w-8 rounded-t bg-gray-600 overflow-hidden flex flex-col-reverse" style={{ height }} title={`${item.date}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}`}>
+                            {item.image_cost > 0 && <div className="bg-blue-400" style={{ height: imageHeight }} />}
+                            {item.video_cost > 0 && <div className="bg-green-400" style={{ height: videoHeight }} />}
+                          </div>
+                          <div className="text-[10px] text-gray-400 whitespace-nowrap">{item.date.slice(5)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">按日期消耗仅统计有消耗记录的图片和视频；其他消耗保留在顶部总计中。</p>
           </div>
 
           {!hasCost ? (

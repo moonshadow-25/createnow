@@ -190,6 +190,13 @@ export interface ProjectUserCost {
   total_cost: number;
 }
 
+export interface ProjectDailyCost {
+  date: string;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+}
+
 // 项目类型
 export interface Project {
   project_id: string;
