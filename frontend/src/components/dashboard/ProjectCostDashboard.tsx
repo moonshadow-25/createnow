@@ -53,6 +53,8 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
     : participants;
   const hasCost = costs.total_cost > 0 || participantRows.length > 0;
   const maxDailyCost = Math.max(...dailyCosts.map(item => item.total_cost), 0);
+  const yTicks = maxDailyCost > 0 ? [maxDailyCost, maxDailyCost / 2, 0] : [0];
+  const labelStep = dailyCosts.length > 18 ? Math.ceil(dailyCosts.length / 12) : 1;
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +78,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-xl w-full max-w-[960px] max-h-[88vh] overflow-hidden flex flex-col text-white">
+      <div className="bg-gray-800 rounded-xl w-[80vw] max-w-[80vw] max-h-[88vh] overflow-hidden flex flex-col text-white">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
           <div>
             <h2 className="text-lg font-semibold">项目消耗看板</h2>
@@ -111,33 +113,64 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-400" />视频</span>
               </div>
             </div>
-            <div className="bg-gray-700/40 rounded-lg p-4 min-h-[220px]">
+            <div className="bg-gray-700/40 rounded-lg p-4 min-h-[260px]">
               {dailyLoading ? (
-                <div className="h-[180px] flex items-center justify-center text-gray-400">加载按日期消耗中...</div>
+                <div className="h-[220px] flex items-center justify-center text-gray-400">加载按日期消耗中...</div>
               ) : dailyError ? (
-                <div className="h-[180px] flex items-center justify-center text-red-300">{dailyError}</div>
+                <div className="h-[220px] flex items-center justify-center text-red-300">{dailyError}</div>
               ) : dailyCosts.length === 0 ? (
-                <div className="h-[180px] flex items-center justify-center text-gray-400">暂无按日期消耗数据</div>
+                <div className="h-[220px] flex items-center justify-center text-gray-400">暂无按日期消耗数据</div>
               ) : (
-                <div className="overflow-x-auto pb-1">
-                  <div className="flex items-end gap-3 min-w-max h-[180px] px-1">
-                    {dailyCosts.map(item => {
-                      const height = maxDailyCost > 0 ? Math.max((item.total_cost / maxDailyCost) * 132, 8) : 8;
-                      const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * height : 0;
-                      const videoHeight = Math.max(height - imageHeight, 0);
-                      return (
-                        <div key={item.date} className="w-16 flex flex-col items-center justify-end gap-2 group">
-                          <div className="text-[10px] text-gray-300 opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
-                            {fmt(item.total_cost)}
+                <div className="grid grid-cols-[72px_1fr] gap-3 h-[220px]">
+                  <div className="relative h-[180px] text-[10px] text-gray-400">
+                    {yTicks.map((tick, index) => (
+                      <div
+                        key={`${tick}-${index}`}
+                        className="absolute right-0 -translate-y-1/2 whitespace-nowrap"
+                        style={{ top: `${maxDailyCost > 0 ? 100 - (tick / maxDailyCost) * 100 : 100}%` }}
+                      >
+                        {fmt(tick)}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="relative h-[180px] border-l border-b border-gray-600/80">
+                      {[0, 50, 100].map(top => (
+                        <div key={top} className="absolute left-0 right-0 border-t border-gray-600/40" style={{ top: `${top}%` }} />
+                      ))}
+                      <div className="absolute inset-x-1 bottom-0 top-0 flex items-end gap-[2px]">
+                        {dailyCosts.map(item => {
+                          const height = maxDailyCost > 0 ? Math.max((item.total_cost / maxDailyCost) * 100, 2) : 2;
+                          const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * height : 0;
+                          const videoHeight = Math.max(height - imageHeight, 0);
+                          return (
+                            <div key={item.date} className="flex-1 min-w-0 h-full flex flex-col justify-end group">
+                              <div
+                                className="w-full max-w-[14px] mx-auto rounded-t bg-gray-600 overflow-hidden flex flex-col-reverse"
+                                style={{ height: `${height}%` }}
+                                title={`${item.date}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}`}
+                              >
+                                {item.image_cost > 0 && <div className="bg-blue-400" style={{ height: `${imageHeight}%` }} />}
+                                {item.video_cost > 0 && <div className="bg-green-400" style={{ height: `${videoHeight}%` }} />}
+                              </div>
+                              <div className="absolute -top-5 hidden group-hover:block text-[10px] text-gray-200 whitespace-nowrap bg-gray-900/90 px-1.5 py-0.5 rounded">
+                                {item.date} {fmt(item.total_cost)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="relative h-8 mt-2 flex gap-[2px] text-[10px] text-gray-400">
+                      {dailyCosts.map((item, index) => {
+                        const showLabel = index === 0 || index === dailyCosts.length - 1 || index % labelStep === 0;
+                        return (
+                          <div key={item.date} className="flex-1 min-w-0 text-center">
+                            {showLabel && <span className="inline-block -rotate-45 origin-top whitespace-nowrap">{item.date.slice(5)}</span>}
                           </div>
-                          <div className="w-8 rounded-t bg-gray-600 overflow-hidden flex flex-col-reverse" style={{ height }} title={`${item.date}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}`}>
-                            {item.image_cost > 0 && <div className="bg-blue-400" style={{ height: imageHeight }} />}
-                            {item.video_cost > 0 && <div className="bg-green-400" style={{ height: videoHeight }} />}
-                          </div>
-                          <div className="text-[10px] text-gray-400 whitespace-nowrap">{item.date.slice(5)}</div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
