@@ -42,7 +42,8 @@ type UploadTarget =
   | { kind: 'front'; material: MaterialAsset }
   | { kind: 'angle'; material: MaterialAsset; index: number }
   | { kind: 'zip'; material: MaterialAsset }
-  | { kind: 'clothing'; material: MaterialAsset; look: MaterialLook };
+  | { kind: 'clothing'; material: MaterialAsset; look: MaterialLook }
+  | { kind: 'look-direct'; material: MaterialAsset; look: MaterialLook };
 
 interface MaterialLibraryPanelProps {
   projectId: string;
@@ -240,6 +241,8 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
         toast('角度图已上传', 'success');
       } else if (target.kind === 'clothing') {
         await generateLook(target.material, target.look, imageId);
+      } else if (target.kind === 'look-direct') {
+        await uploadLookDirect(target.material, target.look, imageId);
       }
     } catch (error: any) {
       toast(error?.response?.data?.detail || '上传失败', 'error');
@@ -298,6 +301,21 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     }
   };
 
+  const uploadLookDirect = async (material: MaterialAsset, look: MaterialLook, imageId: string) => {
+    setBusy(`upload-direct-${look.look_id}`);
+    try {
+      const response = await materialApi.updateLook(projectId, material.asset_id, look.look_id, {
+        image_id: imageId,
+      });
+      replaceMaterial(response.data);
+      toast('妆造图已上传', 'success');
+    } catch (error: any) {
+      toast(error?.response?.data?.detail || '上传妆造图失败', 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
   const pollSubmittedAssets = async (assetIds: string[], materialId: string) => {
     const freshAssetIds = assetIds.filter((assetId) => assetId && !pollingAssetIdsRef.current.has(assetId));
     if (!freshAssetIds.length) return;
@@ -324,7 +342,9 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     }
   };
 
-  useEffect(() => {
+  // 提取所有审核中的 asset IDs，仅在 IDs 真正变化时触发轮询
+  const processingAssetIdsByMaterial = useMemo(() => {
+    const map = new Map<string, string[]>();
     materials.forEach((material) => {
       const processingAssetIds: string[] = [];
       if (material.front_audit_asset_id && material.front_audit_status === 'Processing') {
@@ -335,11 +355,18 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
           processingAssetIds.push(look.audit_asset_id);
         }
       });
-      if (processingAssetIds.length) {
-        void pollSubmittedAssets(processingAssetIds, material.asset_id);
+      if (processingAssetIds.length > 0) {
+        map.set(material.asset_id, processingAssetIds);
       }
     });
-  }, [materials, projectId]);
+    return map;
+  }, [materials]);
+
+  useEffect(() => {
+    processingAssetIdsByMaterial.forEach((assetIds, materialId) => {
+      void pollSubmittedAssets(assetIds, materialId);
+    });
+  }, [processingAssetIdsByMaterial, projectId]);
 
   const submitNew = async () => {
     if (!selected) return;
@@ -547,14 +574,26 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                         <div className="flex h-40 items-center justify-center rounded bg-gray-950 text-sm text-gray-500">暂无妆造图</div>
                       )}
                       {look.prompt && <div className="mt-2 line-clamp-2 text-xs text-gray-400">{look.prompt}</div>}
-                      <button
-                        onClick={() => openUpload({ kind: 'clothing', material: selected, look })}
-                        disabled={!canGenerateLooks || busy === `generate-${look.look_id}`}
-                        className="mt-3 flex w-full items-center justify-center gap-1 rounded bg-purple-700 px-3 py-2 text-sm hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {busy === `generate-${look.look_id}` ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
-                        上传服饰图并生成妆造图
-                      </button>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => openUpload({ kind: 'clothing', material: selected, look })}
+                          disabled={!canGenerateLooks || busy === `generate-${look.look_id}`}
+                          className="flex items-center justify-center gap-1 rounded bg-purple-700 px-2 py-2 text-xs hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="上传服饰图后通过 AI 生成妆造图"
+                        >
+                          {busy === `generate-${look.look_id}` ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
+                          上传服饰生成
+                        </button>
+                        <button
+                          onClick={() => openUpload({ kind: 'look-direct', material: selected, look })}
+                          disabled={busy === `upload-direct-${look.look_id}`}
+                          className="flex items-center justify-center gap-1 rounded bg-green-700 px-2 py-2 text-xs hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="直接上传已完成的妆造图"
+                        >
+                          {busy === `upload-direct-${look.look_id}` ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                          直接上传妆造图
+                        </button>
+                      </div>
                       {look.audit_asset_id && <div className="mt-2 truncate text-[10px] text-gray-500">assetid: {look.audit_asset_id}</div>}
                     </div>
                   ))}
