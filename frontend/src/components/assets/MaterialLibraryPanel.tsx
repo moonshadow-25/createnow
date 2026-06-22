@@ -342,9 +342,9 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
     }
   };
 
-  // 提取所有审核中的 asset IDs，仅在 IDs 真正变化时触发轮询
-  const processingAssetIdsByMaterial = useMemo(() => {
-    const map = new Map<string, string[]>();
+  // 提取所有审核中的 asset IDs，序列化为稳定的字符串，仅在内容真正变化时触发轮询
+  const processingAssetIdsKey = useMemo(() => {
+    const entries: [string, string[]][] = [];
     materials.forEach((material) => {
       const processingAssetIds: string[] = [];
       if (material.front_audit_asset_id && material.front_audit_status === 'Processing') {
@@ -356,17 +356,23 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
         }
       });
       if (processingAssetIds.length > 0) {
-        map.set(material.asset_id, processingAssetIds);
+        // 排序确保稳定性
+        entries.push([material.asset_id, processingAssetIds.sort()]);
       }
     });
-    return map;
+    // 按 materialId 排序并序列化为字符串
+    return JSON.stringify(entries.sort((a, b) => a[0].localeCompare(b[0])));
   }, [materials]);
 
   useEffect(() => {
-    processingAssetIdsByMaterial.forEach((assetIds, materialId) => {
+    if (!processingAssetIdsKey || processingAssetIdsKey === '[]') return;
+
+    // 反序列化并启动轮询
+    const entries: [string, string[]][] = JSON.parse(processingAssetIdsKey);
+    entries.forEach(([materialId, assetIds]) => {
       void pollSubmittedAssets(assetIds, materialId);
     });
-  }, [processingAssetIdsByMaterial, projectId]);
+  }, [processingAssetIdsKey, projectId]);
 
   const submitNew = async () => {
     if (!selected) return;
