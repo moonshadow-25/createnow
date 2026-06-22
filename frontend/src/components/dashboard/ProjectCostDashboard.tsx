@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { ProjectDailyCost, ProjectStats, ProjectUserCost } from '@/types';
+import { ProjectCostBreakdown, ProjectStats, ProjectUserCost } from '@/types';
 import { projectApi } from '@/services/api';
 import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 
@@ -35,10 +35,22 @@ function calcCost(stats?: ProjectStats | null): CostSummary {
   return { image_cost, video_cost, other_cost, total_cost };
 }
 
+type CostViewMode = 'daily' | 'episode';
+
+interface ChartItem {
+  key: string;
+  label: string;
+  title: string;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+}
+
 export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknownCosts, onClose }: ProjectCostDashboardProps) {
-  const [dailyCosts, setDailyCosts] = useState<ProjectDailyCost[]>([]);
-  const [dailyLoading, setDailyLoading] = useState(false);
-  const [dailyError, setDailyError] = useState('');
+  const [costBreakdown, setCostBreakdown] = useState<ProjectCostBreakdown>({ daily_costs: [], episode_costs: [] });
+  const [costLoading, setCostLoading] = useState(false);
+  const [costError, setCostError] = useState('');
+  const [viewMode, setViewMode] = useState<CostViewMode>('daily');
   const costs = calcCost(stats);
   const participants = Object.entries(userCosts)
     .map(([username, cost]) => ({ username, other_cost: 0, ...cost }))
@@ -52,24 +64,41 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
     ? [...participants, { username: '项目消耗', image_cost: unknownImageCost, video_cost: unknownVideoCost, other_cost: costs.other_cost, total_cost: projectCostTotal }]
     : participants;
   const hasCost = costs.total_cost > 0 || participantRows.length > 0;
-  const maxDailyCost = Math.max(...dailyCosts.map(item => item.total_cost), 0);
-  const yTicks = maxDailyCost > 0 ? [maxDailyCost, maxDailyCost / 2, 0] : [0];
-  const labelStep = dailyCosts.length > 18 ? Math.ceil(dailyCosts.length / 12) : 1;
+  const chartItems: ChartItem[] = viewMode === 'daily'
+    ? costBreakdown.daily_costs.map(item => ({
+      key: item.date,
+      label: item.date.slice(5),
+      title: item.date,
+      image_cost: item.image_cost,
+      video_cost: item.video_cost,
+      total_cost: item.total_cost,
+    }))
+    : costBreakdown.episode_costs.map((item, index) => ({
+      key: item.episode_id,
+      label: item.name || `第 ${item.episode_number || index + 1} 集`,
+      title: item.name || `第 ${item.episode_number || index + 1} 集`,
+      image_cost: item.image_cost,
+      video_cost: item.video_cost,
+      total_cost: item.total_cost,
+    }));
+  const maxChartCost = Math.max(...chartItems.map(item => item.total_cost), 0);
+  const yTicks = maxChartCost > 0 ? [maxChartCost, maxChartCost / 2, 0] : [0];
+  const labelStep = chartItems.length > 18 ? Math.ceil(chartItems.length / 12) : 1;
 
   useEffect(() => {
     let cancelled = false;
-    setDailyLoading(true);
-    setDailyError('');
-    projectApi.getDailyCost(projectId)
+    setCostLoading(true);
+    setCostError('');
+    projectApi.getCostBreakdown(projectId)
       .then(res => {
-        if (!cancelled) setDailyCosts(res.data || []);
+        if (!cancelled) setCostBreakdown({ daily_costs: res.data?.daily_costs || [], episode_costs: res.data?.episode_costs || [] });
       })
       .catch(err => {
-        console.error('加载项目日期消耗失败', err);
-        if (!cancelled) setDailyError('按日期消耗加载失败');
+        console.error('加载项目消耗明细失败', err);
+        if (!cancelled) setCostError('消耗明细加载失败');
       })
       .finally(() => {
-        if (!cancelled) setDailyLoading(false);
+        if (!cancelled) setCostLoading(false);
       });
     return () => {
       cancelled = true;
@@ -107,19 +136,32 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
 
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-300">按日期消耗</h3>
+              <div className="flex items-center gap-2">
+                {[
+                  { key: 'daily' as CostViewMode, label: '按日期消耗' },
+                  { key: 'episode' as CostViewMode, label: '按集消耗' },
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    onClick={() => setViewMode(item.key)}
+                    className={`px-3 py-1.5 rounded-lg text-sm transition ${viewMode === item.key ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-400" />图片</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-400" />视频</span>
               </div>
             </div>
             <div className="bg-gray-700/40 rounded-lg p-4 min-h-[260px]">
-              {dailyLoading ? (
-                <div className="h-[220px] flex items-center justify-center text-gray-400">加载按日期消耗中...</div>
-              ) : dailyError ? (
-                <div className="h-[220px] flex items-center justify-center text-red-300">{dailyError}</div>
-              ) : dailyCosts.length === 0 ? (
-                <div className="h-[220px] flex items-center justify-center text-gray-400">暂无按日期消耗数据</div>
+              {costLoading ? (
+                <div className="h-[220px] flex items-center justify-center text-gray-400">加载消耗明细中...</div>
+              ) : costError ? (
+                <div className="h-[220px] flex items-center justify-center text-red-300">{costError}</div>
+              ) : chartItems.length === 0 ? (
+                <div className="h-[220px] flex items-center justify-center text-gray-400">暂无{viewMode === 'daily' ? '按日期' : '按集'}消耗数据</div>
               ) : (
                 <div className="grid grid-cols-[72px_1fr] gap-3 h-[220px]">
                   <div className="relative h-[180px] text-[10px] text-gray-400">
@@ -127,7 +169,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                       <div
                         key={`${tick}-${index}`}
                         className="absolute right-0 -translate-y-1/2 whitespace-nowrap"
-                        style={{ top: `${maxDailyCost > 0 ? 100 - (tick / maxDailyCost) * 100 : 100}%` }}
+                        style={{ top: `${maxChartCost > 0 ? 100 - (tick / maxChartCost) * 100 : 100}%` }}
                       >
                         {fmt(tick)}
                       </div>
@@ -139,22 +181,22 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                         <div key={top} className="absolute left-0 right-0 border-t border-gray-600/40" style={{ top: `${top}%` }} />
                       ))}
                       <div className="absolute inset-x-1 bottom-0 top-0 flex items-end gap-[2px]">
-                        {dailyCosts.map(item => {
-                          const height = maxDailyCost > 0 ? Math.max((item.total_cost / maxDailyCost) * 100, 2) : 2;
-                          const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * height : 0;
-                          const videoHeight = Math.max(height - imageHeight, 0);
+                        {chartItems.map(item => {
+                          const height = maxChartCost > 0 ? Math.max((item.total_cost / maxChartCost) * 100, 2) : 2;
+                          const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * 100 : 0;
+                          const videoHeight = item.total_cost > 0 ? (item.video_cost / item.total_cost) * 100 : 0;
                           return (
-                            <div key={item.date} className="flex-1 min-w-0 h-full flex flex-col justify-end group">
+                            <div key={item.key} className="flex-1 min-w-0 h-full flex flex-col justify-end group">
                               <div
-                                className="w-full max-w-[14px] mx-auto rounded-t bg-gray-600 overflow-hidden flex flex-col-reverse"
+                                className="w-full max-w-[14px] mx-auto rounded-t overflow-hidden flex flex-col-reverse"
                                 style={{ height: `${height}%` }}
-                                title={`${item.date}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}`}
+                                title={`${item.title}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}`}
                               >
                                 {item.image_cost > 0 && <div className="bg-blue-400" style={{ height: `${imageHeight}%` }} />}
                                 {item.video_cost > 0 && <div className="bg-green-400" style={{ height: `${videoHeight}%` }} />}
                               </div>
                               <div className="absolute -top-5 hidden group-hover:block text-[10px] text-gray-200 whitespace-nowrap bg-gray-900/90 px-1.5 py-0.5 rounded">
-                                {item.date} {fmt(item.total_cost)}
+                                {item.title} {fmt(item.total_cost)}
                               </div>
                             </div>
                           );
@@ -162,11 +204,11 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                       </div>
                     </div>
                     <div className="relative h-8 mt-2 flex gap-[2px] text-[10px] text-gray-400">
-                      {dailyCosts.map((item, index) => {
-                        const showLabel = index === 0 || index === dailyCosts.length - 1 || index % labelStep === 0;
+                      {chartItems.map((item, index) => {
+                        const showLabel = index === 0 || index === chartItems.length - 1 || index % labelStep === 0;
                         return (
-                          <div key={item.date} className="flex-1 min-w-0 text-center">
-                            {showLabel && <span className="inline-block -rotate-45 origin-top whitespace-nowrap">{item.date.slice(5)}</span>}
+                          <div key={item.key} className="flex-1 min-w-0 text-center">
+                            {showLabel && <span className="inline-block -rotate-45 origin-top whitespace-nowrap max-w-24 truncate">{item.label}</span>}
                           </div>
                         );
                       })}

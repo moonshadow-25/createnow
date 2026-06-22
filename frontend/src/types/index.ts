@@ -197,6 +197,20 @@ export interface ProjectDailyCost {
   total_cost: number;
 }
 
+export interface ProjectEpisodeCost {
+  episode_id: string;
+  name: string;
+  episode_number?: number;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+}
+
+export interface ProjectCostBreakdown {
+  daily_costs: ProjectDailyCost[];
+  episode_costs: ProjectEpisodeCost[];
+}
+
 // 项目类型
 export interface Project {
   project_id: string;

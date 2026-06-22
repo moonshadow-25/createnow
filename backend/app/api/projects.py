@@ -123,35 +123,100 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
     }
 
 
-def _build_project_daily_costs(project_id: str) -> list[dict]:
+def _build_project_cost_breakdown(project_id: str) -> dict:
     daily_costs: dict[str, dict] = {}
+    episode_costs: dict[str, dict] = {}
 
-    def add_cost(created_at: str, cost_type: str, cost: float) -> None:
-        if not created_at or cost <= 0:
-            return
-        date = str(created_at)[:10]
-        if len(date) != 10:
+    def add_daily_cost(date: str, cost_type: str, cost: float) -> None:
+        if not date or len(date) != 10 or cost <= 0:
             return
         entry = daily_costs.setdefault(date, {"date": date, "image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
         entry[cost_type] += cost
         entry["total_cost"] += cost
 
+    def add_episode_cost(episode_id: str, cost_type: str, cost: float) -> None:
+        if not episode_id or cost <= 0:
+            return
+        entry = episode_costs.setdefault(episode_id, {
+            "episode_id": episode_id,
+            "name": "未知剧集",
+            "episode_number": 999999,
+            "image_cost": 0.0,
+            "video_cost": 0.0,
+            "total_cost": 0.0,
+        })
+        entry[cost_type] += cost
+        entry["total_cost"] += cost
+
+    episodes = AssetService.list_assets(project_id, "episode")
+    storyboards = AssetService.list_assets(project_id, "storyboard")
+    storyboard_episode_map = {
+        storyboard.get("asset_id"): storyboard.get("episode_id")
+        for storyboard in storyboards
+        if storyboard.get("asset_id") and storyboard.get("episode_id")
+    }
+
+    for index, episode in enumerate(episodes, start=1):
+        episode_id = episode.get("episode_id")
+        if not episode_id:
+            continue
+        episode_number = episode.get("episode_number") or index
+        episode_costs[episode_id] = {
+            "episode_id": episode_id,
+            "name": episode.get("name") or f"第 {episode_number} 集",
+            "episode_number": episode_number,
+            "image_cost": 0.0,
+            "video_cost": 0.0,
+            "total_cost": 0.0,
+        }
+
     for img in ImageService.list_images(project_id):
-        add_cost(img.get("created_at"), "image_cost", get_image_cost(img))
+        cost = get_image_cost(img)
+        created_at = img.get("created_at")
+        if created_at:
+            add_daily_cost(str(created_at)[:10], "image_cost", cost)
+        if img.get("asset_type") == "storyboard":
+            episode_id = storyboard_episode_map.get(img.get("asset_id"))
+            if episode_id:
+                add_episode_cost(episode_id, "image_cost", cost)
 
     for video in VideoService.list_videos(project_id):
-        add_cost(video.get("created_at"), "video_cost", get_video_cost(video))
+        cost = get_video_cost(video)
+        created_at = video.get("created_at")
+        if created_at:
+            add_daily_cost(str(created_at)[:10], "video_cost", cost)
+        episode_id = storyboard_episode_map.get(video.get("storyboard_id"))
+        if episode_id:
+            add_episode_cost(episode_id, "video_cost", cost)
 
-    return [
-        {
-            "date": item["date"],
-            "image_cost": round(item["image_cost"], 2),
-            "video_cost": round(item["video_cost"], 2),
-            "total_cost": round(item["total_cost"], 2),
-        }
-        for item in sorted(daily_costs.values(), key=lambda x: x["date"])
-        if item["total_cost"] > 0
-    ]
+    return {
+        "daily_costs": [
+            {
+                "date": item["date"],
+                "image_cost": round(item["image_cost"], 2),
+                "video_cost": round(item["video_cost"], 2),
+                "total_cost": round(item["total_cost"], 2),
+            }
+            for item in sorted(daily_costs.values(), key=lambda x: x["date"])
+            if item["total_cost"] > 0
+        ],
+        "episode_costs": [
+            {
+                "episode_id": item["episode_id"],
+                "name": item["name"],
+                "episode_number": item["episode_number"],
+                "image_cost": round(item["image_cost"], 2),
+                "video_cost": round(item["video_cost"], 2),
+                "total_cost": round(item["total_cost"], 2),
+            }
+            for item in sorted(episode_costs.values(), key=lambda x: x.get("episode_number") or 0)
+            if item["total_cost"] > 0
+        ],
+    }
+
+
+def _build_project_daily_costs(project_id: str) -> list[dict]:
+    return _build_project_cost_breakdown(project_id)["daily_costs"]
 
 
 def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[str, float]]:
@@ -436,6 +501,15 @@ async def get_project_daily_costs(project_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
     return _build_project_daily_costs(project_id)
+
+
+@router.get("/{project_id}/cost-breakdown")
+async def get_project_cost_breakdown(project_id: str):
+    """获取项目消耗看板的日期/集聚合数据"""
+    project_dir = _get_projects_dir() / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _build_project_cost_breakdown(project_id)
 
 
 @router.delete("/{project_id}")

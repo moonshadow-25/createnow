@@ -67,6 +67,7 @@ export const projectApi = {
   delete: (id: string) => api.delete(`/projects/${id}`),
   getStats: (id: string) => api.get(`/projects/${id}/stats`),
   getDailyCost: (id: string) => api.get(`/projects/${id}/cost-daily`),
+  getCostBreakdown: (id: string) => api.get(`/projects/${id}/cost-breakdown`),
   setBudget: (id: string, budgetTotal: number | null) =>
     api.put(`/projects/${id}/budget`, { budget_total: budgetTotal }),
   getStatsByUser: () => api.get('/projects/stats/by-user'),
