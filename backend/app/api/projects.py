@@ -157,7 +157,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
     }
 
     for index, episode in enumerate(episodes, start=1):
-        episode_id = episode.get("episode_id")
+        episode_id = episode.get("asset_id")
         if not episode_id:
             continue
         episode_number = episode.get("episode_number") or index
