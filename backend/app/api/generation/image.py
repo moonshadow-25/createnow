@@ -5,9 +5,11 @@ Generation API - 图像生成相关端点
 import logging
 import uuid
 from datetime import datetime
+from io import BytesIO
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Request
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from app.services import get_ai_service, PromptService, ImageService, AssetService
@@ -37,6 +39,30 @@ SQUARE_IMAGE_ASSET_TYPE = "generate"
 SQUARE_IMAGE_ASSET_ID = "square-generate"
 CANVAS_IMAGE_ASSET_TYPE = "generate"
 CANVAS_IMAGE_ASSET_ID = "canvas-generate"
+MAX_UPLOAD_IMAGE_LONG_SIDE = 5000
+
+
+def _resize_upload_image_if_needed(content: bytes, content_type: str, max_long_side: int = MAX_UPLOAD_IMAGE_LONG_SIDE):
+    with Image.open(BytesIO(content)) as img:
+        img = ImageOps.exif_transpose(img)
+        width, height = img.size
+        long_side = max(width, height)
+        if long_side <= max_long_side:
+            return content, width, height
+
+        scale = max_long_side / long_side
+        target_size = (round(width * scale), round(height * scale))
+        resized = img.resize(target_size, Image.Resampling.LANCZOS)
+        output = BytesIO()
+        if content_type in {"image/jpeg", "image/jpg"}:
+            if resized.mode not in {"RGB", "L"}:
+                resized = resized.convert("RGB")
+            resized.save(output, format="JPEG", quality=92, optimize=True)
+        elif content_type == "image/webp":
+            resized.save(output, format="WEBP", quality=92, method=6)
+        else:
+            resized.save(output, format="PNG", optimize=True)
+        return output.getvalue(), target_size[0], target_size[1]
 
 
 def _is_square_image_record(image: dict) -> bool:
@@ -921,6 +947,7 @@ async def upload_image(
 
         file_path = files_dir / filename
         content = await file.read()
+        content, width, height = _resize_upload_image_if_needed(content, file.content_type)
         with open(file_path, "wb") as f:
             f.write(content)
 
@@ -933,8 +960,8 @@ async def upload_image(
             "negative_prompt": "",
             "model": "manual_upload",
             "actual_cost": 0,
-            "width": 0,
-            "height": 0,
+            "width": width,
+            "height": height,
             "image_path": str(request.base_url).rstrip("/") + f"/api/projects/{project_id}/images/files/{asset_type}/{filename}",
             "created_by": get_current_user() or "",
             "local_path": f"{asset_type}/{filename}",
