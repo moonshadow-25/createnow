@@ -51,8 +51,8 @@ interface MaterialLibraryPanelProps {
 
 function mediaUrl(url?: string) {
   if (!url) return '';
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
-  return url;
+  if (url.startsWith('data:')) return url;
+  return url.replace('/images/files/', '/thumbnails/');
 }
 
 function auditLabel(status?: string) {
