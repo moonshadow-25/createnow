@@ -260,7 +260,8 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
     characters: any[],
     scenes: any[],
     props: any[],
-    setStoryboardImages: (images: any[]) => void
+    setStoryboardImages: (images: any[]) => void,
+    modelOverride?: string
   ) => {
     if (!editingStoryboard || !generatedPrompt) {
       toast('请先生成提示词', 'error');
@@ -311,7 +312,8 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           assetId: editingStoryboard.asset_id,
           assetType: 'storyboard',
           prompt: generatedPrompt,
-          referenceImageIds: refImageIds
+          referenceImageIds: refImageIds,
+          model: modelOverride?.trim() || undefined
         });
       } else {
         // 没有选择资产，使用文生图
@@ -322,6 +324,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           negative_prompt: '',
           width: 1920,
           height: 1080,
+          model: modelOverride?.trim() || undefined,
         });
       }
 

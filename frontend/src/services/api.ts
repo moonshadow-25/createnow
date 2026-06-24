@@ -259,6 +259,7 @@ export const generationApi = {
     duration?: number;
     resolution?: string;
     ratio?: string;
+    model?: string;
     use_web_search?: boolean;
   }) =>
     api.post(`/projects/${projectId}/generate/video`, data),
@@ -322,6 +323,7 @@ export const generationApi = {
     size?: string,
     referenceImageIds?: string[]
     referenceImageUrls?: string[]
+    model?: string
     template?: string  // 模板ID，如 "character_sheet" 用于生成人设图
   }) =>
     api.post(`/projects/${projectId}/generate/image-edit`, {
@@ -331,6 +333,7 @@ export const generationApi = {
       ...(data.size && { size: data.size }),  // 只有明确提供时才发送 size
       reference_image_ids: data.referenceImageIds || [],
       reference_image_urls: data.referenceImageUrls || [],
+      ...(data.model ? { model: data.model } : {}),
       ...(data.template && { template: data.template }),  // 只有明确提供时才发送 template
     }),
   editSquareImage: (projectId: string, data: {

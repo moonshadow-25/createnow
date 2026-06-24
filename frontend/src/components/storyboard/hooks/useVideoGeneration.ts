@@ -158,7 +158,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     ].filter(Boolean)));
   }, [collectAssetImageIds, selectedStoryboardReferenceImageIds]);
 
-  const handleGenerateVideo = useCallback(async (storyboard: any, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string) => {
+  const handleGenerateVideo = useCallback(async (storyboard: any, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, modelOverride?: string) => {
     if (!videoPrompt.trim()) { toast('请输入或生成视频提示词', 'error'); return; }
 
     const allImageIds = collectSelectedReferenceImageIds(storyboard);
@@ -195,6 +195,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
             prompt: segmentPrompt,
             duration: 15,
             resolution: editResolution,
+            model: modelOverride?.trim() || undefined,
           });
         }
       } else if (multimodalReference) {
@@ -205,6 +206,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
+          model: modelOverride?.trim() || undefined,
         });
       } else if (primaryImage) {
         await generationApi.generateVideo(projectId, {
@@ -214,6 +216,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
+          model: modelOverride?.trim() || undefined,
         });
       } else {
         // 无主图时允许纯文生或多参考图 multimodal
@@ -224,6 +227,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
+          model: modelOverride?.trim() || undefined,
         });
       }
       const successMsg = isMultiSegment
@@ -240,9 +244,9 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       toast(`视频生成失败: ${errorMsg}`, 'error');
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
-  }, [projectId, episodeId, videoPrompt, multimodalReference, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);
+  }, [projectId, episodeId, videoPrompt, multimodalReference, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess, primaryImage]);
 
-  const handleGenerateVideoSegment = useCallback(async (storyboard: any, segmentIndex: number, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string) => {
+  const handleGenerateVideoSegment = useCallback(async (storyboard: any, segmentIndex: number, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, modelOverride?: string) => {
     let prompts: string[];
     try {
       const parsed = JSON.parse(videoPrompt);
@@ -278,6 +282,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         prompt: segmentPrompt,
         duration: 15,
         resolution: editResolution,
+        model: modelOverride?.trim() || undefined,
       });
       toast(`第 ${segmentIndex + 1} 段视频任务已提交`, 'success');
       loadVideos(storyboard);

@@ -19,6 +19,7 @@ import { getImageUrl, getVideoUrl } from '@/components/storyboard/utils/mediaUti
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ export default function StoryboardEditorPage() {
   const setMessagePrefix = useVibeDramaStore(s => s.setMessagePrefix);
   const currentProject = useProjectStore(s => s.currentProject);
   const appearanceMode = useThemeStore(s => s.appearanceMode);
+  const createnowModelConfig = useCreatenowModelConfigStore(s => s.config);
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [storyboard, setStoryboard] = useState<any>(null);
@@ -79,7 +81,13 @@ export default function StoryboardEditorPage() {
   const [insertingTransitionFrame, setInsertingTransitionFrame] = useState(false);
   const [hasPreviousStoryboardVideo, setHasPreviousStoryboardVideo] = useState(false);
   const [selectedStoryboardReferenceImageIds, setSelectedStoryboardReferenceImageIds] = useState<string[]>([]);
+  const [selectedImageModel, setSelectedImageModel] = useState(createnowModelConfig.default_models.image || 'nova-pro');
+  const [selectedVideoModel, setSelectedVideoModel] = useState(createnowModelConfig.default_models.video || 'nova-pro');
   const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
+  const imageApiType = currentProject?.ai_config?.image?.api_type;
+  const videoApiType = currentProject?.ai_config?.video?.api_type;
+  const showImageModelSelect = imageApiType === 'createnow';
+  const showVideoModelSelect = videoApiType === 'createnow';
   const [svgPaths, setSvgPaths] = useState<Array<{ d: string; stroke: string }>>([]);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -110,7 +118,7 @@ export default function StoryboardEditorPage() {
     editShotType,
     editCameraAngle,
     editDuration, setEditDuration,
-    editResolution,
+    editResolution, setEditResolution,
     resetEditState,
   } = contentEdit;
 
@@ -196,6 +204,11 @@ export default function StoryboardEditorPage() {
   useEffect(() => {
     assetStatusesRef.current = assetImageStatuses;
   }, [assetImageStatuses]);
+
+  useEffect(() => {
+    if (createnowModelConfig.default_models.image) setSelectedImageModel(createnowModelConfig.default_models.image);
+    if (createnowModelConfig.default_models.video) setSelectedVideoModel(createnowModelConfig.default_models.video);
+  }, [createnowModelConfig.default_models.image, createnowModelConfig.default_models.video]);
 
   // ── VibeDrama context + storyboard:tool-updated listener ───────────────────
   useEffect(() => {
@@ -722,7 +735,7 @@ export default function StoryboardEditorPage() {
     if (!mergedStoryboard) return;
     await imageManagement.handleGenerateImageFromEdit(
       mergedStoryboard, generatedPrompt, selectedCharacters, selectedScenes, selectedProps,
-      characters, scenes, props, setStoryboardImages
+      characters, scenes, props, setStoryboardImages, showImageModelSelect ? selectedImageModel : undefined
     );
   };
 
@@ -1359,25 +1372,40 @@ export default function StoryboardEditorPage() {
               className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
               placeholder="点击上方按钮AI生成提示词，或手动输入..."
             />
-            <div className="flex gap-2 mt-2 flex-shrink-0">
+            <div className="flex items-center gap-2 mt-2 flex-shrink-0">
+              {showImageModelSelect && (
+                <select
+                  value={selectedImageModel}
+                  onChange={e => setSelectedImageModel(e.target.value)}
+                  className="min-w-0 flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  title="图片模型"
+                >
+                  {(createnowModelConfig.suggestions.image || []).map(option => (
+                    <option key={`${option.label}-${option.model}`} value={option.model}>{option.label} · {option.model}</option>
+                  ))}
+                  {!createnowModelConfig.suggestions.image.some(option => option.model === selectedImageModel) && (
+                    <option value={selectedImageModel}>{selectedImageModel || '默认模型'}</option>
+                  )}
+                </select>
+              )}
               <button
                 onClick={handleGenerateImage}
                 disabled={!generatedPrompt || getTaskStatus(storyboardId, 'image') === 'generating'}
-                className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded"
+                className="w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
               >
                 {getTaskStatus(storyboardId, 'image') === 'generating'
-                  ? <><Loader2 size={14} className="animate-spin" />生成中...</>
-                  : <><ImagePlus size={14} />生成图片</>}
+                  ? <><Loader2 size={13} className="animate-spin" />生成中</>
+                  : <><ImagePlus size={13} />生成</>}
               </button>
               <button
                 onClick={() => setShowImageEdit(true)}
                 disabled={!primaryImage || getTaskStatus(storyboardId, 'image') === 'generating' || getTaskStatus(storyboardId, 'image_edit') === 'generating'}
-                className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded"
+                className="w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
               >
                 {getTaskStatus(storyboardId, 'image_edit') === 'generating'
-                  ? <Loader2 size={14} className="animate-spin" />
-                  : <Edit3 size={14} />}
-                编辑图片
+                  ? <Loader2 size={13} className="animate-spin" />
+                  : <Edit3 size={13} />}
+                编辑
               </button>
             </div>
           </div>
@@ -1486,32 +1514,57 @@ export default function StoryboardEditorPage() {
                     className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
                     placeholder="输入视频提示词，或点击上方按钮AI生成..."
                   />
-                  <div className="flex gap-2 mt-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 mt-2 flex-shrink-0">
                     {isSubmitting || anyProcessing ? (
-                      <span className="text-xs text-yellow-400 flex items-center gap-1 flex-1"><Loader2 size={12} className="animate-spin" />审核中...</span>
+                      <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0"><Loader2 size={12} className="animate-spin" />审核中</span>
                     ) : allActive ? (
-                      <span className="text-xs text-green-400 flex items-center gap-1 flex-1"><CheckCircle size={12} />素材已入库</span>
+                      <span className="w-24 text-xs text-green-400 flex items-center gap-1 shrink-0"><CheckCircle size={12} />已入库</span>
                     ) : (
                       <button
                         onClick={handleSubmitAsset}
-                        className={`flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 rounded ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
+                        className={`w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded shrink-0 ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
                       >
-                        <Upload size={14} />{anyFailed ? '重试提交' : '提交素材'}
+                        <Upload size={13} />{anyFailed ? '重试' : '入库'}
                       </button>
                     )}
                     <button
                       onClick={handleResubmitAsset}
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700"
+                      className="w-20 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700 shrink-0"
                       title="强制重新提交（清空旧审核状态重新入库）"
                     >
-                      <RefreshCcw size={12} />重新提交
+                      <RefreshCcw size={12} />重提
                     </button>
-                    <button
-                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
-                      disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium"
+                    <select
+                      value={editResolution}
+                      onChange={e => setEditResolution(e.target.value)}
+                      className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 shrink-0"
+                      title="视频分辨率"
                     >
-                      {isGenerating ? <><Loader2 size={14} className="animate-spin" />生成中...</> : <><Film size={14} />生成视频</>}
+                      <option value="1280x720">16:9 720p</option>
+                      <option value="720x1280">9:16 720p</option>
+                      <option value="21:9-720p">21:9 720p</option>
+                    </select>
+                    {showVideoModelSelect && (
+                      <select
+                        value={selectedVideoModel}
+                        onChange={e => setSelectedVideoModel(e.target.value)}
+                        className="min-w-0 flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                        title="视频模型"
+                      >
+                        {(createnowModelConfig.suggestions.video || []).map(option => (
+                          <option key={`${option.label}-${option.model}`} value={option.model}>{option.label} · {option.model}</option>
+                        ))}
+                        {!createnowModelConfig.suggestions.video.some(option => option.model === selectedVideoModel) && (
+                          <option value={selectedVideoModel}>{selectedVideoModel || '默认模型'}</option>
+                        )}
+                      </select>
+                    )}
+                    <button
+                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                      disabled={isGenerating || !videoGen.videoPrompt.trim()}
+                      className="w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                    >
+                      {isGenerating ? <><Loader2 size={13} className="animate-spin" />生成中</> : <><Film size={13} />生成</>}
                     </button>
                   </div>
                 </div>
@@ -1554,7 +1607,7 @@ export default function StoryboardEditorPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-medium text-indigo-300">第 {idx + 1} 段</span>
                           <button
-                            onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoSegment(mergedStoryboard, idx, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
+                            onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoSegment(mergedStoryboard, idx, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                             disabled={isGenerating || !segment.trim() || (!primaryImage && selectedCharacters.length === 0 && selectedScenes.length === 0 && selectedProps.length === 0)}
                             className="text-[11px] flex items-center gap-1 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 px-2 py-0.5 rounded"
                           >
@@ -1588,31 +1641,56 @@ export default function StoryboardEditorPage() {
                 </div>
 
                 {/* Bottom actions */}
-                <div className="flex flex-col gap-2 border-t border-gray-700 pt-3">
+                <div className="flex flex-wrap items-center gap-2 border-t border-gray-700 pt-3">
                   {isSubmitting || anyProcessing ? (
-                    <span className="text-xs text-yellow-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" />审核中...</span>
+                    <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0"><Loader2 size={12} className="animate-spin" />审核中</span>
                   ) : allActive ? (
-                    <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle size={12} />素材已入库</span>
+                    <span className="w-24 text-xs text-green-400 flex items-center gap-1 shrink-0"><CheckCircle size={12} />已入库</span>
                   ) : (
-                    <button onClick={handleSubmitAsset} className={`flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 rounded ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}>
-                      <Upload size={14} />{anyFailed ? '部分失败，重试提交' : '提交素材'}
+                    <button onClick={handleSubmitAsset} className={`w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded shrink-0 ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}>
+                      <Upload size={13} />{anyFailed ? '重试' : '入库'}
                     </button>
                   )}
                   <button
                     onClick={handleResubmitAsset}
-                    className="flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded hover:bg-gray-700 border border-gray-700"
+                    className="w-20 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700 shrink-0"
                     title="强制重新提交（清空旧审核状态重新入库）"
                   >
-                    <RefreshCcw size={12} />强制重新提交
+                    <RefreshCcw size={12} />重提
                   </button>
+                  <select
+                    value={editResolution}
+                    onChange={e => setEditResolution(e.target.value)}
+                    className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 shrink-0"
+                    title="视频分辨率"
+                  >
+                    <option value="1280x720">16:9 720p</option>
+                    <option value="720x1280">9:16 720p</option>
+                    <option value="21:9-720p">21:9 720p</option>
+                  </select>
+                  {showVideoModelSelect && (
+                    <select
+                      value={selectedVideoModel}
+                      onChange={e => setSelectedVideoModel(e.target.value)}
+                      className="min-w-[150px] flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                      title="视频模型"
+                    >
+                      {(createnowModelConfig.suggestions.video || []).map(option => (
+                        <option key={`${option.label}-${option.model}`} value={option.model}>{option.label} · {option.model}</option>
+                      ))}
+                      {!createnowModelConfig.suggestions.video.some(option => option.model === selectedVideoModel) && (
+                        <option value={selectedVideoModel}>{selectedVideoModel || '默认模型'}</option>
+                      )}
+                    </select>
+                  )}
                   <button
-                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle); }}
+                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                     disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                    className="flex items-center justify-center gap-1.5 text-sm px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium"
+                    className="w-28 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                   >
                     {isGenerating
-                      ? <><Loader2 size={15} className="animate-spin" />生成中...</>
-                      : <><Film size={15} />生成全部 {videoSegments.length} 段视频</>}
+                      ? <><Loader2 size={13} className="animate-spin" />生成中</>
+                      : <><Film size={13} />生成全部</>}
                   </button>
                 </div>
               </>
