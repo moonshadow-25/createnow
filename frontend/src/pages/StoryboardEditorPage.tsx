@@ -1262,7 +1262,7 @@ export default function StoryboardEditorPage() {
                     onClick={handleSubmitAsset}
                     className={`flex items-center justify-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
                   >
-                    <Upload size={12} />{anyFailed ? '重试' : '入库'}
+                    <Upload size={12} />{anyFailed ? '重试提交' : '提交审核'}
                   </button>
                 )}
                 <button
