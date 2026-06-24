@@ -38,6 +38,18 @@ interface GalleryState {
   images: any[];
 }
 
+const IMAGE_RATIO_OPTIONS = [
+  { label: '16:9 横版', value: '16x9' },
+  { label: '9:16 竖版', value: '9x16' },
+  { label: '1:1 方形', value: '1x1' },
+  { label: '4:3 标准', value: '4x3' },
+  { label: '3:4 竖版', value: '3x4' },
+];
+
+function getImageSizeLabel(value: string): string {
+  return IMAGE_RATIO_OPTIONS.find(option => option.value === value)?.label || value || '图片比例';
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function StoryboardEditorPage() {
@@ -83,6 +95,10 @@ export default function StoryboardEditorPage() {
   const [selectedStoryboardReferenceImageIds, setSelectedStoryboardReferenceImageIds] = useState<string[]>([]);
   const [selectedImageModel, setSelectedImageModel] = useState(createnowModelConfig.default_models.image || 'nova-pro');
   const [selectedVideoModel, setSelectedVideoModel] = useState(createnowModelConfig.default_models.video || 'nova-pro');
+  const [selectedImageSize, setSelectedImageSize] = useState('16x9');
+  const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
+  const [showImageModelMenu, setShowImageModelMenu] = useState(false);
+  const [showVideoModelMenu, setShowVideoModelMenu] = useState(false);
   const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
   const imageApiType = currentProject?.ai_config?.image?.api_type;
   const videoApiType = currentProject?.ai_config?.video?.api_type;
@@ -735,7 +751,9 @@ export default function StoryboardEditorPage() {
     if (!mergedStoryboard) return;
     await imageManagement.handleGenerateImageFromEdit(
       mergedStoryboard, generatedPrompt, selectedCharacters, selectedScenes, selectedProps,
-      characters, scenes, props, setStoryboardImages, showImageModelSelect ? selectedImageModel : undefined
+      characters, scenes, props, setStoryboardImages,
+      showImageModelSelect ? selectedImageModel : undefined,
+      selectedImageSize
     );
   };
 
@@ -1373,29 +1391,85 @@ export default function StoryboardEditorPage() {
               placeholder="点击上方按钮AI生成提示词，或手动输入..."
             />
             <div className="flex items-center gap-2 mt-2 flex-shrink-0">
-              {showImageModelSelect && (
-                <select
-                  value={selectedImageModel}
-                  onChange={e => setSelectedImageModel(e.target.value)}
-                  className="min-w-0 flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                  title="图片模型"
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setShowImageSizeMenu(prev => !prev)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                  title="图片比例"
                 >
-                  {(createnowModelConfig.suggestions.image || []).map(option => (
-                    <option key={`${option.label}-${option.model}`} value={option.model}>{option.label} · {option.model}</option>
-                  ))}
-                  {!createnowModelConfig.suggestions.image.some(option => option.model === selectedImageModel) && (
-                    <option value={selectedImageModel}>{selectedImageModel || '默认模型'}</option>
+                  <ImagePlus size={13} />
+                  {getImageSizeLabel(selectedImageSize)}
+                  <ChevronDown size={12} />
+                </button>
+                {showImageSizeMenu && (
+                  <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                    {IMAGE_RATIO_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => { setSelectedImageSize(option.value); setShowImageSizeMenu(false); }}
+                        className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === selectedImageSize ? 'text-blue-400' : ''}`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {showImageModelSelect && (
+                <div className="relative min-w-[128px] flex-1">
+                  <button
+                    onClick={() => setShowImageModelMenu(prev => !prev)}
+                    className="w-full flex items-center justify-between gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                    title={`当前图片模型：${selectedImageModel}`}
+                  >
+                    <span className="truncate">
+                      {createnowModelConfig.suggestions.image.find(option => option.model === selectedImageModel)?.label || selectedImageModel || '选择模型'}
+                    </span>
+                    <ChevronDown size={12} className="shrink-0" />
+                  </button>
+                  {showImageModelMenu && (
+                    <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
+                      <div className="p-2 border-b border-gray-600">
+                        <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
+                        <input
+                          type="text"
+                          value={selectedImageModel}
+                          onChange={e => setSelectedImageModel(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') setShowImageModelMenu(false);
+                            if (e.key === 'Escape') setShowImageModelMenu(false);
+                          }}
+                          placeholder="输入图片模型名"
+                          className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="py-1">
+                        <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
+                        {(createnowModelConfig.suggestions.image || []).map(option => (
+                          <button
+                            key={`${option.label}-${option.model}`}
+                            onClick={() => { setSelectedImageModel(option.model); setShowImageModelMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedImageModel ? 'text-blue-400' : ''}`}
+                            title={option.model}
+                          >
+                            <span>{option.label}</span>
+                            <span className="ml-2 text-xs text-gray-400">{option.model}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                </select>
+                </div>
               )}
               <button
                 onClick={handleGenerateImage}
                 disabled={!generatedPrompt || getTaskStatus(storyboardId, 'image') === 'generating'}
-                className="w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
+                className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
               >
                 {getTaskStatus(storyboardId, 'image') === 'generating'
-                  ? <><Loader2 size={13} className="animate-spin" />生成中</>
-                  : <><ImagePlus size={13} />生成</>}
+                  ? <><Loader2 size={14} className="animate-spin" />生成中</>
+                  : <><ImagePlus size={14} />生成图片</>}
               </button>
               <button
                 onClick={() => setShowImageEdit(true)}
@@ -1545,26 +1619,58 @@ export default function StoryboardEditorPage() {
                       <option value="21:9-720p">21:9 720p</option>
                     </select>
                     {showVideoModelSelect && (
-                      <select
-                        value={selectedVideoModel}
-                        onChange={e => setSelectedVideoModel(e.target.value)}
-                        className="min-w-0 flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                        title="视频模型"
-                      >
-                        {(createnowModelConfig.suggestions.video || []).map(option => (
-                          <option key={`${option.label}-${option.model}`} value={option.model}>{option.label} · {option.model}</option>
-                        ))}
-                        {!createnowModelConfig.suggestions.video.some(option => option.model === selectedVideoModel) && (
-                          <option value={selectedVideoModel}>{selectedVideoModel || '默认模型'}</option>
+                      <div className="relative min-w-[128px] flex-1">
+                        <button
+                          onClick={() => setShowVideoModelMenu(prev => !prev)}
+                          className="w-full flex items-center justify-between gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                          title={`当前视频模型：${selectedVideoModel}`}
+                        >
+                          <span className="truncate">
+                            {createnowModelConfig.suggestions.video.find(option => option.model === selectedVideoModel)?.label || selectedVideoModel || '选择模型'}
+                          </span>
+                          <ChevronDown size={12} className="shrink-0" />
+                        </button>
+                        {showVideoModelMenu && (
+                          <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
+                            <div className="p-2 border-b border-gray-600">
+                              <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
+                              <input
+                                type="text"
+                                value={selectedVideoModel}
+                                onChange={e => setSelectedVideoModel(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') setShowVideoModelMenu(false);
+                                  if (e.key === 'Escape') setShowVideoModelMenu(false);
+                                }}
+                                placeholder="输入视频模型名"
+                                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="py-1">
+                              <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
+                              {(createnowModelConfig.suggestions.video || []).map(option => (
+                                <button
+                                  key={`${option.label}-${option.model}`}
+                                  onClick={() => { setSelectedVideoModel(option.model); setShowVideoModelMenu(false); }}
+                                  className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedVideoModel ? 'text-blue-400' : ''}`}
+                                  title={option.model}
+                                >
+                                  <span>{option.label}</span>
+                                  <span className="ml-2 text-xs text-gray-400">{option.model}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         )}
-                      </select>
+                      </div>
                     )}
                     <button
                       onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                       disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                      className="w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                      className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                     >
-                      {isGenerating ? <><Loader2 size={13} className="animate-spin" />生成中</> : <><Film size={13} />生成</>}
+                      {isGenerating ? <><Loader2 size={14} className="animate-spin" />生成中</> : <><Film size={14} />生成视频</>}
                     </button>
                   </div>
                 </div>
@@ -1669,28 +1775,60 @@ export default function StoryboardEditorPage() {
                     <option value="21:9-720p">21:9 720p</option>
                   </select>
                   {showVideoModelSelect && (
-                    <select
-                      value={selectedVideoModel}
-                      onChange={e => setSelectedVideoModel(e.target.value)}
-                      className="min-w-[150px] flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                      title="视频模型"
-                    >
-                      {(createnowModelConfig.suggestions.video || []).map(option => (
-                        <option key={`${option.label}-${option.model}`} value={option.model}>{option.label} · {option.model}</option>
-                      ))}
-                      {!createnowModelConfig.suggestions.video.some(option => option.model === selectedVideoModel) && (
-                        <option value={selectedVideoModel}>{selectedVideoModel || '默认模型'}</option>
+                    <div className="relative min-w-[150px] flex-1">
+                      <button
+                        onClick={() => setShowVideoModelMenu(prev => !prev)}
+                        className="w-full flex items-center justify-between gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                        title={`当前视频模型：${selectedVideoModel}`}
+                      >
+                        <span className="truncate">
+                          {createnowModelConfig.suggestions.video.find(option => option.model === selectedVideoModel)?.label || selectedVideoModel || '选择模型'}
+                        </span>
+                        <ChevronDown size={12} className="shrink-0" />
+                      </button>
+                      {showVideoModelMenu && (
+                        <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
+                          <div className="p-2 border-b border-gray-600">
+                            <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
+                            <input
+                              type="text"
+                              value={selectedVideoModel}
+                              onChange={e => setSelectedVideoModel(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') setShowVideoModelMenu(false);
+                                if (e.key === 'Escape') setShowVideoModelMenu(false);
+                              }}
+                              placeholder="输入视频模型名"
+                              className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="py-1">
+                            <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
+                            {(createnowModelConfig.suggestions.video || []).map(option => (
+                              <button
+                                key={`${option.label}-${option.model}`}
+                                onClick={() => { setSelectedVideoModel(option.model); setShowVideoModelMenu(false); }}
+                                className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedVideoModel ? 'text-blue-400' : ''}`}
+                                title={option.model}
+                              >
+                                <span>{option.label}</span>
+                                <span className="ml-2 text-xs text-gray-400">{option.model}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                    </select>
+                    </div>
                   )}
                   <button
                     onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                     disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                    className="w-28 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                    className="w-36 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                   >
                     {isGenerating
-                      ? <><Loader2 size={13} className="animate-spin" />生成中</>
-                      : <><Film size={13} />生成全部</>}
+                      ? <><Loader2 size={14} className="animate-spin" />生成中</>
+                      : <><Film size={14} />生成全部</>}
                   </button>
                 </div>
               </>

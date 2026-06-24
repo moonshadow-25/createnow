@@ -261,7 +261,8 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
     scenes: any[],
     props: any[],
     setStoryboardImages: (images: any[]) => void,
-    modelOverride?: string
+    modelOverride?: string,
+    sizeOverride?: string
   ) => {
     if (!editingStoryboard || !generatedPrompt) {
       toast('请先生成提示词', 'error');
@@ -312,6 +313,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           assetId: editingStoryboard.asset_id,
           assetType: 'storyboard',
           prompt: generatedPrompt,
+          size: sizeOverride,
           referenceImageIds: refImageIds,
           model: modelOverride?.trim() || undefined
         });
@@ -322,6 +324,7 @@ export const useStoryboardImageManagement = (context: ImageManagementContext) =>
           asset_type: 'storyboard',
           prompt: generatedPrompt,
           negative_prompt: '',
+          size: sizeOverride,
           width: 1920,
           height: 1080,
           model: modelOverride?.trim() || undefined,
