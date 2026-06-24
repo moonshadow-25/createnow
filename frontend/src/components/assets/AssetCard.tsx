@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Users, Plus, Info, Mic, Upload, Play, Pause } from 'lucide-react';
+import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Plus, Info, Mic, Upload, Play, Pause } from 'lucide-react';
 import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
+import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS } from '@/store/createnowModelConfigStore';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { normalizeTags, toggleTag } from '@/utils/assetTags';
 
@@ -21,6 +22,8 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const openVibeDrama = useVibeDramaStore(s => s.open);
   const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
+  const modelConfig = useCreatenowModelConfigStore(state => state.config);
+  const imageSuggestions = modelConfig.suggestions.image || [];
   // 使用后端返回的主图URL和图片数量，初始化时直接使用
   const [primaryImage, setPrimaryImage] = useState<string | null>(asset.primary_image_url || null);
   const [imageCount, setImageCount] = useState(asset.image_count || 0);
@@ -34,13 +37,14 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
   const [imagePrompt, setImagePrompt] = useState('');
+  const [selectedImageSize, setSelectedImageSize] = useState('16x9');
+  const [selectedImageModel, setSelectedImageModel] = useState('');
   const [generating, setGenerating] = useState(false);
   const [promptError, setPromptError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [editImagePrompt, setEditImagePrompt] = useState('');
   const [generatingEditPrompt, setGeneratingEditPrompt] = useState(false);
   const [editingImage, setEditingImage] = useState(false);
-  const [generatingCharacterSheet, setGeneratingCharacterSheet] = useState(false);  // 生成人设图状态
   // 图像编辑对话框状态
   const [showImageEditDialog, setShowImageEditDialog] = useState(false);
   // 隐藏图片状态
@@ -82,6 +86,10 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
     setPrimaryImage(asset.primary_image_url || null);
     setImageCount(asset.image_count || 0);
   }, [asset.primary_image_url, asset.image_count]);
+
+  useEffect(() => {
+    setSelectedImageModel(modelConfig.default_models.image || 'nova-pro');
+  }, [modelConfig.default_models.image]);
 
   useEffect(() => {
     setVoicePrompt(asset.voice_prompt || '');
@@ -229,6 +237,8 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
         asset_type: assetType,
         prompt: imagePrompt,
         negative_prompt: '',
+        size: selectedImageSize,
+        model: selectedImageModel.trim() || undefined,
       });
       await loadImages();
       toast('图片生成成功', 'success');
@@ -293,43 +303,6 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
       toast(errorMsg, 'error');
     } finally {
       setEditingImage(false);
-    }
-  };
-
-  const handleGenerateCharacterSheet = async () => {
-    // 检查是否是角色类型
-    if (assetType !== 'character') {
-      toast('此功能仅适用于角色资产', 'error');
-      return;
-    }
-
-    // 检查是否有主图
-    if (!asset.image_id) {
-      toast('请先生成角色的主图', 'error');
-      return;
-    }
-
-    setGeneratingCharacterSheet(true);
-    try {
-      await generationApi.editImage(projectId, {
-        assetId: asset.asset_id,
-        assetType: assetType,
-        prompt: '',  // 留空，由模板填充
-        referenceImageIds: [asset.image_id],
-        template: 'character_sheet'  // 使用人设模板
-      });
-
-      await loadImages();
-      toast('人设图生成成功', 'success');
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.detail
-        ? (typeof error.response.data.detail === 'string'
-            ? error.response.data.detail
-            : JSON.stringify(error.response.data.detail))
-        : '生成人设图失败';
-      toast(errorMsg, 'error');
-    } finally {
-      setGeneratingCharacterSheet(false);
     }
   };
 
@@ -868,35 +841,46 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                       />
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
                         onClick={handleGeneratePrompt}
                         className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg"
-                        disabled={generating || editingImage || generatingCharacterSheet}
+                        disabled={generating || editingImage}
                       >
                         <Wand2 size={16} />
                         {imagePrompt ? '重新生成提示词' : 'AI生成提示词'}
                       </button>
+                      <select
+                        value={selectedImageSize}
+                        onChange={(e) => setSelectedImageSize(e.target.value)}
+                        className="h-10 w-28 bg-gray-600 border border-gray-500 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+                        disabled={generating}
+                      >
+                        {IMAGE_SIZE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        value={selectedImageModel}
+                        onChange={(e) => setSelectedImageModel(e.target.value)}
+                        list="asset-image-model-suggestions"
+                        className="h-10 w-36 bg-gray-600 border border-gray-500 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+                        placeholder="图片模型"
+                        disabled={generating}
+                      />
+                      <datalist id="asset-image-model-suggestions">
+                        {imageSuggestions.map((option) => (
+                          <option key={option.model} value={option.model}>{option.label}</option>
+                        ))}
+                      </datalist>
                       <button
                         onClick={handleGenerateImage}
                         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg"
-                        disabled={generating || generatingCharacterSheet}
+                        disabled={generating}
                       >
                         <ImagePlus size={16} />
                         {generating ? '生成中...' : '生成图片'}
                       </button>
-                      {/* 生成人设按钮 - 仅角色类型显示 */}
-                      {assetType === 'character' && (
-                        <button
-                          onClick={handleGenerateCharacterSheet}
-                          className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 px-4 py-2 rounded-lg disabled:bg-gray-700 disabled:opacity-50"
-                          disabled={generatingCharacterSheet || !asset.image_id}
-                          title={!asset.image_id ? '请先生成角色主图' : '生成角色人设图（全身三视图+面部特写）'}
-                        >
-                          <Users size={16} />
-                          {generatingCharacterSheet ? '生成中...' : '生成人设'}
-                        </button>
-                      )}
                     </div>
                   </div>
               </div>

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { generationApi } from '@/services/api';
-import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
 import { X, Check, ImagePlus, Loader2 } from 'lucide-react';
+import { generationApi } from '@/services/api';
+import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS } from '@/store/createnowModelConfigStore';
+import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
 import { useToast } from './Toast';
 
 interface ImageEditDialogProps {
@@ -55,22 +56,20 @@ export function ImageEditDialog({
 
   // 选中的图片ID
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
-  // 输入的URL
-  const [imageUrls, setImageUrls] = useState('');
   // 提示词
   const [prompt, setPrompt] = useState('');
+  const [selectedSize, setSelectedSize] = useState('16x9');
+  const [selectedModel, setSelectedModel] = useState('');
 
-  const totalReferences = selectedImageIds.length + parseUrls(imageUrls).length;
+  const modelConfig = useCreatenowModelConfigStore(state => state.config);
+  const imageSuggestions = modelConfig.suggestions.image || [];
+  const totalReferences = selectedImageIds.length;
 
   const isGenerating = getTaskStatus(assetId, 'image_edit') === 'generating';
 
-  // 解析URL（按行分隔）
-  function parseUrls(text: string): string[] {
-    return text
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0 && (line.startsWith('http://') || line.startsWith('https://')));
-  }
+  useEffect(() => {
+    setSelectedModel(modelConfig.default_models.image || 'nova-max');
+  }, [modelConfig.default_models.image]);
 
   // 切换图片选中状态
   const toggleImageSelection = (imageId: string) => {
@@ -82,8 +81,7 @@ export function ImageEditDialog({
         newSelected = prev.filter(id => id !== imageId);
       } else {
         // 检查是否超过限制
-        const urlCount = parseUrls(imageUrls).length;
-        if (prev.length + 1 + urlCount > 4) {
+        if (prev.length + 1 > 4) {
           toast('最多选择4张参考图片', 'error');
           return prev;
         }
@@ -96,11 +94,10 @@ export function ImageEditDialog({
 
   // 开始编辑
   const handleStartEdit = async () => {
-    const urls = parseUrls(imageUrls);
-    const total = selectedImageIds.length + urls.length;
+    const total = selectedImageIds.length;
 
     if (total === 0) {
-      toast('请至少选择一张图片或输入一个URL', 'error');
+      toast('请至少选择一张参考图片', 'error');
       return;
     }
 
@@ -121,7 +118,9 @@ export function ImageEditDialog({
         assetType,
         prompt: prompt.trim(),
         referenceImageIds: selectedImageIds,
-        referenceImageUrls: urls
+        referenceImageUrls: [],
+        size: selectedSize,
+        model: selectedModel.trim() || undefined
       });
 
       toast('图片编辑成功', 'success');
@@ -129,7 +128,6 @@ export function ImageEditDialog({
 
       // 先清空输入
       setSelectedImageIds([]);
-      setImageUrls('');
       setPrompt('');
 
       // 等待回调完成后关闭弹框
@@ -205,24 +203,31 @@ export function ImageEditDialog({
             </div>
           )}
 
-          {/* URL 输入区域 */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-semibold text-gray-300">额外图片 URL</h3>
-              <span className="text-sm text-gray-400">
-                {parseUrls(imageUrls).length} 个 URL
-              </span>
-            </div>
-            <textarea
-              value={imageUrls}
-              onChange={(e) => setImageUrls(e.target.value)}
+          {/* 生成设置 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedSize}
+              onChange={(e) => setSelectedSize(e.target.value)}
               disabled={isGenerating}
-              placeholder="输入图片 URL，每行一个&#10;例如：&#10;https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
-              className="w-full h-24 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-gray-200 resize-none focus:outline-none focus:border-blue-500 disabled:opacity-50"
+              className="h-9 w-28 bg-gray-700 border border-gray-600 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            >
+              {IMAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <input
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              disabled={isGenerating}
+              list="image-edit-model-suggestions"
+              placeholder="图片模型"
+              className="h-9 w-36 bg-gray-700 border border-gray-600 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              支持 http:// 或 https:// 开头的图片链接
-            </p>
+            <datalist id="image-edit-model-suggestions">
+              {imageSuggestions.map((option) => (
+                <option key={option.model} value={option.model}>{option.label}</option>
+              ))}
+            </datalist>
           </div>
 
           {/* 提示词输入区域 */}

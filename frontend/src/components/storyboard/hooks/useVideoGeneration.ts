@@ -158,7 +158,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     ].filter(Boolean)));
   }, [collectAssetImageIds, selectedStoryboardReferenceImageIds]);
 
-  const handleGenerateVideo = useCallback(async (storyboard: any, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, modelOverride?: string) => {
+  const handleGenerateVideo = useCallback(async (storyboard: any, editDuration: number, editRatio: string, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, modelOverride?: string) => {
     if (!videoPrompt.trim()) { toast('请输入或生成视频提示词', 'error'); return; }
 
     const allImageIds = collectSelectedReferenceImageIds(storyboard);
@@ -195,6 +195,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
             prompt: segmentPrompt,
             duration: 15,
             resolution: editResolution,
+            ratio: editRatio,
             model: modelOverride?.trim() || undefined,
           });
         }
@@ -246,7 +247,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
     }
   }, [projectId, episodeId, videoPrompt, multimodalReference, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess, primaryImage]);
 
-  const handleGenerateVideoSegment = useCallback(async (storyboard: any, segmentIndex: number, editDuration: number, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, modelOverride?: string) => {
+  const handleGenerateVideoSegment = useCallback(async (storyboard: any, segmentIndex: number, editDuration: number, editRatio: string, editResolution: string, editDescription: string, editDialogue: string, editAction: string, editShotType: string, editCameraAngle: string, modelOverride?: string) => {
     let prompts: string[];
     try {
       const parsed = JSON.parse(videoPrompt);
@@ -281,6 +282,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         image_ids: allImageIds.length > 0 ? allImageIds : undefined,
         prompt: segmentPrompt,
         duration: 15,
+        ratio: editRatio,
         resolution: editResolution,
         model: modelOverride?.trim() || undefined,
       });

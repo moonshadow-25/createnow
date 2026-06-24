@@ -13,6 +13,28 @@ export interface CreatenowModelConfig {
   default_models: Record<CreatenowServiceType, string>;
 }
 
+export const IMAGE_SIZE_OPTIONS = [
+  { label: '16:9 横版', value: '16x9' },
+  { label: '9:16 竖版', value: '9x16' },
+  { label: '1:1 方形', value: '1x1' },
+  { label: '4:3 标准', value: '4x3' },
+  { label: '3:4 竖版', value: '3x4' },
+];
+
+export const VIDEO_RATIO_OPTIONS = [
+  { label: '16:9 横版', value: '16:9' },
+  { label: '9:16 竖版', value: '9:16' },
+  { label: '1:1 方形', value: '1:1' },
+  { label: '4:3 标准', value: '4:3' },
+  { label: '3:4 竖版', value: '3:4' },
+  { label: '21:9 宽屏', value: '21:9' },
+];
+
+export const VIDEO_RESOLUTION_OPTIONS = [
+  { label: '720p', value: '720p' },
+  { label: '1080p', value: '1080p' },
+];
+
 export const DEFAULT_CREATENOW_MODEL_CONFIG: CreatenowModelConfig = {
   suggestions: {
     llm: [],

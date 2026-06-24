@@ -19,7 +19,7 @@ import { getImageUrl, getVideoUrl } from '@/components/storyboard/utils/mediaUti
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
-import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS, VIDEO_RATIO_OPTIONS, VIDEO_RESOLUTION_OPTIONS } from '@/store/createnowModelConfigStore';
 import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -38,16 +38,16 @@ interface GalleryState {
   images: any[];
 }
 
-const IMAGE_RATIO_OPTIONS = [
-  { label: '16:9 横版', value: '16x9' },
-  { label: '9:16 竖版', value: '9x16' },
-  { label: '1:1 方形', value: '1x1' },
-  { label: '4:3 标准', value: '4x3' },
-  { label: '3:4 竖版', value: '3x4' },
-];
-
 function getImageSizeLabel(value: string): string {
-  return IMAGE_RATIO_OPTIONS.find(option => option.value === value)?.label || value || '图片比例';
+  return IMAGE_SIZE_OPTIONS.find(option => option.value === value)?.label || value || '图片比例';
+}
+
+function getVideoRatioLabel(value: string): string {
+  return VIDEO_RATIO_OPTIONS.find(option => option.value === value)?.label || value || '视频比例';
+}
+
+function getVideoResolutionLabel(value: string): string {
+  return VIDEO_RESOLUTION_OPTIONS.find(option => option.value === value)?.label || value || '分辨率';
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -96,7 +96,10 @@ export default function StoryboardEditorPage() {
   const [selectedImageModel, setSelectedImageModel] = useState(createnowModelConfig.default_models.image || 'nova-pro');
   const [selectedVideoModel, setSelectedVideoModel] = useState(createnowModelConfig.default_models.video || 'nova-pro');
   const [selectedImageSize, setSelectedImageSize] = useState('16x9');
+  const [selectedVideoRatio, setSelectedVideoRatio] = useState('16:9');
   const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
+  const [showVideoRatioMenu, setShowVideoRatioMenu] = useState(false);
+  const [showVideoResolutionMenu, setShowVideoResolutionMenu] = useState(false);
   const [showImageModelMenu, setShowImageModelMenu] = useState(false);
   const [showVideoModelMenu, setShowVideoModelMenu] = useState(false);
   const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
@@ -1260,9 +1263,21 @@ export default function StoryboardEditorPage() {
           <div className="flex-shrink-0 mb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">分镜图</span>
-              <button onClick={handleOpenStoryboardGallery} className="text-[11px] text-green-400 hover:text-green-300 flex items-center gap-1">
-                <ImagePlus size={11} />管理图库
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowImageEdit(true)}
+                  disabled={!primaryImage || getTaskStatus(storyboardId, 'image') === 'generating' || getTaskStatus(storyboardId, 'image_edit') === 'generating'}
+                  className="text-[11px] text-orange-400 hover:text-orange-300 disabled:text-gray-600 flex items-center gap-1"
+                >
+                  {getTaskStatus(storyboardId, 'image_edit') === 'generating'
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : <Edit3 size={11} />}
+                  编辑
+                </button>
+                <button onClick={handleOpenStoryboardGallery} className="text-[11px] text-green-400 hover:text-green-300 flex items-center gap-1">
+                  <ImagePlus size={11} />管理图库
+                </button>
+              </div>
             </div>
 
             {/* Primary image display */}
@@ -1390,7 +1405,7 @@ export default function StoryboardEditorPage() {
               className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
               placeholder="点击上方按钮AI生成提示词，或手动输入..."
             />
-            <div className="flex items-center gap-2 mt-2 flex-shrink-0">
+            <div className="flex items-center justify-end gap-2 mt-2 flex-shrink-0">
               <div className="relative shrink-0">
                 <button
                   onClick={() => setShowImageSizeMenu(prev => !prev)}
@@ -1403,7 +1418,7 @@ export default function StoryboardEditorPage() {
                 </button>
                 {showImageSizeMenu && (
                   <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                    {IMAGE_RATIO_OPTIONS.map(option => (
+                    {IMAGE_SIZE_OPTIONS.map(option => (
                       <button
                         key={option.value}
                         onClick={() => { setSelectedImageSize(option.value); setShowImageSizeMenu(false); }}
@@ -1470,16 +1485,6 @@ export default function StoryboardEditorPage() {
                 {getTaskStatus(storyboardId, 'image') === 'generating'
                   ? <><Loader2 size={14} className="animate-spin" />生成中</>
                   : <><ImagePlus size={14} />生成图片</>}
-              </button>
-              <button
-                onClick={() => setShowImageEdit(true)}
-                disabled={!primaryImage || getTaskStatus(storyboardId, 'image') === 'generating' || getTaskStatus(storyboardId, 'image_edit') === 'generating'}
-                className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
-              >
-                {getTaskStatus(storyboardId, 'image_edit') === 'generating'
-                  ? <Loader2 size={13} className="animate-spin" />
-                  : <Edit3 size={14} />}
-                编辑
               </button>
             </div>
           </div>
@@ -1588,7 +1593,7 @@ export default function StoryboardEditorPage() {
                     className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
                     placeholder="输入视频提示词，或点击上方按钮AI生成..."
                   />
-                  <div className="flex items-center gap-2 mt-2 flex-shrink-0">
+                  <div className="flex items-center justify-end gap-2 mt-2 flex-shrink-0">
                     {isSubmitting || anyProcessing ? (
                       <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0"><Loader2 size={12} className="animate-spin" />审核中</span>
                     ) : allActive ? (
@@ -1608,16 +1613,52 @@ export default function StoryboardEditorPage() {
                     >
                       <RefreshCcw size={12} />重提
                     </button>
-                    <select
-                      value={editResolution}
-                      onChange={e => setEditResolution(e.target.value)}
-                      className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 shrink-0"
-                      title="视频分辨率"
-                    >
-                      <option value="1280x720">16:9 720p</option>
-                      <option value="720x1280">9:16 720p</option>
-                      <option value="21:9-720p">21:9 720p</option>
-                    </select>
+                    <div className="relative shrink-0">
+                      <button
+                        onClick={() => setShowVideoRatioMenu(prev => !prev)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                        title="视频比例"
+                      >
+                        {getVideoRatioLabel(selectedVideoRatio)}
+                        <ChevronDown size={12} />
+                      </button>
+                      {showVideoRatioMenu && (
+                        <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                          {VIDEO_RATIO_OPTIONS.map(option => (
+                            <button
+                              key={option.value}
+                              onClick={() => { setSelectedVideoRatio(option.value); setShowVideoRatioMenu(false); }}
+                              className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === selectedVideoRatio ? 'text-blue-400' : ''}`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative shrink-0">
+                      <button
+                        onClick={() => setShowVideoResolutionMenu(prev => !prev)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                        title="视频分辨率"
+                      >
+                        {getVideoResolutionLabel(editResolution)}
+                        <ChevronDown size={12} />
+                      </button>
+                      {showVideoResolutionMenu && (
+                        <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                          {VIDEO_RESOLUTION_OPTIONS.map(option => (
+                            <button
+                              key={option.value}
+                              onClick={() => { setEditResolution(option.value); setShowVideoResolutionMenu(false); }}
+                              className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === editResolution ? 'text-blue-400' : ''}`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {showVideoModelSelect && (
                       <div className="relative w-32 shrink-0">
                         <button
@@ -1666,7 +1707,7 @@ export default function StoryboardEditorPage() {
                       </div>
                     )}
                     <button
-                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                       disabled={isGenerating || !videoGen.videoPrompt.trim()}
                       className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                     >
@@ -1713,7 +1754,7 @@ export default function StoryboardEditorPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-medium text-indigo-300">第 {idx + 1} 段</span>
                           <button
-                            onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoSegment(mergedStoryboard, idx, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                            onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoSegment(mergedStoryboard, idx, editDuration, selectedVideoRatio, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                             disabled={isGenerating || !segment.trim() || (!primaryImage && selectedCharacters.length === 0 && selectedScenes.length === 0 && selectedProps.length === 0)}
                             className="text-[11px] flex items-center gap-1 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 px-2 py-0.5 rounded"
                           >
@@ -1747,7 +1788,7 @@ export default function StoryboardEditorPage() {
                 </div>
 
                 {/* Bottom actions */}
-                <div className="flex flex-wrap items-center gap-2 border-t border-gray-700 pt-3">
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-700 pt-3">
                   {isSubmitting || anyProcessing ? (
                     <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0"><Loader2 size={12} className="animate-spin" />审核中</span>
                   ) : allActive ? (
@@ -1764,16 +1805,52 @@ export default function StoryboardEditorPage() {
                   >
                     <RefreshCcw size={12} />重提
                   </button>
-                  <select
-                    value={editResolution}
-                    onChange={e => setEditResolution(e.target.value)}
-                    className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 shrink-0"
-                    title="视频分辨率"
-                  >
-                    <option value="1280x720">16:9 720p</option>
-                    <option value="720x1280">9:16 720p</option>
-                    <option value="21:9-720p">21:9 720p</option>
-                  </select>
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setShowVideoRatioMenu(prev => !prev)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                      title="视频比例"
+                    >
+                      {getVideoRatioLabel(selectedVideoRatio)}
+                      <ChevronDown size={12} />
+                    </button>
+                    {showVideoRatioMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                        {VIDEO_RATIO_OPTIONS.map(option => (
+                          <button
+                            key={option.value}
+                            onClick={() => { setSelectedVideoRatio(option.value); setShowVideoRatioMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === selectedVideoRatio ? 'text-blue-400' : ''}`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => setShowVideoResolutionMenu(prev => !prev)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
+                      title="视频分辨率"
+                    >
+                      {getVideoResolutionLabel(editResolution)}
+                      <ChevronDown size={12} />
+                    </button>
+                    {showVideoResolutionMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+                        {VIDEO_RESOLUTION_OPTIONS.map(option => (
+                          <button
+                            key={option.value}
+                            onClick={() => { setEditResolution(option.value); setShowVideoResolutionMenu(false); }}
+                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === editResolution ? 'text-blue-400' : ''}`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {showVideoModelSelect && (
                     <div className="relative w-32 shrink-0">
                       <button
@@ -1822,7 +1899,7 @@ export default function StoryboardEditorPage() {
                     </div>
                   )}
                   <button
-                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                     disabled={isGenerating || !videoGen.videoPrompt.trim()}
                     className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                   >
