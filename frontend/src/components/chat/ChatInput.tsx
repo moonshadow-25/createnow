@@ -157,8 +157,6 @@ export function ChatInput({
         {/* 快捷语句按钮 */}
         <div className="flex gap-2 mb-2">
           {[
-            { label: '提取资产', text: '提取资产', className: 'bg-emerald-700 hover:bg-emerald-600 text-emerald-100' },
-            { label: '匹配资产', text: '匹配资产', className: 'bg-violet-700 hover:bg-violet-600 text-violet-100' },
             { label: '重新生成分镜', text: '重新生成分镜', className: 'bg-blue-700 hover:bg-blue-600 text-blue-100' },
           ].map(({ label, text, className }) => (
             <button
