@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ImagePlus, Loader2, Plus, RefreshCw, Trash2, Upload, X, Zap } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
+import { ImagePlus, Loader2, Maximize2, Plus, RefreshCw, Trash2, Upload, X, Zap } from 'lucide-react';
 import { generationApi, materialApi } from '@/services/api';
+import { ImagePreviewModal } from '@/components/common/ImagePreviewModal';
 import { useToast } from '@/components/common/Toast';
 
 const MAX_ZIP_SIZE = 200 * 1024 * 1024;
@@ -101,6 +102,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   const [lookName, setLookName] = useState('');
   const [lookPrompt, setLookPrompt] = useState('');
   const [nowMs, setNowMs] = useState(Date.now());
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<UploadTarget | null>(null);
   const pollingAssetIdsRef = useRef<Set<string>>(new Set());
@@ -188,6 +190,11 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
   const openUpload = (target: UploadTarget) => {
     uploadTargetRef.current = target;
     fileInputRef.current?.click();
+  };
+
+  const openImagePreview = (event: MouseEvent, url: string, title: string, subtitle?: string) => {
+    event.stopPropagation();
+    setPreviewImage({ url, title, subtitle });
   };
 
   const updateMaterialImages = async (material: MaterialAsset, patch: Partial<MaterialAsset>) => {
@@ -457,14 +464,29 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
             </button>
             <div className="max-h-[420px] space-y-2 overflow-y-auto pt-2">
               {materials.map((material) => (
-                <button
+                <div
                   key={material.asset_id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(material.asset_id)}
-                  className={`w-full rounded-lg border p-2 text-left transition ${selected?.asset_id === material.asset_id ? 'border-blue-500 bg-blue-950/30' : 'border-gray-700 bg-gray-800 hover:bg-gray-750'}`}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') setSelectedId(material.asset_id);
+                  }}
+                  className={`w-full cursor-pointer rounded-lg border p-2 text-left transition ${selected?.asset_id === material.asset_id ? 'border-blue-500 bg-blue-950/30' : 'border-gray-700 bg-gray-800 hover:bg-gray-750'}`}
                 >
                   <div className="flex items-center gap-2">
                     {material.front_image_url ? (
-                      <img src={mediaUrl(material.front_image_url)} className="h-12 w-12 rounded object-cover" />
+                      <div className="group relative h-12 w-12 shrink-0 overflow-hidden rounded">
+                        <img src={mediaUrl(material.front_image_url)} className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={(event) => openImagePreview(event, material.front_image_url!, material.name, '正脸素材')}
+                          className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100"
+                          title="查看原图"
+                        >
+                          <Maximize2 size={14} className="text-white" />
+                        </button>
+                      </div>
                     ) : (
                       <div className="flex h-12 w-12 items-center justify-center rounded bg-gray-700 text-gray-400"><ImagePlus size={18} /></div>
                     )}
@@ -473,7 +495,7 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                       <div className="text-xs text-gray-400">妆造 {material.looks?.length || 0} · {auditLabel(material.front_audit_status)}</div>
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
               {!materials.length && <div className="py-6 text-center text-sm text-gray-500">暂无素材</div>}
             </div>
@@ -494,7 +516,17 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                 <div className="rounded-lg border border-gray-700 bg-gray-950 p-3">
                   <div className="mb-2 text-sm font-medium text-gray-300">正脸素材</div>
                   {selected.front_image_url ? (
-                    <img src={mediaUrl(selected.front_image_url)} className="h-48 w-full rounded object-cover" />
+                    <div className="group relative h-48 overflow-hidden rounded">
+                      <img src={mediaUrl(selected.front_image_url)} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={(event) => openImagePreview(event, selected.front_image_url!, selected.name, '正脸素材')}
+                        className="absolute right-2 top-2 rounded bg-black/60 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+                        title="查看原图"
+                      >
+                        <Maximize2 size={16} />
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex h-48 items-center justify-center rounded border border-dashed border-gray-700 text-sm text-gray-500">未上传正脸</div>
                   )}
@@ -510,13 +542,32 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                     {Array.from({ length: 5 }).map((_, index) => {
                       const image = selected.angle_images?.[index];
                       return (
-                        <button key={index} onClick={() => openUpload({ kind: 'angle', material: selected, index })} className="group relative h-32 overflow-hidden rounded border border-dashed border-gray-700 bg-gray-900 hover:border-blue-500">
+                        <div
+                          key={index}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => openUpload({ kind: 'angle', material: selected, index })}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') openUpload({ kind: 'angle', material: selected, index });
+                          }}
+                          className="group relative h-32 cursor-pointer overflow-hidden rounded border border-dashed border-gray-700 bg-gray-900 hover:border-blue-500"
+                        >
                           {image?.image_url ? (
-                            <img src={mediaUrl(image.image_url)} className="h-full w-full object-cover" />
+                            <>
+                              <img src={mediaUrl(image.image_url)} className="h-full w-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={(event) => openImagePreview(event, image.image_url!, `${selected.name} 角度${index + 1}`, '角度素材')}
+                                className="absolute right-1 top-1 rounded bg-black/60 p-1 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+                                title="查看原图"
+                              >
+                                <Maximize2 size={14} />
+                              </button>
+                            </>
                           ) : (
                             <div className="flex h-full flex-col items-center justify-center text-xs text-gray-500"><Upload size={16} />角度{index + 1}</div>
                           )}
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -575,7 +626,17 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
                         <button onClick={() => removeLook(look)} className="text-gray-500 hover:text-red-300"><X size={14} /></button>
                       </div>
                       {look.image_url ? (
-                        <img src={mediaUrl(look.image_url)} className="h-40 w-full rounded object-cover" />
+                        <div className="group relative h-40 overflow-hidden rounded">
+                          <img src={mediaUrl(look.image_url)} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={(event) => openImagePreview(event, look.image_url!, look.name, selected.name)}
+                            className="absolute right-2 top-2 rounded bg-black/60 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+                            title="查看原图"
+                          >
+                            <Maximize2 size={16} />
+                          </button>
+                        </div>
                       ) : (
                         <div className="flex h-40 items-center justify-center rounded bg-gray-950 text-sm text-gray-500">暂无妆造图</div>
                       )}
@@ -625,6 +686,14 @@ export function MaterialLibraryPanel({ projectId }: MaterialLibraryPanelProps) {
           )}
         </div>
       </div>
+      {previewImage && (
+        <ImagePreviewModal
+          imageUrl={previewImage.url}
+          title={previewImage.title}
+          subtitle={previewImage.subtitle}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </div>
   );
 }
