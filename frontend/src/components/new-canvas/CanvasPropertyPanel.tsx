@@ -1,9 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import {
-  IMAGE_SIZE_OPTIONS,
-  VIDEO_RATIO_OPTIONS,
-  VIDEO_RESOLUTION_OPTIONS,
   getDefinition,
 } from './nodeDefinitions';
 import { DirectorStageEditor } from './DirectorStageEditor';
@@ -255,29 +253,26 @@ export function CanvasPropertyPanel({
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="text-xs text-gray-400">图片比例</span>
-            <select
-              value={selectedNode.config.size || '16x9'}
-              onChange={(event) => updateNodeConfig(selectedNode.node_id, { size: event.target.value })}
-              className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-            >
-              {IMAGE_SIZE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <div className="mt-1">
+              <GenerationOptionSelector
+                kind="imageSize"
+                value={selectedNode.config.size || '16x9'}
+                onChange={(value) => updateNodeConfig(selectedNode.node_id, { size: value })}
+              />
+            </div>
           </label>
           {imageApiType === 'createnow' && (
             <label className="block">
               <span className="text-xs text-gray-400">模型</span>
-              <input
-                list="canvas-image-model-options"
-                value={selectedNode.config.model || ''}
-                onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
-                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-                placeholder={createnowModelConfig.default_models.image || '默认配置'}
-              />
-              <datalist id="canvas-image-model-options">
-                {(createnowModelConfig.suggestions.image || []).map((item) => (
-                  <option key={item.model} value={item.model}>{item.label}</option>
-                ))}
-              </datalist>
+              <div className="mt-1">
+                <CreatenowModelSelector
+                  type="image"
+                  value={selectedNode.config.model || createnowModelConfig.default_models.image || ''}
+                  suggestions={createnowModelConfig.suggestions.image || []}
+                  onChange={(value) => updateNodeConfig(selectedNode.node_id, { model: value })}
+                  className="w-full"
+                />
+              </div>
             </label>
           )}
         </div>
@@ -299,41 +294,38 @@ export function CanvasPropertyPanel({
             </label>
             <label className="block">
               <span className="text-xs text-gray-400">清晰度</span>
-              <select
-                value={selectedNode.config.resolution || '720p'}
-                onChange={(event) => updateNodeConfig(selectedNode.node_id, { resolution: event.target.value })}
-                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-              >
-                {VIDEO_RESOLUTION_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              <div className="mt-1">
+                <GenerationOptionSelector
+                  kind="videoResolution"
+                  value={selectedNode.config.resolution || '720p'}
+                  onChange={(value) => updateNodeConfig(selectedNode.node_id, { resolution: value })}
+                />
+              </div>
             </label>
             <label className="block">
               <span className="text-xs text-gray-400">比例</span>
-              <select
-                value={selectedNode.config.ratio || '16:9'}
-                onChange={(event) => updateNodeConfig(selectedNode.node_id, { ratio: event.target.value })}
-                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-              >
-                {VIDEO_RATIO_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              <div className="mt-1">
+                <GenerationOptionSelector
+                  kind="videoRatio"
+                  value={selectedNode.config.ratio || '16:9'}
+                  onChange={(value) => updateNodeConfig(selectedNode.node_id, { ratio: value })}
+                />
+              </div>
             </label>
           </div>
           <div className="grid grid-cols-[1fr_auto] items-end gap-2">
             {videoApiType === 'createnow' ? (
               <label className="block">
                 <span className="text-xs text-gray-400">模型</span>
-                <input
-                  list="canvas-video-model-options"
-                  value={selectedNode.config.model || ''}
-                  onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
-                  className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-                  placeholder={createnowModelConfig.default_models.video || '默认配置'}
-                />
-                <datalist id="canvas-video-model-options">
-                  {(createnowModelConfig.suggestions.video || []).map((item) => (
-                    <option key={item.model} value={item.model}>{item.label}</option>
-                  ))}
-                </datalist>
+                <div className="mt-1">
+                  <CreatenowModelSelector
+                    type="video"
+                    value={selectedNode.config.model || createnowModelConfig.default_models.video || ''}
+                    suggestions={createnowModelConfig.suggestions.video || []}
+                    onChange={(value) => updateNodeConfig(selectedNode.node_id, { model: value })}
+                    className="w-full"
+                  />
+                </div>
               </label>
             ) : <div />}
             <label className="flex h-9 items-center gap-2 rounded bg-gray-900 px-2 text-xs text-gray-300 ring-1 ring-gray-700">

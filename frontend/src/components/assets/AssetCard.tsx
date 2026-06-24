@@ -4,7 +4,8 @@ import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
-import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS } from '@/store/createnowModelConfigStore';
+import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { normalizeTags, toggleTag } from '@/utils/assetTags';
 
@@ -850,29 +851,14 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                         <Wand2 size={16} />
                         {imagePrompt ? '重新生成提示词' : 'AI生成提示词'}
                       </button>
-                      <select
-                        value={selectedImageSize}
-                        onChange={(e) => setSelectedImageSize(e.target.value)}
-                        className="h-10 w-28 bg-gray-600 border border-gray-500 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-                        disabled={generating}
-                      >
-                        {IMAGE_SIZE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <input
+                      <GenerationOptionSelector kind="imageSize" value={selectedImageSize} onChange={setSelectedImageSize} />
+                      <CreatenowModelSelector
+                        type="image"
                         value={selectedImageModel}
-                        onChange={(e) => setSelectedImageModel(e.target.value)}
-                        list="asset-image-model-suggestions"
-                        className="h-10 w-36 bg-gray-600 border border-gray-500 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-                        placeholder="图片模型"
-                        disabled={generating}
+                        suggestions={imageSuggestions}
+                        onChange={setSelectedImageModel}
+                        className="w-32 shrink-0"
                       />
-                      <datalist id="asset-image-model-suggestions">
-                        {imageSuggestions.map((option) => (
-                          <option key={option.model} value={option.model}>{option.label}</option>
-                        ))}
-                      </datalist>
                       <button
                         onClick={handleGenerateImage}
                         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg"

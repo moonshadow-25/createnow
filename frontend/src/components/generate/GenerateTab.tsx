@@ -11,7 +11,8 @@ import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
 import { translateError } from '@/utils/errorMessages';
-import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS, VIDEO_RATIO_OPTIONS, VIDEO_RESOLUTION_OPTIONS } from '@/store/createnowModelConfigStore';
+import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
 interface RefMedia {
@@ -108,26 +109,6 @@ interface GenerateTabProps {
 
 const HISTORY_PAGE_SIZE = 60;
 
-const RATIO_OPTIONS = [
-  { label: '16:9 横版', value: '16:9' },
-  { label: '9:16 竖版', value: '9:16' },
-  { label: '21:9 超宽', value: '21:9' },
-];
-
-const IMAGE_RATIO_OPTIONS = [
-  { label: '16:9 横版', value: '16x9' },
-  { label: '9:16 竖版', value: '9x16' },
-  { label: '1:1 方形', value: '1x1' },
-  { label: '4:3 标准', value: '4x3' },
-  { label: '3:4 竖版', value: '3x4' },
-];
-
-const RESOLUTION_OPTIONS = [
-  { label: '480p', value: '480p' },
-  { label: '720p', value: '720p' },
-  { label: '1080p', value: '1080p' },
-];
-
 const LEGACY_RESOLUTION_MAP: Record<string, string> = {
   '1280x720': '720p',
   '720x1280': '720p',
@@ -136,12 +117,12 @@ const LEGACY_RESOLUTION_MAP: Record<string, string> = {
 
 function normalizeResolutionValue(resolution?: string): string {
   if (!resolution) return '720p';
-  if (RESOLUTION_OPTIONS.some(r => r.value === resolution)) return resolution;
+  if (VIDEO_RESOLUTION_OPTIONS.some(r => r.value === resolution)) return resolution;
   return LEGACY_RESOLUTION_MAP[resolution] || '720p';
 }
 
 function inferRatioFromVideo(video: Pick<VideoRecord, 'ratio' | 'resolution'>): string {
-  if (video.ratio && RATIO_OPTIONS.some(r => r.value === video.ratio)) return video.ratio;
+  if (video.ratio && VIDEO_RATIO_OPTIONS.some(r => r.value === video.ratio)) return video.ratio;
   if (video.resolution === '720x1280') return '9:16';
   if (video.resolution === '21:9-720p') return '21:9';
   return '16:9';
@@ -226,11 +207,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [pendingImageCount, setPendingImageCount] = useState(0);
-  const [showRatioMenu, setShowRatioMenu] = useState(false);
-  const [showResolutionMenu, setShowResolutionMenu] = useState(false);
-  const [showImageSizeMenu, setShowImageSizeMenu] = useState(false);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
-  const [showModelMenu, setShowModelMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
   const [previewMedia, setPreviewMedia] = useState<RefMedia | null>(null);
@@ -467,7 +444,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     setMode('image');
     setPrompt(image.prompt || '');
     setSelectedMedia(buildImageReferenceMedia(image));
-    if (image.size && IMAGE_RATIO_OPTIONS.some(option => option.value === image.size)) {
+    if (image.size && IMAGE_SIZE_OPTIONS.some(option => option.value === image.size)) {
       setImageSize(image.size);
       return;
     }
@@ -810,9 +787,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const hasUnreviewed = reviewItems.length > 0 && (allStatuses.length < reviewItems.length || allStatuses.some(s => !s || s === 'Failed'));
   const showSubmitButton = showAssetSubmit && reviewItems.length > 0;
 
-  const ratioLabel = RATIO_OPTIONS.find(r => r.value === ratio)?.label || ratio;
-  const resolutionLabel = RESOLUTION_OPTIONS.find(r => r.value === resolution)?.label || resolution;
-  const imageSizeLabel = IMAGE_RATIO_OPTIONS.find(option => option.value === imageSize)?.label || imageSize;
   const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
   const selectedProjectAssetIds = useCallback((assets: any[]) => assets
     .filter(asset => selectedMedia.some(item =>
@@ -857,9 +831,6 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     ? (createnowModelConfig.suggestions.image || [])
     : (createnowModelConfig.suggestions.video || []);
   const selectedModelOverride = mode === 'image' ? selectedImageModel : selectedVideoModel;
-  const selectedModelValue = selectedModelOverride.trim();
-  const selectedModelPreset = activeModelSuggestions.find(option => option.model === selectedModelOverride);
-  const selectedModelLabel = selectedModelPreset?.label || selectedModelValue || '选择模型';
   const handleModelOverrideChange = (model: string) => {
     if (mode === 'image') {
       setSelectedImageModel(model);
@@ -1070,53 +1041,9 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                     )}
                   </div>
 
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowRatioMenu(!showRatioMenu)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                    >
-                      <Film size={14} />
-                      {ratioLabel}
-                      <ChevronDown size={12} />
-                    </button>
-                    {showRatioMenu && (
-                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                        {RATIO_OPTIONS.map(r => (
-                          <button
-                            key={r.value}
-                            onClick={() => { setRatio(r.value); setShowRatioMenu(false); }}
-                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === ratio ? 'text-blue-400' : ''}`}
-                          >
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <GenerationOptionSelector kind="videoRatio" value={ratio} onChange={setRatio} />
 
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowResolutionMenu(!showResolutionMenu)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                    >
-                      <Film size={14} />
-                      {resolutionLabel}
-                      <ChevronDown size={12} />
-                    </button>
-                    {showResolutionMenu && (
-                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                        {RESOLUTION_OPTIONS.map(r => (
-                          <button
-                            key={r.value}
-                            onClick={() => { setResolution(r.value); setShowResolutionMenu(false); }}
-                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${r.value === resolution ? 'text-blue-400' : ''}`}
-                          >
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <GenerationOptionSelector kind="videoResolution" value={resolution} onChange={setResolution} />
 
                   <button
                     onClick={() => setGenerateAudio(!generateAudio)}
@@ -1131,77 +1058,18 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
 
               {mode === 'image' && (
                 <>
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowImageSizeMenu(!showImageSizeMenu)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                    >
-                      <Image size={14} />
-                      {imageSizeLabel}
-                      <ChevronDown size={12} />
-                    </button>
-                    {showImageSizeMenu && (
-                      <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
-                        {IMAGE_RATIO_OPTIONS.map(option => (
-                          <button
-                            key={option.value}
-                            onClick={() => { setImageSize(option.value); setShowImageSizeMenu(false); }}
-                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === imageSize ? 'text-blue-400' : ''}`}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <GenerationOptionSelector kind="imageSize" value={imageSize} onChange={setImageSize} />
                 </>
               )}
 
               {showCreatenowModelSelect && activeModelSuggestions.length > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowModelMenu(!showModelMenu)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition"
-                    title={`当前模型：${selectedModelOverride}`}
-                  >
-                    {mode === 'image' ? <Image size={14} /> : <Film size={14} />}
-                    {selectedModelLabel}
-                    <ChevronDown size={12} />
-                  </button>
-                  {showModelMenu && (
-                    <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden min-w-[240px]">
-                      <div className="p-2 border-b border-gray-600">
-                        <label className="block text-xs text-gray-400 mb-1">自定义模型</label>
-                        <input
-                          type="text"
-                          value={selectedModelOverride}
-                          onChange={(e) => handleModelOverrideChange(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') setShowModelMenu(false);
-                            if (e.key === 'Escape') setShowModelMenu(false);
-                          }}
-                          placeholder={mode === 'image' ? '输入图片模型名' : '输入视频模型名'}
-                          className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                          autoFocus
-                        />
-                      </div>
-                      <div className="py-1">
-                        <div className="px-4 py-1 text-xs text-gray-500">预设模型</div>
-                        {activeModelSuggestions.map(option => (
-                          <button
-                            key={`${option.label}-${option.model}`}
-                            onClick={() => { handleModelOverrideChange(option.model); setShowModelMenu(false); }}
-                            className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.model === selectedModelOverride ? 'text-blue-400' : ''}`}
-                            title={option.model}
-                          >
-                            <span>{option.label}</span>
-                            <span className="ml-2 text-xs text-gray-400">{option.model}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <CreatenowModelSelector
+                  type={mode === 'image' ? 'image' : 'video'}
+                  value={selectedModelOverride}
+                  suggestions={activeModelSuggestions}
+                  onChange={handleModelOverrideChange}
+                  className="w-32 shrink-0"
+                />
               )}
 
               <div className="flex-1" />

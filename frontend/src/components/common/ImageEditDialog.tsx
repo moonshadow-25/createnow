@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, Check, ImagePlus, Loader2 } from 'lucide-react';
 import { generationApi } from '@/services/api';
-import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS } from '@/store/createnowModelConfigStore';
+import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
 import { useToast } from './Toast';
 
@@ -205,29 +206,14 @@ export function ImageEditDialog({
 
           {/* 生成设置 */}
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedSize}
-              onChange={(e) => setSelectedSize(e.target.value)}
-              disabled={isGenerating}
-              className="h-9 w-28 bg-gray-700 border border-gray-600 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-            >
-              {IMAGE_SIZE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <input
+            <GenerationOptionSelector kind="imageSize" value={selectedSize} onChange={setSelectedSize} />
+            <CreatenowModelSelector
+              type="image"
               value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={isGenerating}
-              list="image-edit-model-suggestions"
-              placeholder="图片模型"
-              className="h-9 w-36 bg-gray-700 border border-gray-600 rounded px-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+              suggestions={imageSuggestions}
+              onChange={setSelectedModel}
+              className="w-32 shrink-0"
             />
-            <datalist id="image-edit-model-suggestions">
-              {imageSuggestions.map((option) => (
-                <option key={option.model} value={option.model}>{option.label}</option>
-              ))}
-            </datalist>
           </div>
 
           {/* 提示词输入区域 */}
