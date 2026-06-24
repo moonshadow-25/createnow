@@ -1527,9 +1527,9 @@ export default function StoryboardEditorPage() {
                     className="w-full flex-1 min-h-0 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 resize-none"
                     placeholder="输入视频提示词，或点击上方按钮AI生成..."
                   />
-                  <div className="flex items-center justify-end gap-2 mt-2 flex-shrink-0">
+                  <div className="mt-2 flex-shrink-0 space-y-2">
                     {!skipAssetReview && (
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center justify-end gap-2">
                         {isSubmitting || anyProcessing ? (
                           <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
                         ) : allActive ? (
@@ -1551,24 +1551,26 @@ export default function StoryboardEditorPage() {
                         </button>
                       </div>
                     )}
-                    <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
-                    <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
-                    {showVideoModelSelect && (
-                      <CreatenowModelSelector
-                        type="video"
-                        value={selectedVideoModel}
-                        suggestions={createnowModelConfig.suggestions.video || []}
-                        onChange={setSelectedVideoModel}
-                        className="w-32 shrink-0"
-                      />
-                    )}
-                    <button
-                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
-                      disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                      className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
-                    >
-                      {isGenerating ? <><Loader2 size={14} className="animate-spin" />生成中</> : <><Film size={14} />生成视频</>}
-                    </button>
+                    <div className="flex items-center justify-end gap-2 min-w-max">
+                      <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
+                      <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
+                      {showVideoModelSelect && (
+                        <CreatenowModelSelector
+                          type="video"
+                          value={selectedVideoModel}
+                          suggestions={createnowModelConfig.suggestions.video || []}
+                          onChange={setSelectedVideoModel}
+                          className="w-32 shrink-0"
+                        />
+                      )}
+                      <button
+                        onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                        disabled={isGenerating || !videoGen.videoPrompt.trim()}
+                        className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                      >
+                        {isGenerating ? <><Loader2 size={14} className="animate-spin" />生成中</> : <><Film size={14} />生成视频</>}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1644,9 +1646,9 @@ export default function StoryboardEditorPage() {
                 </div>
 
                 {/* Bottom actions */}
-                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-700 pt-3">
+                <div className="border-t border-gray-700 pt-3 space-y-2">
                   {!skipAssetReview && (
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center justify-end gap-2">
                       {isSubmitting || anyProcessing ? (
                         <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
                       ) : allActive ? (
@@ -1668,26 +1670,28 @@ export default function StoryboardEditorPage() {
                       </button>
                     </div>
                   )}
-                  <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
-                  <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
-                  {showVideoModelSelect && (
-                    <CreatenowModelSelector
-                      type="video"
-                      value={selectedVideoModel}
-                      suggestions={createnowModelConfig.suggestions.video || []}
-                      onChange={setSelectedVideoModel}
-                      className="w-32 shrink-0"
-                    />
-                  )}
-                  <button
-                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
-                    disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                    className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
-                  >
-                    {isGenerating
-                      ? <><Loader2 size={14} className="animate-spin" />生成中</>
-                      : <><Film size={14} />生成全部</>}
-                  </button>
+                  <div className="flex items-center justify-end gap-2 min-w-max">
+                    <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
+                    <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
+                    {showVideoModelSelect && (
+                      <CreatenowModelSelector
+                        type="video"
+                        value={selectedVideoModel}
+                        suggestions={createnowModelConfig.suggestions.video || []}
+                        onChange={setSelectedVideoModel}
+                        className="w-32 shrink-0"
+                      />
+                    )}
+                    <button
+                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                      disabled={isGenerating || !videoGen.videoPrompt.trim()}
+                      className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                    >
+                      {isGenerating
+                        ? <><Loader2 size={14} className="animate-spin" />生成中</>
+                        : <><Film size={14} />生成全部</>}
+                    </button>
+                  </div>
                 </div>
               </>
             )}
