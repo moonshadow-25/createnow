@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
 from app.services import get_ai_service, PromptService, ImageService, AudioService
-from app.services.ai.adapters.byteseed import ASSET_UNSUPPORTED_MODELS
+from app.services.ai.adapters.byteseed import is_asset_unsupported_model
 from app.services.asset_service import VideoService
 from app.core.config import settings
 from app.core.context import get_current_data_root
@@ -758,7 +758,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         # 处理所有图片，转换为URL或base64
         image_urls = []
         video_model = request.model or ai_config.get("video", {}).get("model", "")
-        skip_asset = video_model in ASSET_UNSUPPORTED_MODELS
+        skip_asset = is_asset_unsupported_model(video_model)
 
         for image_id in (image_ids or []):
             image = ImageService.get_image(project_id, image_id)

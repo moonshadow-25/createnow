@@ -72,6 +72,14 @@ ASSET_UNSUPPORTED_MODELS = {
 }
 
 
+def is_asset_unsupported_model(model: Optional[str]) -> bool:
+    """判断视频模型是否不支持 asset:// URI"""
+    normalized_model = (model or "").strip().lower()
+    if not normalized_model:
+        return False
+    return normalized_model in ASSET_UNSUPPORTED_MODELS or "vip" in normalized_model
+
+
 class ByteSeedVideoAdapter(VideoAdapter):
     """字节Seed视频生成适配器"""
 
