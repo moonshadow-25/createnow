@@ -131,6 +131,8 @@ async def get_frontend_config():
     from app.core.config import settings
     from app.services.auth_service import _read_global_config
 
+    from app.services.createnow_model_config import get_createnow_model_config
+
     global_cfg = _read_global_config()
     ui_cfg = global_cfg.get("ui", {}) if isinstance(global_cfg, dict) else {}
 
@@ -140,6 +142,7 @@ async def get_frontend_config():
         "deploy_mode": settings.DEPLOY_MODE,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
         "app_name": app_name,
+        "createnow_model_config": get_createnow_model_config(),
     }
 
 
@@ -181,4 +184,19 @@ async def update_ui_config(request: Request, body: dict):
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
         "app_name": str(ui_cfg.get("app_name") or "ViPro").strip() or "ViPro",
     }
+
+
+@router.put("/config/createnow-models")
+async def update_createnow_model_config(request: Request, body: dict):
+    """更新 CreateNow 模型标签与新项目默认模型（仅用户名 admin）。"""
+    from app.services.createnow_model_config import save_createnow_model_config
+
+    if settings.DEPLOY_MODE == "saas":
+        raise HTTPException(status_code=403, detail="SaaS 模式不支持修改本地模型配置")
+
+    admin_user = getattr(request.state, "admin_user", None)
+    if not admin_user or admin_user.get("sub") != "admin":
+        raise HTTPException(status_code=403, detail="仅超级管理员可修改模型配置")
+
+    return save_createnow_model_config(body)
 

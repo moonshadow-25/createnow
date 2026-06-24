@@ -363,13 +363,18 @@ async def create_project(request: Request, project: ProjectCreate):
         config_presets: dict = {"llm": [], "vlm": [], "image": [], "video": [], "tts": []}
         active_preset_ids: dict = {}
 
+        from app.services.createnow_model_config import get_createnow_model_config
+        model_config = get_createnow_model_config()
+        default_models = model_config.get("default_models", {})
+
         for svc in ["llm", "vlm", "image", "video", "tts"]:
             preset_id = str(uuid.uuid4())
+            default_model = default_models.get(svc) or "nova-pro"
             preset_config: dict = {
                 "api_type": "createnow",
                 "api_url": base_url,
                 "api_key": auth_api_key,
-                "model": "nova-pro"
+                "model": default_model
             }
             if svc == "tts":
                 preset_config["voice"] = ""
@@ -393,7 +398,7 @@ async def create_project(request: Request, project: ProjectCreate):
             ai_config[svc]["api_type"] = "createnow"
             ai_config[svc]["api_url"] = base_url
             ai_config[svc]["api_key"] = auth_api_key
-            ai_config[svc]["model"] = "nova-pro"
+            ai_config[svc]["model"] = default_model
             if svc == "video":
                 ai_config[svc]["generate_audio"] = True
                 ai_config[svc]["multimodal_reference"] = True

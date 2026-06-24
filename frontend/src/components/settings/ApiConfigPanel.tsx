@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { validationApi, authApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { CREATENOW_API_URL } from '@/constants/urls';
+import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import type { ApiConfig, ApiConfigPresetsMap, ApiConfigPreset } from '@/types';
 
 interface ApiConfigPanelProps {
@@ -36,24 +37,6 @@ const API_TYPE_OPTIONS = [
 
 export type ApiConfigType = 'llm' | 'vlm' | 'image' | 'video' | 'tts';
 
-export type CreatenowModelSuggestion = {
-  label: string;
-  model: string;
-};
-
-export const CREATENOW_MODEL_SUGGESTIONS: Partial<Record<ApiConfigType, CreatenowModelSuggestion[]>> = {
-  image: [
-    { label: 'image2', model: 'nova-max' },
-    { label: 'nano2', model: 'nova-pro' },
-    { label: 'image2备用', model: 'image2-backup' }
-  ],
-  video: [
-    { label: 'sd2', model: 'nova-pro' },
-    { label: 'sd2-fast', model: 'nova' },
-    { label: 'happyhorse', model: 'happyhorse-1.0-r2v' }
-  ]
-};
-
 export function ApiConfigPanel({
   llm,
   vlm,
@@ -68,6 +51,7 @@ export function ApiConfigPanel({
   limitedMode = false
 }: ApiConfigPanelProps) {
   const { toast } = useToast();
+  const createnowModelConfig = useCreatenowModelConfigStore(state => state.config);
   const [apiSubTab, setApiSubTab] = useState<ApiConfigType>('llm');
 
   // API Key 明文显示状态（每个服务类型独立）
@@ -182,7 +166,7 @@ export function ApiConfigPanel({
   const renderModelSuggestions = (type: ApiConfigType, config: ApiConfig, disabled: boolean) => {
     if (config.api_type !== 'createnow') return null;
 
-    const suggestions = CREATENOW_MODEL_SUGGESTIONS[type] || [];
+    const suggestions = createnowModelConfig.suggestions[type] || [];
     if (suggestions.length === 0) return null;
 
     return (
@@ -238,7 +222,7 @@ export function ApiConfigPanel({
              : apiType === 'createnow' ? createnowUrl
              : config.api_url,
       // createnow 默认模型
-      model: apiType === 'createnow' ? 'nova-pro' : config.model,
+      model: apiType === 'createnow' ? (createnowModelConfig.default_models[type] || 'nova-pro') : config.model,
       // 特殊处理：OpenAI 不需要 image_edit_model
       image_edit_model: apiType === 'openai' ? undefined : config.image_edit_model,
       // createnow 视频默认开启生成音频和全能参考（其他服务类型不注入视频专用字段）
@@ -322,7 +306,7 @@ export function ApiConfigPanel({
           ...config,
           api_type: 'createnow',
           api_url: CREATENOW_API_URL,
-          model: config.model || 'nova-pro',
+          model: config.model || createnowModelConfig.default_models[type] || 'nova-pro',
         }
       : { ...config };
 

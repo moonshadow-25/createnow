@@ -11,7 +11,7 @@ import { getVideoUrl } from '@/components/storyboard/utils/mediaUtils';
 import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
 import { translateError } from '@/utils/errorMessages';
-import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
+import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
 interface RefMedia {
@@ -205,11 +205,13 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const { characters, scenes, props } = useAssetStore();
   const adminUsername = useAdminAuthStore(state => state.username);
   const saasUser = useSaasAuthStore(state => state.user);
+  const createnowModelConfig = useCreatenowModelConfigStore(state => state.config);
+  const fetchCreatenowModelConfig = useCreatenowModelConfigStore(state => state.fetchConfig);
 
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<'video' | 'image'>('video');
-  const [selectedImageModel, setSelectedImageModel] = useState(CREATENOW_MODEL_SUGGESTIONS.image?.[0]?.model || '');
-  const [selectedVideoModel, setSelectedVideoModel] = useState(CREATENOW_MODEL_SUGGESTIONS.video?.[0]?.model || '');
+  const [selectedImageModel, setSelectedImageModel] = useState(createnowModelConfig.default_models.image || 'nova-pro');
+  const [selectedVideoModel, setSelectedVideoModel] = useState(createnowModelConfig.default_models.video || 'nova-pro');
   const [onlyMine, setOnlyMine] = useState(false);
   const [duration, setDuration] = useState(6);
   const [resolution, setResolution] = useState('720p');
@@ -240,6 +242,15 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   // 素材审核
   const [isSubmittingAssets, setIsSubmittingAssets] = useState(false);
   const [assetStatuses, setAssetStatuses] = useState<Record<string, { assetId?: string; status?: string }>>({});
+
+  useEffect(() => {
+    fetchCreatenowModelConfig();
+  }, [fetchCreatenowModelConfig]);
+
+  useEffect(() => {
+    setSelectedImageModel(prev => prev || createnowModelConfig.default_models.image || 'nova-pro');
+    setSelectedVideoModel(prev => prev || createnowModelConfig.default_models.video || 'nova-pro');
+  }, [createnowModelConfig.default_models.image, createnowModelConfig.default_models.video]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
@@ -843,8 +854,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   };
   const showCreatenowModelSelect = mode === 'image' ? imageApiType === 'createnow' : videoApiType === 'createnow';
   const activeModelSuggestions = mode === 'image'
-    ? (CREATENOW_MODEL_SUGGESTIONS.image || [])
-    : (CREATENOW_MODEL_SUGGESTIONS.video || []);
+    ? (createnowModelConfig.suggestions.image || [])
+    : (createnowModelConfig.suggestions.video || []);
   const selectedModelOverride = mode === 'image' ? selectedImageModel : selectedVideoModel;
   const selectedModelValue = selectedModelOverride.trim();
   const selectedModelPreset = activeModelSuggestions.find(option => option.model === selectedModelOverride);

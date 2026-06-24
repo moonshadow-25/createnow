@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw } from 'lucide-react';
+import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw, Tags } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
@@ -11,9 +11,10 @@ import { LogsPanel } from './LogsPanel';
 import { GlobalStylePanel } from './GlobalStylePanel';
 import { GlobalPromptPanel } from './GlobalPromptPanel';
 import { UpdatePanel } from './UpdatePanel';
+import { CreatenowModelConfigPanel } from './CreatenowModelConfigPanel';
 import type { ApiConfig, ApiConfigPresetsMap } from '@/types';
 
-type SettingsPanel = 'api' | 'global-style' | 'prompts' | 'global-prompts' | 'logs' | 'update';
+type SettingsPanel = 'api' | 'global-style' | 'model-tags' | 'prompts' | 'global-prompts' | 'logs' | 'update';
 
 interface SettingsModalProps {
   projectId: string;
@@ -23,10 +24,11 @@ interface SettingsModalProps {
 export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   const { toast } = useToast();
   const { currentProject, updateProject } = useProjectStore();
-  const { role } = useAdminAuthStore();
+  const { username, role } = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = role === 'admin';
+  const isSuperAdmin = username === 'admin';
   const canSeeApiSettings = !isSaasUser;
   const apiSettingsLimitedMode = !isAdmin;
   const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(() => canSeeApiSettings ? 'api' : 'global-style');
@@ -259,6 +261,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
 
   const navItems = [
     ...(canSeeApiSettings ? [{ id: 'api' as const, icon: Key, label: 'API设置' }] : []),
+    ...(isSuperAdmin ? [
+      { id: 'model-tags' as const, icon: Tags, label: '模型标签' },
+    ] : []),
     { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
     ...(isAdmin ? [
@@ -307,6 +312,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
             <div className="flex justify-between items-center px-4 py-3 border-b border-gray-700">
               <h2 className="text-lg font-semibold">
                 {settingsPanel === 'api' && 'API配置'}
+                {settingsPanel === 'model-tags' && '模型标签'}
                 {settingsPanel === 'global-style' && '全局风格'}
                 {settingsPanel === 'prompts' && '提示词管理'}
                 {settingsPanel === 'global-prompts' && '全局提示词'}
@@ -336,6 +342,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 activePresetIds={activePresetIds}
                 limitedMode={apiSettingsLimitedMode}
               />
+            )}
+            {settingsPanel === 'model-tags' && (
+              <CreatenowModelConfigPanel />
             )}
             {settingsPanel === 'global-style' && (
               <div className="flex-1 overflow-y-auto">

@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react';
-import { CREATENOW_MODEL_SUGGESTIONS } from '@/components/settings/ApiConfigPanel';
+import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import {
   IMAGE_SIZE_OPTIONS,
   VIDEO_RATIO_OPTIONS,
@@ -65,6 +65,8 @@ export function CanvasPropertyPanel({
   onOpenUpload,
   toast,
 }: CanvasPropertyPanelProps) {
+  const createnowModelConfig = useCreatenowModelConfigStore(state => state.config);
+
   const getSourceOutput = (source?: CanvasNode): NodeOutput | undefined => {
     if (!source) return undefined;
     if (source.config.last_result) return source.config.last_result;
@@ -322,7 +324,7 @@ export function CanvasPropertyPanel({
                   placeholder="默认配置"
                 />
                 <datalist id="canvas-video-model-options">
-                  {(CREATENOW_MODEL_SUGGESTIONS.video || []).map((item) => (
+                  {(createnowModelConfig.suggestions.video || []).map((item) => (
                     <option key={item.model} value={item.model}>{item.label}</option>
                   ))}
                 </datalist>
