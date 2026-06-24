@@ -169,7 +169,8 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                           chunk.tool_call.name?.startsWith('update_') ||
                           chunk.tool_call.name?.startsWith('delete_') ||
                           chunk.tool_call.name?.startsWith('insert_') ||
-                          chunk.tool_call.name === 'generate_storyboard') {
+                          chunk.tool_call.name === 'generate_storyboard' ||
+                          chunk.tool_call.name === 'estimate_storyboard_plan') {
                         assetsWereCreated = true;
                       }
                     }
