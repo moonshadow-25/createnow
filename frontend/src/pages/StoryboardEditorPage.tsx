@@ -1250,30 +1250,6 @@ export default function StoryboardEditorPage() {
                 </div>
               )}
             </div>
-
-            {!skipAssetReview && (
-              <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between gap-2">
-                {isSubmitting || anyProcessing ? (
-                  <span className="text-xs text-yellow-400 flex items-center gap-1 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
-                ) : allActive ? (
-                  <span className="text-xs text-green-400 flex items-center gap-1 whitespace-nowrap"><CheckCircle size={12} />已入库</span>
-                ) : (
-                  <button
-                    onClick={handleSubmitAsset}
-                    className={`flex items-center justify-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
-                  >
-                    <Upload size={12} />{anyFailed ? '重试提交' : '提交审核'}
-                  </button>
-                )}
-                <button
-                  onClick={handleResubmitAsset}
-                  className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 whitespace-nowrap"
-                  title="强制重新提交（清空旧审核状态重新入库）"
-                >
-                  <RefreshCcw size={12} />重提
-                </button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1451,7 +1427,7 @@ export default function StoryboardEditorPage() {
         {/* ── RIGHT PANEL: Videos + Video Prompt ──────────────────────────── */}
         <div
           ref={rightPanelRef}
-          className="flex-[4] min-w-0 overflow-hidden flex flex-col bg-gray-900"
+          className="flex-[4] min-w-[520px] overflow-hidden flex flex-col bg-gray-900"
         >
           <div className="p-3 flex-1 flex flex-col min-h-0">
 
@@ -1552,6 +1528,29 @@ export default function StoryboardEditorPage() {
                     placeholder="输入视频提示词，或点击上方按钮AI生成..."
                   />
                   <div className="flex items-center justify-end gap-2 mt-2 flex-shrink-0">
+                    {!skipAssetReview && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isSubmitting || anyProcessing ? (
+                          <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
+                        ) : allActive ? (
+                          <span className="w-24 text-xs text-green-400 flex items-center gap-1 shrink-0 whitespace-nowrap"><CheckCircle size={12} />已入库</span>
+                        ) : (
+                          <button
+                            onClick={handleSubmitAsset}
+                            className={`w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded shrink-0 whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
+                          >
+                            <Upload size={13} />{anyFailed ? '重试提交' : '提交审核'}
+                          </button>
+                        )}
+                        <button
+                          onClick={handleResubmitAsset}
+                          className="w-20 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700 shrink-0 whitespace-nowrap"
+                          title="强制重新提交（清空旧审核状态重新入库）"
+                        >
+                          <RefreshCcw size={12} />重提
+                        </button>
+                      </div>
+                    )}
                     <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
                     <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
                     {showVideoModelSelect && (
@@ -1646,6 +1645,29 @@ export default function StoryboardEditorPage() {
 
                 {/* Bottom actions */}
                 <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-700 pt-3">
+                  {!skipAssetReview && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isSubmitting || anyProcessing ? (
+                        <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
+                      ) : allActive ? (
+                        <span className="w-24 text-xs text-green-400 flex items-center gap-1 shrink-0 whitespace-nowrap"><CheckCircle size={12} />已入库</span>
+                      ) : (
+                        <button
+                          onClick={handleSubmitAsset}
+                          className={`w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded shrink-0 whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
+                        >
+                          <Upload size={13} />{anyFailed ? '重试提交' : '提交审核'}
+                        </button>
+                      )}
+                      <button
+                        onClick={handleResubmitAsset}
+                        className="w-20 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700 shrink-0 whitespace-nowrap"
+                        title="强制重新提交（清空旧审核状态重新入库）"
+                      >
+                        <RefreshCcw size={12} />重提
+                      </button>
+                    </div>
+                  )}
                   <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
                   <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
                   {showVideoModelSelect && (
