@@ -70,6 +70,20 @@ export function CreatenowModelSelector({ type, value, suggestions, onChange, cla
   );
 }
 
+export function normalizeGenerationOptionValue(kind: 'imageSize' | 'videoRatio' | 'videoResolution', value: string): string {
+  if (kind === 'videoResolution') {
+    const legacyMap: Record<string, string> = {
+      '1280x720': '720p',
+      '720x1280': '720p',
+      '1920x1080': '1080p',
+      '1080x1920': '1080p',
+      '21:9-720p': '720p',
+    };
+    return legacyMap[value] || value;
+  }
+  return value;
+}
+
 interface OptionSelectorProps {
   value: string;
   onChange: (value: string) => void;
@@ -84,7 +98,8 @@ export function GenerationOptionSelector({ value, onChange, kind, className = ''
     : kind === 'videoRatio'
       ? VIDEO_RATIO_OPTIONS
       : VIDEO_RESOLUTION_OPTIONS;
-  const selected = options.find(option => option.value === value);
+  const normalizedValue = normalizeGenerationOptionValue(kind, value);
+  const selected = options.find(option => option.value === normalizedValue);
   const icon = kind === 'imageSize' ? <ImagePlus size={13} /> : <SlidersHorizontal size={13} />;
 
   return (
@@ -105,7 +120,7 @@ export function GenerationOptionSelector({ value, onChange, kind, className = ''
               key={option.value}
               type="button"
               onClick={() => { onChange(option.value); setOpen(false); }}
-              className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === value ? 'text-blue-400' : ''}`}
+              className={`block w-full text-left px-4 py-1.5 text-sm hover:bg-gray-600 whitespace-nowrap ${option.value === normalizedValue ? 'text-blue-400' : ''}`}
             >
               {option.label}
             </button>

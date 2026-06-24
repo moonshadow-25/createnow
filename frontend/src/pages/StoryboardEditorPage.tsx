@@ -20,7 +20,7 @@ import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
-import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
+import { CreatenowModelSelector, GenerationOptionSelector, normalizeGenerationOptionValue } from '@/components/common/GenerationSelectors';
 import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -124,6 +124,7 @@ export default function StoryboardEditorPage() {
     editResolution, setEditResolution,
     resetEditState,
   } = contentEdit;
+  const normalizedVideoResolution = normalizeGenerationOptionValue('videoResolution', editResolution || '720p');
 
   // ── Video generation hook ───────────────────────────────────────────────────
   const videoGen = useVideoGeneration({
@@ -1537,7 +1538,7 @@ export default function StoryboardEditorPage() {
                       <RefreshCcw size={12} />重提
                     </button>
                     <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
-                    <GenerationOptionSelector kind="videoResolution" value={editResolution} onChange={setEditResolution} />
+                    <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
                     {showVideoModelSelect && (
                       <CreatenowModelSelector
                         type="video"
@@ -1548,7 +1549,7 @@ export default function StoryboardEditorPage() {
                       />
                     )}
                     <button
-                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                      onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                       disabled={isGenerating || !videoGen.videoPrompt.trim()}
                       className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                     >
@@ -1595,7 +1596,7 @@ export default function StoryboardEditorPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-medium text-indigo-300">第 {idx + 1} 段</span>
                           <button
-                            onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoSegment(mergedStoryboard, idx, editDuration, selectedVideoRatio, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                            onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideoSegment(mergedStoryboard, idx, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                             disabled={isGenerating || !segment.trim() || (!primaryImage && selectedCharacters.length === 0 && selectedScenes.length === 0 && selectedProps.length === 0)}
                             className="text-[11px] flex items-center gap-1 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-gray-500 px-2 py-0.5 rounded"
                           >
@@ -1647,7 +1648,7 @@ export default function StoryboardEditorPage() {
                     <RefreshCcw size={12} />重提
                   </button>
                   <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
-                  <GenerationOptionSelector kind="videoResolution" value={editResolution} onChange={setEditResolution} />
+                  <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
                   {showVideoModelSelect && (
                     <CreatenowModelSelector
                       type="video"
@@ -1658,7 +1659,7 @@ export default function StoryboardEditorPage() {
                     />
                   )}
                   <button
-                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
+                    onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, selectedVideoRatio, normalizedVideoResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                     disabled={isGenerating || !videoGen.videoPrompt.trim()}
                     className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                   >
