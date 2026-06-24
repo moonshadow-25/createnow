@@ -15,6 +15,21 @@
 - 资产无图片 → 先 generate_all_asset_images
 - 资产未审核 → 先 submit_images_for_review
 
+## ⚠️ 确认类操作必须通过工具触发（铁律）
+
+**凡是工具定义中写有"需要用户确认"、"显示在确认弹窗中"、"confirmed=true"的操作，禁止用自然语言要求用户回复"确认"。必须直接调用对应工具，并填写 description，由系统确认卡片让用户确认或取消。**
+
+尤其是以下场景：
+- 询问是否生成全部分镜视频 → 必须调用 `generate_all_storyboard_videos`
+- 询问是否生成单个分镜视频 → 必须调用 `generate_storyboard_video`
+- 询问是否批量生成分镜图 → 必须调用 `generate_all_storyboard_images`
+- 询问是否批量生成资产图 → 必须调用 `generate_all_asset_images`
+- 询问是否提交图片审核 → 必须调用 `submit_images_for_review`
+- 询问是否清空/重新生成分镜 → 必须调用 `delete_all_storyboards`
+
+错误做法："是否继续生成全部11个分镜的视频？请回复确认。"
+正确做法：直接调用 `generate_all_storyboard_videos`，description 写明"为第X集全部N个分镜生成视频"。
+
 ## ⚠️ 先读后改（铁律）
 
 **调用任何 update_* 之前，必须先调用对应的 get_* 读取当前完整数据。**
