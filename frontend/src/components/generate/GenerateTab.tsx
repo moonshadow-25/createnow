@@ -16,6 +16,7 @@ import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS, VIDEO_RATIO_OPTIONS, 
 import { useProjectStore } from '@/store/projectStore';
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import { getDefaultImageSize, getDefaultServiceModel, getDefaultVideoSpec } from '@/utils/generationDefaults';
+import { isAssetUnsupportedVideoModel } from '@/utils/assetReview';
 import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
 interface RefMedia {
@@ -794,7 +795,8 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const anyFailed = allStatuses.some(s => s === 'Failed');
   const allActive = reviewItems.length > 0 && allStatuses.length > 0 && allStatuses.every(s => s === 'Active');
   const hasUnreviewed = reviewItems.length > 0 && (allStatuses.length < reviewItems.length || allStatuses.some(s => !s || s === 'Failed'));
-  const showSubmitButton = showAssetSubmit && reviewItems.length > 0;
+  const skipAssetReview = isAssetUnsupportedVideoModel(selectedVideoModel);
+  const showSubmitButton = showAssetSubmit && !skipAssetReview && reviewItems.length > 0;
 
   const imageSelectedCount = selectedMedia.filter(item => item.type === 'image').length;
   const selectedProjectAssetIds = useCallback((assets: any[]) => assets
