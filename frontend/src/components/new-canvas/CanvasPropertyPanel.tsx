@@ -267,11 +267,17 @@ export function CanvasPropertyPanel({
             <label className="block">
               <span className="text-xs text-gray-400">模型</span>
               <input
+                list="canvas-image-model-options"
                 value={selectedNode.config.model || ''}
                 onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
                 className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-                placeholder="默认配置"
+                placeholder={createnowModelConfig.default_models.image || '默认配置'}
               />
+              <datalist id="canvas-image-model-options">
+                {(createnowModelConfig.suggestions.image || []).map((item) => (
+                  <option key={item.model} value={item.model}>{item.label}</option>
+                ))}
+              </datalist>
             </label>
           )}
         </div>
@@ -321,7 +327,7 @@ export function CanvasPropertyPanel({
                   value={selectedNode.config.model || ''}
                   onChange={(event) => updateNodeConfig(selectedNode.node_id, { model: event.target.value })}
                   className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
-                  placeholder="默认配置"
+                  placeholder={createnowModelConfig.default_models.video || '默认配置'}
                 />
                 <datalist id="canvas-video-model-options">
                   {(createnowModelConfig.suggestions.video || []).map((item) => (

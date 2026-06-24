@@ -1416,7 +1416,7 @@ export default function StoryboardEditorPage() {
                 )}
               </div>
               {showImageModelSelect && (
-                <div className="relative min-w-[128px] flex-1">
+                <div className="relative w-32 shrink-0">
                   <button
                     onClick={() => setShowImageModelMenu(prev => !prev)}
                     className="w-full flex items-center justify-between gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
@@ -1465,7 +1465,7 @@ export default function StoryboardEditorPage() {
               <button
                 onClick={handleGenerateImage}
                 disabled={!generatedPrompt || getTaskStatus(storyboardId, 'image') === 'generating'}
-                className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
+                className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
               >
                 {getTaskStatus(storyboardId, 'image') === 'generating'
                   ? <><Loader2 size={14} className="animate-spin" />生成中</>
@@ -1474,11 +1474,11 @@ export default function StoryboardEditorPage() {
               <button
                 onClick={() => setShowImageEdit(true)}
                 disabled={!primaryImage || getTaskStatus(storyboardId, 'image') === 'generating' || getTaskStatus(storyboardId, 'image_edit') === 'generating'}
-                className="w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
+                className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 disabled:text-gray-500 rounded shrink-0"
               >
                 {getTaskStatus(storyboardId, 'image_edit') === 'generating'
                   ? <Loader2 size={13} className="animate-spin" />
-                  : <Edit3 size={13} />}
+                  : <Edit3 size={14} />}
                 编辑
               </button>
             </div>
@@ -1619,7 +1619,7 @@ export default function StoryboardEditorPage() {
                       <option value="21:9-720p">21:9 720p</option>
                     </select>
                     {showVideoModelSelect && (
-                      <div className="relative min-w-[128px] flex-1">
+                      <div className="relative w-32 shrink-0">
                         <button
                           onClick={() => setShowVideoModelMenu(prev => !prev)}
                           className="w-full flex items-center justify-between gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
@@ -1668,7 +1668,7 @@ export default function StoryboardEditorPage() {
                     <button
                       onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                       disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                      className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                      className="w-28 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                     >
                       {isGenerating ? <><Loader2 size={14} className="animate-spin" />生成中</> : <><Film size={14} />生成视频</>}
                     </button>
@@ -1775,7 +1775,7 @@ export default function StoryboardEditorPage() {
                     <option value="21:9-720p">21:9 720p</option>
                   </select>
                   {showVideoModelSelect && (
-                    <div className="relative min-w-[150px] flex-1">
+                    <div className="relative w-32 shrink-0">
                       <button
                         onClick={() => setShowVideoModelMenu(prev => !prev)}
                         className="w-full flex items-center justify-between gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs transition"
@@ -1824,7 +1824,7 @@ export default function StoryboardEditorPage() {
                   <button
                     onClick={async () => { if (!mergedStoryboard) return; videoGen.handleGenerateVideo(mergedStoryboard, editDuration, editResolution, editDescription, editDialogue, editAction, editShotType, editCameraAngle, showVideoModelSelect ? selectedVideoModel : undefined); }}
                     disabled={isGenerating || !videoGen.videoPrompt.trim()}
-                    className="w-36 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
+                    className="w-32 flex items-center justify-center gap-1.5 text-sm px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 rounded font-medium shrink-0"
                   >
                     {isGenerating
                       ? <><Loader2 size={14} className="animate-spin" />生成中</>
