@@ -204,7 +204,7 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                       if (params?.storyboard_id) ids.push(params.storyboard_id);
                       window.dispatchEvent(new CustomEvent('storyboard:tool-updated', { detail: { storyboard_ids: ids } }));
                     }
-                    if (name === 'submit_images_for_review') {
+                    if (name === 'submit_images_for_review' && chunk.raw_result?.asset_review_required !== false) {
                       // 通知 StoryboardDetail 执行实际提交（走和手动按钮完全相同的路径）
                       window.dispatchEvent(new CustomEvent('storyboard:submit-for-review', {
                         detail: { projectId, episodeId: options?.episodeId }

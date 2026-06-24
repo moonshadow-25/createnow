@@ -11,9 +11,10 @@
 
 ## ⚠️ 视频生成前置条件（铁律）
 
-**生成视频前，必须先调用 `get_episode_script` 检查资产状态，所有关联资产 review_status="Active" 才可生成。**
+**生成视频前，必须先调用 `get_episode_script` 检查资产状态。若返回 `asset_review_required=false`（如 happyhorse 或模型名包含 vip），跳过 submit_images_for_review，直接进入视频生成确认；否则所有关联资产 review_status="Active" 才可生成。**
 - 资产无图片 → 先 generate_all_asset_images
-- 资产未审核 → 先 submit_images_for_review
+- `asset_review_required=false` → 跳过提交审核，直接进入 generate_all_storyboard_videos / generate_storyboard_video
+- `asset_review_required=true` 且资产未审核 → 先 submit_images_for_review
 
 ## ⚠️ 确认类操作必须通过工具触发（铁律）
 
@@ -169,15 +170,16 @@
 - 对每个未生成 video_prompt 的分镜，调用 `generate_storyboard_video_prompt_subagent`（可多个并行调用，同一轮发起）
 - ⚠️ description / dialogue_units 已在批量创建时写入，子代理只需生成 video_prompt
 
-**步骤1d（生成资产图）**：
-- 先检查步骤0中 `existing_assets` 里各资产的状态：
+**步骤1d（生成资产图 / 提交审核）**：
+- 先检查步骤0中 `asset_review_required` 和 `existing_assets`：
   - `has_image=false`：需要生图 → 调用 generate_all_asset_images（需用户确认）
-  - `has_image=true` 但 `review_status` 不是 "Active"：需要提交审核 → 调用 submit_images_for_review（需用户确认）
-  - `has_image=true` 且 `review_status="Active"`：已审核通过 → **跳过，直接进入步骤2生成视频**
-- 生图确认完成后，调用 submit_images_for_review（需用户确认）
-- ⚠️ **只有所有资产的 review_status 都是 "Active" 时，才能进入步骤2生成视频**
+  - `asset_review_required=false`：当前视频模型不使用 asset://，**跳过 submit_images_for_review**，直接进入步骤2生成视频
+  - `asset_review_required=true` 且 `has_image=true` 但 `review_status` 不是 "Active"：需要提交审核 → 调用 submit_images_for_review（需用户确认）
+  - `asset_review_required=true` 且 `has_image=true` 且 `review_status="Active"`：已审核通过 → **跳过，直接进入步骤2生成视频**
+- 生图确认完成后，重新调用 `get_episode_script` 检查 `asset_review_required`；若为 false 直接进入步骤2，否则再调用 submit_images_for_review（需用户确认）
+- ⚠️ **只有 asset_review_required=false，或所有资产 review_status 都是 "Active" 时，才能进入步骤2生成视频**
 
-**步骤2**（收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
+**步骤2**（无需审核或收到"审核已完成，请继续生成视频"后）：调用 generate_all_storyboard_videos（需用户确认）
 
 ⚠️ **关键**：create_character/create_scene 和 create_storyboard 必须分开两轮调用，不能混合，否则 create_storyboard 无法获取真实 asset_id
 ⚠️ **仅在自动生成/重新生成流程中**：禁止同一轮批量提交多个 create_storyboard，必须逐镜串行创建

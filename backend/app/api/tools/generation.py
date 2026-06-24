@@ -737,6 +737,24 @@ async def handle_generate_all_storyboard_videos(project_id: str, parameters: Dic
 async def handle_submit_images_for_review(project_id: str, parameters: Dict) -> Dict:
     try:
         from app.api.generation.assets import collect_submit_image_ids
+        from app.services import ProjectService
+        from app.services.ai.adapters.byteseed import is_asset_unsupported_model
+
+        project = ProjectService.get_project(project_id) or {}
+        video_config = (project.get("ai_config") or {}).get("video", {})
+        video_model = (video_config.get("model") or "").strip()
+        asset_review_required = not is_asset_unsupported_model(video_model)
+        if not asset_review_required:
+            return {
+                "success": True,
+                "asset_review_required": False,
+                "video_model": video_model,
+                "image_ids": [],
+                "count": 0,
+                "skipped": True,
+                "notice": "当前视频模型不使用 asset:// 素材，已跳过提交审核流程。",
+            }
+
         episode_id = parameters.get("episode_id")
         image_ids = parameters.get("image_ids")
         if not image_ids:
@@ -744,6 +762,6 @@ async def handle_submit_images_for_review(project_id: str, parameters: Dict) -> 
         if not image_ids:
             return {"success": False, "error": "没有找到可提交的图片，请先为资产生成图片"}
         # 只返回 image_ids，实际提交由前端完成（走和"一键提交审核"完全相同的路径）
-        return {"success": True, "image_ids": image_ids, "count": len(image_ids)}
+        return {"success": True, "asset_review_required": True, "video_model": video_model, "image_ids": image_ids, "count": len(image_ids)}
     except Exception as e:
         return {"success": False, "error": str(e)}

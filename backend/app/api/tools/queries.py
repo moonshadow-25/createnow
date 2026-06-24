@@ -299,9 +299,16 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
     if not episode_id:
         return {"success": False, "error": "缺少必需字段: episode_id"}
     try:
+        from app.services import ProjectService
+        from app.services.ai.adapters.byteseed import is_asset_unsupported_model
+
         episode = AssetService.load_asset(project_id, "episode", episode_id)
         if not episode:
             return {"success": False, "error": "剧集不存在"}
+        project = ProjectService.get_project(project_id) or {}
+        video_config = (project.get("ai_config") or {}).get("video", {})
+        video_model = (video_config.get("model") or "").strip()
+        asset_review_required = not is_asset_unsupported_model(video_model)
         script = episode.get("script", "")
         existing_assets = {}
         for asset_type in ["character", "scene", "prop"]:
@@ -328,6 +335,7 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
                     "has_image_prompt": bool(a.get("image_prompt")),
                     "has_image": bool(a.get("image_id")),
                     "review_status": review_status,  # Active=审核通过, Processing=审核中, None=未提交
+                    "asset_review_required": asset_review_required,
                 }
                 if asset_type == "character":
                     item["voice_enabled"] = bool(a.get("voice_enabled", True) and (a.get("voice_audio_id") or a.get("voice_id")))
@@ -352,6 +360,8 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
             "script": script or "（暂无剧本内容）",
             "line_numbered_script": line_numbered_script or "（暂无剧本内容）",
             "existing_assets": existing_assets,
+            "asset_review_required": asset_review_required,
+            "video_model": video_model,
             "existing_storyboard_count": storyboard_count,
             "notice": f"⚠️ 已有资产见 existing_assets，已存在的直接用 asset_id，禁止重复创建。本集已有 {storyboard_count} 个分镜{'，自动生成本集时应跳过创建分镜步骤，继续后续的生图/审核/视频流程' if storyboard_count > 0 else '，需要创建分镜'}。"
         }
