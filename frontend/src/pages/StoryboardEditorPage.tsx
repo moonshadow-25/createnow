@@ -89,7 +89,9 @@ export default function StoryboardEditorPage() {
   const [selectedVideoRatio, setSelectedVideoRatio] = useState(() => getDefaultVideoSpec(currentProject).ratio);
   const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
   const imageApiType = currentProject?.ai_config?.image?.api_type;
-  const videoApiType = currentProject?.ai_config?.video?.api_type;
+  const videoConfig = currentProject?.ai_config?.video as any;
+  const videoApiType = videoConfig?.api_type;
+  const skipAssetReview = videoConfig?.asset_review_required === false;
   const showImageModelSelect = imageApiType === 'createnow';
   const showVideoModelSelect = videoApiType === 'createnow';
   const [svgPaths, setSvgPaths] = useState<Array<{ d: string; stroke: string }>>([]);
@@ -1248,7 +1250,32 @@ export default function StoryboardEditorPage() {
           {/* Storyboard image node - connection anchor */}
           <div className="flex-shrink-0 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">分镜图</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">分镜图</span>
+                {!skipAssetReview && (
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isSubmitting || anyProcessing ? (
+                      <span className="text-xs text-yellow-400 flex items-center gap-1 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
+                    ) : allActive ? (
+                      <span className="text-xs text-green-400 flex items-center gap-1 whitespace-nowrap"><CheckCircle size={12} />已入库</span>
+                    ) : (
+                      <button
+                        onClick={handleSubmitAsset}
+                        className={`flex items-center justify-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
+                      >
+                        <Upload size={12} />{anyFailed ? '重试' : '入库'}
+                      </button>
+                    )}
+                    <button
+                      onClick={handleResubmitAsset}
+                      className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 whitespace-nowrap"
+                      title="强制重新提交（清空旧审核状态重新入库）"
+                    >
+                      <RefreshCcw size={12} />重提
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowImageEdit(true)}
@@ -1519,25 +1546,6 @@ export default function StoryboardEditorPage() {
                     placeholder="输入视频提示词，或点击上方按钮AI生成..."
                   />
                   <div className="flex items-center justify-end gap-2 mt-2 flex-shrink-0">
-                    {isSubmitting || anyProcessing ? (
-                      <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0"><Loader2 size={12} className="animate-spin" />审核中</span>
-                    ) : allActive ? (
-                      <span className="w-24 text-xs text-green-400 flex items-center gap-1 shrink-0"><CheckCircle size={12} />已入库</span>
-                    ) : (
-                      <button
-                        onClick={handleSubmitAsset}
-                        className={`w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded shrink-0 ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
-                      >
-                        <Upload size={13} />{anyFailed ? '重试' : '入库'}
-                      </button>
-                    )}
-                    <button
-                      onClick={handleResubmitAsset}
-                      className="w-20 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700 shrink-0"
-                      title="强制重新提交（清空旧审核状态重新入库）"
-                    >
-                      <RefreshCcw size={12} />重提
-                    </button>
                     <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
                     <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
                     {showVideoModelSelect && (
@@ -1632,22 +1640,6 @@ export default function StoryboardEditorPage() {
 
                 {/* Bottom actions */}
                 <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-700 pt-3">
-                  {isSubmitting || anyProcessing ? (
-                    <span className="w-24 text-xs text-yellow-400 flex items-center gap-1 shrink-0"><Loader2 size={12} className="animate-spin" />审核中</span>
-                  ) : allActive ? (
-                    <span className="w-24 text-xs text-green-400 flex items-center gap-1 shrink-0"><CheckCircle size={12} />已入库</span>
-                  ) : (
-                    <button onClick={handleSubmitAsset} className={`w-24 flex items-center justify-center gap-1 text-xs px-2 py-1.5 rounded shrink-0 ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}>
-                      <Upload size={13} />{anyFailed ? '重试' : '入库'}
-                    </button>
-                  )}
-                  <button
-                    onClick={handleResubmitAsset}
-                    className="w-20 flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1.5 rounded hover:bg-gray-700 shrink-0"
-                    title="强制重新提交（清空旧审核状态重新入库）"
-                  >
-                    <RefreshCcw size={12} />重提
-                  </button>
                   <GenerationOptionSelector kind="videoRatio" value={selectedVideoRatio} onChange={setSelectedVideoRatio} />
                   <GenerationOptionSelector kind="videoResolution" value={normalizedVideoResolution} onChange={setEditResolution} />
                   {showVideoModelSelect && (
