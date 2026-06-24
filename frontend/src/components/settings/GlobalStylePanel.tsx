@@ -4,6 +4,7 @@ import { useToast } from '@/components/common/Toast';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
 import { useProjectStore } from '@/store/projectStore';
 import type { ImageSizes } from '@/types';
+import { parseVideoSpec, encodeVideoSpec } from '@/utils/generationDefaults';
 
 interface CustomPreset {
   id: string;
@@ -38,32 +39,6 @@ const RESOLUTION_OPTIONS = [
   { label: '720p', value: '720p' },
   { label: '1080p', value: '1080p' },
 ] as const;
-
-function parseGlobalResolution(raw?: string): { ratio: string; resolution: string } {
-  if (!raw) return { ratio: '16:9', resolution: '720p' };
-
-  if (raw === '1280x720') return { ratio: '16:9', resolution: '720p' };
-  if (raw === '720x1280') return { ratio: '9:16', resolution: '720p' };
-  if (raw === '21:9-720p') return { ratio: '21:9', resolution: '720p' };
-
-  const matched = raw.match(/^(16:9|9:16|21:9)-(480p|720p|1080p)$/);
-  if (matched) {
-    return { ratio: matched[1], resolution: matched[2] };
-  }
-
-  if (RESOLUTION_OPTIONS.some(item => item.value === raw)) {
-    return { ratio: '16:9', resolution: raw };
-  }
-
-  return { ratio: '16:9', resolution: '720p' };
-}
-
-function encodeGlobalResolution(ratio: string, resolution: string): string {
-  if (ratio === '16:9' && resolution === '720p') return '1280x720';
-  if (ratio === '9:16' && resolution === '720p') return '720x1280';
-  if (ratio === '21:9' && resolution === '720p') return '21:9-720p';
-  return `${ratio}-${resolution}`;
-}
 
 interface StylePreset {
   id: string;
@@ -156,11 +131,13 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
         image_style: migrateStyle(data.image_style),
         video_style: migrateStyle(data.video_style),
       });
-      const parsedGlobalResolution = parseGlobalResolution(data.global_resolution);
+      const parsedGlobalResolution = parseVideoSpec((data as any).global_video_ratio && (data as any).global_video_resolution
+        ? `${(data as any).global_video_ratio}-${(data as any).global_video_resolution}`
+        : data.global_resolution);
       setGlobalRatio(parsedGlobalResolution.ratio);
       setGlobalResolution(parsedGlobalResolution.resolution);
       setGlobalStyleConfig({
-        global_resolution: data.global_resolution || '1280x720',
+        global_resolution: data.global_resolution || encodeVideoSpec(parsedGlobalResolution),
         nine_grid_mode: data.nine_grid_mode || false,
       });
     } catch (e) {
@@ -182,10 +159,12 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     if (!config) return;
     setSaving(true);
     try {
-      const encodedGlobalResolution = encodeGlobalResolution(globalRatio, globalResolution);
+      const encodedGlobalResolution = encodeVideoSpec({ ratio: globalRatio, resolution: globalResolution });
       const configToSave = {
         ...config,
         global_resolution: encodedGlobalResolution,
+        global_video_ratio: globalRatio,
+        global_video_resolution: globalResolution,
       };
       await Promise.all([
         generationApi.updateGlobalStyleConfig(projectId, configToSave),
@@ -193,7 +172,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
       ]);
       setConfig(configToSave);
       setGlobalStyleConfig({
-        global_resolution: configToSave.global_resolution || '1280x720',
+        global_resolution: configToSave.global_resolution || encodeVideoSpec({ ratio: globalRatio, resolution: globalResolution }),
         nine_grid_mode: configToSave.nine_grid_mode || false,
       });
       toast('全局风格配置已保存', 'success');

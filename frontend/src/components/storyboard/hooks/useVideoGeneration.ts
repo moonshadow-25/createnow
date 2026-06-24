@@ -183,7 +183,6 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         camera_angle: editCameraAngle,
         video_prompt: finalPrompt,
         duration: editDuration,
-        resolution: editResolution,
       });
       setVideoPromptState(finalPrompt);
       if (isMultiSegment) {
@@ -207,6 +206,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
+          ratio: editRatio,
           model: modelOverride?.trim() || undefined,
         });
       } else if (primaryImage) {
@@ -217,6 +217,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
+          ratio: editRatio,
           model: modelOverride?.trim() || undefined,
         });
       } else {
@@ -228,6 +229,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
           prompt: finalPrompt,
           duration: editDuration,
           resolution: editResolution,
+          ratio: editRatio,
           model: modelOverride?.trim() || undefined,
         });
       }
@@ -273,7 +275,6 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
         camera_angle: editCameraAngle,
         video_prompt: finalPrompt,
         duration: editDuration,
-        resolution: editResolution,
       });
       setVideoPromptState(finalPrompt);
       await generationApi.generateVideoMultimodal(projectId, {

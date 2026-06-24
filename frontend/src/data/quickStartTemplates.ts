@@ -17,7 +17,7 @@ export const QUICK_START_TEMPLATES: QuickStartTemplate[] = [
     subtitle: '化妆品广告（15秒，横版）',
     coverImage: '/templates/cosmetics-ad.png',
     minutesPerEpisode: 0.25,
-    globalResolution: '1280x720',
+    globalResolution: '16:9-720p',
     imageStylePrompt:
       '高端商业广告摄影风格，极简奢华，纯白大理石背景，柔和自然光，浅景深，产品质感细腻',
     videoStylePrompt:
@@ -46,7 +46,7 @@ export const QUICK_START_TEMPLATES: QuickStartTemplate[] = [
     subtitle: '中国古装真人剧（1分钟，竖版）',
     coverImage: '/templates/chinese-drama.png',
     minutesPerEpisode: 1,
-    globalResolution: '720x1280',
+    globalResolution: '9:16-720p',
     imageStylePrompt:
       '中国古装剧风格，传统建筑，典雅汉服，古典美学，电影级品质，真人写实，电视剧真实质感，禁止卡通，禁止动漫，杰作，8K，超高清',
     videoStylePrompt:
@@ -85,7 +85,7 @@ export const QUICK_START_TEMPLATES: QuickStartTemplate[] = [
     subtitle: '欧美电影大片（1分钟，横版）',
     coverImage: '/templates/western-film.png',
     minutesPerEpisode: 1,
-    globalResolution: '1280x720',
+    globalResolution: '16:9-720p',
     imageStylePrompt:
       '好莱坞电影级写实，16:9横构图，青橙色调（teal & orange），大景深虚化，电影感颗粒质感，动作片氛围',
     videoStylePrompt:

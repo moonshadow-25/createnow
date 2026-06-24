@@ -21,6 +21,7 @@ import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import { CreatenowModelSelector, GenerationOptionSelector, normalizeGenerationOptionValue } from '@/components/common/GenerationSelectors';
+import { getDefaultImageSize, getDefaultServiceModel, getDefaultVideoSpec } from '@/utils/generationDefaults';
 import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -82,10 +83,10 @@ export default function StoryboardEditorPage() {
   const [insertingTransitionFrame, setInsertingTransitionFrame] = useState(false);
   const [hasPreviousStoryboardVideo, setHasPreviousStoryboardVideo] = useState(false);
   const [selectedStoryboardReferenceImageIds, setSelectedStoryboardReferenceImageIds] = useState<string[]>([]);
-  const [selectedImageModel, setSelectedImageModel] = useState(createnowModelConfig.default_models.image || 'nova-pro');
-  const [selectedVideoModel, setSelectedVideoModel] = useState(createnowModelConfig.default_models.video || 'nova-pro');
-  const [selectedImageSize, setSelectedImageSize] = useState('16x9');
-  const [selectedVideoRatio, setSelectedVideoRatio] = useState('16:9');
+  const [selectedImageModel, setSelectedImageModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
+  const [selectedVideoModel, setSelectedVideoModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'video'));
+  const [selectedImageSize, setSelectedImageSize] = useState(() => getDefaultImageSize(currentProject, 'storyboard'));
+  const [selectedVideoRatio, setSelectedVideoRatio] = useState(() => getDefaultVideoSpec(currentProject).ratio);
   const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
   const imageApiType = currentProject?.ai_config?.image?.api_type;
   const videoApiType = currentProject?.ai_config?.video?.api_type;
@@ -181,11 +182,10 @@ export default function StoryboardEditorPage() {
     shot_type: editShotType,
     camera_angle: editCameraAngle,
     duration: editDuration,
-    resolution: editResolution,
     character_ids: selectedCharacters,
     scene_ids: selectedScenes,
     prop_ids: selectedProps,
-  } : null, [storyboard, editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, editResolution, selectedCharacters, selectedScenes, selectedProps]);
+  } : null, [storyboard, editDescription, editScriptSceneLabel, editDialogue, editAction, editShotType, editCameraAngle, editDuration, selectedCharacters, selectedScenes, selectedProps]);
 
   const usedAssetIdsByType = useMemo(
     () => getUsedAssetIdsForEpisode(storyboardList, episodeId),
@@ -210,9 +210,11 @@ export default function StoryboardEditorPage() {
   }, [assetImageStatuses]);
 
   useEffect(() => {
-    if (createnowModelConfig.default_models.image) setSelectedImageModel(createnowModelConfig.default_models.image);
-    if (createnowModelConfig.default_models.video) setSelectedVideoModel(createnowModelConfig.default_models.video);
-  }, [createnowModelConfig.default_models.image, createnowModelConfig.default_models.video]);
+    setSelectedImageModel(getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
+    setSelectedVideoModel(getDefaultServiceModel(currentProject, createnowModelConfig, 'video'));
+    setSelectedImageSize(getDefaultImageSize(currentProject, 'storyboard'));
+    setSelectedVideoRatio(getDefaultVideoSpec(currentProject).ratio);
+  }, [currentProject, createnowModelConfig]);
 
   // ── VibeDrama context + storyboard:tool-updated listener ───────────────────
   useEffect(() => {
@@ -447,7 +449,6 @@ export default function StoryboardEditorPage() {
           shot_type: v.editShotType || '',
           camera_angle: v.editCameraAngle || '',
           duration: v.editDuration || 6,
-          resolution: v.editResolution || '720p',
           image_prompt: v.generatedPrompt?.trim() || '',
           video_prompt: v.videoPrompt || '',
         });

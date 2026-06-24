@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { X, Check, ImagePlus, Loader2 } from 'lucide-react';
 import { generationApi } from '@/services/api';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { useProjectStore } from '@/store/projectStore';
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
+import { getDefaultImageSize, getDefaultServiceModel } from '@/utils/generationDefaults';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
 import { useToast } from './Toast';
 
@@ -63,14 +65,19 @@ export function ImageEditDialog({
   const [selectedModel, setSelectedModel] = useState('');
 
   const modelConfig = useCreatenowModelConfigStore(state => state.config);
+  const currentProject = useProjectStore(state => state.currentProject);
   const imageSuggestions = modelConfig.suggestions.image || [];
   const totalReferences = selectedImageIds.length;
 
   const isGenerating = getTaskStatus(assetId, 'image_edit') === 'generating';
 
   useEffect(() => {
-    setSelectedModel(modelConfig.default_models.image || 'nova-max');
-  }, [modelConfig.default_models.image]);
+    setSelectedModel(getDefaultServiceModel(currentProject, modelConfig, 'image'));
+    setSelectedSize(getDefaultImageSize(
+      currentProject,
+      assetType === 'character' || assetType === 'scene' || assetType === 'prop' ? assetType : 'storyboard'
+    ));
+  }, [currentProject, modelConfig, assetType]);
 
   // 切换图片选中状态
   const toggleImageSelection = (imageId: string) => {

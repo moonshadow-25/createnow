@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';import {
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
   Upload, X, Film, ChevronDown, Loader2, Play,
   Clock, CheckCircle, XCircle, Image, Volume2, VolumeX, Music
 } from 'lucide-react';
@@ -12,7 +13,9 @@ import { VideoGallery } from '@/components/storyboard/VideoGallery';
 import { ExpandableText } from '@/components/common/ExpandableText';
 import { translateError } from '@/utils/errorMessages';
 import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS, VIDEO_RATIO_OPTIONS, VIDEO_RESOLUTION_OPTIONS } from '@/store/createnowModelConfigStore';
+import { useProjectStore } from '@/store/projectStore';
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
+import { getDefaultImageSize, getDefaultServiceModel, getDefaultVideoSpec } from '@/utils/generationDefaults';
 import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
 interface RefMedia {
@@ -188,16 +191,18 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const saasUser = useSaasAuthStore(state => state.user);
   const createnowModelConfig = useCreatenowModelConfigStore(state => state.config);
   const fetchCreatenowModelConfig = useCreatenowModelConfigStore(state => state.fetchConfig);
+  const currentProject = useProjectStore(state => state.currentProject);
+  const defaultVideoSpec = getDefaultVideoSpec(currentProject);
 
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<'video' | 'image'>('video');
-  const [selectedImageModel, setSelectedImageModel] = useState(createnowModelConfig.default_models.image || 'nova-pro');
-  const [selectedVideoModel, setSelectedVideoModel] = useState(createnowModelConfig.default_models.video || 'nova-pro');
+  const [selectedImageModel, setSelectedImageModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
+  const [selectedVideoModel, setSelectedVideoModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'video'));
   const [onlyMine, setOnlyMine] = useState(false);
   const [duration, setDuration] = useState(6);
-  const [resolution, setResolution] = useState('720p');
-  const [ratio, setRatio] = useState('16:9');
-  const [imageSize, setImageSize] = useState('16x9');
+  const [resolution, setResolution] = useState(defaultVideoSpec.resolution);
+  const [ratio, setRatio] = useState(defaultVideoSpec.ratio);
+  const [imageSize, setImageSize] = useState(() => getDefaultImageSize(currentProject, 'storyboard'));
   const [generateAudio, setGenerateAudio] = useState(true);
   const [selectedMedia, setSelectedMedia] = useState<RefMedia[]>([]);
   const [allVideos, setAllVideos] = useState<VideoRecord[]>([]);
@@ -225,9 +230,13 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   }, [fetchCreatenowModelConfig]);
 
   useEffect(() => {
-    setSelectedImageModel(prev => prev || createnowModelConfig.default_models.image || 'nova-pro');
-    setSelectedVideoModel(prev => prev || createnowModelConfig.default_models.video || 'nova-pro');
-  }, [createnowModelConfig.default_models.image, createnowModelConfig.default_models.video]);
+    const nextVideoSpec = getDefaultVideoSpec(currentProject);
+    setSelectedImageModel(getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
+    setSelectedVideoModel(getDefaultServiceModel(currentProject, createnowModelConfig, 'video'));
+    setImageSize(getDefaultImageSize(currentProject, 'storyboard'));
+    setRatio(nextVideoSpec.ratio);
+    setResolution(nextVideoSpec.resolution);
+  }, [currentProject, createnowModelConfig]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());

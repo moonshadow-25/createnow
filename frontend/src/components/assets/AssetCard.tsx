@@ -7,6 +7,8 @@ import { ImageEditDialog } from '@/components/common/ImageEditDialog';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
+import { useProjectStore } from '@/store/projectStore';
+import { getDefaultImageSize, getDefaultServiceModel } from '@/utils/generationDefaults';
 import { normalizeTags, toggleTag } from '@/utils/assetTags';
 
 interface AssetCardProps {
@@ -24,6 +26,7 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const openVibeDrama = useVibeDramaStore(s => s.open);
   const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
   const modelConfig = useCreatenowModelConfigStore(state => state.config);
+  const currentProject = useProjectStore(state => state.currentProject);
   const imageSuggestions = modelConfig.suggestions.image || [];
   // 使用后端返回的主图URL和图片数量，初始化时直接使用
   const [primaryImage, setPrimaryImage] = useState<string | null>(asset.primary_image_url || null);
@@ -89,8 +92,9 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   }, [asset.primary_image_url, asset.image_count]);
 
   useEffect(() => {
-    setSelectedImageModel(modelConfig.default_models.image || 'nova-pro');
-  }, [modelConfig.default_models.image]);
+    setSelectedImageModel(getDefaultServiceModel(currentProject, modelConfig, 'image'));
+    setSelectedImageSize(getDefaultImageSize(currentProject, assetType === 'character' ? 'character' : assetType === 'scene' ? 'scene' : 'prop'));
+  }, [currentProject, modelConfig, assetType]);
 
   useEffect(() => {
     setVoicePrompt(asset.voice_prompt || '');

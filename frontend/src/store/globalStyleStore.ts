@@ -7,7 +7,7 @@ interface GlobalStyleState {
 }
 
 export const useGlobalStyleStore = create<GlobalStyleState>((set) => ({
-  global_resolution: '1280x720',
+  global_resolution: '16:9-720p',
   nine_grid_mode: false,
   setConfig: (cfg) => set((s) => ({ ...s, ...cfg })),
 }));

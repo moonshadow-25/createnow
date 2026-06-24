@@ -154,7 +154,7 @@ export default function ProjectPage() {
     const cfg = (currentProject as any)?.ai_config?.global_style_config;
     if (cfg) {
       setGlobalStyleConfig({
-        global_resolution: cfg.global_resolution || '1280x720',
+        global_resolution: cfg.global_resolution || '16:9-720p',
         nine_grid_mode: cfg.nine_grid_mode || false,
       });
     }

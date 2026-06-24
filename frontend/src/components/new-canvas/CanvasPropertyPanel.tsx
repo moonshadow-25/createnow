@@ -1,6 +1,8 @@
 import { Trash2 } from 'lucide-react';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { useProjectStore } from '@/store/projectStore';
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
+import { getDefaultServiceModel } from '@/utils/generationDefaults';
 import {
   getDefinition,
 } from './nodeDefinitions';
@@ -64,6 +66,7 @@ export function CanvasPropertyPanel({
   toast,
 }: CanvasPropertyPanelProps) {
   const createnowModelConfig = useCreatenowModelConfigStore(state => state.config);
+  const currentProject = useProjectStore(state => state.currentProject);
 
   const getSourceOutput = (source?: CanvasNode): NodeOutput | undefined => {
     if (!source) return undefined;
@@ -267,7 +270,7 @@ export function CanvasPropertyPanel({
               <div className="mt-1">
                 <CreatenowModelSelector
                   type="image"
-                  value={selectedNode.config.model || createnowModelConfig.default_models.image || ''}
+                  value={selectedNode.config.model || getDefaultServiceModel(currentProject, createnowModelConfig, 'image')}
                   suggestions={createnowModelConfig.suggestions.image || []}
                   onChange={(value) => updateNodeConfig(selectedNode.node_id, { model: value })}
                   className="w-full"
@@ -320,7 +323,7 @@ export function CanvasPropertyPanel({
                 <div className="mt-1">
                   <CreatenowModelSelector
                     type="video"
-                    value={selectedNode.config.model || createnowModelConfig.default_models.video || ''}
+                    value={selectedNode.config.model || getDefaultServiceModel(currentProject, createnowModelConfig, 'video')}
                     suggestions={createnowModelConfig.suggestions.video || []}
                     onChange={(value) => updateNodeConfig(selectedNode.node_id, { model: value })}
                     className="w-full"
