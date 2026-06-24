@@ -22,6 +22,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import { CreatenowModelSelector, GenerationOptionSelector, normalizeGenerationOptionValue } from '@/components/common/GenerationSelectors';
 import { getDefaultImageSize, getDefaultServiceModel, getDefaultVideoSpec } from '@/utils/generationDefaults';
+import { isAssetUnsupportedVideoModel } from '@/utils/assetReview';
 import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ export default function StoryboardEditorPage() {
   const setPendingMessage = useVibeDramaStore(s => s.setPendingMessage);
   const setMessagePrefix = useVibeDramaStore(s => s.setMessagePrefix);
   const currentProject = useProjectStore(s => s.currentProject);
+  const fetchProject = useProjectStore(s => s.fetchProject);
   const appearanceMode = useThemeStore(s => s.appearanceMode);
   const createnowModelConfig = useCreatenowModelConfigStore(s => s.config);
 
@@ -85,15 +87,15 @@ export default function StoryboardEditorPage() {
   const [selectedStoryboardReferenceImageIds, setSelectedStoryboardReferenceImageIds] = useState<string[]>([]);
   const [selectedImageModel, setSelectedImageModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
   const [selectedVideoModel, setSelectedVideoModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'video'));
+  const skipAssetReview = isAssetUnsupportedVideoModel(selectedVideoModel);
   const [selectedImageSize, setSelectedImageSize] = useState(() => getDefaultImageSize(currentProject, 'storyboard'));
   const [selectedVideoRatio, setSelectedVideoRatio] = useState(() => getDefaultVideoSpec(currentProject).ratio);
   const selectedStoryboardReferenceImageIdsRef = useRef<string[]>([]);
   const imageApiType = currentProject?.ai_config?.image?.api_type;
   const videoConfig = currentProject?.ai_config?.video as any;
   const videoApiType = videoConfig?.api_type;
-  const skipAssetReview = videoConfig?.asset_review_required === false;
-  const showImageModelSelect = imageApiType === 'createnow';
-  const showVideoModelSelect = videoApiType === 'createnow';
+  const showImageModelSelect = !imageApiType || imageApiType === 'createnow';
+  const showVideoModelSelect = !videoApiType || videoApiType === 'createnow';
   const [svgPaths, setSvgPaths] = useState<Array<{ d: string; stroke: string }>>([]);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
@@ -210,6 +212,12 @@ export default function StoryboardEditorPage() {
   useEffect(() => {
     assetStatusesRef.current = assetImageStatuses;
   }, [assetImageStatuses]);
+
+  useEffect(() => {
+    if (projectId && currentProject?.project_id !== projectId) {
+      fetchProject(projectId);
+    }
+  }, [projectId, currentProject?.project_id, fetchProject]);
 
   useEffect(() => {
     setSelectedImageModel(getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
@@ -1242,6 +1250,30 @@ export default function StoryboardEditorPage() {
                 </div>
               )}
             </div>
+
+            {!skipAssetReview && (
+              <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between gap-2">
+                {isSubmitting || anyProcessing ? (
+                  <span className="text-xs text-yellow-400 flex items-center gap-1 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
+                ) : allActive ? (
+                  <span className="text-xs text-green-400 flex items-center gap-1 whitespace-nowrap"><CheckCircle size={12} />已入库</span>
+                ) : (
+                  <button
+                    onClick={handleSubmitAsset}
+                    className={`flex items-center justify-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
+                  >
+                    <Upload size={12} />{anyFailed ? '重试' : '入库'}
+                  </button>
+                )}
+                <button
+                  onClick={handleResubmitAsset}
+                  className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 whitespace-nowrap"
+                  title="强制重新提交（清空旧审核状态重新入库）"
+                >
+                  <RefreshCcw size={12} />重提
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1250,32 +1282,6 @@ export default function StoryboardEditorPage() {
           {/* Storyboard image node - connection anchor */}
           <div className="flex-shrink-0 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">分镜图</span>
-                {!skipAssetReview && (
-                  <div className="flex items-center gap-2 min-w-0">
-                    {isSubmitting || anyProcessing ? (
-                      <span className="text-xs text-yellow-400 flex items-center gap-1 whitespace-nowrap"><Loader2 size={12} className="animate-spin" />审核中</span>
-                    ) : allActive ? (
-                      <span className="text-xs text-green-400 flex items-center gap-1 whitespace-nowrap"><CheckCircle size={12} />已入库</span>
-                    ) : (
-                      <button
-                        onClick={handleSubmitAsset}
-                        className={`flex items-center justify-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${anyFailed ? 'bg-red-700 hover:bg-red-600' : 'bg-orange-600 hover:bg-orange-700'}`}
-                      >
-                        <Upload size={12} />{anyFailed ? '重试' : '入库'}
-                      </button>
-                    )}
-                    <button
-                      onClick={handleResubmitAsset}
-                      className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-700 whitespace-nowrap"
-                      title="强制重新提交（清空旧审核状态重新入库）"
-                    >
-                      <RefreshCcw size={12} />重提
-                    </button>
-                  </div>
-                )}
-              </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowImageEdit(true)}
