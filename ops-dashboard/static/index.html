@@ -10,16 +10,22 @@
     main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 48px; }
     header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin-bottom: 22px; }
     h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0; font-size: 20px; }
+    h3 { margin: 0 0 10px; font-size: 16px; }
     p { margin: 0; color: #94a3b8; line-height: 1.6; }
-    .panel { background: rgba(15, 23, 42, .82); border: 1px solid #334155; border-radius: 18px; box-shadow: 0 20px 70px rgba(0,0,0,.3); }
+    .panel { background: rgba(15, 23, 42, .82); border: 1px solid #334155; border-radius: 18px; box-shadow: 0 20px 70px rgba(0,0,0,.3); margin-bottom: 18px; overflow: hidden; }
+    .panel-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding: 16px; border-bottom: 1px solid #334155; }
     .toolbar { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px; border-bottom: 1px solid #334155; }
     button { border: 0; border-radius: 10px; padding: 10px 14px; color: white; background: #2563eb; cursor: pointer; font-weight: 600; }
     button:hover { background: #1d4ed8; }
     button.secondary { background: #334155; }
     button.secondary:hover { background: #475569; }
     button.danger { background: #7f1d1d; }
+    button.danger:hover { background: #991b1b; }
     button:disabled { opacity: .55; cursor: not-allowed; }
-    textarea { width: 100%; min-height: 170px; box-sizing: border-box; resize: vertical; border: 0; outline: none; padding: 16px; color: #e5e7eb; background: transparent; font: 14px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    input, select, textarea { box-sizing: border-box; border: 1px solid #334155; border-radius: 10px; outline: none; color: #e5e7eb; background: rgba(15, 23, 42, .72); }
+    input, select { width: 100%; padding: 9px 10px; }
+    textarea { width: 100%; min-height: 170px; resize: vertical; border: 0; padding: 16px; background: transparent; font: 14px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
     .hint { padding: 0 16px 16px; font-size: 13px; color: #94a3b8; }
     .summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
     .card { padding: 14px; border-radius: 14px; background: rgba(15, 23, 42, .76); border: 1px solid #334155; }
@@ -37,7 +43,19 @@
     .bad { background: rgba(220, 38, 38, .18); color: #fca5a5; }
     .info { background: rgba(37, 99, 235, .18); color: #93c5fd; }
     .empty { padding: 28px 16px; text-align: center; color: #94a3b8; }
-    @media (max-width: 900px) { header { display: block; } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } table { display: block; overflow-x: auto; } }
+    .model-body { padding: 16px; display: grid; gap: 16px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .service-grid { display: grid; gap: 12px; }
+    .service-card { border: 1px solid #334155; border-radius: 14px; background: rgba(2, 6, 23, .35); padding: 14px; }
+    .service-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 10px; }
+    .field label { display: block; color: #94a3b8; font-size: 12px; margin-bottom: 6px; }
+    .default-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .suggestion-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-top: 8px; }
+    .suggestion-row button { padding: 8px 10px; }
+    .status-line { font-size: 13px; color: #94a3b8; }
+    .split-actions { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    @media (max-width: 900px) { header { display: block; } .summary, .form-grid, .default-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } table { display: block; overflow-x: auto; } }
+    @media (max-width: 640px) { .default-grid, .form-grid { grid-template-columns: 1fr; } .suggestion-row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -45,7 +63,7 @@
     <header>
       <div>
         <h1>CreateNow 客户版本巡检</h1>
-        <p>第一阶段只读取状态：登录客户实例、查看本地版本、检查是否有新版本，不触发更新。</p>
+        <p>支持读取客户状态、触发更新，并通过客户实例已有接口管理模型标签和项目主模型。</p>
       </div>
       <p class="muted">客户列表保存到本机 <span class="mono">ops-dashboard/data/targets.json</span>，请妥善保管。</p>
     </header>
@@ -78,9 +96,73 @@
           </tr>
         </thead>
         <tbody id="results">
-          <tr><td colspan="7" class="empty">还没有巡检结果</td></tr>
+          <tr><td colspan="8" class="empty">还没有巡检结果</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section class="panel" id="modelPanel">
+      <div class="panel-head">
+        <div>
+          <h2>模型配置</h2>
+          <p>使用客户实例已有接口配置模型标签、新项目默认模型，并预览后批量修改历史项目主模型。</p>
+        </div>
+        <span class="badge info">写操作需确认</span>
+      </div>
+      <div class="model-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="modelTargetSelect">选择客户</label>
+            <select id="modelTargetSelect"></select>
+          </div>
+          <div class="field">
+            <label>远端状态</label>
+            <div class="status-line" id="modelStatus">请先保存或填写客户列表，然后读取模型配置。</div>
+          </div>
+        </div>
+        <div class="toolbar" style="padding:0;border:0;">
+          <button id="refreshTargetsBtn" class="secondary">刷新客户下拉</button>
+          <button id="loadModelConfigBtn">读取模型配置</button>
+          <button id="saveModelConfigBtn" class="secondary" disabled>保存模型标签与默认模型</button>
+        </div>
+        <div class="hint" style="padding:0;">保存模型配置会调用远端 <span class="mono">PUT /api/config/createnow-models</span>，通常要求 selfhosted 超级管理员 <span class="mono">admin</span>。</div>
+        <div id="modelConfigEditor" class="service-grid"></div>
+
+        <div class="service-card">
+          <div class="service-head">
+            <div>
+              <h3>一次性修改历史项目模型</h3>
+              <p>新项目默认模型只影响后续创建的项目；历史项目需要先预览，再执行批量写入。</p>
+            </div>
+          </div>
+          <div id="historyModelEditor" class="default-grid"></div>
+          <div class="split-actions" style="margin-top:12px;">
+            <div class="status-line" id="historyStatus">未预览。</div>
+            <div class="toolbar" style="padding:0;border:0;">
+              <button id="copyDefaultsBtn" class="secondary" disabled>复制默认模型</button>
+              <button id="previewProjectModelsBtn" class="secondary" disabled>预览影响项目</button>
+              <button id="applyProjectModelsBtn" class="danger" disabled>执行修改历史项目</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin:0;box-shadow:none;">
+          <table>
+            <thead>
+              <tr>
+                <th>项目</th>
+                <th>ID</th>
+                <th>状态</th>
+                <th>变更服务</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody id="projectModelResults">
+              <tr><td colspan="5" class="empty">还没有历史项目模型预览结果</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -93,6 +175,25 @@
     const resultsBody = document.getElementById('results');
     const summary = document.getElementById('summary');
     const saveHint = document.getElementById('saveHint');
+    const modelTargetSelect = document.getElementById('modelTargetSelect');
+    const refreshTargetsBtn = document.getElementById('refreshTargetsBtn');
+    const loadModelConfigBtn = document.getElementById('loadModelConfigBtn');
+    const saveModelConfigBtn = document.getElementById('saveModelConfigBtn');
+    const modelStatus = document.getElementById('modelStatus');
+    const modelConfigEditor = document.getElementById('modelConfigEditor');
+    const historyModelEditor = document.getElementById('historyModelEditor');
+    const copyDefaultsBtn = document.getElementById('copyDefaultsBtn');
+    const previewProjectModelsBtn = document.getElementById('previewProjectModelsBtn');
+    const applyProjectModelsBtn = document.getElementById('applyProjectModelsBtn');
+    const historyStatus = document.getElementById('historyStatus');
+    const projectModelResults = document.getElementById('projectModelResults');
+
+    const SERVICE_TYPES = ['llm', 'vlm', 'image', 'video', 'tts'];
+    const SERVICE_LABELS = { llm: 'LLM', vlm: 'VLM', image: '图片', video: '视频', tts: 'TTS' };
+    const DEFAULT_MODEL_CONFIG = {
+      suggestions: { llm: [], vlm: [], image: [], video: [], tts: [] },
+      default_models: { llm: 'nova-pro', vlm: 'nova-pro', image: 'nova-pro', video: 'nova-pro', tts: 'nova-pro' }
+    };
 
     const statusText = {
       ok: '正常',
@@ -106,8 +207,20 @@
       checking: '检查中'
     };
 
+    const projectStatusText = {
+      changed: '将更新',
+      unchanged: '无需更新',
+      updated: '已更新',
+      skipped: '已跳过',
+      failed: '失败'
+    };
+
     let currentTargets = [];
     let currentRows = [];
+    let modelConfig = null;
+    let historyModels = {};
+    let projectPreviewRows = [];
+    let lastPreviewSignature = '';
 
     function parseTargets(text) {
       return text.split('\n')
@@ -136,6 +249,18 @@
       saveHint.textContent = message;
     }
 
+    function setModelStatus(message, type = 'muted') {
+      const color = type === 'error' ? '#fca5a5' : type === 'success' ? '#86efac' : '#94a3b8';
+      modelStatus.style.color = color;
+      modelStatus.textContent = message;
+    }
+
+    function setHistoryStatus(message, type = 'muted') {
+      const color = type === 'error' ? '#fca5a5' : type === 'success' ? '#86efac' : '#94a3b8';
+      historyStatus.style.color = color;
+      historyStatus.textContent = message;
+    }
+
     async function loadTargets() {
       try {
         const response = await fetch('/api/targets');
@@ -145,7 +270,10 @@
         if (targets.length) {
           targetsInput.value = targetsToText(targets);
           currentTargets = targets;
+          refreshModelTargetOptions();
           setSaveHint(`已加载 ${targets.length} 个本机保存的客户。账号密码保存在 ops-dashboard/data/targets.json，请妥善保管。`, 'success');
+        } else {
+          refreshModelTargetOptions();
         }
       } catch (error) {
         setSaveHint(`加载保存列表失败：${error.message}`, 'error');
@@ -167,6 +295,8 @@
       });
       if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
       const data = await response.json();
+      currentTargets = targets;
+      refreshModelTargetOptions();
       setSaveHint(`已保存 ${data.count || 0} 个客户到 ops-dashboard/data/targets.json。`, 'success');
       return targets;
     }
@@ -186,6 +316,11 @@
     function statusBadge(row) {
       const cls = ['ok', 'update_started'].includes(row.status) ? 'ok' : ['version_only', 'updating'].includes(row.status) ? 'warn' : 'bad';
       return `<span class="badge ${cls}">${statusText[row.status] || row.status}</span>`;
+    }
+
+    function projectStatusBadge(status) {
+      const cls = ['updated', 'unchanged'].includes(status) ? 'ok' : status === 'changed' ? 'warn' : status === 'skipped' ? 'info' : 'bad';
+      return `<span class="badge ${cls}">${projectStatusText[status] || status}</span>`;
     }
 
     function updateBadge(row) {
@@ -236,6 +371,305 @@
       return `<button class="danger" data-update-index="${index}">${label}</button>`;
     }
 
+    function refreshModelTargetOptions() {
+      let targets = currentTargets;
+      try {
+        const parsed = parseTargets(targetsInput.value);
+        if (parsed.length) targets = parsed;
+      } catch {}
+      currentTargets = targets;
+      if (!targets.length) {
+        modelTargetSelect.innerHTML = '<option value="">暂无客户</option>';
+        return;
+      }
+      const currentValue = modelTargetSelect.value;
+      modelTargetSelect.innerHTML = targets.map((target, index) => {
+        const label = target.name || target.url || `客户 ${index + 1}`;
+        return `<option value="${index}">${escapeHtml(label)} - ${escapeHtml(target.url || '')}</option>`;
+      }).join('');
+      if (currentValue && Number(currentValue) < targets.length) modelTargetSelect.value = currentValue;
+    }
+
+    function getSelectedTarget() {
+      refreshModelTargetOptions();
+      const index = Number(modelTargetSelect.value || 0);
+      const target = currentTargets[index];
+      if (!target) throw new Error('请先填写并保存客户列表');
+      return target;
+    }
+
+    function normalizeModelConfig(raw) {
+      const normalized = JSON.parse(JSON.stringify(DEFAULT_MODEL_CONFIG));
+      SERVICE_TYPES.forEach(type => {
+        const suggestions = raw?.suggestions?.[type];
+        if (Array.isArray(suggestions)) {
+          normalized.suggestions[type] = suggestions
+            .map(item => ({ label: String(item?.label || '').trim(), model: String(item?.model || '').trim() }))
+            .filter(item => item.label && item.model);
+        }
+        const model = String(raw?.default_models?.[type] || '').trim();
+        if (model) normalized.default_models[type] = model;
+      });
+      return normalized;
+    }
+
+    function collectModelConfig() {
+      if (!modelConfig) throw new Error('请先读取模型配置');
+      const config = { suggestions: {}, default_models: {} };
+      SERVICE_TYPES.forEach(type => {
+        const defaultInput = document.querySelector(`[data-default-model="${type}"]`);
+        const defaultModel = String(defaultInput?.value || '').trim();
+        if (!defaultModel) throw new Error(`${SERVICE_LABELS[type]} 新项目默认模型不能为空`);
+        config.default_models[type] = defaultModel;
+        config.suggestions[type] = Array.from(document.querySelectorAll(`[data-suggestion-type="${type}"]`))
+          .map(row => ({
+            label: String(row.querySelector('[data-suggestion-label]')?.value || '').trim(),
+            model: String(row.querySelector('[data-suggestion-model]')?.value || '').trim(),
+          }))
+          .filter(item => item.label && item.model);
+      });
+      return config;
+    }
+
+    function collectHistoryModels() {
+      const models = {};
+      SERVICE_TYPES.forEach(type => {
+        const value = String(document.querySelector(`[data-history-model="${type}"]`)?.value || '').trim();
+        if (value) models[type] = value;
+      });
+      if (!Object.keys(models).length) throw new Error('请至少填写一个历史项目目标模型');
+      return models;
+    }
+
+    function previewSignature(target, models) {
+      return JSON.stringify({ url: target.url, username: target.username, models });
+    }
+
+    function renderModelEditors() {
+      if (!modelConfig) {
+        modelConfigEditor.innerHTML = '<div class="empty">请先读取模型配置</div>';
+        historyModelEditor.innerHTML = '';
+        return;
+      }
+      const datalists = SERVICE_TYPES.map(type => `
+        <datalist id="model-options-${type}">
+          ${(modelConfig.suggestions[type] || []).map(item => `<option value="${escapeHtml(item.model)}">${escapeHtml(item.label)}</option>`).join('')}
+        </datalist>
+      `).join('');
+      modelConfigEditor.innerHTML = datalists + SERVICE_TYPES.map(type => `
+        <div class="service-card">
+          <div class="service-head">
+            <h3>${SERVICE_LABELS[type]}</h3>
+            <button class="secondary" data-add-suggestion="${type}">添加标签</button>
+          </div>
+          <div class="field">
+            <label>新项目默认模型</label>
+            <input data-default-model="${type}" list="model-options-${type}" value="${escapeHtml(modelConfig.default_models[type] || '')}" placeholder="例如 nova-pro" />
+          </div>
+          <div style="margin-top:12px;">
+            <div class="form-grid muted" style="font-size:12px;"><span>显示标签</span><span>实际模型名</span></div>
+            <div data-suggestion-list="${type}">
+              ${(modelConfig.suggestions[type] || []).map(item => renderSuggestionRow(type, item)).join('') || '<div class="muted" style="padding:10px 0;">暂无快捷标签</div>'}
+            </div>
+          </div>
+        </div>
+      `).join('');
+      renderHistoryEditors(false);
+      saveModelConfigBtn.disabled = false;
+      copyDefaultsBtn.disabled = false;
+      previewProjectModelsBtn.disabled = false;
+    }
+
+    function renderSuggestionRow(type, item = { label: '', model: '' }) {
+      return `
+        <div class="suggestion-row" data-suggestion-type="${type}">
+          <input data-suggestion-label value="${escapeHtml(item.label || '')}" placeholder="例如 sd2" />
+          <input data-suggestion-model value="${escapeHtml(item.model || '')}" placeholder="例如 nova-pro" />
+          <button class="danger" data-remove-suggestion>删除</button>
+        </div>
+      `;
+    }
+
+    function renderHistoryEditors(overwrite = false) {
+      if (!modelConfig) return;
+      SERVICE_TYPES.forEach(type => {
+        if (overwrite || !historyModels[type]) historyModels[type] = modelConfig.default_models[type] || '';
+      });
+      historyModelEditor.innerHTML = SERVICE_TYPES.map(type => `
+        <div class="field">
+          <label>${SERVICE_LABELS[type]} 历史项目目标模型</label>
+          <input data-history-model="${type}" list="model-options-${type}" value="${escapeHtml(historyModels[type] || '')}" placeholder="留空则不修改" />
+        </div>
+      `).join('');
+    }
+
+    function renderProjectModelResults(rows) {
+      projectPreviewRows = rows || [];
+      if (!projectPreviewRows.length) {
+        projectModelResults.innerHTML = '<tr><td colspan="5" class="empty">还没有历史项目模型预览结果</td></tr>';
+        applyProjectModelsBtn.disabled = true;
+        return;
+      }
+      projectModelResults.innerHTML = projectPreviewRows.map(row => `
+        <tr>
+          <td>${escapeHtml(row.name || '-')}</td>
+          <td class="mono">${escapeHtml(row.project_id || '-')}</td>
+          <td>${projectStatusBadge(row.status)}</td>
+          <td>${escapeHtml((row.changed_services || []).join(', ') || '-')}</td>
+          <td>${escapeHtml(row.message || '')}</td>
+        </tr>
+      `).join('');
+      applyProjectModelsBtn.disabled = !projectPreviewRows.some(row => row.status === 'changed');
+    }
+
+    async function loadModelConfig() {
+      let target;
+      try {
+        target = getSelectedTarget();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      loadModelConfigBtn.disabled = true;
+      loadModelConfigBtn.textContent = '读取中...';
+      setModelStatus('正在读取远端模型配置...');
+      try {
+        const response = await fetch('/api/model-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target })
+        });
+        if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.status !== 'ok') throw new Error(data.message || '读取失败');
+        modelConfig = normalizeModelConfig(data.config);
+        historyModels = { ...modelConfig.default_models };
+        renderModelEditors();
+        renderProjectModelResults([]);
+        setModelStatus(`已读取 ${data.app_name || data.name || target.name || target.url}（${data.deploy_mode || '未知模式'}）模型配置。`, 'success');
+        setHistoryStatus('已同步历史项目目标模型为当前新项目默认模型。');
+      } catch (error) {
+        setModelStatus(`读取失败：${error.message}`, 'error');
+      } finally {
+        loadModelConfigBtn.disabled = false;
+        loadModelConfigBtn.textContent = '读取模型配置';
+      }
+    }
+
+    async function saveModelConfig() {
+      let target;
+      let config;
+      try {
+        target = getSelectedTarget();
+        config = collectModelConfig();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      const confirmed = confirm('确认保存模型标签与新项目默认模型？\n\n该操作会调用客户实例的 /api/config/createnow-models，通常只允许超级管理员 admin 执行。');
+      if (!confirmed) return;
+      saveModelConfigBtn.disabled = true;
+      saveModelConfigBtn.textContent = '保存中...';
+      try {
+        const response = await fetch('/api/model-config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target, config })
+        });
+        if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.status !== 'ok') throw new Error(data.message || '保存失败');
+        modelConfig = normalizeModelConfig(data.config);
+        historyModels = { ...modelConfig.default_models };
+        renderModelEditors();
+        setModelStatus(data.message || '模型配置已保存。', 'success');
+      } catch (error) {
+        setModelStatus(`保存失败：${error.message}`, 'error');
+      } finally {
+        saveModelConfigBtn.disabled = false;
+        saveModelConfigBtn.textContent = '保存模型标签与默认模型';
+      }
+    }
+
+    async function previewProjectModels() {
+      let target;
+      let models;
+      try {
+        target = getSelectedTarget();
+        models = collectHistoryModels();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      previewProjectModelsBtn.disabled = true;
+      previewProjectModelsBtn.textContent = '预览中...';
+      setHistoryStatus('正在读取项目并计算变更...');
+      try {
+        const response = await fetch('/api/project-models/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target, models })
+        });
+        if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.status !== 'ok') throw new Error(data.message || '预览失败');
+        renderProjectModelResults(data.results || []);
+        lastPreviewSignature = previewSignature(target, models);
+        const summary = data.summary || {};
+        setHistoryStatus(`预览完成：共 ${summary.total || 0} 个项目，${summary.changed || 0} 个将更新，${summary.unchanged || 0} 个无需更新。`, 'success');
+      } catch (error) {
+        setHistoryStatus(`预览失败：${error.message}`, 'error');
+      } finally {
+        previewProjectModelsBtn.disabled = false;
+        previewProjectModelsBtn.textContent = '预览影响项目';
+      }
+    }
+
+    async function applyProjectModels() {
+      let target;
+      let models;
+      try {
+        target = getSelectedTarget();
+        models = collectHistoryModels();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+      if (lastPreviewSignature !== previewSignature(target, models)) {
+        alert('目标客户或模型已变化，请重新预览后再执行。');
+        return;
+      }
+      const changedCount = projectPreviewRows.filter(row => row.status === 'changed').length;
+      if (!changedCount) {
+        alert('当前预览没有需要更新的项目。');
+        return;
+      }
+      const confirmed = confirm(`确认修改 ${changedCount} 个历史项目的主模型？\n\n该操作会逐个读取完整项目并提交完整 ai_config，远端项目元数据会被写入。`);
+      if (!confirmed) return;
+      applyProjectModelsBtn.disabled = true;
+      previewProjectModelsBtn.disabled = true;
+      applyProjectModelsBtn.textContent = '执行中...';
+      setHistoryStatus('正在修改历史项目模型...');
+      try {
+        const response = await fetch('/api/project-models/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target, models })
+        });
+        if (!response.ok) throw new Error(`服务端返回 HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.status !== 'ok') throw new Error(data.message || '执行失败');
+        renderProjectModelResults(data.results || []);
+        const summary = data.summary || {};
+        setHistoryStatus(`执行完成：${summary.updated || 0} 个已更新，${summary.failed || 0} 个失败，${summary.unchanged || 0} 个无需更新。`, summary.failed ? 'error' : 'success');
+      } catch (error) {
+        setHistoryStatus(`执行失败：${error.message}`, 'error');
+      } finally {
+        previewProjectModelsBtn.disabled = false;
+        applyProjectModelsBtn.textContent = '执行修改历史项目';
+      }
+    }
+
     async function updateOne(index) {
       const target = currentTargets[index];
       const row = currentRows[index];
@@ -271,6 +705,22 @@
       updateOne(Number(button.dataset.updateIndex));
     });
 
+    modelConfigEditor.addEventListener('click', (event) => {
+      const addButton = event.target.closest('[data-add-suggestion]');
+      if (addButton) {
+        const type = addButton.dataset.addSuggestion;
+        const list = modelConfigEditor.querySelector(`[data-suggestion-list="${type}"]`);
+        if (list) {
+          const empty = list.querySelector('.muted');
+          if (empty) empty.remove();
+          list.insertAdjacentHTML('beforeend', renderSuggestionRow(type));
+        }
+        return;
+      }
+      const removeButton = event.target.closest('[data-remove-suggestion]');
+      if (removeButton) removeButton.closest('[data-suggestion-type]')?.remove();
+    });
+
     async function checkTargets() {
       let targets;
       try {
@@ -284,6 +734,7 @@
         return;
       }
       currentTargets = targets;
+      refreshModelTargetOptions();
       checkBtn.disabled = true;
       checkBtn.textContent = '巡检中...';
       renderResults(targets.map(target => ({ ...target, status: 'checking', message: '等待返回', local: null, remote: null, has_update: null })));
@@ -320,14 +771,39 @@
     });
     sampleBtn.addEventListener('click', () => {
       targetsInput.value = '客户A,https://example-a.com,menglaoshi,menglaoshi123\n客户B,1.2.3.4:8508,menglaoshi,menglaoshi123';
+      refreshModelTargetOptions();
     });
     clearBtn.addEventListener('click', () => {
       targetsInput.value = '';
       currentTargets = [];
       currentRows = [];
+      modelConfig = null;
+      historyModels = {};
+      projectPreviewRows = [];
       renderResults([]);
+      refreshModelTargetOptions();
+      renderModelEditors();
+      renderProjectModelResults([]);
+      setModelStatus('请先保存或填写客户列表，然后读取模型配置。');
+      setHistoryStatus('未预览。');
     });
+    targetsInput.addEventListener('input', refreshModelTargetOptions);
+    refreshTargetsBtn.addEventListener('click', refreshModelTargetOptions);
+    loadModelConfigBtn.addEventListener('click', loadModelConfig);
+    saveModelConfigBtn.addEventListener('click', saveModelConfig);
+    copyDefaultsBtn.addEventListener('click', () => {
+      if (!modelConfig) return;
+      historyModels = { ...collectModelConfig().default_models };
+      renderHistoryEditors(true);
+      renderProjectModelResults([]);
+      lastPreviewSignature = '';
+      setHistoryStatus('已复制当前默认模型，请重新预览。');
+    });
+    previewProjectModelsBtn.addEventListener('click', previewProjectModels);
+    applyProjectModelsBtn.addEventListener('click', applyProjectModels);
     renderSummary([]);
+    renderModelEditors();
+    renderProjectModelResults([]);
     loadTargets();
   </script>
 </body>
