@@ -71,6 +71,7 @@
     <section class="panel">
       <div class="toolbar">
         <button id="checkBtn">开始巡检</button>
+        <button id="scrollModelBtn" class="secondary">模型配置</button>
         <button id="saveBtn" class="secondary">保存列表</button>
         <button id="sampleBtn" class="secondary">填入示例</button>
         <button id="clearBtn" class="danger">清空</button>
@@ -169,6 +170,7 @@
   <script>
     const targetsInput = document.getElementById('targets');
     const checkBtn = document.getElementById('checkBtn');
+    const scrollModelBtn = document.getElementById('scrollModelBtn');
     const saveBtn = document.getElementById('saveBtn');
     const sampleBtn = document.getElementById('sampleBtn');
     const clearBtn = document.getElementById('clearBtn');
@@ -757,6 +759,10 @@
     }
 
     checkBtn.addEventListener('click', checkTargets);
+    scrollModelBtn.addEventListener('click', () => {
+      document.getElementById('modelPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      refreshModelTargetOptions();
+    });
     saveBtn.addEventListener('click', async () => {
       saveBtn.disabled = true;
       saveBtn.textContent = '保存中...';
