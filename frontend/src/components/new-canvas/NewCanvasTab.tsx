@@ -43,8 +43,9 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [panning, setPanning] = useState<{ x: number; y: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [runningCanvasIds, setRunningCanvasIds] = useState<Set<string>>(new Set());
   const [nodeStatus, setNodeStatus] = useState<Record<string, { status: RunStatus; error?: string }>>({});
+  const [canvasNodeStatuses, setCanvasNodeStatuses] = useState<Record<string, Record<string, { status: RunStatus; error?: string }>>>({});
   const [outputs, setOutputs] = useState<Record<string, NodeOutput>>({});
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
@@ -67,6 +68,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     .map((node) => ({ node, output: outputs[node.node_id] || node.config.last_result }))
     .filter((item) => item.output?.text)
     .map((item) => ({ node_id: item.node.node_id, label: item.node.label, text: item.output?.text || '' })), [nodes, outputs]);
+
+  const currentCanvasRunning = activeCanvasId ? runningCanvasIds.has(activeCanvasId) : false;
 
   const materialNodePrefixRef = useRef<string | null>(null);
 
@@ -181,25 +184,38 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     if (rightPanelTab === 'history') loadCanvasHistory();
   }, [rightPanelTab, loadCanvasHistory]);
 
-  const saveCanvas = useCallback(async (silent = false, nextNodes = nodes, nextEdges = edges) => {
-    if (!activeCanvasId) return;
+  const saveCanvasSnapshot = useCallback(async (
+    canvasId: string,
+    name: string,
+    canvasZoom: number,
+    canvasPan: { x: number; y: number },
+    nextNodes: CanvasNode[],
+    nextEdges: CanvasEdge[],
+    silent = false,
+  ) => {
+    if (!canvasId) return;
     setSaving(true);
     try {
-      const payload = buildCanvasPayload(canvasName, zoom, pan, nextNodes, nextEdges);
-      const response = await canvasApi.update(projectId, activeCanvasId, payload);
-      lastSavedSnapshotRef.current = serializeCanvasPayload(payload);
-      activeCanvasIdRef.current = activeCanvasId;
-      setCanvases((prev) => prev.map((item) => item.canvas_id === activeCanvasId ? response.data : item));
+      const payload = buildCanvasPayload(name, canvasZoom, canvasPan, nextNodes, nextEdges);
+      const response = await canvasApi.update(projectId, canvasId, payload);
+      if (activeCanvasIdRef.current === canvasId) {
+        lastSavedSnapshotRef.current = serializeCanvasPayload(payload);
+      }
+      setCanvases((prev) => prev.map((item) => item.canvas_id === canvasId ? response.data : item));
       if (!silent) toast('画布已保存', 'success');
     } catch (error: any) {
       toast(error?.response?.data?.detail || '画布保存失败', 'error');
     } finally {
       setSaving(false);
     }
-  }, [activeCanvasId, canvasName, edges, nodes, pan, projectId, toast, zoom]);
+  }, [projectId, toast]);
+
+  const saveCanvas = useCallback(async (silent = false, nextNodes = nodes, nextEdges = edges) => {
+    await saveCanvasSnapshot(activeCanvasId, canvasName, zoom, pan, nextNodes, nextEdges, silent);
+  }, [activeCanvasId, canvasName, edges, nodes, pan, saveCanvasSnapshot, zoom]);
 
   useEffect(() => {
-    if (!autoSaveReadyRef.current || !activeCanvasId || loading || running) return;
+    if (!autoSaveReadyRef.current || !activeCanvasId || loading || currentCanvasRunning) return;
     const payload = buildCanvasPayload(canvasName, zoom, pan, nodes, edges);
     const snapshot = serializeCanvasPayload(payload);
     if (activeCanvasIdRef.current !== activeCanvasId) {
@@ -223,7 +239,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     }, 800);
 
     return () => window.clearTimeout(timer);
-  }, [activeCanvasId, canvasName, edges, loading, nodes, pan, projectId, running, toast, zoom]);
+  }, [activeCanvasId, canvasName, currentCanvasRunning, edges, loading, nodes, pan, projectId, toast, zoom]);
 
   const createCanvas = async () => {
     try {
@@ -235,7 +251,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       setNodes([]);
       setEdges([]);
       setOutputs({});
-      setNodeStatus({});
+      setNodeStatus(canvasNodeStatuses[canvas.canvas_id] || {});
       setSelectedNodeId(null);
       setSelectedEdgeId(null);
       setZoom(1);
@@ -262,6 +278,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     setZoom(nextZoom);
     setPan(nextPan);
     setOutputs(Object.fromEntries(nextNodes.map((node) => [node.node_id, node.config.last_result]).filter(([, output]) => Boolean(output))) as Record<string, NodeOutput>);
+    setNodeStatus(canvasNodeStatuses[canvas.canvas_id] || {});
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     activeCanvasIdRef.current = canvas.canvas_id;
@@ -643,19 +660,22 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       .filter((marker) => marker.sourceNodeId === nodeId)
       .map((marker) => ({ label: marker.label, color: marker.color, colorName: marker.colorName, directorLabel: node.label })));
 
-  const incomingEdges = (nodeId: string, targetPort?: string) => edges
-    .filter((edge) => edge.target_node_id === nodeId && (!targetPort || edge.target_port === targetPort))
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-  const incomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>, targetPort?: string) => incomingEdges(nodeId, targetPort)
-    .map((edge) => projectOutputForPort(outputMap[edge.source_node_id], edge.source_port))
-    .filter((item): item is NodeOutput => Boolean(item));
-
-  const setStatus = (nodeId: string, status: RunStatus, error?: string) => {
-    setNodeStatus((prev) => ({ ...prev, [nodeId]: { status, error } }));
+  const setStatus = (nodeId: string, status: RunStatus, error?: string, canvasId = activeCanvasId) => {
+    if (!canvasId) return;
+    setCanvasNodeStatuses((prev) => ({
+      ...prev,
+      [canvasId]: {
+        ...(prev[canvasId] || {}),
+        [nodeId]: { status, error },
+      },
+    }));
+    if (activeCanvasIdRef.current === canvasId) {
+      setNodeStatus((prev) => ({ ...prev, [nodeId]: { status, error } }));
+    }
   };
 
-  const storeOutput = (nodeId: string, output: NodeOutput, inputHash?: string, auditState?: Record<string, AssetAuditState>) => {
+  const storeOutput = (nodeId: string, output: NodeOutput, inputHash?: string, auditState?: Record<string, AssetAuditState>, canvasId = activeCanvasId) => {
+    if (activeCanvasIdRef.current !== canvasId) return;
     setOutputs((prev) => ({ ...prev, [nodeId]: output }));
     setNodes((prev) => prev.map((node) => node.node_id === nodeId ? {
       ...node,
@@ -1016,9 +1036,24 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   };
 
   const runWorkflow = async (mode: RunMode = 'continue') => {
-    if (running) return;
-    const order = buildTopologicalOrder(nodes, edges);
-    if (!nodes.length) {
+    const runCanvasId = activeCanvasId;
+    if (!runCanvasId || runningCanvasIds.has(runCanvasId)) return;
+
+    const runCanvasName = canvasName;
+    const runZoom = zoom;
+    const runPan = pan;
+    const runNodes = nodes;
+    const runEdges = edges;
+    const runSelectedNodeId = selectedNodeId;
+    const order = buildTopologicalOrder(runNodes, runEdges);
+    const getRunIncomingEdges = (nodeId: string, targetPort?: string) => runEdges
+      .filter((edge) => edge.target_node_id === nodeId && (!targetPort || edge.target_port === targetPort))
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+    const getRunIncomingOutputs = (nodeId: string, outputMap: Record<string, NodeOutput>, targetPort?: string) => getRunIncomingEdges(nodeId, targetPort)
+      .map((edge) => projectOutputForPort(outputMap[edge.source_node_id], edge.source_port))
+      .filter((item): item is NodeOutput => Boolean(item));
+
+    if (!runNodes.length) {
       toast('请先添加节点', 'error');
       return;
     }
@@ -1026,31 +1061,33 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       toast('工作流存在环路，请检查连线', 'error');
       return;
     }
-    if (mode === 'from-selected' && !selectedNodeId) {
+    if (mode === 'from-selected' && !runSelectedNodeId) {
       toast('请先选择要重跑的节点', 'error');
       return;
     }
     const forceRerunIds = mode === 'all'
-      ? new Set(nodes.filter((node) => isDynamicNode(node.type)).map((node) => node.node_id))
-      : mode === 'from-selected' && selectedNodeId
-        ? collectDownstreamNodeIds(selectedNodeId, edges)
+      ? new Set(runNodes.filter((node) => isDynamicNode(node.type)).map((node) => node.node_id))
+      : mode === 'from-selected' && runSelectedNodeId
+        ? collectDownstreamNodeIds(runSelectedNodeId, runEdges)
         : new Set<string>();
-    setRunning(true);
-    setNodeStatus(Object.fromEntries(nodes.map((node) => [node.node_id, { status: 'idle' as RunStatus }])));
+    const initialStatus = Object.fromEntries(runNodes.map((node) => [node.node_id, { status: 'idle' as RunStatus }]));
+    setRunningCanvasIds((prev) => new Set(prev).add(runCanvasId));
+    setCanvasNodeStatuses((prev) => ({ ...prev, [runCanvasId]: initialStatus }));
+    if (activeCanvasIdRef.current === runCanvasId) setNodeStatus(initialStatus);
     const outputMap: Record<string, NodeOutput> = {};
     try {
-      await saveCanvas(true);
-      await canvasApi.validateWorkflow(projectId, activeCanvasId);
-      let workingNodes = nodes;
+      await saveCanvasSnapshot(runCanvasId, runCanvasName, runZoom, runPan, runNodes, runEdges, true);
+      await canvasApi.validateWorkflow(projectId, runCanvasId);
+      let workingNodes = runNodes;
       for (const nodeId of order) {
         let node = workingNodes.find((item) => item.node_id === nodeId);
         if (!node) continue;
-        const inputs = incomingOutputs(nodeId, outputMap);
+        const inputs = getRunIncomingOutputs(nodeId, outputMap);
         const portInputs: Partial<Record<PortType, NodeOutput[]>> = {
-          image: incomingOutputs(nodeId, outputMap, 'image'),
-          text: incomingOutputs(nodeId, outputMap, 'text'),
-          video: incomingOutputs(nodeId, outputMap, 'video'),
-          audio: incomingOutputs(nodeId, outputMap, 'audio'),
+          image: getRunIncomingOutputs(nodeId, outputMap, 'image'),
+          text: getRunIncomingOutputs(nodeId, outputMap, 'text'),
+          video: getRunIncomingOutputs(nodeId, outputMap, 'video'),
+          audio: getRunIncomingOutputs(nodeId, outputMap, 'audio'),
         };
         const inputHash = buildInputHash(node, inputs);
         if (
@@ -1060,10 +1097,10 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
           canReuseNodeOutput(node, node.config.last_result)
         ) {
           outputMap[nodeId] = node.config.last_result!;
-          setStatus(nodeId, 'succeeded');
+          setStatus(nodeId, 'succeeded', undefined, runCanvasId);
           continue;
         }
-        setStatus(nodeId, 'running');
+        setStatus(nodeId, 'running', undefined, runCanvasId);
         try {
           const result = await executeNode(node, inputs, portInputs, async (pendingOutput) => {
             outputMap[nodeId] = pendingOutput;
@@ -1071,9 +1108,11 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
               last_result: pendingOutput,
               input_hash: inputHash,
             });
-            setNodes(workingNodes);
-            setOutputs((prev) => ({ ...prev, [nodeId]: pendingOutput }));
-            await saveCanvas(true, workingNodes, edges);
+            if (activeCanvasIdRef.current === runCanvasId) {
+              setNodes(workingNodes);
+              setOutputs((prev) => ({ ...prev, [nodeId]: pendingOutput }));
+            }
+            await saveCanvasSnapshot(runCanvasId, runCanvasName, runZoom, runPan, workingNodes, runEdges, true);
           });
           outputMap[nodeId] = result.output;
           workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, {
@@ -1081,27 +1120,31 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
             input_hash: inputHash,
             ...(result.auditState ? { audit_state: result.auditState } : {}),
           });
-          storeOutput(nodeId, result.output, inputHash, result.auditState);
-          setStatus(nodeId, 'succeeded');
+          storeOutput(nodeId, result.output, inputHash, result.auditState, runCanvasId);
+          setStatus(nodeId, 'succeeded', undefined, runCanvasId);
         } catch (nodeError: any) {
           const auditState = nodeError?.auditState as Record<string, AssetAuditState> | undefined;
           if (auditState) {
             workingNodes = updateWorkingNodeConfig(workingNodes, nodeId, { audit_state: auditState });
-            setNodes(workingNodes);
-            await saveCanvas(true, workingNodes, edges);
+            if (activeCanvasIdRef.current === runCanvasId) setNodes(workingNodes);
+            await saveCanvasSnapshot(runCanvasId, runCanvasName, runZoom, runPan, workingNodes, runEdges, true);
           }
           throw { nodeId, message: nodeError?.message || '节点运行失败' };
         }
       }
-      await saveCanvas(true, workingNodes, edges);
+      await saveCanvasSnapshot(runCanvasId, runCanvasName, runZoom, runPan, workingNodes, runEdges, true);
       await loadCanvasHistory();
       toast('工作流运行完成', 'success');
     } catch (error: any) {
       const message = error?.response?.data?.detail || error?.message || '工作流运行失败';
       toast(message, 'error');
-      if (error?.nodeId) setStatus(error.nodeId, 'failed', message);
+      if (error?.nodeId) setStatus(error.nodeId, 'failed', message, runCanvasId);
     } finally {
-      setRunning(false);
+      setRunningCanvasIds((prev) => {
+        const next = new Set(prev);
+        next.delete(runCanvasId);
+        return next;
+      });
     }
   };
 
@@ -1286,12 +1329,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       <div className="absolute bottom-4 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/90 px-3 py-2 text-xs text-gray-300 shadow-lg">
         <span>缩放 {Math.round(zoom * 100)}%</span>
         <button onClick={() => setZoom(1)} className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600">重置</button>
-        <button onClick={() => runWorkflow('continue')} disabled={running} className="flex items-center gap-1 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600 disabled:opacity-50">
-          {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}继续
+        <button onClick={() => runWorkflow('continue')} disabled={currentCanvasRunning} className="flex items-center gap-1 rounded bg-green-700 px-2 py-1 text-white hover:bg-green-600 disabled:opacity-50">
+          {currentCanvasRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}继续
         </button>
         <button
           onClick={() => runWorkflow('from-selected')}
-          disabled={running || !selectedNodeId}
+          disabled={currentCanvasRunning || !selectedNodeId}
           className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-45"
           title="重跑当前选中节点及其下游"
         >
@@ -1299,7 +1342,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         </button>
         <button
           onClick={() => runWorkflow('all')}
-          disabled={running}
+          disabled={currentCanvasRunning}
           className="rounded bg-gray-700 px-2 py-1 text-gray-100 hover:bg-gray-600 disabled:opacity-50"
           title="重跑所有动态节点"
         >
