@@ -294,7 +294,7 @@ export function VideoGallery({
         if (updatedVideo.refund_status === 'refunded') {
           toast('视频生成失败，24小时内已退还积分', 'error');
         } else if (updatedVideo.refund_status === 'expired') {
-          toast('视频生成失败，已超过24小时未退还积分', 'error');
+          toast('视频生成失败，已超过24小时', 'error');
         } else {
           toast(`视频生成失败: ${updatedVideo.error || '未知错误'}`, 'error');
         }

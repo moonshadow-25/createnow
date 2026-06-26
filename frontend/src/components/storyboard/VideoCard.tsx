@@ -97,7 +97,7 @@ export const VideoCard = memo(({
           : `${status} (${pollInfo}) | ${duration}${resolution} | ${createTime}`;
       case 'failed':
         if (video.refund_status === 'refunded') return `失败，积分已退 | ${video.error?.substring(0, 20) || '未知错误'}`;
-        if (video.refund_status === 'expired') return `失败，超过24小时未退 | ${video.error?.substring(0, 20) || '未知错误'}`;
+        if (video.refund_status === 'expired') return `失败，已超过24小时 | ${video.error?.substring(0, 20) || '未知错误'}`;
         return `失败 | ${video.error?.substring(0, 20) || '未知错误'}`;
       case 'poll_failed':
         return `轮询异常(可手动继续) | ${video.error?.substring(0, 20) || '网络异常'}`;
@@ -157,7 +157,7 @@ export const VideoCard = memo(({
                     ? video.refund_status === 'refunded'
                       ? '视频生成失败，积分已退还'
                       : video.refund_status === 'expired'
-                        ? '视频生成失败，超过24小时未退还积分'
+                        ? '视频生成失败，已超过24小时'
                         : '视频生成失败'
                     : '轮询异常，可手动继续'
               }</span>
