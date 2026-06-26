@@ -21,6 +21,7 @@ from app.core.context import get_current_data_root
 from .models import VideoPromptRequest, VideoPromptSubagentRequest, VideoReversePromptRequest, VideoGenerateRequest, MultiSceneVideoPromptRequest, VideoSubtitleRemovalRequest, VideoBatchGenerateRequest
 from .template_helpers import get_active_template
 from .utils import check_project_budget, check_user_credit_limit, normalize_video_resolution, calc_video_compute_units, resolve_credits
+from .video_refunds import init_video_billing_fields, apply_video_refund_if_eligible, is_transient_poll_failure
 from app.core.context import get_current_user
 from app.models.project import normalize_global_style_config
 from app.core.pricing import SUBTITLE_REMOVAL_COST
@@ -870,6 +871,9 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
         )
 
         video_id = str(uuid.uuid4())
+        estimated_cost = round(calc_video_compute_units(request.duration, request.resolution), 2)
+        resolved_credits = resolve_credits(result, calc_video_compute_units(request.duration, request.resolution))
+        now_iso = datetime.now().isoformat()
         record = {
             "video_id": video_id,
             "storyboard_id": request.storyboard_id,
@@ -879,11 +883,11 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "duration": request.duration,
             "resolution": request.resolution,
             "ratio": request.ratio,
-            "estimated_cost": round(calc_video_compute_units(request.duration, request.resolution), 2),
-            "actual_cost": resolve_credits(result, calc_video_compute_units(request.duration, request.resolution)),
-            "credits_consumed": resolve_credits(result, calc_video_compute_units(request.duration, request.resolution)),
+            "estimated_cost": estimated_cost,
+            "actual_cost": resolved_credits,
+            "credits_consumed": resolved_credits,
             "model": request.model or ai_config.get("video", {}).get("model", "sora"),
-            "created_at": datetime.now().isoformat(),
+            "created_at": now_iso,
             "created_by": get_current_user() or "",
             "task_id": result.get("task_id", ""),
             "status": "pending",  # 等待轮询
@@ -894,6 +898,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
             "reference_media": reference_media,
             "generation_scope": request.generation_scope,
         }
+        init_video_billing_fields(record, now_iso)
 
         # 保存视频记录到文件
         videos_dir = _get_projects_dir() / project_id / "videos"
@@ -953,6 +958,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
         raise HTTPException(status_code=502, detail=submit_result.get("error") or "字幕擦除任务提交失败")
 
     video_id = str(uuid.uuid4())
+    now_iso = datetime.now().isoformat()
     record = {
         "video_id": video_id,
         "storyboard_id": request.storyboard_id,
@@ -965,7 +971,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
         "estimated_cost": 0,
         "actual_cost": 0,
         "model": settings.CREATENOW_SUBTITLE_MODEL_ID,
-        "created_at": datetime.now().isoformat(),
+        "created_at": now_iso,
         "created_by": get_current_user() or "",
         "task_id": submit_result.get("task_id", ""),
         "status": "pending",
@@ -977,6 +983,7 @@ async def create_video_subtitle_removal_task(project_id: str, request: VideoSubt
         "source_video_url": source_video_url,
         "error": None,
     }
+    init_video_billing_fields(record, now_iso)
 
     videos_dir = _get_projects_dir() / project_id / "videos"
     videos_dir.mkdir(exist_ok=True)
@@ -1083,8 +1090,8 @@ async def poll_video_status(project_id: str, video_id: str):
     with open(video_file, "r", encoding="utf-8") as f:
         video_record = json.load(f)
 
-    # 仅 completed 作为不可恢复终态
-    if video_record.get("status") == "completed":
+    # completed / failed 作为不可恢复终态
+    if video_record.get("status") in {"completed", "failed"}:
         return video_record
 
     task_id = video_record.get("task_id")
@@ -1113,9 +1120,8 @@ async def poll_video_status(project_id: str, video_id: str):
             finally:
                 await video_service.close()
 
-            # 统一将临时轮询错误映射为 poll_failed，避免一次失败永久报废
-            raw_status = raw_result.get("status")
-            if not raw_result.get("success") and raw_status == "failed":
+            # 仅将临时轮询错误映射为 poll_failed，供应商最终失败保留为 failed
+            if is_transient_poll_failure(raw_result):
                 poll_result = {
                     "success": False,
                     "status": "poll_failed",
@@ -1163,7 +1169,11 @@ async def poll_video_status(project_id: str, video_id: str):
                     )
                 except Exception as e:
                     logger.warning(f"启动视频自动下载失败 (video_id: {video_id}): {e}")
-        elif status in ("poll_failed", "failed"):
+        elif status == "failed":
+            video_record["status"] = "failed"
+            video_record["error"] = poll_result.get("error")
+            apply_video_refund_if_eligible(video_record, "generation_failed")
+        elif status == "poll_failed":
             video_record["status"] = "poll_failed"
             video_record["error"] = poll_result.get("error")
         else:

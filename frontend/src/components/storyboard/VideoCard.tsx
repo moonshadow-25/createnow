@@ -25,6 +25,16 @@ export interface VideoRecord {
   enhanced_prompt?: string;
   model?: string;
   error?: string;
+  refund_status?: 'none' | 'refunded' | 'expired';
+  refunded_at?: string;
+  refund_checked_at?: string;
+  refund_reason?: string;
+  refund_window_hours?: number;
+  original_credits_consumed?: number;
+  original_actual_cost?: number;
+  original_estimated_cost?: number;
+  billing_started_at?: string;
+  billing_status?: string;
   is_primary?: boolean;
 }
 
@@ -86,6 +96,8 @@ export const VideoCard = memo(({
           ? `轮询中... | ${duration}${resolution}`
           : `${status} (${pollInfo}) | ${duration}${resolution} | ${createTime}`;
       case 'failed':
+        if (video.refund_status === 'refunded') return `失败，积分已退 | ${video.error?.substring(0, 20) || '未知错误'}`;
+        if (video.refund_status === 'expired') return `失败，超过24小时未退 | ${video.error?.substring(0, 20) || '未知错误'}`;
         return `失败 | ${video.error?.substring(0, 20) || '未知错误'}`;
       case 'poll_failed':
         return `轮询异常(可手动继续) | ${video.error?.substring(0, 20) || '网络异常'}`;
@@ -138,7 +150,17 @@ export const VideoCard = memo(({
           <div className="w-full h-full overflow-y-auto p-3 text-xs text-gray-300">
             <div className="mb-2 flex items-center gap-2 text-orange-300">
               {isPolling ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
-              <span>{isPolling ? '轮询中，等待视频结果' : status === 'failed' ? '视频生成失败' : '轮询异常，可手动继续'}</span>
+              <span>{
+                isPolling
+                  ? '轮询中，等待视频结果'
+                  : status === 'failed'
+                    ? video.refund_status === 'refunded'
+                      ? '视频生成失败，积分已退还'
+                      : video.refund_status === 'expired'
+                        ? '视频生成失败，超过24小时未退还积分'
+                        : '视频生成失败'
+                    : '轮询异常，可手动继续'
+              }</span>
             </div>
             {video.error && (
               <div className="mb-2 break-words text-red-300">
@@ -263,6 +285,8 @@ export const VideoCard = memo(({
     prevProps.video.video_path === nextProps.video.video_path &&
     prevProps.video.local_path === nextProps.video.local_path &&
     prevProps.video.created_by === nextProps.video.created_by &&
+    prevProps.video.error === nextProps.video.error &&
+    prevProps.video.refund_status === nextProps.video.refund_status &&
     prevProps.isPolling === nextProps.isPolling
   );
 });

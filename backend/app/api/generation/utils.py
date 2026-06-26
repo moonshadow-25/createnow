@@ -90,8 +90,10 @@ def get_image_cost(img: dict) -> float:
 def get_video_cost(v: dict) -> float:
     """计算单个视频的实际消耗（积分）。
 
-    优先级：字幕擦除固定规则 → credits_consumed（新记录）→ actual_cost×200（旧记录RMB）→ estimated_cost×200 → 常量计算
+    优先级：已退款记录 → 字幕擦除固定规则 → credits_consumed（新记录）→ actual_cost×200（旧记录RMB）→ estimated_cost×200 → 常量计算
     """
+    if v.get("refund_status") == "refunded":
+        return 0.0
     if v.get("operation_type") == "subtitle_removal":
         return SUBTITLE_REMOVAL_COST
     cc = v.get("credits_consumed")
