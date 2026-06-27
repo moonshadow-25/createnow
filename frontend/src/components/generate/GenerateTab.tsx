@@ -295,6 +295,28 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     } catch { /* ignore */ }
   }, [projectId]);
 
+  const handleLibraryVideoCreated = useCallback((video: Partial<VideoRecord> & { video_id: string }) => {
+    const normalizedVideo: VideoRecord = {
+      ...video,
+      video_id: video.video_id,
+      storyboard_id: video.storyboard_id ?? null,
+      episode_id: video.episode_id ?? null,
+      prompt: video.prompt || '',
+      video_path: video.video_path ?? null,
+      duration: video.duration ?? 0,
+      resolution: video.resolution || '',
+      model: video.model || '',
+      status: video.status || 'pending',
+      created_at: video.created_at || new Date().toISOString(),
+    };
+    setAllVideos(prev => {
+      if (prev.some(item => item.video_id === normalizedVideo.video_id)) return prev;
+      return [...prev, normalizedVideo];
+    });
+    setVideoVisibleCount(prev => Math.max(prev, Math.min(HISTORY_PAGE_SIZE, prev + 1)));
+    shouldStickToBottomRef.current = true;
+  }, []);
+
   const visibleVideos = useMemo(() => {
     if (videoVisibleCount <= 0) return [];
     return filteredVideos.slice(-videoVisibleCount);
@@ -1168,6 +1190,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
           onClose={() => setShowLibrary(false)}
           libraryOnly
           initialVideos={filteredVideos}
+          onVideoCreated={handleLibraryVideoCreated}
         />
       )}
 

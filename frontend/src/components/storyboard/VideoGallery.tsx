@@ -45,6 +45,7 @@ interface VideoGalleryProps {
   storyboardPrimaryImages?: Map<string, string>; // 父组件提供的分镜主图 Map
   libraryOnly?: boolean;
   initialVideos?: any[];
+  onVideoCreated?: (video: VideoRecord) => void;
 }
 
 export function VideoGallery({
@@ -55,6 +56,7 @@ export function VideoGallery({
   storyboardPrimaryImages,
   libraryOnly = false,
   initialVideos,
+  onVideoCreated,
 }: VideoGalleryProps) {
   const { toast } = useToast();
 
@@ -331,6 +333,7 @@ export function VideoGallery({
       });
       toast('已创建字幕擦除任务（新视频）', 'success');
       const newVideo: VideoRecord = res.data;
+      onVideoCreated?.(newVideo);
       if (initialVideos) {
         // 有内存数据模式：直接把新视频插到列表头部，不全量拉取
         setAllVideos(prev => [newVideo, ...prev]);
