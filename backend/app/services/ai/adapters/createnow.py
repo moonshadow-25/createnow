@@ -26,6 +26,16 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
     所有参数格式、响应格式、状态映射均与 ByteSeedVideoAdapter 相同
     """
 
+    @staticmethod
+    def _extract_subtitle_video_url(data: Dict[str, Any]) -> str:
+        result = data.get("result") or {}
+        nested_data = data.get("data") or {}
+        for container in (result, nested_data, data):
+            video_url = str(container.get("video_url") or container.get("url") or "").strip()
+            if video_url:
+                return video_url
+        return ""
+
     def __init__(
         self,
         api_url: str,
@@ -236,9 +246,8 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
                     "raw_poll_response": data,
                 }
 
-            if task_status == "completed":
-                result = data.get("result") or {}
-                video_url = (result.get("video_url") or "").strip()
+            if task_status in ("completed", "succeeded", "success"):
+                video_url = self._extract_subtitle_video_url(data)
                 if not video_url:
                     return {
                         "success": False,
