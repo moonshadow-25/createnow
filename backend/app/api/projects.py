@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request, Query
 from typing import List, Optional
 from pydantic import BaseModel
+import asyncio
+import threading
 import uuid
 from datetime import datetime
 
@@ -13,6 +15,19 @@ from app.core.context import get_current_data_root
 from app.api.generation.utils import calc_video_compute_units, get_image_cost, get_video_cost
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+PROJECT_HOME_STATS_CONCURRENCY = 10
+_project_stats_locks: dict[str, threading.Lock] = {}
+_project_stats_locks_guard = threading.Lock()
+
+
+def _get_project_stats_lock(project_id: str) -> threading.Lock:
+    with _project_stats_locks_guard:
+        lock = _project_stats_locks.get(project_id)
+        if lock is None:
+            lock = threading.Lock()
+            _project_stats_locks[project_id] = lock
+        return lock
 
 
 def _get_projects_dir():
@@ -275,35 +290,36 @@ def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> di
 
 
 def _get_project_home_stats(project_id: str) -> dict:
-    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
-    from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
+    with _get_project_stats_lock(project_id):
+        from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
+        from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
 
-    has_runtime_cache = project_id in _images_cache or project_id in _videos_cache or project_id in _assets_cache
-    if has_runtime_cache:
+        has_runtime_cache = project_id in _images_cache or project_id in _videos_cache or project_id in _assets_cache
+        if has_runtime_cache:
+            stats = _build_project_stats(project_id)
+            user_costs, unknown_costs = _build_project_user_costs(project_id)
+            return {
+                "stats": stats,
+                "user_costs": user_costs,
+                "unknown_cost": unknown_costs["total_cost"],
+                "unknown_costs": unknown_costs,
+            }
+
+        snapshot = read_snapshot(project_id)
+        if snapshot and snapshot.get("unknown_costs"):
+            print(f"[STATS SNAPSHOT HIT] project={project_id[:8]}")
+            return snapshot
+
         stats = _build_project_stats(project_id)
         user_costs, unknown_costs = _build_project_user_costs(project_id)
+        write_snapshot(project_id, stats, user_costs, unknown_costs)
+        print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]}")
         return {
             "stats": stats,
             "user_costs": user_costs,
             "unknown_cost": unknown_costs["total_cost"],
             "unknown_costs": unknown_costs,
         }
-
-    snapshot = read_snapshot(project_id)
-    if snapshot and snapshot.get("unknown_costs"):
-        print(f"[STATS SNAPSHOT HIT] project={project_id[:8]}")
-        return snapshot
-
-    stats = _build_project_stats(project_id)
-    user_costs, unknown_costs = _build_project_user_costs(project_id)
-    write_snapshot(project_id, stats, user_costs, unknown_costs)
-    print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]}")
-    return {
-        "stats": stats,
-        "user_costs": user_costs,
-        "unknown_cost": unknown_costs["total_cost"],
-        "unknown_costs": unknown_costs,
-    }
 
 
 class ProjectCreate(BaseModel):
@@ -441,13 +457,17 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         projects = [p for p in projects if p.get("project_id") in allowed]
 
     if include_stats:
-        project_costs = []
-        for p in projects:
-            item = _get_project_home_stats(p["project_id"])
+        semaphore = asyncio.Semaphore(PROJECT_HOME_STATS_CONCURRENCY)
+
+        async def _load_project_stats(project: dict) -> dict:
+            async with semaphore:
+                return await asyncio.to_thread(_get_project_home_stats, project["project_id"])
+
+        project_costs = await asyncio.gather(*[_load_project_stats(p) for p in projects])
+        for p, item in zip(projects, project_costs):
             p["stats"] = item.get("stats")
             p["user_costs"] = item.get("user_costs") or {}
             p["unknown_costs"] = item.get("unknown_costs") or {}
-            project_costs.append(item)
         return {
             "projects": projects,
             "user_summary": _build_user_cost_summary_from_project_costs(project_costs),
