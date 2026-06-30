@@ -968,6 +968,22 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     });
   }, [rightPanelTab, historyVideos]);
 
+  useEffect(() => {
+    const resumableVideoIds = Array.from(new Set(
+      nodes
+        .map((node) => node.config.last_result?.video_id)
+        .filter((videoId): videoId is string => Boolean(videoId))
+        .filter((videoId) => {
+          const output = nodes.find((node) => node.config.last_result?.video_id === videoId)?.config.last_result;
+          return Boolean(output && !output.video_url);
+        }),
+    )).filter((videoId) => !pollingVideoIdsRef.current.has(videoId));
+
+    resumableVideoIds.slice(0, 3).forEach((videoId) => {
+      continuePollingHistoryVideo(videoId, true);
+    });
+  }, [nodes]);
+
   const prepareReferenceAssets = async (
     imageIds: string[],
     videoUrls: string[],
