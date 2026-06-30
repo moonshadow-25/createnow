@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { ZoomIn } from 'lucide-react';
 import { ExpandableText } from '@/components/common/ExpandableText';
 import { getImageUrlFromRecord, getVideoUrlFromRecord, isPendingVideoStatus } from './canvasUtils';
@@ -16,6 +17,8 @@ type CanvasHistoryPanelProps = {
   onContinuePollingVideo: (videoId: string) => void;
 };
 
+const HISTORY_PAGE_SIZE = 24;
+
 export function CanvasHistoryPanel({
   projectId,
   historyItems,
@@ -26,6 +29,16 @@ export function CanvasHistoryPanel({
   onSelectTextNode,
   onContinuePollingVideo,
 }: CanvasHistoryPanelProps) {
+  const [visibleCount, setVisibleCount] = useState(HISTORY_PAGE_SIZE);
+  const [loadedVideoIds, setLoadedVideoIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setVisibleCount((current) => Math.min(Math.max(current, HISTORY_PAGE_SIZE), historyItems.length || HISTORY_PAGE_SIZE));
+  }, [historyItems.length]);
+
+  const displayItems = useMemo(() => historyItems.slice(0, visibleCount), [historyItems, visibleCount]);
+  const hasMore = visibleCount < historyItems.length;
+
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
@@ -43,7 +56,7 @@ export function CanvasHistoryPanel({
       </div>
 
       <div className="space-y-3">
-        {historyItems.slice(0, 80).map((item) => {
+        {displayItems.map((item) => {
           if (item.kind === 'image') {
             const imageUrl = getImageUrlFromRecord(projectId, item.image);
             return (
@@ -71,9 +84,24 @@ export function CanvasHistoryPanel({
             const videoUrl = getVideoUrlFromRecord(projectId, item.video);
             const pending = isPendingVideoStatus(item.video.status);
             const polling = pollingVideoIds.has(item.video.video_id);
+            const videoLoaded = loadedVideoIds.has(item.video.video_id);
             return (
               <div key={`video-${item.id}`} className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-                {videoUrl ? <video src={videoUrl} draggable={false} className="mb-2 h-28 w-full rounded bg-black object-contain" controls /> : <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{item.video.status || 'pending'}</div>}
+                {videoUrl ? (
+                  videoLoaded ? (
+                    <video src={videoUrl} draggable={false} className="mb-2 h-28 w-full rounded bg-black object-contain" controls />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setLoadedVideoIds((current) => new Set(current).add(item.video.video_id))}
+                      className="mb-2 flex h-28 w-full items-center justify-center rounded bg-gray-900 text-xs text-gray-300 hover:bg-gray-800"
+                    >
+                      点击加载视频
+                    </button>
+                  )
+                ) : (
+                  <div className="mb-2 flex h-28 items-center justify-center rounded bg-gray-900 text-xs text-gray-500">{item.video.status || 'pending'}</div>
+                )}
                 <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
                   <span className="text-purple-300">视频</span>
                   <span className={pending ? 'text-yellow-300' : item.video.status === 'failed' ? 'text-red-300' : 'text-green-300'}>{item.video.status || 'pending'}</span>
@@ -106,6 +134,15 @@ export function CanvasHistoryPanel({
           );
         })}
         {!historyItems.length && <div className="rounded-lg bg-gray-950 p-4 text-center text-xs text-gray-500">暂无画布历史</div>}
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((current) => Math.min(current + HISTORY_PAGE_SIZE, historyItems.length))}
+            className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-xs text-gray-300 hover:border-blue-500 hover:text-blue-200"
+          >
+            加载更多
+          </button>
+        )}
       </div>
     </div>
   );

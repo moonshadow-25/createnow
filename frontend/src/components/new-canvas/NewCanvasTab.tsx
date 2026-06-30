@@ -54,6 +54,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   const [rightPanelTab, setRightPanelTab] = useState<'node' | 'history'>('node');
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyImages, setHistoryImages] = useState<HistoryImage[]>([]);
   const [historyVideos, setHistoryVideos] = useState<HistoryVideo[]>([]);
   const [pollingVideoIds, setPollingVideoIds] = useState<Set<string>>(new Set());
@@ -168,6 +169,7 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       const videos = (videoResponse.data || []) as HistoryVideo[];
       setHistoryImages(images);
       setHistoryVideos(videos);
+      setHistoryLoaded(true);
       videos
         .filter((video) => video.status === 'completed' && Boolean(getVideoUrlFromRecord(projectId, video)))
         .forEach((video) => {
@@ -181,8 +183,8 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
   }, [projectId, toast]);
 
   useEffect(() => {
-    if (rightPanelTab === 'history') loadCanvasHistory();
-  }, [rightPanelTab, loadCanvasHistory]);
+    if (rightPanelTab === 'history' && !historyLoaded && !historyLoading) loadCanvasHistory();
+  }, [historyLoaded, historyLoading, rightPanelTab, loadCanvasHistory]);
 
   const saveCanvasSnapshot = useCallback(async (
     canvasId: string,
@@ -954,7 +956,6 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
     } finally {
       pollingVideoIdsRef.current.delete(videoId);
       setPollingVideoIds(new Set(pollingVideoIdsRef.current));
-      await loadCanvasHistory();
     }
   };
 
