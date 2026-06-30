@@ -879,12 +879,13 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
         bitrate_mode: bitrateMode,
         model: videoApiType === 'createnow' ? node.config.model : undefined,
       });
-      let video = response.data;
-      if (video.video_id) {
-        onPendingOutput?.(buildVideoNodeOutput(projectId, video, node.label));
-        video = await pollVideoUntilDone(video.video_id);
+      const video = response.data;
+      const output = buildVideoNodeOutput(projectId, video, node.label);
+      if (video.video_id && isPendingVideoStatus(video.status)) {
+        onPendingOutput?.(output);
+        void continuePollingHistoryVideo(video.video_id, true);
       }
-      return { output: buildVideoNodeOutput(projectId, video, node.label), auditState: prepared.auditState };
+      return { output, auditState: prepared.auditState };
     }
 
     throw new Error(`不支持的节点类型：${node.type}`);
