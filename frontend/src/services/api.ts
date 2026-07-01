@@ -70,6 +70,7 @@ export const projectApi = {
   getCostBreakdown: (id: string) => api.get(`/projects/${id}/cost-breakdown`),
   setBudget: (id: string, budgetTotal: number | null) =>
     api.put(`/projects/${id}/budget`, { budget_total: budgetTotal }),
+  exportAssets: (id: string) => api.post(`/projects/${id}/export-assets`),
   getStatsByUser: () => api.get('/projects/stats/by-user'),
 };
 

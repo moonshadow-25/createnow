@@ -487,6 +487,23 @@ async def get_project(project_id: str):
     return result
 
 
+@router.post("/{project_id}/export-assets")
+async def export_project_assets(project_id: str, request: Request):
+    """导出项目资产到当前 data/output/assets 目录（仅管理员）"""
+    admin_user = getattr(request.state, "admin_user", None)
+    if not admin_user or admin_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可导出资产")
+
+    from app.services.project_asset_export_service import ProjectAssetExportService
+
+    try:
+        return ProjectAssetExportService.export_project_assets(project_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出资产失败: {e}")
+
+
 @router.put("/{project_id}", response_model=dict)
 async def update_project(project_id: str, project: ProjectUpdate):
     """更新项目"""

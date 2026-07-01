@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText, BarChart2, Workflow } from 'lucide-react';
+import { Users, Film, Settings, ChevronDown, RefreshCw, Video, Sun, Moon, FileText, BarChart2, Workflow, Download } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
-import { adminApi } from '@/services/api';
+import { adminApi, projectApi } from '@/services/api';
+import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { useToast } from '@/components/common/Toast';
 import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
 import { StoryboardTab } from '@/components/storyboard/StoryboardTab';
@@ -26,6 +28,9 @@ export default function ProjectPage() {
   const setGlobalStyleConfig = useGlobalStyleStore(s => s.setConfig);
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
+  const adminRole = useAdminAuthStore(s => s.role);
+  const { toast } = useToast();
+  const isAdmin = adminRole === 'admin';
   const isVipMode = appearanceMode === 'vip';
 
   const [activeTab, setActiveTab] = useState<TabType>('storyboard');
@@ -34,6 +39,7 @@ export default function ProjectPage() {
   const [showProjectCostDashboard, setShowProjectCostDashboard] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [showFullScriptImport, setShowFullScriptImport] = useState(false);
+  const [isExportingAssets, setIsExportingAssets] = useState(false);
   // 项目没有分集时自动弹出导入弹框
   const autoImportTriggered = useRef(false);
   const [episodesInitLoaded, setEpisodesInitLoaded] = useState(false);
@@ -125,6 +131,35 @@ export default function ProjectPage() {
       console.error('清缓存失败', e);
     } finally {
       setIsClearingCache(false);
+    }
+  };
+
+  const handleExportAssets = async () => {
+    if (!projectId || isExportingAssets) return;
+    const confirmed = window.confirm(
+      '将把当前项目资产复制到客户机器当前 data 目录下的 output/assets/{项目名-短ID}/{时间}/，不生成 zip。是否继续？'
+    );
+    if (!confirmed) return;
+
+    setIsExportingAssets(true);
+    try {
+      const res = await projectApi.exportAssets(projectId);
+      const data = res.data || {};
+      const summary = data.summary || {};
+      const copied = [
+        summary.episode_videos,
+        summary.asset_images,
+        summary.canvas_videos,
+        summary.canvas_images,
+        summary.square_videos,
+        summary.square_images,
+      ].reduce((sum: number, value: any) => sum + Number(value || 0), 0);
+      toast(`资产导出完成：${data.output_dir || ''}（共 ${copied} 个文件）`, 'success');
+    } catch (e: any) {
+      const message = e?.response?.data?.detail || e?.message || '导出资产失败';
+      toast(message, 'error');
+    } finally {
+      setIsExportingAssets(false);
     }
   };
 
@@ -251,6 +286,16 @@ export default function ProjectPage() {
                     <FileText size={16} />
                     导入全剧本
                   </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => { setShowMoreMenu(false); handleExportAssets(); }}
+                      disabled={isExportingAssets}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-600 text-gray-200 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Download size={16} className={isExportingAssets ? 'animate-pulse' : ''} />
+                      {isExportingAssets ? '导出中...' : '导出资产'}
+                    </button>
+                  )}
                   <div className="border-t border-gray-600 my-1" />
                   <button
                     onClick={() => { handleClearCache(); setShowMoreMenu(false); }}
