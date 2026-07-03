@@ -961,7 +961,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                     {item.type === 'image' ? (
                       <button type="button" onClick={openPreview} className="w-16 h-16 relative cursor-zoom-in" title="点击查看大图">
                         {item.url ? (
-                          <img src={item.url} alt={item.name} className="w-16 h-16 object-cover rounded border border-gray-600 hover:border-blue-400 transition-colors" />
+                          <img src={item.url} alt={item.name} loading="lazy" className="w-16 h-16 object-cover rounded border border-gray-600 hover:border-blue-400 transition-colors" />
                         ) : (
                           <div className="w-16 h-16 bg-gray-700 rounded border border-gray-600 flex items-center justify-center hover:border-blue-400 transition-colors">
                             <Image size={16} className="text-gray-400" />
@@ -1312,7 +1312,7 @@ function ImageHistoryItem({ image, projectId, onPreview, onRegenerate, onEdit }:
             {image.status === 'pending' ? (
               <Loader2 size={20} className="animate-spin text-gray-400" />
             ) : thumbUrl ? (
-              <img src={thumbUrl} alt={image.prompt} className="w-full h-full object-cover" />
+              <img src={thumbUrl} alt={image.prompt} loading="lazy" className="w-full h-full object-cover" />
             ) : (
               <Image size={20} className="text-gray-500" />
             )}
@@ -1414,7 +1414,7 @@ function VideoItem({ video, projectId, isPolling, isPlaying, onPlay, onRegenerat
                     className="w-7 h-7 rounded overflow-hidden border border-gray-600 hover:border-blue-400 transition-colors flex-shrink-0 cursor-zoom-in"
                     title="点击查看大图"
                   >
-                    <img src={getThumbnailUrl(m.url)} alt={m.name} className="w-full h-full object-cover" />
+                    <img src={getThumbnailUrl(m.url)} alt={m.name} loading="lazy" className="w-full h-full object-cover" />
                   </button>
                 ) : m.type === 'video' ? (
                   <button
