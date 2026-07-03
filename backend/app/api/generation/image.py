@@ -920,6 +920,32 @@ async def list_asset_images(project_id: str, asset_id: str):
     return ImageService.list_images(project_id, asset_id)
 
 
+@router.post("/images/{image_id}/redownload")
+async def redownload_image(project_id: str, image_id: str):
+    """重新拉取单张远程图片到项目本地文件。"""
+    from app.services.image_download_service import ImageDownloadService
+
+    image = ImageService.get_image(project_id, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    source_url = image.get("image_path") or ""
+    if not source_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="No remote image URL to redownload")
+
+    asset_type = image.get("asset_type") or "generate"
+    success = await ImageDownloadService.download_and_save_image(
+        project_id=project_id,
+        image_id=image_id,
+        url=source_url,
+        asset_type=asset_type,
+    )
+    if not success:
+        raise HTTPException(status_code=502, detail="Redownload failed")
+
+    return ImageService.get_image(project_id, image_id) or image
+
+
 @router.post("/images/upload")
 async def upload_image(
     request: Request,

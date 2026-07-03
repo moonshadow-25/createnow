@@ -216,6 +216,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [showDurationMenu, setShowDurationMenu] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ImageRecord | null>(null);
+  const [redownloadingImageId, setRedownloadingImageId] = useState<string | null>(null);
   const [previewMedia, setPreviewMedia] = useState<RefMedia | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const [hasLoadedImages, setHasLoadedImages] = useState(false);
@@ -513,6 +514,23 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
       }];
     });
   }, [projectId]);
+
+  const handleRedownloadImage = useCallback(async (image: ImageRecord) => {
+    if (redownloadingImageId) return;
+    setRedownloadingImageId(image.image_id);
+    try {
+      const response = await generationApi.redownloadImage(projectId, image.image_id);
+      const refreshed: ImageRecord = response.data;
+      setAllImages(prev => prev.map(item => item.image_id === refreshed.image_id ? refreshed : item));
+      setExpandedImage(current => current?.image_id === refreshed.image_id ? refreshed : current);
+      toast('图片重新拉取成功', 'success');
+    } catch (e: any) {
+      const errorMessage = e?.response?.data?.detail || '图片重新拉取失败，请稍后再试';
+      toast(errorMessage, 'error');
+    } finally {
+      setRedownloadingImageId(null);
+    }
+  }, [projectId, redownloadingImageId]);
 
   // 生成视频
   const handleGenerate = async () => {
@@ -1241,8 +1259,19 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
               alt={expandedImage.prompt}
               className="max-w-full max-h-[80vh] object-contain rounded-lg"
             />
-            <div className="mt-3 text-sm text-gray-200">
-              {expandedImage.prompt || '未命名图片'}
+            <div className="mt-3 flex items-start justify-between gap-3 text-sm text-gray-200">
+              <div className="min-w-0 break-words">
+                {expandedImage.prompt || '未命名图片'}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRedownloadImage(expandedImage)}
+                disabled={redownloadingImageId === expandedImage.image_id}
+                className="flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 text-white text-xs hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {redownloadingImageId === expandedImage.image_id && <Loader2 size={14} className="animate-spin" />}
+                {redownloadingImageId === expandedImage.image_id ? '重新拉取中' : '重新拉取'}
+              </button>
             </div>
           </div>
         </div>

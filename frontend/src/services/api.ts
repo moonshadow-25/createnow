@@ -188,6 +188,8 @@ export const generationApi = {
     api.post(`/projects/${projectId}/generate/images/batch`, { asset_ids: assetIds }),
   listLibraryImages: (projectId: string) =>
     api.get(`/projects/${projectId}/generate/images/library`),
+  redownloadImage: (projectId: string, imageId: string) =>
+    api.post(`/projects/${projectId}/generate/images/${imageId}/redownload`),
   setPrimaryImage: (projectId: string, assetId: string, imageId: string) =>
     api.post(`/projects/${projectId}/generate/images/${imageId}/set-primary`, {
       asset_id: assetId,
