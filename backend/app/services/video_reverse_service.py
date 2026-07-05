@@ -70,40 +70,40 @@ class VideoReverseService:
         return saved_path
 
     @staticmethod
-    def _resolve_ffprobe_bin() -> str:
-        bundled = Path(__file__).parent.parent.parent / "bin" / "ffprobe.exe"
-        return str(bundled) if bundled.exists() else "ffprobe"
+    def _resolve_ffmpeg_bin() -> Optional[str]:
+        bundled = Path(__file__).parent.parent.parent / "bin" / "ffmpeg.exe"
+        if bundled.exists():
+            return str(bundled)
+        return shutil.which("ffmpeg")
+
+    @staticmethod
+    def _parse_ffmpeg_duration(stderr: str) -> Optional[float]:
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", stderr or "")
+        if not match:
+            return None
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        seconds = float(match.group(3))
+        return hours * 3600 + minutes * 60 + seconds
 
     @classmethod
     def probe_video_duration(cls, video_path: Path) -> float:
-        ffprobe_bin = cls._resolve_ffprobe_bin()
-        command = [
-            ffprobe_bin,
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(video_path),
-        ]
+        ffmpeg_bin = cls._resolve_ffmpeg_bin()
+        if not ffmpeg_bin:
+            raise HTTPException(status_code=500, detail="未找到 FFmpeg，无法校验视频时长。请检查 backend/app/bin/ffmpeg.exe 是否存在。")
+
+        command = [ffmpeg_bin, "-i", str(video_path)]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=20)
-        except FileNotFoundError as e:
-            raise HTTPException(status_code=500, detail="未找到 ffprobe，无法校验视频时长。请安装 FFmpeg/ffprobe 后重试。") from e
         except subprocess.TimeoutExpired as e:
-            raise HTTPException(status_code=500, detail="ffprobe 校验视频时长超时，请更换文件后重试。") from e
+            raise HTTPException(status_code=500, detail="FFmpeg 校验视频时长超时，请更换文件后重试。") from e
 
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip()
-            raise HTTPException(status_code=400, detail=f"ffprobe 无法解析视频时长：{stderr or 'unknown error'}")
-
-        output = (result.stdout or "").strip()
-        try:
-            duration = float(output)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"ffprobe 返回了无效时长：{output or 'empty'}") from e
-
+        duration = cls._parse_ffmpeg_duration(result.stderr)
+        if duration is None:
+            detail = (result.stderr or result.stdout or "unknown error").strip().splitlines()[-1:]
+            raise HTTPException(status_code=400, detail=f"FFmpeg 无法解析视频时长：{detail[0] if detail else 'unknown error'}")
         if duration > cls.MAX_DURATION_SECONDS:
             raise HTTPException(status_code=400, detail=f"上传视频时长 {duration:.2f} 秒，超过 300 秒限制。")
-
         return duration
 
     @staticmethod
