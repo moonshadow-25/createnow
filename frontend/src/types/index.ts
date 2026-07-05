@@ -103,6 +103,10 @@ export interface Episode {
   script?: string;
   script_content: string;
   video_reverse_analysis?: Record<string, any>;
+  video_reverse_screenplay?: string;
+  video_reverse_segments?: Array<Record<string, any>>;
+  video_reverse_raw?: Record<string, any>;
+  video_reverse_updated_at?: string;
   created_at: string;
   updated_at: string;
 }

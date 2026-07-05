@@ -17,7 +17,7 @@ from .queries import (
     handle_list_assets, handle_get_asset, handle_list_storyboards,
     handle_get_storyboard, handle_get_project_config, handle_get_ai_instructions,
     handle_get_prompt_template, handle_list_all_assets, handle_get_episode_storyboards,
-    handle_get_episode_script, handle_estimate_storyboard_plan,
+    handle_get_episode_script, handle_get_episode_reverse_detail, handle_estimate_storyboard_plan,
 )
 from .config import (
     handle_update_project_config, handle_update_ai_instructions,
@@ -76,6 +76,7 @@ _HANDLERS = {
     "list_all_assets": handle_list_all_assets,
     "get_episode_storyboards": handle_get_episode_storyboards,
     "get_episode_script": handle_get_episode_script,
+    "get_episode_reverse_detail": handle_get_episode_reverse_detail,
     "update_project_config": handle_update_project_config,
     "update_ai_instructions": handle_update_ai_instructions,
     "update_prompt_template": handle_update_prompt_template,

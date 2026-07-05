@@ -390,6 +390,17 @@ TOOLS = [
         }
     },
     {
+        "name": "get_episode_reverse_detail",
+        "description": "读取当前剧集的视频反推详情。用于一键反推/按剧本详情生成流程，返回完整反推剧本、分段提示词、分段剧本、剧本分析、现有资产和现有分镜状态。调用后由对话系统继续使用现有工具创建资产、规划分镜和生成 video_prompt。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID，使用系统提示中注入的当前 episode_id"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
         "name": "estimate_storyboard_plan",
         "description": "接收 LLM 规划的分段方案 segments，后端四重校验（场次/字数/连贯性/完整性），校验通过后批量创建分镜。调用前必须先调 get_episode_script 获取剧本+资产上下文。",
         "parameters": {

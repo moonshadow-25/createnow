@@ -2,7 +2,7 @@
 import json
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from app.services import AssetService, ImageService, ProjectService, get_ai_service
 from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES, count_dialogue_chars
@@ -367,6 +367,83 @@ async def handle_get_episode_script(project_id: str, parameters: Dict) -> Dict:
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def _line_number_text(text: str) -> str:
+    return "\n".join(f"{idx}\t{line}" for idx, line in enumerate((text or "").splitlines(), start=1))
+
+
+def _summarize_asset(asset: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "asset_id": asset.get("asset_id"),
+        "name": asset.get("name", ""),
+        "description": asset.get("description", ""),
+        "image_prompt": asset.get("image_prompt", ""),
+        "review_status": asset.get("review_status"),
+        "has_image": bool(asset.get("image_url") or asset.get("image_path") or asset.get("url")),
+    }
+
+
+async def handle_get_episode_reverse_detail(project_id: str, parameters: Dict, ai_config: Optional[Dict] = None) -> Dict:
+    """获取本集视频反推详情，供一键反推工具编排使用。"""
+    episode_id = parameters.get("episode_id")
+    if not episode_id:
+        return {"success": False, "error": "缺少必需字段: episode_id"}
+
+    episode = AssetService.load_asset(project_id, "episode", episode_id)
+    if not episode:
+        return {"success": False, "error": f"剧集不存在: {episode_id}"}
+
+    screenplay = episode.get("script", "") or episode.get("video_reverse_screenplay", "")
+    reverse_screenplay = episode.get("video_reverse_screenplay", "") or screenplay
+    reverse_segments = episode.get("video_reverse_segments", []) or []
+    reverse_analysis = episode.get("video_reverse_analysis", {}) or {}
+    reverse_raw = episode.get("video_reverse_raw", {}) or {}
+
+    storyboards = [
+        storyboard for storyboard in AssetService.list_assets(project_id, "storyboard")
+        if storyboard.get("episode_id") == episode_id
+    ]
+    storyboards.sort(key=lambda item: item.get("sequence", 0))
+
+    return {
+        "success": True,
+        "project_id": project_id,
+        "episode_id": episode_id,
+        "episode_name": episode.get("name", ""),
+        "episode_number": episode.get("episode_number"),
+        "screenplay": screenplay,
+        "video_reverse_screenplay": reverse_screenplay,
+        "line_numbered_screenplay": _line_number_text(screenplay),
+        "line_numbered_reverse_screenplay": _line_number_text(reverse_screenplay),
+        "video_reverse_segments": reverse_segments,
+        "video_reverse_analysis": reverse_analysis,
+        "video_reverse_raw": {
+            "source_video": reverse_raw.get("source_video", {}),
+            "model": reverse_raw.get("model"),
+            "usage": reverse_raw.get("usage", {}),
+        },
+        "video_reverse_updated_at": episode.get("video_reverse_updated_at"),
+        "existing_assets": {
+            "characters": [_summarize_asset(asset) for asset in AssetService.list_assets(project_id, "character")],
+            "scenes": [_summarize_asset(asset) for asset in AssetService.list_assets(project_id, "scene")],
+            "props": [_summarize_asset(asset) for asset in AssetService.list_assets(project_id, "prop")],
+        },
+        "existing_storyboards": [
+            {
+                "storyboard_id": item.get("storyboard_id") or item.get("asset_id"),
+                "asset_id": item.get("asset_id"),
+                "sequence": item.get("sequence"),
+                "description": item.get("description", ""),
+                "duration": item.get("duration"),
+                "has_video_prompt": bool(item.get("video_prompt")),
+                "character_ids": item.get("character_ids", []),
+                "scene_ids": item.get("scene_ids") or ([item.get("scene_id")] if item.get("scene_id") else []),
+                "prop_ids": item.get("prop_ids", []),
+            }
+            for item in storyboards
+        ],
+    }
 
 
 async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_config: Optional[Dict] = None) -> Dict:

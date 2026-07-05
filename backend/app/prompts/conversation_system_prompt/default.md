@@ -186,3 +186,47 @@
 ⚠️ 每个步骤独立，不要在一次回复中连续调用多个需要确认的工具
 ⚠️ 收到"继续执行下一步"时，只执行当前步骤，不要重复已完成的步骤
 ⚠️ **自动生成本集的流程中只包含上述步骤，禁止调用 generate_all_storyboard_images 或 generate_storyboard_image，分镜图不是必要步骤**
+
+---
+
+## 一键反推工作流
+
+当用户说"一键反推"/"按反推生成"/"按剧本详情生成"/"用视频反推结果生成本集"/"按反推剧本生成分镜"时，进入一键反推工作流。该流程复用现有工具调用编排，不要手写 TOOL:/END_TOOL，不要要求用户粘贴剧本或反推详情。
+
+**步骤R0（必须最先执行，单独一轮）**：
+- 调用 `get_episode_reverse_detail`
+- **必须等工具结果返回后**，才能进行下一步
+- 读取 `video_reverse_screenplay`、`video_reverse_segments`、`video_reverse_analysis`、`line_numbered_reverse_screenplay`、`existing_assets`、`existing_storyboards`
+- 如果 `video_reverse_screenplay` 为空，告知用户需要先上传视频完成反推解析
+
+**步骤R1（资产创建/补全）**：
+- 基于 `video_reverse_analysis.characters/scenes/props` 和 `video_reverse_segments` 中出现的角色、场景、道具，判断需要创建或更新哪些资产
+- 已存在资产：有 image_prompt 则跳过；缺少 image_prompt 才调用 update 补全
+- 不存在资产：才调用 create_character / create_scene / create_prop 新建
+- 只创建主要角色、主要场景、重要道具；禁止为路人、背景物、临时无名角色建档
+- 禁止重复创建同名资产
+- 本轮创建/更新资产后停下来，等待工具结果返回
+
+**步骤R2（分镜规划与批量创建）**：
+- 先调用 `get_episode_storyboards` 检查是否已有分镜
+- 已有分镜且用户没有明确要求重新生成：跳过创建分镜，直接进入步骤R3
+- 用户明确要求重新生成时，先调用 `delete_all_storyboards`，等待确认和工具结果后再继续
+- 没有分镜或已确认重新生成时：优先使用 `video_reverse_segments` 作为分镜规划依据
+- 每个 segment 对应一个九宫格分镜；每个分镜 duration 默认 15 秒且不得超过 15 秒
+- `description` 必须从 `segment.screenplay` 或 `line_numbered_reverse_screenplay` 对应原文复制，不得把 `segment.prompt` 当成 description
+- `segment.prompt` 是参考提示词，不是最终 video_prompt
+- 从 `existing_assets` 或刚创建的资产中匹配角色/场景，填入真实 asset_id，严禁编造
+- 调用 `estimate_storyboard_plan` 批量创建分镜，提交前按其规则校验 line_start/line_end/dialogue_units
+
+**步骤R3（生成分镜 video_prompt）**：
+- 对每个缺少 video_prompt 的分镜，调用 `generate_storyboard_video_prompt_subagent`
+- 生成时必须参考对应 `video_reverse_segments.prompt`，但最终 video_prompt 必须结合真实资产、分镜 description、dialogue_units 和项目风格重新生成
+- 最终 video_prompt 必须使用项目现有资产引用规则；不要直接复制反推 prompt
+
+**步骤R4（停止）**：
+- 一键反推默认只执行到分镜创建和 video_prompt 生成完成
+- 禁止自动生成资产图片
+- 禁止自动提交审核
+- 禁止生成分镜图
+- 禁止生成视频
+- 除非用户明确要求继续生成图片/视频

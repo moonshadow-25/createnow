@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
-import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, ChevronRight, Download, CheckCircle } from 'lucide-react';
+import { Edit, Trash2, Film, Plus, Sparkles, Play, RefreshCcw, Zap, Loader2, ChevronDown, ChevronRight, Download, CheckCircle, BookOpen } from 'lucide-react';
 
 import { VideoGallery } from './VideoGallery';
 import { EpisodePlayer } from './EpisodePlayer';
@@ -17,6 +17,7 @@ import TripleGridPromptDialog from './TripleGridPromptDialog';
 import { SortableStoryboardCard } from './StoryboardCard';
 import { ScriptEditDialog } from './ScriptEditDialog';
 import { VideoReverseDialog } from './VideoReverseDialog';
+import { VideoReverseDetailDialog } from './VideoReverseDetailDialog';
 
 import { AssetSelectorDialog } from './AssetSelectorDialog';
 import { StoryboardBatchActions } from './StoryboardBatchActions';
@@ -141,6 +142,7 @@ export function StoryboardDetail({
   // 更多菜单
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showVideoReverseDialog, setShowVideoReverseDialog] = useState(false);
+  const [showVideoReverseDetailDialog, setShowVideoReverseDetailDialog] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const [showScriptPanel, setShowScriptPanel] = useState(false);
   const [showAssetsPanel, setShowAssetsPanel] = useState(true);
@@ -511,6 +513,32 @@ export function StoryboardDetail({
     }
     await loadStoryboards();
     onUpdated();
+  };
+
+  const handleReverseDetailSaved = (episode: any) => {
+    setSelectedEpisode(episode);
+    setOrderedEpisodes(prev => prev.map(item => item.asset_id === episode.asset_id ? episode : item));
+    onUpdated();
+  };
+
+  const handleGenerateFromReverseDetail = () => {
+    if (!selectedEpisode?.asset_id) {
+      toast('请先选择剧集', 'error');
+      return;
+    }
+    setShowVideoReverseDetailDialog(false);
+    setVibeDramaContext({
+      projectId,
+      projectName: currentProject?.name || '',
+      episodeId: selectedEpisode.asset_id,
+      tabName: 'storyboard',
+      label: `第${selectedEpisode.episode_number || ''}集`,
+    });
+    setPendingMessage({
+      key: `${projectId}_${selectedEpisode.asset_id}`,
+      message: '请按“一键反推工作流”基于当前集的视频反推详情生成本集。只执行到分镜创建和 video_prompt 生成完成：读取反推详情、创建或补全必要资产、按反推分段规划分镜、为分镜生成 video_prompt。禁止生成资产图片、禁止提交审核、禁止生成分镜图、禁止生成视频。',
+    });
+    openVibeDrama();
   };
 
   // 轮询单个素材审核状态，直到不再是 Processing
@@ -1105,6 +1133,18 @@ export function StoryboardDetail({
                   一键生成本集
                 </button>
 
+                {/* 剧本详情 */}
+                <button
+                  onClick={() => {
+                    if (!selectedEpisode?.asset_id) { toast('请先选择剧集', 'error'); return; }
+                    setShowVideoReverseDetailDialog(true);
+                  }}
+                  className="flex items-center gap-1 text-sm px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <BookOpen size={14} />
+                  剧本详情
+                </button>
+
                 {/* 视频库 */}
                 <button
                   onClick={() => dialogs.open('videoGallery')}
@@ -1690,6 +1730,15 @@ export function StoryboardDetail({
         episodeName={selectedEpisode?.name}
         onCompleted={handleVideoReverseCompleted}
         onClose={() => setShowVideoReverseDialog(false)}
+      />
+
+      <VideoReverseDetailDialog
+        isOpen={showVideoReverseDetailDialog}
+        projectId={projectId}
+        episode={selectedEpisode}
+        onSaved={handleReverseDetailSaved}
+        onGenerate={handleGenerateFromReverseDetail}
+        onClose={() => setShowVideoReverseDetailDialog(false)}
       />
 
       {/* 底部批量操作面板 */}

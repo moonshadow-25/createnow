@@ -40,6 +40,17 @@
       }
     }
   },
+  "video_reverse_full_analysis": {
+    "label": "视频反推完整解析",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "一次视频解析输出剧本分析、完整剧本、分段提示词和分段剧本",
+        "content_file": "video_reverse_full_analysis/default.md"
+      }
+    }
+  },
   "video_reverse_screenplay": {
     "label": "视频反推剧本",
     "category": "服务提示词",

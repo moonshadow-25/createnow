@@ -290,6 +290,10 @@ class Episode(Asset):
     duration: Optional[str] = None
     storyboard_ids: List[str] = []  # 分镜ID列表
     video_reverse_analysis: Dict[str, Any] = Field(default_factory=dict)
+    video_reverse_screenplay: str = ""
+    video_reverse_segments: List[Dict[str, Any]] = Field(default_factory=list)
+    video_reverse_raw: Dict[str, Any] = Field(default_factory=dict)
+    video_reverse_updated_at: Optional[str] = None
 
 
 class Storyboard(Asset):

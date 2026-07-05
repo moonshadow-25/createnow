@@ -375,6 +375,46 @@ class VideoReverseService:
         return created
 
     @classmethod
+    def _normalize_reverse_segment(cls, idx: int, item: Any) -> Dict[str, Any]:
+        if not isinstance(item, dict):
+            item = {"prompt": str(item or "")}
+        raw_duration = item.get("duration") or item.get("duration_seconds") or item.get("seconds") or 15
+        try:
+            duration = int(round(float(raw_duration)))
+        except (TypeError, ValueError):
+            duration = 15
+        duration = max(1, min(duration, 15))
+
+        shorts = item.get("shorts") if isinstance(item.get("shorts"), list) else []
+        normalized_shorts = []
+        for short_idx, raw_short in enumerate(shorts, start=1):
+            if not isinstance(raw_short, dict):
+                raw_short = {"prompt": str(raw_short or "")}
+            short_duration = raw_short.get("duration") or raw_short.get("duration_seconds") or raw_short.get("seconds") or None
+            try:
+                short_duration = int(round(float(short_duration))) if short_duration is not None else None
+            except (TypeError, ValueError):
+                short_duration = None
+            normalized_shorts.append({
+                "index": raw_short.get("index") or raw_short.get("short_index") or short_idx,
+                "duration": short_duration,
+                "screenplay": str(raw_short.get("screenplay") or raw_short.get("script") or "").strip(),
+                "prompt": str(raw_short.get("prompt") or raw_short.get("video_prompt") or "").strip(),
+            })
+
+        return {
+            "index": item.get("index") or item.get("segment_index") or idx,
+            "title": str(item.get("title") or item.get("name") or f"片段 {idx}").strip(),
+            "duration": duration,
+            "screenplay": str(item.get("screenplay") or item.get("script") or item.get("script_text") or "").strip(),
+            "prompt": str(item.get("prompt") or item.get("segment_prompt") or item.get("video_prompt") or "").strip(),
+            "shorts": normalized_shorts,
+            "characters": item.get("characters") if isinstance(item.get("characters"), list) else [],
+            "scenes": item.get("scenes") if isinstance(item.get("scenes"), list) else [],
+            "props": item.get("props") if isinstance(item.get("props"), list) else [],
+        }
+
+    @classmethod
     async def reverse_episode_video(
         cls,
         project_id: str,
@@ -387,104 +427,59 @@ class VideoReverseService:
         match_assets: bool = True,
         preprocess_fps: int = 1,
     ) -> Dict[str, Any]:
-        if not overwrite_storyboards:
-            raise HTTPException(status_code=400, detail="当前实现要求 overwrite_storyboards=true，暂不支持保留旧分镜并增量写入。")
-
         episode = cls._get_episode(project_id, episode_id)
         saved_video_path = await cls.save_temp_video(project_id, upload_file)
         duration_seconds = cls.probe_video_duration(saved_video_path)
 
         vlm = get_ai_service(ai_config, "vlm", project_id)
         try:
-            screenplay_prompt = cls._build_vlm_prompt(
+            prompt = cls._build_vlm_prompt(
                 ai_config,
-                "video_reverse_screenplay",
+                "video_reverse_full_analysis",
                 episode_number=episode.get("episode_number", ""),
                 episode_title=episode.get("name", ""),
                 preprocess_fps=preprocess_fps,
                 max_duration_seconds=int(cls.MAX_DURATION_SECONDS),
                 actual_duration_seconds=f"{duration_seconds:.2f}",
             )
-            screenplay_result = await vlm.analyze_video(
+            result = await vlm.analyze_video(
                 video_path=str(saved_video_path),
-                prompt=screenplay_prompt,
+                prompt=prompt,
                 preprocess_fps=preprocess_fps,
             )
-            if screenplay_result.get("error"):
-                raise HTTPException(status_code=502, detail=f"VLM 生成剧本失败：{screenplay_result['error']}")
-            screenplay_text = (screenplay_result.get("content") or "").strip()
+            if result.get("error"):
+                raise HTTPException(status_code=502, detail=f"VLM 视频反推失败：{result['error']}")
+
+            try:
+                parsed = cls._extract_json_object(result.get("content") or "")
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"VLM 视频反推 JSON 解析失败：{e}") from e
+
+            screenplay_text = str(parsed.get("screenplay") or parsed.get("script") or "").strip()
             if not screenplay_text:
-                raise HTTPException(status_code=502, detail="VLM 返回的剧本内容为空")
+                raise HTTPException(status_code=502, detail="VLM 返回的完整剧本为空")
 
-            character_hints = await PromptService.extract_characters(vlm, screenplay_text)
+            raw_segments = (
+                parsed.get("segments")
+                or parsed.get("segment_prompts")
+                or parsed.get("story_segments")
+                or []
+            )
+            if not isinstance(raw_segments, list):
+                raw_segments = []
+            segments = [cls._normalize_reverse_segment(idx, item) for idx, item in enumerate(raw_segments, start=1)]
 
-            storyboard_prompt = cls._build_vlm_prompt(
-                ai_config,
-                "video_reverse_storyboard",
-                episode_number=episode.get("episode_number", ""),
-                episode_title=episode.get("name", ""),
-                screenplay_text=screenplay_text,
-                preprocess_fps=preprocess_fps,
-                actual_duration_seconds=f"{duration_seconds:.2f}",
-            )
-            storyboard_result = await vlm.analyze_video(
-                video_path=str(saved_video_path),
-                prompt=storyboard_prompt,
-                preprocess_fps=preprocess_fps,
-            )
-            if storyboard_result.get("error"):
-                raise HTTPException(status_code=502, detail=f"VLM 生成分镜失败：{storyboard_result['error']}")
-            try:
-                storyboard_items = cls._extract_json_array(storyboard_result.get("content") or "")
-            except Exception as e:
-                raise HTTPException(status_code=502, detail=f"VLM 分镜 JSON 解析失败：{e}") from e
-            normalized_storyboards = [
-                cls._normalize_storyboard_item(idx, item)
-                for idx, item in enumerate(storyboard_items, start=1)
-            ]
-            if not normalized_storyboards:
-                raise HTTPException(status_code=502, detail="VLM 返回的分镜数组为空")
-
-            drama_prompt = cls._build_vlm_prompt(
-                ai_config,
-                "video_reverse_drama_analysis",
-                episode_number=episode.get("episode_number", ""),
-                episode_title=episode.get("name", ""),
-                screenplay_text=screenplay_text,
-                storyboard_json=json.dumps(normalized_storyboards, ensure_ascii=False, indent=2),
-                preprocess_fps=preprocess_fps,
-                actual_duration_seconds=f"{duration_seconds:.2f}",
-            )
-            drama_result = await vlm.analyze_video(
-                video_path=str(saved_video_path),
-                prompt=drama_prompt,
-                preprocess_fps=preprocess_fps,
-            )
-            if drama_result.get("error"):
-                raise HTTPException(status_code=502, detail=f"VLM 生成剧情详解失败：{drama_result['error']}")
-            try:
-                drama_analysis = cls._normalize_drama_analysis(
-                    cls._extract_json_object(drama_result.get("content") or "")
-                )
-            except Exception as e:
-                raise HTTPException(status_code=502, detail=f"VLM 剧情详解 JSON 解析失败：{e}") from e
-
-            if extract_characters and character_hints:
-                existing_names = {
-                    (item.get("name") or "").strip().lower() for item in drama_analysis.get("characters", []) if isinstance(item, dict)
-                }
-                for item in character_hints:
-                    if not isinstance(item, dict):
-                        continue
-                    name = (item.get("name") or "").strip().lower()
-                    if name and name not in existing_names:
-                        drama_analysis.setdefault("characters", []).append(item)
-                        existing_names.add(name)
+            analysis = parsed.get("analysis") or parsed.get("drama_analysis") or {}
+            if not isinstance(analysis, dict):
+                analysis = {"content": str(analysis or "").strip()}
 
             if overwrite_script or not episode.get("script"):
                 episode["script"] = screenplay_text
-
-            episode["video_reverse_analysis"] = {
+            now = datetime.now().isoformat()
+            episode["video_reverse_screenplay"] = screenplay_text
+            episode["video_reverse_segments"] = segments
+            episode["video_reverse_analysis"] = analysis
+            episode["video_reverse_raw"] = {
                 "source_video": {
                     "filename": saved_video_path.name,
                     "path": str(saved_video_path),
@@ -492,57 +487,26 @@ class VideoReverseService:
                     "mime_type": cls._guess_mime_type(saved_video_path),
                     "preprocess_fps": preprocess_fps,
                 },
-                "screenplay": {
-                    "content": screenplay_text,
-                    "usage": screenplay_result.get("usage", {}),
-                    "raw": screenplay_result.get("raw", {}),
-                },
-                "storyboard": {
-                    "items": normalized_storyboards,
-                    "usage": storyboard_result.get("usage", {}),
-                    "raw": storyboard_result.get("raw", {}),
-                },
-                "drama_analysis": {
-                    "content": drama_analysis,
-                    "usage": drama_result.get("usage", {}),
-                    "raw": drama_result.get("raw", {}),
-                },
-                "updated_at": datetime.now().isoformat(),
+                "model": getattr(vlm, "model", None),
+                "usage": result.get("usage", {}),
+                "raw": result.get("raw", {}),
             }
-            episode["updated_at"] = datetime.now().isoformat()
+            episode["video_reverse_updated_at"] = now
+            episode["updated_at"] = now
             AssetService.save_asset(project_id, "episode", episode)
-
-            created_assets = cls._create_missing_assets(project_id, drama_analysis, extract_characters)
-            saved_storyboards = cls._replace_episode_storyboards(project_id, episode, normalized_storyboards)
-
-            match_result = {"updated_count": 0, "updated_storyboard_ids": []}
-            if match_assets:
-                match_result = await match_assets_to_storyboards(
-                    project_id=project_id,
-                    episode_id=episode_id,
-                    ai_config=ai_config,
-                    overwrite_existing=True,
-                )
 
             return {
                 "episode_id": episode_id,
                 "episode_number": episode.get("episode_number"),
                 "duration_seconds": duration_seconds,
                 "script_updated": bool(overwrite_script or not episode.get("script")),
-                "storyboards_rebuilt": overwrite_storyboards,
-                "storyboard_count": len(saved_storyboards),
-                "storyboards_created": len(saved_storyboards),
-                "characters_created": len(created_assets["characters"]),
-                "scenes_created": len(created_assets["scenes"]),
-                "props_created": len(created_assets["props"]),
-                "created_assets": {
-                    "characters": len(created_assets["characters"]),
-                    "scenes": len(created_assets["scenes"]),
-                    "props": len(created_assets["props"]),
-                },
-                "matched_storyboards": match_result.get("updated_count", 0),
+                "analysis_updated": True,
+                "segment_count": len(segments),
                 "screenplay_preview": screenplay_text[:300],
-                "analysis_summary": drama_analysis.get("summary", ""),
+                "analysis_summary": analysis.get("summary", ""),
+                "storyboards_created": 0,
+                "characters_created": 0,
+                "matched_storyboards": 0,
             }
         finally:
             await vlm.close()
