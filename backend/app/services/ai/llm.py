@@ -337,7 +337,7 @@ class LLMService(AIService):
         extra_body: Optional[Dict[str, Any]] = None,
         preprocess_fps: float = 1.0,
     ) -> Dict[str, Any]:
-        """使用 OpenAI 兼容 Responses 协议，以 base64 video_url 单次请求分析视频。"""
+        """使用 OpenAI 兼容 Responses 协议，以 base64 video_url 单次流式请求分析视频。"""
         import httpx
 
         path_obj = Path(video_path)
@@ -367,6 +367,7 @@ class LLMService(AIService):
                     ],
                 }
             ],
+            "stream": True,
         }
         if system_prompt:
             response_payload["instructions"] = system_prompt
@@ -376,6 +377,7 @@ class LLMService(AIService):
             response_payload["max_output_tokens"] = max_output_tokens
         if extra_body:
             response_payload.update(extra_body)
+        response_payload["stream"] = True
 
         request_payload_for_log = {
             **response_payload,
@@ -391,42 +393,95 @@ class LLMService(AIService):
         }
 
         start_time = datetime.now()
+        output_parts: List[str] = []
+        event_types: List[str] = []
+        final_response_data: Optional[Dict[str, Any]] = None
+        printed_stream_header = False
+
         try:
-            inference_response = await self.client.post(
+            async with self.client.stream(
+                "POST",
                 response_url,
                 headers=self._get_headers(),
                 json=response_payload,
-            )
-            inference_response.raise_for_status()
-            response_data = inference_response.json()
+                timeout=None,
+            ) as inference_response:
+                inference_response.raise_for_status()
+                async for raw_line in inference_response.aiter_lines():
+                    line = (raw_line or "").strip()
+                    if not line:
+                        continue
+                    if line.startswith("data:"):
+                        line = line[5:].strip()
+                    if line == "[DONE]":
+                        break
+
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.debug("无法解析视频分析流式行: %s", line[:500])
+                        continue
+                    if not isinstance(event, dict):
+                        continue
+
+                    event_type = event.get("type")
+                    if isinstance(event_type, str):
+                        event_types.append(event_type)
+                    if event_type in {"response.completed", "response.done"} and isinstance(event.get("response"), dict):
+                        final_response_data = event["response"]
+
+                    delta = self._extract_response_stream_delta(event)
+                    if delta:
+                        output_parts.append(delta)
+                        if not printed_stream_header:
+                            print("\n[VLM视频反推流式输出开始]", flush=True)
+                            printed_stream_header = True
+                        print(delta, end="", flush=True)
+
+            if printed_stream_header:
+                print("\n[VLM视频反推流式输出结束]", flush=True)
+
+            output_text = "".join(output_parts).strip()
+            if not output_text and final_response_data:
+                output_text = self._extract_response_text(final_response_data)
+
+            usage = final_response_data.get("usage", {}) if final_response_data else {}
+            response_data: Dict[str, Any] = {
+                "stream": True,
+                "events": event_types[-200:],
+                "output_text": output_text,
+            }
+            if final_response_data:
+                response_data["response"] = final_response_data
 
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
             self._log_interaction(
                 interaction_type="llm",
-                operation="analyze_video_response",
+                operation="analyze_video_response_stream",
                 url=response_url,
                 method="POST",
                 request_payload=request_payload_for_log,
                 response_data=response_data,
-                status_code=inference_response.status_code,
+                status_code=200,
                 duration_ms=duration_ms,
             )
 
-            output_text = self._extract_response_text(response_data)
-            if not output_text.strip():
+            if not output_text:
                 return {
-                    "error": "Invalid VLM response: empty content",
+                    "error": "Invalid VLM response: empty stream content",
                     "raw": response_data,
-                    "usage": response_data.get("usage", {}),
+                    "usage": usage,
                 }
 
             return {
                 "content": output_text,
                 "raw": response_data,
-                "usage": response_data.get("usage", {}),
+                "usage": usage,
             }
 
         except httpx.HTTPError as e:
+            if printed_stream_header:
+                print("\n[VLM视频反推流式输出异常]", flush=True)
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
             error_detail = str(e)
             status_code = None
@@ -439,7 +494,7 @@ class LLMService(AIService):
 
             self._log_interaction(
                 interaction_type="llm",
-                operation="analyze_video_response",
+                operation="analyze_video_response_stream",
                 url=response_url,
                 method="POST",
                 request_payload=request_payload_for_log,
@@ -451,6 +506,37 @@ class LLMService(AIService):
                 "error": error_detail,
                 "raw": None,
             }
+
+    def _extract_response_stream_delta(self, event: Dict[str, Any]) -> str:
+        """从 Responses/Chat 兼容流式事件中提取文本增量。"""
+        delta = event.get("delta")
+        if isinstance(delta, str):
+            return delta
+        if isinstance(delta, dict):
+            text = delta.get("text") or delta.get("content") or delta.get("value")
+            if isinstance(text, str):
+                return text
+
+        text = event.get("text") or event.get("content") or event.get("output_text")
+        if isinstance(text, str):
+            return text
+
+        choices = event.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                first_delta = first.get("delta") or {}
+                if isinstance(first_delta, dict):
+                    content = first_delta.get("content")
+                    if isinstance(content, str):
+                        return content
+                message = first.get("message") or {}
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        return content
+
+        return ""
 
     def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
         """从 OpenAI Responses 风格响应中提取文本。"""
