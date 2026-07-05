@@ -40,6 +40,7 @@ const SERVICE_KEYS = new Set([
   'full_script_extract_merge',
   'material_look',
   'material_node',
+  'video_reverse_full_analysis',
 ]);
 
 // ── 组件 ──────────────────────────────────────────────────────────────────────
