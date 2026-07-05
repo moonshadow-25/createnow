@@ -16,6 +16,7 @@ import { useTripleGridOperations } from './hooks/useTripleGridOperations';
 import TripleGridPromptDialog from './TripleGridPromptDialog';
 import { SortableStoryboardCard } from './StoryboardCard';
 import { ScriptEditDialog } from './ScriptEditDialog';
+import { VideoReverseDialog } from './VideoReverseDialog';
 
 import { AssetSelectorDialog } from './AssetSelectorDialog';
 import { StoryboardBatchActions } from './StoryboardBatchActions';
@@ -139,6 +140,7 @@ export function StoryboardDetail({
 
   // 更多菜单
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showVideoReverseDialog, setShowVideoReverseDialog] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const [showScriptPanel, setShowScriptPanel] = useState(false);
   const [showAssetsPanel, setShowAssetsPanel] = useState(true);
@@ -493,6 +495,22 @@ export function StoryboardDetail({
       setStoryboardPrimaryImages(new Map());
       return [];  // 错误时返回空数组
     }
+  };
+
+  const handleVideoReverseCompleted = async () => {
+    const response = await assetApi.list(projectId, 'episode');
+    const sorted = (response.data || []).sort((a: any, b: any) =>
+      (a.episode_number || a.sequence || 0) - (b.episode_number || b.sequence || 0)
+    );
+    setOrderedEpisodes(sorted);
+    if (selectedEpisode) {
+      const refreshedEpisode = sorted.find((ep: any) => ep.asset_id === selectedEpisode.asset_id);
+      if (refreshedEpisode) {
+        setSelectedEpisode(refreshedEpisode);
+      }
+    }
+    await loadStoryboards();
+    onUpdated();
   };
 
   // 轮询单个素材审核状态，直到不再是 Processing
@@ -1196,6 +1214,20 @@ export function StoryboardDetail({
                         <Film size={14} />
                         一键生成视频
                       </button>
+                      {/* 视频反推剧本 */}
+                      <button
+                        onClick={() => {
+                          setShowMoreMenu(false);
+                          if (!selectedEpisode?.asset_id) { toast('请先选择剧集', 'error'); return; }
+                          setShowVideoReverseDialog(true);
+                        }}
+                        disabled={!selectedEpisode}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Film size={14} />
+                        视频反推剧本
+                      </button>
+                      <div className="border-t border-gray-600 my-1" />
                       {/* 导出到剪映 */}
                       <button
                         onClick={() => { setShowMoreMenu(false); selectedEpisode && handleExportAllToJiayingDownload(selectedEpisode.asset_id); }}
@@ -1650,6 +1682,15 @@ export function StoryboardDetail({
           onClose={() => dialogs.close('tripleGrid')}
         />
       )}
+
+      <VideoReverseDialog
+        isOpen={showVideoReverseDialog}
+        projectId={projectId}
+        episodeId={selectedEpisode?.asset_id}
+        episodeName={selectedEpisode?.name}
+        onCompleted={handleVideoReverseCompleted}
+        onClose={() => setShowVideoReverseDialog(false)}
+      />
 
       {/* 底部批量操作面板 */}
       {selectedStoryboardIds.size > 0 && (

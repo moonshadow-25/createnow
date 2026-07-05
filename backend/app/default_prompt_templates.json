@@ -40,6 +40,39 @@
       }
     }
   },
+  "video_reverse_screenplay": {
+    "label": "视频反推剧本",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "根据整段视频稳定反推出本集剧本文本",
+        "content_file": "video_reverse_screenplay/default.md"
+      }
+    }
+  },
+  "video_reverse_storyboard": {
+    "label": "视频反推分镜",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "根据整段视频和剧本稳定输出结构化分镜 JSON",
+        "content_file": "video_reverse_storyboard/default.md"
+      }
+    }
+  },
+  "video_reverse_drama_analysis": {
+    "label": "视频反推剧情详解",
+    "category": "服务提示词",
+    "presets": {
+      "default": {
+        "name": "默认",
+        "description": "根据整段视频和剧本稳定输出剧情详解 JSON",
+        "content_file": "video_reverse_drama_analysis/default.md"
+      }
+    }
+  },
   "storyboard": {
     "label": "分镜格",
     "category": "生成模板",

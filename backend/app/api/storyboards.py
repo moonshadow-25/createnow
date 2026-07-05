@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from typing import List, Optional, Union
 from pydantic import BaseModel
@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 import time
 
-from app.services import AssetService, PromptService, get_ai_service
+from app.services import AssetService, PromptService, get_ai_service, VideoReverseService
 from app.services.asset_service import ProjectService
 from app.services.storyboard_asset_service import (
     extract_assets_from_storyboards,
@@ -45,6 +45,9 @@ class StoryboardCreate(BaseModel):
     dialogue: str = ""
     action: str = ""
     image_prompt: str = None
+    video_prompt: Optional[Union[str, List[str]]] = None
+    duration: Optional[int] = None
+    resolution: Optional[str] = None
 
 
 class StoryboardUpdate(BaseModel):
@@ -189,6 +192,48 @@ async def generate_storyboards(project_id: str, request: StoryboardGenerateReque
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/episode/{episode_id}/video-reverse")
+async def reverse_episode_video(
+    project_id: str,
+    episode_id: str,
+    file: UploadFile = File(...),
+    overwrite_script: bool = Form(True),
+    overwrite_storyboards: bool = Form(True),
+    extract_characters: bool = Form(True),
+    match_assets: bool = Form(True),
+    preprocess_fps: int = Form(1),
+):
+    """上传视频并反推该集剧本、分镜与剧情分析。"""
+    project = ProjectService.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    ai_config = project.get("ai_config", {})
+
+    try:
+        result = await VideoReverseService.reverse_episode_video(
+            project_id=project_id,
+            episode_id=episode_id,
+            upload_file=file,
+            ai_config=ai_config,
+            overwrite_script=overwrite_script,
+            overwrite_storyboards=overwrite_storyboards,
+            extract_characters=extract_characters,
+            match_assets=match_assets,
+            preprocess_fps=preprocess_fps,
+        )
+        return {
+            "success": True,
+            **result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"视频反推失败: {str(e)}")
 
 
 @router.get("/episode/{episode_id}", response_model=List[dict])

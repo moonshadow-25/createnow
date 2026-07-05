@@ -24,7 +24,8 @@ type PromptsData = Record<string, PromptEntry>;
 const GENERATION_KEY_ORDER = [
   'image', 'video', 'storyboard', 'storyboard_image_edit', 'storyboard_image',
   'nine_grid_combined_prompts', 'character_sheet', 'multi_scene_video',
-  'triple_grid', 'image_edit', 'video_reverse', 'vlm',
+  'triple_grid', 'image_edit', 'video_reverse', 'video_reverse_screenplay',
+  'video_reverse_storyboard', 'video_reverse_drama_analysis', 'vlm',
 ];
 
 const BASIC_KEYS = new Set([

@@ -547,6 +547,25 @@ export const storyboardApi = {
     api.post(`/projects/${projectId}/storyboards/extract-assets`, { episode_id: episodeId }),
   matchAssets: (projectId: string, episodeId: string, overwriteExisting: boolean = false) =>
     api.post(`/projects/${projectId}/storyboards/match-assets`, { episode_id: episodeId, overwrite_existing: overwriteExisting }),
+  videoReverseEpisode: (projectId: string, episodeId: string, data: {
+    file: File;
+    overwrite_script?: boolean;
+    overwrite_storyboards?: boolean;
+    extract_characters?: boolean;
+    match_assets?: boolean;
+    preprocess_fps?: number;
+  }) => {
+    const formData = new FormData();
+    formData.append('file', data.file);
+    formData.append('overwrite_script', String(data.overwrite_script ?? true));
+    formData.append('overwrite_storyboards', String(data.overwrite_storyboards ?? true));
+    formData.append('extract_characters', String(data.extract_characters ?? true));
+    formData.append('match_assets', String(data.match_assets ?? true));
+    formData.append('preprocess_fps', String(data.preprocess_fps ?? 1));
+    return api.post(`/projects/${projectId}/storyboards/episode/${episodeId}/video-reverse`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // 全局提示词模板API

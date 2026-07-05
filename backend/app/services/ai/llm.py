@@ -6,6 +6,8 @@
 
 import json
 import logging
+import mimetypes
+from pathlib import Path
 from typing import AsyncIterator, Optional, Dict, Any, List
 from datetime import datetime
 
@@ -323,3 +325,176 @@ class LLMService(AIService):
             return {
                 "error": str(e)
             }
+
+    async def analyze_video(
+        self,
+        video_path: str,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.2,
+        max_output_tokens: int = 32000,
+        extra_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """使用 OpenAI 兼容 Files/Responses 协议分析视频。"""
+        import httpx
+
+        path_obj = Path(video_path)
+        if not path_obj.exists() or not path_obj.is_file():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+
+        upload_url = f"{self.api_url}/files"
+        response_url = f"{self.api_url}/responses"
+        upload_payload_for_log: Dict[str, Any] = {
+            "purpose": "assistants",
+            "filename": path_obj.name,
+            "file_size": path_obj.stat().st_size,
+        }
+        response_payload: Dict[str, Any] = {
+            "model": self.model,
+            "input": []
+        }
+        if temperature is not None:
+            response_payload["temperature"] = temperature
+        if max_output_tokens is not None:
+            response_payload["max_output_tokens"] = max_output_tokens
+        if extra_body:
+            response_payload.update(extra_body)
+
+        input_blocks: List[Dict[str, Any]] = []
+        if system_prompt:
+            response_payload["instructions"] = system_prompt
+        input_blocks.append({"type": "input_video", "file_id": ""})
+        input_blocks.append({"type": "input_text", "text": prompt})
+        response_payload["input"].append({"role": "user", "content": input_blocks})
+
+        start_time = datetime.now()
+        upload_start = datetime.now()
+        upload_response_data: Optional[Dict[str, Any]] = None
+
+        try:
+            with path_obj.open("rb") as video_file:
+                mime_type = mimetypes.guess_type(path_obj.name)[0] or "application/octet-stream"
+                files = {
+                    "file": (path_obj.name, video_file, mime_type)
+                }
+                upload_response = await self.client.post(
+                    upload_url,
+                    headers=self._get_headers(exclude_content_type=True),
+                    data={"purpose": "assistants"},
+                    files=files,
+                )
+            upload_response.raise_for_status()
+            upload_response_data = upload_response.json()
+            file_id = upload_response_data.get("id")
+            if not file_id:
+                raise RuntimeError("Video upload succeeded but file_id is missing in /files response")
+
+            input_blocks[0]["file_id"] = file_id
+            upload_duration_ms = (datetime.now() - upload_start).total_seconds() * 1000
+            self._log_interaction(
+                interaction_type="llm",
+                operation="analyze_video_upload",
+                url=upload_url,
+                method="POST",
+                request_payload=upload_payload_for_log,
+                response_data=upload_response_data,
+                status_code=upload_response.status_code,
+                duration_ms=upload_duration_ms,
+            )
+
+            inference_response = await self.client.post(
+                response_url,
+                headers=self._get_headers(),
+                json=response_payload,
+            )
+            inference_response.raise_for_status()
+            response_data = inference_response.json()
+
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            self._log_interaction(
+                interaction_type="llm",
+                operation="analyze_video_response",
+                url=response_url,
+                method="POST",
+                request_payload=response_payload,
+                response_data=response_data,
+                status_code=inference_response.status_code,
+                duration_ms=duration_ms,
+            )
+
+            output_text = self._extract_response_text(response_data)
+            if not output_text.strip():
+                return {
+                    "error": "Invalid VLM response: empty content",
+                    "raw": response_data,
+                    "usage": response_data.get("usage", {}),
+                }
+
+            return {
+                "content": output_text,
+                "raw": response_data,
+                "usage": response_data.get("usage", {}),
+            }
+
+        except httpx.HTTPError as e:
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            error_detail = str(e)
+            status_code = None
+            if hasattr(e, "response") and e.response is not None:
+                status_code = e.response.status_code
+                try:
+                    error_detail = e.response.text
+                except Exception:
+                    pass
+
+            operation = "analyze_video_upload"
+            request_payload = upload_payload_for_log
+            request_url = upload_url
+            if upload_response_data is not None:
+                operation = "analyze_video_response"
+                request_payload = response_payload
+                request_url = response_url
+
+            self._log_interaction(
+                interaction_type="llm",
+                operation=operation,
+                url=request_url,
+                method="POST",
+                request_payload=request_payload,
+                error=error_detail,
+                status_code=status_code,
+                duration_ms=duration_ms,
+            )
+            return {
+                "error": error_detail,
+                "raw": upload_response_data,
+            }
+
+    def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
+        """从 OpenAI Responses 风格响应中提取文本。"""
+        output_text = response_data.get("output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text.strip()
+
+        texts: List[str] = []
+        for item in response_data.get("output", []):
+            if not isinstance(item, dict):
+                continue
+            for content in item.get("content", []):
+                if not isinstance(content, dict):
+                    continue
+                text_value = content.get("text")
+                if isinstance(text_value, str) and text_value.strip():
+                    texts.append(text_value.strip())
+                    continue
+                if isinstance(text_value, dict):
+                    nested_text = text_value.get("value") or text_value.get("text")
+                    if isinstance(nested_text, str) and nested_text.strip():
+                        texts.append(nested_text.strip())
+                        continue
+                if content.get("type") in {"output_text", "text"}:
+                    nested_text = content.get("value")
+                    if isinstance(nested_text, str) and nested_text.strip():
+                        texts.append(nested_text.strip())
+
+        return "\n".join(texts).strip()

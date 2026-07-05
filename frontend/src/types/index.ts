@@ -97,9 +97,12 @@ export interface Prop extends Asset {
 // 剧集类型
 export interface Episode {
   episode_id: string;
+  asset_id?: string;
   project_id: string;
   name: string;
+  script?: string;
   script_content: string;
+  video_reverse_analysis?: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +122,10 @@ export interface Storyboard {
   shot_type?: string;
   dialogue: string;
   action: string;
+  image_prompt?: string | string[];
+  video_prompt?: string | string[];
+  duration?: number;
+  resolution?: string;
   image_id?: string;
   primary_image_url?: string;
   image_count?: number;
