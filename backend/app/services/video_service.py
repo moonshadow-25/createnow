@@ -8,8 +8,14 @@ from datetime import datetime
 from ..core.config import settings
 
 # 优先使用项目内置的 ffmpeg，其次 fallback 到系统 PATH
-_BUNDLED_FFMPEG = Path(__file__).parent.parent.parent / "bin" / "ffmpeg.exe"
-FFMPEG_BIN = str(_BUNDLED_FFMPEG) if _BUNDLED_FFMPEG.exists() else "ffmpeg"
+_APP_BUNDLED_FFMPEG = Path(__file__).resolve().parents[1] / "bin" / "ffmpeg.exe"
+_LEGACY_BUNDLED_FFMPEG = Path(__file__).resolve().parents[2] / "bin" / "ffmpeg.exe"
+if _APP_BUNDLED_FFMPEG.exists():
+    FFMPEG_BIN = str(_APP_BUNDLED_FFMPEG)
+elif _LEGACY_BUNDLED_FFMPEG.exists():
+    FFMPEG_BIN = str(_LEGACY_BUNDLED_FFMPEG)
+else:
+    FFMPEG_BIN = "ffmpeg"
 
 
 class VideoService:
