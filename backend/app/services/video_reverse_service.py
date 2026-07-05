@@ -2,7 +2,6 @@ import json
 import mimetypes
 import os
 import re
-import shutil
 import subprocess
 import uuid
 from datetime import datetime
@@ -18,6 +17,7 @@ from app.services.ai_service import get_ai_service
 from app.services.global_prompt_service import get_prompt_content
 from app.services.prompt_service import PromptService
 from app.services.storyboard_asset_service import match_assets_to_storyboards
+from app.services.video_service import VideoService
 
 
 class VideoReverseService:
@@ -70,13 +70,6 @@ class VideoReverseService:
         return saved_path
 
     @staticmethod
-    def _resolve_ffmpeg_bin() -> Optional[str]:
-        bundled = Path(__file__).parent.parent.parent / "bin" / "ffmpeg.exe"
-        if bundled.exists():
-            return str(bundled)
-        return shutil.which("ffmpeg")
-
-    @staticmethod
     def _parse_ffmpeg_duration(stderr: str) -> Optional[float]:
         match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", stderr or "")
         if not match:
@@ -88,10 +81,7 @@ class VideoReverseService:
 
     @classmethod
     def probe_video_duration(cls, video_path: Path) -> float:
-        ffmpeg_bin = cls._resolve_ffmpeg_bin()
-        if not ffmpeg_bin:
-            raise HTTPException(status_code=500, detail="未找到 FFmpeg，无法校验视频时长。请检查 backend/app/bin/ffmpeg.exe 是否存在。")
-
+        ffmpeg_bin = VideoService.FFMPEG_BIN
         command = [ffmpeg_bin, "-i", str(video_path)]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=20)
