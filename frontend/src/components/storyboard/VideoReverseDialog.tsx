@@ -63,6 +63,8 @@ export function VideoReverseDialog({
       return;
     }
 
+    setFile(selectedFile);
+
     const video = document.createElement('video');
     const objectUrl = URL.createObjectURL(selectedFile);
     video.preload = 'metadata';
@@ -70,19 +72,20 @@ export function VideoReverseDialog({
       URL.revokeObjectURL(objectUrl);
       const nextDuration = video.duration;
       if (!Number.isFinite(nextDuration) || nextDuration <= 0) {
-        setError('无法读取视频时长，请换一个视频文件');
+        setError('浏览器无法读取视频时长，将交由后端继续校验');
         return;
       }
       if (nextDuration > MAX_VIDEO_DURATION) {
+        setFile(null);
         setError(`视频时长不能超过 5 分钟，当前约 ${formatDuration(nextDuration)}`);
         return;
       }
       setDuration(nextDuration);
-      setFile(selectedFile);
+      setError('');
     };
     video.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      setError('无法读取视频文件，请换一个视频');
+      setError('浏览器无法预览该视频，将交由后端继续校验');
     };
     video.src = objectUrl;
   };
@@ -163,7 +166,7 @@ export function VideoReverseDialog({
             {duration !== null && (
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">时长：{formatDuration(duration)}</div>
             )}
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">支持浏览器可识别的 video/* 文件</div>
+            {error && <div className="text-sm text-amber-600 dark:text-amber-400 mt-1">{error}</div>}
           </div>
 
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
@@ -197,8 +200,6 @@ export function VideoReverseDialog({
             />
             自动匹配分镜角色/场景/道具
           </label>
-
-          {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
         </div>
 
         <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
