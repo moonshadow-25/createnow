@@ -17,7 +17,7 @@ from app.services.ai_service import get_ai_service
 from app.services.global_prompt_service import get_prompt_content
 from app.services.prompt_service import PromptService
 from app.services.storyboard_asset_service import match_assets_to_storyboards
-from app.services.video_service import VideoService
+from app.services.video_service import FFMPEG_BIN
 
 
 class VideoReverseService:
@@ -81,8 +81,7 @@ class VideoReverseService:
 
     @classmethod
     def probe_video_duration(cls, video_path: Path) -> float:
-        ffmpeg_bin = VideoService.FFMPEG_BIN
-        command = [ffmpeg_bin, "-i", str(video_path)]
+        command = [FFMPEG_BIN, "-i", str(video_path)]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=20)
         except subprocess.TimeoutExpired as e:
