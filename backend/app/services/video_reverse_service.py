@@ -408,6 +408,7 @@ class VideoReverseService:
             screenplay_result = await vlm.analyze_video(
                 video_path=str(saved_video_path),
                 prompt=screenplay_prompt,
+                preprocess_fps=preprocess_fps,
             )
             if screenplay_result.get("error"):
                 raise HTTPException(status_code=502, detail=f"VLM 生成剧本失败：{screenplay_result['error']}")
@@ -429,6 +430,7 @@ class VideoReverseService:
             storyboard_result = await vlm.analyze_video(
                 video_path=str(saved_video_path),
                 prompt=storyboard_prompt,
+                preprocess_fps=preprocess_fps,
             )
             if storyboard_result.get("error"):
                 raise HTTPException(status_code=502, detail=f"VLM 生成分镜失败：{storyboard_result['error']}")
@@ -456,6 +458,7 @@ class VideoReverseService:
             drama_result = await vlm.analyze_video(
                 video_path=str(saved_video_path),
                 prompt=drama_prompt,
+                preprocess_fps=preprocess_fps,
             )
             if drama_result.get("error"):
                 raise HTTPException(status_code=502, detail=f"VLM 生成剧情详解失败：{drama_result['error']}")

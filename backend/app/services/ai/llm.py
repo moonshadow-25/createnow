@@ -4,6 +4,7 @@
 提供流式和非流式对话功能，支持 OpenAI Function Calling（tools 参数）
 """
 
+import asyncio
 import json
 import logging
 import mimetypes
@@ -334,6 +335,7 @@ class LLMService(AIService):
         temperature: float = 0.2,
         max_output_tokens: int = 32000,
         extra_body: Optional[Dict[str, Any]] = None,
+        preprocess_fps: float = 1.0,
     ) -> Dict[str, Any]:
         """使用 OpenAI 兼容 Files/Responses 协议分析视频。"""
         import httpx
@@ -345,9 +347,10 @@ class LLMService(AIService):
         upload_url = f"{self.api_url}/files"
         response_url = f"{self.api_url}/responses"
         upload_payload_for_log: Dict[str, Any] = {
-            "purpose": "assistants",
+            "purpose": "user_data",
             "filename": path_obj.name,
             "file_size": path_obj.stat().st_size,
+            "preprocess_configs[video][fps]": preprocess_fps,
         }
         response_payload: Dict[str, Any] = {
             "model": self.model,
@@ -375,12 +378,13 @@ class LLMService(AIService):
             with path_obj.open("rb") as video_file:
                 mime_type = mimetypes.guess_type(path_obj.name)[0] or "application/octet-stream"
                 files = {
-                    "file": (path_obj.name, video_file, mime_type)
+                    "purpose": (None, "user_data"),
+                    "file": (path_obj.name, video_file, mime_type),
+                    "preprocess_configs[video][fps]": (None, str(preprocess_fps)),
                 }
                 upload_response = await self.client.post(
                     upload_url,
                     headers=self._get_headers(exclude_content_type=True),
-                    data={"purpose": "assistants"},
                     files=files,
                 )
             upload_response.raise_for_status()
@@ -390,6 +394,7 @@ class LLMService(AIService):
                 raise RuntimeError("Video upload succeeded but file_id is missing in /files response")
 
             input_blocks[0]["file_id"] = file_id
+            await self._wait_for_uploaded_file(file_id)
             upload_duration_ms = (datetime.now() - upload_start).total_seconds() * 1000
             self._log_interaction(
                 interaction_type="llm",
@@ -469,6 +474,25 @@ class LLMService(AIService):
                 "error": error_detail,
                 "raw": upload_response_data,
             }
+
+    async def _wait_for_uploaded_file(self, file_id: str, max_attempts: int = 60, interval_seconds: float = 2.0) -> Dict[str, Any]:
+        """等待视频文件预处理完成。"""
+        file_url = f"{self.api_url}/files/{file_id}"
+        last_data: Dict[str, Any] = {}
+        for _ in range(max_attempts):
+            response = await self.client.get(
+                file_url,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict):
+                last_data = data
+            status = data.get("status") if isinstance(data, dict) else None
+            if status and status != "processing":
+                return data
+            await asyncio.sleep(interval_seconds)
+        raise RuntimeError(f"视频文件预处理超时：{file_id}，最后状态：{last_data.get('status')}")
 
     def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
         """从 OpenAI Responses 风格响应中提取文本。"""
