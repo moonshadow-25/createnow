@@ -128,19 +128,19 @@ export function VideoReverseDialog({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-gray-800 text-gray-100 rounded-xl shadow-xl w-full max-w-lg border border-gray-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
-            <Film className="w-5 h-5 text-purple-600" />
+            <Film className="w-5 h-5 text-purple-400" />
             <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">视频反推剧本</h3>
-              {episodeName && <p className="text-xs text-gray-500 dark:text-gray-400">{episodeName}</p>}
+              <h3 className="font-semibold text-white">视频反推剧本</h3>
+              {episodeName && <p className="text-xs text-gray-400">{episodeName}</p>}
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+            className="p-1 text-gray-400 hover:bg-gray-700 hover:text-white rounded"
           >
             <X className="w-5 h-5" />
           </button>
@@ -148,7 +148,7 @@ export function VideoReverseDialog({
 
         <div className="p-5 space-y-4">
           <div
-            className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 text-center cursor-pointer hover:border-purple-400 transition-colors"
+            className="border-2 border-dashed border-gray-600 bg-gray-700 text-gray-100 rounded-lg p-6 text-center cursor-pointer hover:border-purple-500 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >
             <input
@@ -160,20 +160,20 @@ export function VideoReverseDialog({
               disabled={isSubmitting}
             />
             <Upload className="w-8 h-8 mx-auto mb-3 text-gray-400" />
-            <div className="text-sm font-medium text-gray-900 dark:text-white">
+            <div className="text-sm font-medium text-white">
               {file ? file.name : '点击上传 5 分钟以内的视频'}
             </div>
             {duration !== null && (
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">时长：{formatDuration(duration)}</div>
+              <div className="text-xs text-gray-400 mt-1">时长：{formatDuration(duration)}</div>
             )}
-            {error && <div className="text-sm text-amber-600 dark:text-amber-400 mt-1">{error}</div>}
+            {error && <div className="text-sm text-amber-300 mt-1">{error}</div>}
           </div>
 
-          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+          <div className="bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm text-gray-200">
             将使用当前项目的 VLM 配置分析视频，并覆盖本集剧本。开启覆盖分镜时会替换本集已有分镜。
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <label className="flex items-center gap-2 text-sm text-gray-300">
             <input
               type="checkbox"
               checked={overwriteStoryboards}
@@ -182,7 +182,7 @@ export function VideoReverseDialog({
             />
             覆盖本集已有分镜
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <label className="flex items-center gap-2 text-sm text-gray-300">
             <input
               type="checkbox"
               checked={extractCharacters}
@@ -191,7 +191,7 @@ export function VideoReverseDialog({
             />
             自动提取并去重角色
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <label className="flex items-center gap-2 text-sm text-gray-300">
             <input
               type="checkbox"
               checked={matchAssets}
@@ -202,11 +202,11 @@ export function VideoReverseDialog({
           </label>
         </div>
 
-        <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-700">
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg border border-gray-600 bg-gray-700 text-gray-100 hover:bg-gray-600 disabled:opacity-50"
           >
             取消
           </button>

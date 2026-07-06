@@ -82,16 +82,16 @@ export function VideoReverseDetailDialog({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-5xl h-[82vh] flex flex-col border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-gray-800 text-gray-100 rounded-xl shadow-xl w-full max-w-5xl h-[82vh] flex flex-col border border-gray-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-blue-500" />
+            <BookOpen className="w-5 h-5 text-blue-400" />
             <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">剧本详情</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{episode.name || '当前剧集'}</p>
+              <h3 className="font-semibold text-white">剧本详情</h3>
+              <p className="text-xs text-gray-400">{episode.name || '当前剧集'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+          <button onClick={onClose} className="p-1 text-gray-400 hover:bg-gray-700 hover:text-white rounded">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -104,7 +104,7 @@ export function VideoReverseDetailDialog({
               className={`px-3 py-1.5 text-sm rounded-lg ${
                 activeTab === tab.key
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
               {tab.label}
@@ -117,7 +117,7 @@ export function VideoReverseDetailDialog({
             <textarea
               value={screenplay}
               onChange={(e) => setScreenplay(e.target.value)}
-              className="w-full h-full resize-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-3 text-sm leading-6 font-mono"
+              className="w-full h-full resize-none rounded-lg border border-gray-700 bg-gray-950 text-gray-100 p-3 text-sm leading-6 font-mono placeholder:text-gray-500"
               placeholder="暂无完整剧本"
             />
           )}
@@ -125,7 +125,7 @@ export function VideoReverseDetailDialog({
             <textarea
               value={segmentsText}
               onChange={(e) => setSegmentsText(e.target.value)}
-              className="w-full h-full resize-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-3 text-sm leading-6 font-mono"
+              className="w-full h-full resize-none rounded-lg border border-gray-700 bg-gray-950 text-gray-100 p-3 text-sm leading-6 font-mono placeholder:text-gray-500"
               placeholder="[]"
             />
           )}
@@ -133,21 +133,21 @@ export function VideoReverseDetailDialog({
             <textarea
               value={analysisText}
               onChange={(e) => setAnalysisText(e.target.value)}
-              className="w-full h-full resize-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-3 text-sm leading-6 font-mono"
+              className="w-full h-full resize-none rounded-lg border border-gray-700 bg-gray-950 text-gray-100 p-3 text-sm leading-6 font-mono placeholder:text-gray-500"
               placeholder="{}"
             />
           )}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-700">
+          <p className="text-xs text-gray-400">
             “按剧本生成”会打开龙虾对话系统，并按一键反推工作流生成资产、分镜和 video_prompt。
           </p>
           <div className="flex gap-3">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
+              className="px-4 py-2 text-sm rounded-lg border border-gray-600 bg-gray-700 text-gray-100 hover:bg-gray-600 disabled:opacity-50 flex items-center gap-2"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               保存
