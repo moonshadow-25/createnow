@@ -536,7 +536,7 @@ export function StoryboardDetail({
     });
     setPendingMessage({
       key: `${projectId}_${selectedEpisode.asset_id}`,
-      message: '请按“一键反推工作流”基于当前集的视频反推详情生成本集。只执行到分镜创建和 video_prompt 生成完成：读取反推详情、创建或补全必要资产、按反推分段规划分镜、为分镜生成 video_prompt。禁止生成资产图片、禁止提交审核、禁止生成分镜图、禁止生成视频。',
+      message: '请按“一键反推工作流”基于当前集的视频反推详情生成本集。先调用 get_episode_reverse_detail 读取反推详情；再调用 get_episode_script 获取当前剧本和 existing_assets，并严格复用“一键生成本集”的资产处理规则：先看 existing_assets，已存在的角色/场景/道具不要重复 create，缺少描述或 image_prompt 时才 update；只为关键角色、关键场景、关键道具建档，严禁创建路人、群众、临时背景人物、普通家具、一次性杂物和抽象概念。资产处理完成后读取真实分镜列表；如已有分镜，先询问我是否删除旧分镜后重建；确认后删除旧分镜，再调用 import_reverse_segments 导入分镜骨架；随后对返回的每个 storyboard_id 并发调用 generate_storyboard_video_prompt_subagent，参数 prompt_type="video", mode="adopt_reverse"。禁止调用 estimate_storyboard_plan；禁止用默认 generate 模式从零重写这些反推提示词；禁止生成资产图片、禁止提交审核、禁止生成分镜图、禁止生成视频。',
     });
     openVibeDrama();
   };
@@ -1133,7 +1133,7 @@ export function StoryboardDetail({
                   一键生成本集
                 </button>
 
-                {/* 剧本详情 */}
+                {/* 剧本反推 */}
                 <button
                   onClick={() => {
                     if (!selectedEpisode?.asset_id) { toast('请先选择剧集', 'error'); return; }
@@ -1142,7 +1142,7 @@ export function StoryboardDetail({
                   className="flex items-center gap-1 text-sm px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-700"
                 >
                   <BookOpen size={14} />
-                  剧本详情
+                  剧本反推
                 </button>
 
                 {/* 视频库 */}
@@ -1253,19 +1253,6 @@ export function StoryboardDetail({
                       >
                         <Film size={14} />
                         一键生成视频
-                      </button>
-                      {/* 视频反推剧本 */}
-                      <button
-                        onClick={() => {
-                          setShowMoreMenu(false);
-                          if (!selectedEpisode?.asset_id) { toast('请先选择剧集', 'error'); return; }
-                          setShowVideoReverseDialog(true);
-                        }}
-                        disabled={!selectedEpisode}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Film size={14} />
-                        视频反推剧本
                       </button>
                       <div className="border-t border-gray-600 my-1" />
                       {/* 导出到剪映 */}
@@ -1738,6 +1725,11 @@ export function StoryboardDetail({
         episode={selectedEpisode}
         onSaved={handleReverseDetailSaved}
         onGenerate={handleGenerateFromReverseDetail}
+        onAnalyzeVideo={() => {
+          setShowVideoReverseDetailDialog(false);
+          if (!selectedEpisode?.asset_id) { toast('请先选择剧集', 'error'); return; }
+          setShowVideoReverseDialog(true);
+        }}
         onClose={() => setShowVideoReverseDetailDialog(false)}
       />
 

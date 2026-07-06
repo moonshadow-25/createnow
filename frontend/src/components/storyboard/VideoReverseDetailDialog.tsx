@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, Loader2, Play, Save, X } from 'lucide-react';
+import { BookOpen, Loader2, Play, Save, Upload, X } from 'lucide-react';
 import { assetApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 
@@ -10,6 +10,7 @@ interface VideoReverseDetailDialogProps {
   onClose: () => void;
   onSaved: (episode: any) => void;
   onGenerate: () => void;
+  onAnalyzeVideo?: () => void;
 }
 
 type DetailTab = 'screenplay' | 'segments' | 'analysis';
@@ -21,6 +22,7 @@ export function VideoReverseDetailDialog({
   onClose,
   onSaved,
   onGenerate,
+  onAnalyzeVideo,
 }: VideoReverseDetailDialogProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<DetailTab>('screenplay');
@@ -66,7 +68,7 @@ export function VideoReverseDetailDialog({
       };
       await assetApi.update(projectId, 'episode', episode.asset_id, payload);
       onSaved({ ...episode, ...payload });
-      toast('剧本详情已保存', 'success');
+      toast('剧本反推已保存', 'success');
     } catch (error: any) {
       toast(`保存失败：${error.message || error.response?.data?.detail || 'JSON 格式错误'}`, 'error');
     } finally {
@@ -87,13 +89,24 @@ export function VideoReverseDetailDialog({
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-blue-400" />
             <div>
-              <h3 className="font-semibold text-white">剧本详情</h3>
+              <h3 className="font-semibold text-white">剧本反推</h3>
               <p className="text-xs text-gray-400">{episode.name || '当前剧集'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:bg-gray-700 hover:text-white rounded">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onAnalyzeVideo && (
+              <button
+                onClick={onAnalyzeVideo}
+                className="px-3 py-1.5 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                分析视频
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 text-gray-400 hover:bg-gray-700 hover:text-white rounded">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 px-5 pt-4">

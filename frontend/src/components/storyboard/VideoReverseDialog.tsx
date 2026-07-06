@@ -28,9 +28,6 @@ export function VideoReverseDialog({
   const [duration, setDuration] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [overwriteStoryboards, setOverwriteStoryboards] = useState(true);
-  const [extractCharacters, setExtractCharacters] = useState(true);
-  const [matchAssets, setMatchAssets] = useState(true);
 
   useEffect(() => {
     if (!isOpen) {
@@ -38,9 +35,6 @@ export function VideoReverseDialog({
       setDuration(null);
       setError('');
       setIsSubmitting(false);
-      setOverwriteStoryboards(true);
-      setExtractCharacters(true);
-      setMatchAssets(true);
     }
   }, [isOpen]);
 
@@ -105,9 +99,6 @@ export function VideoReverseDialog({
       const response = await storyboardApi.videoReverseEpisode(projectId, episodeId, {
         file,
         overwrite_script: true,
-        overwrite_storyboards: overwriteStoryboards,
-        extract_characters: extractCharacters,
-        match_assets: matchAssets,
         preprocess_fps: 1,
       });
       const data = response.data || {};
@@ -133,7 +124,7 @@ export function VideoReverseDialog({
           <div className="flex items-center gap-2">
             <Film className="w-5 h-5 text-purple-400" />
             <div>
-              <h3 className="font-semibold text-white">视频反推剧本</h3>
+              <h3 className="font-semibold text-white">分析视频</h3>
               {episodeName && <p className="text-xs text-gray-400">{episodeName}</p>}
             </div>
           </div>
@@ -170,36 +161,9 @@ export function VideoReverseDialog({
           </div>
 
           <div className="bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm text-gray-200">
-            将使用当前项目的 VLM 配置分析视频，并覆盖本集剧本。开启覆盖分镜时会替换本集已有分镜。
+            将使用当前项目的 VLM 配置分析视频，并覆盖本集剧本。分镜与关键资产将在“按剧本生成”时按现有一键生成流程处理。
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              checked={overwriteStoryboards}
-              onChange={(e) => setOverwriteStoryboards(e.target.checked)}
-              disabled={isSubmitting}
-            />
-            覆盖本集已有分镜
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              checked={extractCharacters}
-              onChange={(e) => setExtractCharacters(e.target.checked)}
-              disabled={isSubmitting}
-            />
-            自动提取并去重角色
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              checked={matchAssets}
-              onChange={(e) => setMatchAssets(e.target.checked)}
-              disabled={isSubmitting}
-            />
-            自动匹配分镜角色/场景/道具
-          </label>
         </div>
 
         <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-700">
