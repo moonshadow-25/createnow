@@ -333,7 +333,7 @@ class LLMService(AIService):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.2,
-        max_output_tokens: int = 32000,
+        max_output_tokens: int = 128000,
         extra_body: Optional[Dict[str, Any]] = None,
         preprocess_fps: float = 1.0,
     ) -> Dict[str, Any]:

@@ -170,7 +170,10 @@ export function useChat(projectId: string, options?: { label?: string; episodeId
                           chunk.tool_call.name?.startsWith('delete_') ||
                           chunk.tool_call.name?.startsWith('insert_') ||
                           chunk.tool_call.name === 'generate_storyboard' ||
-                          chunk.tool_call.name === 'estimate_storyboard_plan') {
+                          chunk.tool_call.name === 'estimate_storyboard_plan' ||
+                          chunk.tool_call.name === 'create_storyboards_from_video_reverse_segments' ||
+                          chunk.tool_call.name === 'import_reverse_segments' ||
+                          chunk.tool_call.name === 'generate_storyboard_video_prompt_subagent') {
                         assetsWereCreated = true;
                       }
                     }
