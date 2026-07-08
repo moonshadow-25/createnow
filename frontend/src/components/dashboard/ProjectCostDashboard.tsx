@@ -15,6 +15,7 @@ interface ProjectCostDashboardProps {
 interface CostSummary {
   image_cost: number;
   video_cost: number;
+  failed_video_cost: number;
   other_cost: number;
   total_cost: number;
 }
@@ -24,15 +25,17 @@ const fmty = (n: number) => (n / 200).toFixed(2) + '元';
 
 function calcCost(stats?: ProjectStats | null): CostSummary {
   if (!stats) {
-    return { image_cost: 0, video_cost: 0, other_cost: 0, total_cost: 0 };
+    return { image_cost: 0, video_cost: 0, failed_video_cost: 0, other_cost: 0, total_cost: 0 };
   }
 
   const video_cost = stats.total_video_compute_units ?? (DEFAULT_VIDEO_COST_PER_SEC * (stats.total_video_seconds || 0));
+  const failed_video_cost = stats.failed_video_compute_units ?? 0;
+  const success_video_cost = Math.max(video_cost - failed_video_cost, 0);
   const other_cost = stats.other_cost ?? 0;
   const total_cost = stats.total_compute_spent ?? ((stats.total_image_cost ?? DEFAULT_IMAGE_COST * (stats.total_images || 0)) + video_cost + other_cost);
   const image_cost = stats.total_image_cost ?? Math.max(total_cost - video_cost - other_cost, 0);
 
-  return { image_cost, video_cost, other_cost, total_cost };
+  return { image_cost, video_cost: success_video_cost, failed_video_cost, other_cost, total_cost };
 }
 
 type CostViewMode = 'daily' | 'episode';
@@ -43,6 +46,7 @@ interface ChartItem {
   title: string;
   image_cost: number;
   video_cost: number;
+  failed_video_cost: number;
   total_cost: number;
 }
 
@@ -58,10 +62,11 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
     .sort((a, b) => (b.total_cost || 0) - (a.total_cost || 0));
   const unknownImageCost = unknownCosts?.image_cost || 0;
   const unknownVideoCost = unknownCosts?.video_cost || 0;
+  const unknownFailedVideoCost = unknownCosts?.failed_video_cost || 0;
   const unknownTotalCost = unknownCosts?.total_cost || 0;
   const projectCostTotal = unknownTotalCost + costs.other_cost;
   const participantRows = projectCostTotal > 0
-    ? [...participants, { username: '项目消耗', image_cost: unknownImageCost, video_cost: unknownVideoCost, other_cost: costs.other_cost, total_cost: projectCostTotal }]
+    ? [...participants, { username: '项目消耗', image_cost: unknownImageCost, video_cost: unknownVideoCost, failed_video_cost: unknownFailedVideoCost, other_cost: costs.other_cost, total_cost: projectCostTotal }]
     : participants;
   const hasCost = costs.total_cost > 0 || participantRows.length > 0;
   const chartItems: ChartItem[] = viewMode === 'daily'
@@ -71,6 +76,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
       title: item.date,
       image_cost: item.image_cost,
       video_cost: item.video_cost,
+      failed_video_cost: item.failed_video_cost || 0,
       total_cost: item.total_cost,
     }))
     : [...costBreakdown.episode_costs]
@@ -83,6 +89,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
           title: episodeNumber ? `第${episodeNumber}集` : '未知',
           image_cost: item.image_cost,
           video_cost: item.video_cost,
+          failed_video_cost: item.failed_video_cost || 0,
           total_cost: item.total_cost,
         };
       });
@@ -124,11 +131,12 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
         </div>
 
         <div className="p-6 overflow-auto space-y-6">
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-6 gap-4">
             {[
               { label: '总消耗', value: fmt(costs.total_cost), color: 'text-white' },
               { label: '图片费用', value: fmt(costs.image_cost), color: 'text-blue-400' },
               { label: '视频费用', value: fmt(costs.video_cost), color: 'text-green-400' },
+              { label: '失败/异常消耗', value: fmt(costs.failed_video_cost), color: 'text-red-400' },
               { label: '其他', value: fmt(costs.other_cost), color: 'text-purple-400' },
               { label: '预估费用', value: fmty(costs.total_cost), color: 'text-yellow-400' },
             ].map(card => (
@@ -158,6 +166,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-400" />图片</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-400" />视频</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" />失败/异常</span>
               </div>
             </div>
             <div className="bg-gray-700/40 rounded-lg p-4 min-h-[260px]">
@@ -190,15 +199,17 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                           const height = maxChartCost > 0 ? Math.max((item.total_cost / maxChartCost) * 100, 2) : 2;
                           const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * 100 : 0;
                           const videoHeight = item.total_cost > 0 ? (item.video_cost / item.total_cost) * 100 : 0;
+                          const failedVideoHeight = item.total_cost > 0 ? (item.failed_video_cost / item.total_cost) * 100 : 0;
                           return (
                             <div key={item.key} className="flex-1 min-w-0 h-full flex flex-col justify-end group">
                               <div
                                 className="w-full max-w-[14px] mx-auto rounded-t overflow-hidden flex flex-col-reverse"
                                 style={{ height: `${height}%` }}
-                                title={`${item.title}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}`}
+                                title={`${item.title}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}，失败/异常 ${fmt(item.failed_video_cost)}`}
                               >
                                 {item.image_cost > 0 && <div className="bg-blue-400" style={{ height: `${imageHeight}%` }} />}
                                 {item.video_cost > 0 && <div className="bg-green-400" style={{ height: `${videoHeight}%` }} />}
+                                {item.failed_video_cost > 0 && <div className="bg-red-400" style={{ height: `${failedVideoHeight}%` }} />}
                               </div>
                               <div className="absolute -top-5 hidden group-hover:block text-[10px] text-gray-200 whitespace-nowrap bg-gray-900/90 px-1.5 py-0.5 rounded">
                                 {item.title} {fmt(item.total_cost)}
@@ -246,6 +257,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                         <th className="text-left py-2 pr-4">用户名</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
                         <th className="text-right py-2 pr-4">视频费用</th>
+                        <th className="text-right py-2 pr-4">失败/异常消耗</th>
                         <th className="text-right py-2 pr-4">其他</th>
                         <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">实际消耗</th>
@@ -257,6 +269,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                           <td className="py-2 pr-4">{user.username}</td>
                           <td className="text-right py-2 pr-4 text-blue-400">{fmt(user.image_cost || 0)}</td>
                           <td className="text-right py-2 pr-4 text-green-400">{fmt(user.video_cost || 0)}</td>
+                          <td className="text-right py-2 pr-4 text-red-400">{fmt(user.failed_video_cost || 0)}</td>
                           <td className="text-right py-2 pr-4 text-purple-400">{fmt(user.other_cost || 0)}</td>
                           <td className="text-right py-2 pr-4 text-yellow-400">{fmty(user.total_cost || 0)}</td>
                           <td className="text-right py-2 font-medium">{fmt(user.total_cost || 0)}</td>
@@ -268,6 +281,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                         <td className="py-2 pr-4">合计</td>
                         <td className="text-right py-2 pr-4 text-blue-400">{fmt(participantRows.reduce((s, u) => s + (u.image_cost || 0), 0))}</td>
                         <td className="text-right py-2 pr-4 text-green-400">{fmt(participantRows.reduce((s, u) => s + (u.video_cost || 0), 0))}</td>
+                        <td className="text-right py-2 pr-4 text-red-400">{fmt(participantRows.reduce((s, u) => s + (u.failed_video_cost || 0), 0))}</td>
                         <td className="text-right py-2 pr-4 text-purple-400">{fmt(participantRows.reduce((s, u) => s + (u.other_cost || 0), 0))}</td>
                         <td className="text-right py-2 pr-4 text-yellow-400">{fmty(participantRows.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
                         <td className="text-right py-2">{fmt(participantRows.reduce((s, u) => s + (u.total_cost || 0), 0))}</td>
@@ -277,6 +291,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                 </div>
               )}
               <p className="text-xs text-gray-500 mt-3">项目消耗包含早期统计中未被计入用户消耗的积分，其他为龙虾对话消耗的积分</p>
+              <p className="text-xs text-gray-500 mt-2">失败/异常消耗统计状态为 failed / poll_failed 且当前仍被本地消耗统计计入的视频记录；已退款记录不计入。</p>
             </div>
           )}
         </div>

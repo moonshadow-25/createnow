@@ -55,7 +55,8 @@ def _build_project_stats(project_id: str) -> dict:
     failed_video_compute_units = 0.0
     for v in videos:
         compute_units = _gvc(v)
-        if v.get("status") in {"failed", "poll_failed"}:
+        is_failed_or_poll_failed = v.get("status") in {"failed", "poll_failed"}
+        if is_failed_or_poll_failed:
             failed_video_compute_units += compute_units
         total_video_compute_units += compute_units
         if v.get("storyboard_id"):
@@ -111,18 +112,20 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
         for img in ImageService.list_images(project_id):
             username = (img.get("created_by") or "").strip() or "__unknown__"
             cost = get_image_cost(img)
-            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["image_cost"] += cost
             entry["total_cost"] += cost
 
         for video in VideoService.list_videos(project_id):
             username = (video.get("created_by") or "").strip() or "__unknown__"
             cost = get_video_cost(video)
-            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["video_cost"] += cost
+            if video.get("status") in {"failed", "poll_failed"}:
+                entry["failed_video_cost"] += cost
             entry["total_cost"] += cost
 
-    unknown = user_costs.pop("__unknown__", {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+    unknown = user_costs.pop("__unknown__", {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
     users = []
     for username, costs in sorted(user_costs.items(), key=lambda x: x[1]["total_cost"], reverse=True):
         user = get_user_by_username(username)
@@ -145,7 +148,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
     def add_daily_cost(date: str, cost_type: str, cost: float) -> None:
         if not date or len(date) != 10 or cost <= 0:
             return
-        entry = daily_costs.setdefault(date, {"date": date, "image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+        entry = daily_costs.setdefault(date, {"date": date, "image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
         entry[cost_type] += cost
         entry["total_cost"] += cost
 
@@ -158,6 +161,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
             "episode_number": 999999,
             "image_cost": 0.0,
             "video_cost": 0.0,
+            "failed_video_cost": 0.0,
             "total_cost": 0.0,
         })
         entry[cost_type] += cost
@@ -182,6 +186,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
             "episode_number": episode_number,
             "image_cost": 0.0,
             "video_cost": 0.0,
+            "failed_video_cost": 0.0,
             "total_cost": 0.0,
         }
 
@@ -197,12 +202,13 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
 
     for video in VideoService.list_videos(project_id):
         cost = get_video_cost(video)
+        cost_type = "failed_video_cost" if video.get("status") in {"failed", "poll_failed"} else "video_cost"
         created_at = video.get("created_at")
         if created_at:
-            add_daily_cost(str(created_at)[:10], "video_cost", cost)
+            add_daily_cost(str(created_at)[:10], cost_type, cost)
         episode_id = storyboard_episode_map.get(video.get("storyboard_id"))
         if episode_id:
-            add_episode_cost(episode_id, "video_cost", cost)
+            add_episode_cost(episode_id, cost_type, cost)
 
     return {
         "daily_costs": [
@@ -210,6 +216,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
                 "date": item["date"],
                 "image_cost": round(item["image_cost"], 2),
                 "video_cost": round(item["video_cost"], 2),
+                "failed_video_cost": round(item["failed_video_cost"], 2),
                 "total_cost": round(item["total_cost"], 2),
             }
             for item in sorted(daily_costs.values(), key=lambda x: x["date"])
@@ -222,6 +229,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
                 "episode_number": item["episode_number"],
                 "image_cost": round(item["image_cost"], 2),
                 "video_cost": round(item["video_cost"], 2),
+                "failed_video_cost": round(item["failed_video_cost"], 2),
                 "total_cost": round(item["total_cost"], 2),
             }
             for item in sorted(episode_costs.values(), key=lambda x: x.get("episode_number") or 0)
@@ -236,13 +244,13 @@ def _build_project_daily_costs(project_id: str) -> list[dict]:
 
 def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[str, float]]:
     user_costs: dict[str, dict] = {}
-    unknown_costs = {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0}
+    unknown_costs = {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0}
 
     for img in ImageService.list_images(project_id):
         username = (img.get("created_by") or "").strip()
         cost = get_image_cost(img)
         if username:
-            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["image_cost"] += cost
             entry["total_cost"] += cost
         else:
@@ -253,11 +261,15 @@ def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[st
         username = (video.get("created_by") or "").strip()
         cost = get_video_cost(video)
         if username:
-            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["video_cost"] += cost
+            if video.get("status") in {"failed", "poll_failed"}:
+                entry["failed_video_cost"] += cost
             entry["total_cost"] += cost
         else:
             unknown_costs["video_cost"] += cost
+            if video.get("status") in {"failed", "poll_failed"}:
+                unknown_costs["failed_video_cost"] += cost
             unknown_costs["total_cost"] += cost
 
     return user_costs, unknown_costs
@@ -270,9 +282,10 @@ def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> di
     for item in project_costs:
         unknown_cost += float(item.get("unknown_cost") or 0)
         for username, costs in (item.get("user_costs") or {}).items():
-            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "total_cost": 0.0})
+            entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["image_cost"] += float(costs.get("image_cost") or 0)
             entry["video_cost"] += float(costs.get("video_cost") or 0)
+            entry["failed_video_cost"] += float(costs.get("failed_video_cost") or 0)
             entry["total_cost"] += float(costs.get("total_cost") or 0)
 
     users = []
@@ -283,6 +296,7 @@ def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> di
             "display_name": user.get("display_name") if user else username,
             "image_cost": round(costs["image_cost"], 2),
             "video_cost": round(costs["video_cost"], 2),
+            "failed_video_cost": round(costs["failed_video_cost"], 2),
             "total_cost": round(costs["total_cost"], 2),
         })
 

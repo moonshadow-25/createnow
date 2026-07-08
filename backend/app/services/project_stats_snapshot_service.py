@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from app.core.config import settings
 from app.core.context import get_current_data_root
 
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 
 
 def _get_projects_dir() -> Path:
@@ -49,6 +49,7 @@ def write_snapshot(project_id: str, stats: Dict, user_costs: Dict, unknown_costs
         "unknown_costs": {
             "image_cost": round(float((unknown_costs or {}).get("image_cost") or 0), 2),
             "video_cost": round(float((unknown_costs or {}).get("video_cost") or 0), 2),
+            "failed_video_cost": round(float((unknown_costs or {}).get("failed_video_cost") or 0), 2),
             "total_cost": round(unknown_total, 2),
         },
     }

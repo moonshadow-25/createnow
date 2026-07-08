@@ -104,7 +104,10 @@ export interface Episode {
   script_content: string;
   video_reverse_analysis?: Record<string, any>;
   video_reverse_screenplay?: string;
-  video_reverse_segments?: Array<Record<string, any>>;
+  video_reverse_screenplay_text?: string;
+  video_reverse_segments?: string[] | Array<Record<string, any>>;
+  video_reverse_segment_prompts_text?: string;
+  video_reverse_drama_analysis_text?: string;
   video_reverse_raw?: Record<string, any>;
   video_reverse_updated_at?: string;
   created_at: string;
@@ -198,6 +201,7 @@ export interface ProjectStats {
 export interface ProjectUserCost {
   image_cost: number;
   video_cost: number;
+  failed_video_cost?: number;
   total_cost: number;
 }
 
@@ -205,6 +209,7 @@ export interface ProjectDailyCost {
   date: string;
   image_cost: number;
   video_cost: number;
+  failed_video_cost?: number;
   total_cost: number;
 }
 
@@ -214,6 +219,7 @@ export interface ProjectEpisodeCost {
   episode_number?: number;
   image_cost: number;
   video_cost: number;
+  failed_video_cost?: number;
   total_cost: number;
 }
 
