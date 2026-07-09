@@ -92,6 +92,7 @@ def _build_project_stats(project_id: str) -> dict:
     total_video_compute_units = 0.0
     storyboard_video_compute_units = 0.0
     failed_video_compute_units = 0.0
+    video_edit_seconds = 0.0
     for v in videos:
         compute_units = _gvc(v)
         failed_video_compute_units += _get_policy_violation_cost(v)
@@ -102,6 +103,8 @@ def _build_project_stats(project_id: str) -> dict:
         if v.get("status") == "completed":
             duration = float(v.get("duration") or 0)
             total_video_seconds += duration
+            if v.get("video_urls"):
+                video_edit_seconds += duration
             if v.get("storyboard_id"):
                 storyboard_video_seconds += duration
                 completed_storyboard_ids.add(v["storyboard_id"])
@@ -128,6 +131,7 @@ def _build_project_stats(project_id: str) -> dict:
         "generated_images": generated_images,
         "total_image_cost": round(total_image_cost, 2),
         "total_video_seconds": total_video_seconds,
+        "video_edit_seconds": video_edit_seconds,
         "storyboard_video_seconds": storyboard_video_seconds,
         "total_video_compute_units": total_video_compute_units,
         "storyboard_video_compute_units": storyboard_video_compute_units,

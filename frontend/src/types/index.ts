@@ -190,6 +190,7 @@ export interface ProjectStats {
   generated_images?: number;
   total_image_cost?: number;
   total_video_seconds: number;
+  video_edit_seconds?: number;
   storyboard_video_seconds: number;
   total_video_compute_units?: number;
   storyboard_video_compute_units?: number;

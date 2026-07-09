@@ -24,6 +24,7 @@ interface CostSummary {
 
 const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 const fmty = (n: number) => (n / 200).toFixed(2) + '元';
+const fmtSeconds = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(1);
 
 function calcCost(stats?: ProjectStats | null): CostSummary {
   if (!stats) {
@@ -61,6 +62,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
   const [costError, setCostError] = useState('');
   const [viewMode, setViewMode] = useState<CostViewMode>('daily');
   const costs = calcCost(stats);
+  const videoEditSeconds = stats?.video_edit_seconds || 0;
   const participants = Object.entries(userCosts)
     .map(([username, cost]) => ({ username, other_cost: 0, ...cost }))
     .filter(user => (user.total_cost || 0) > 0)
@@ -140,7 +142,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
             {[
               { label: '总消耗', value: fmt(costs.total_cost), color: 'text-white' },
               { label: '图片费用', value: fmt(costs.image_cost), color: 'text-blue-400' },
-              { label: canViewHistoricalFailedRefunds ? '成功视频费用' : '视频费用', value: fmt(canViewHistoricalFailedRefunds ? costs.video_cost : costs.video_cost + costs.failed_video_cost), color: 'text-green-400' },
+              { label: '视频消耗', value: `${fmt(canViewHistoricalFailedRefunds ? costs.video_cost : costs.video_cost + costs.failed_video_cost)}（含${fmtSeconds(videoEditSeconds)}秒的视频编辑）`, color: 'text-green-400' },
               ...(canViewHistoricalFailedRefunds ? [{ label: '历史失败待退费', value: fmt(costs.failed_video_cost), color: 'text-red-400' }] : []),
               { label: '其他', value: fmt(costs.other_cost), color: 'text-purple-400' },
               { label: '预估费用', value: fmty(costs.total_cost), color: 'text-yellow-400' },
