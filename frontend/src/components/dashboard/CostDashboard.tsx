@@ -179,7 +179,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
               { label: '总消耗', value: `${fmt(totalCost)}`, color: 'text-white' },
               { label: '图片费用', value: `${fmt(totalImageCost)}`, color: 'text-blue-400' },
               { label: isSuperAdmin ? '成功视频费用' : '视频费用', value: `${fmt(isSuperAdmin ? totalSuccessVideoCost : totalVideoCost)}`, color: 'text-green-400' },
-              ...(isSuperAdmin ? [{ label: '失败/异常消耗', value: `${fmt(totalFailedVideoCost)}`, color: 'text-red-400' }] : []),
+              ...(isSuperAdmin ? [{ label: '历史失败待退费', value: `${fmt(totalFailedVideoCost)}`, color: 'text-red-400' }] : []),
               { label: '其他', value: `${fmt(totalOtherCost)}`, color: 'text-purple-400' },
               { label: '预估费用', value: fmty(totalCost), color: 'text-yellow-400' },
             ].map(c => (
@@ -234,7 +234,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                         <th className="text-left py-2 pr-4">项目名称</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
                         <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                        {isSuperAdmin && <th className="text-right py-2 pr-4">失败/异常消耗</th>}
+                        {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                         <th className="text-right py-2 pr-4">其他</th>
                         <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">总计</th>
@@ -285,7 +285,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                           <th className="text-left py-2 pr-4">用户名</th>
                           <th className="text-right py-2 pr-4">图片费用</th>
                           <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                          {isSuperAdmin && <th className="text-right py-2 pr-4">失败/异常消耗</th>}
+                          {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                           <th className="text-right py-2 pr-4">预估费用</th>
                           <th className="text-right py-2">实际消耗</th>
                         </tr>
@@ -315,7 +315,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                       </tbody>
                     </table>
                   </div>
-                  {isSuperAdmin && <p className="text-xs text-gray-500 mt-2">失败/异常消耗统计状态为 failed / poll_failed 且当前仍被本地消耗统计计入的视频记录；已退款记录不计入。</p>}
+                  {isSuperAdmin && <p className="text-xs text-gray-500 mt-2">历史失败待退费仅统计旧版未退款且错误码为 OutputVideoSensitiveContentDetected.PolicyViolation 的计费视频；已退款记录、任务过期或查询不到任务的轮询异常不计入。</p>}
               {unknownCost > 0 && (
                     <p className="text-xs text-gray-500 mt-2">* 历史记录（无归属）：{fmt(unknownCost)}，已从各用户消耗中排除</p>
                   )}
@@ -353,7 +353,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                       <th className="text-left py-2 pr-4">项目名称</th>
                       <th className="text-right py-2 pr-4">图片费用</th>
                       <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                      {isSuperAdmin && <th className="text-right py-2 pr-4">失败/异常消耗</th>}
+                      {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                       <th className="text-right py-2 pr-4">预估费用</th>
                       <th className="text-right py-2">实际消耗</th>
                     </tr>

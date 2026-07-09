@@ -139,7 +139,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
               { label: '总消耗', value: fmt(costs.total_cost), color: 'text-white' },
               { label: '图片费用', value: fmt(costs.image_cost), color: 'text-blue-400' },
               { label: isSuperAdmin ? '成功视频费用' : '视频费用', value: fmt(isSuperAdmin ? costs.video_cost : costs.video_cost + costs.failed_video_cost), color: 'text-green-400' },
-              ...(isSuperAdmin ? [{ label: '失败/异常消耗', value: fmt(costs.failed_video_cost), color: 'text-red-400' }] : []),
+              ...(isSuperAdmin ? [{ label: '历史失败待退费', value: fmt(costs.failed_video_cost), color: 'text-red-400' }] : []),
               { label: '其他', value: fmt(costs.other_cost), color: 'text-purple-400' },
               { label: '预估费用', value: fmty(costs.total_cost), color: 'text-yellow-400' },
             ].map(card => (
@@ -169,7 +169,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-400" />图片</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-400" />视频</span>
-                {isSuperAdmin && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" />失败/异常</span>}
+                {isSuperAdmin && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400" />历史失败待退费</span>}
               </div>
             </div>
             <div className="bg-gray-700/40 rounded-lg p-4 min-h-[260px]">
@@ -201,7 +201,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                         {chartItems.map(item => {
                           const height = maxChartCost > 0 ? Math.max((item.total_cost / maxChartCost) * 100, 2) : 2;
                           const imageHeight = item.total_cost > 0 ? (item.image_cost / item.total_cost) * 100 : 0;
-                          const displayedVideoCost = isSuperAdmin ? item.video_cost : item.video_cost + item.failed_video_cost;
+                          const displayedVideoCost = isSuperAdmin ? Math.max(item.video_cost - item.failed_video_cost, 0) : item.video_cost;
                           const videoHeight = item.total_cost > 0 ? (displayedVideoCost / item.total_cost) * 100 : 0;
                           const failedVideoHeight = isSuperAdmin && item.total_cost > 0 ? (item.failed_video_cost / item.total_cost) * 100 : 0;
                           return (
@@ -210,7 +210,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                                 className="w-full max-w-[14px] mx-auto rounded-t overflow-hidden flex flex-col-reverse"
                                 style={{ height: `${height}%` }}
                                 title={isSuperAdmin
-                                  ? `${item.title}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}，失败/异常 ${fmt(item.failed_video_cost)}`
+                                  ? `${item.title}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(item.video_cost)}，历史失败待退费 ${fmt(item.failed_video_cost)}`
                                   : `${item.title}：${fmt(item.total_cost)}，图片 ${fmt(item.image_cost)}，视频 ${fmt(displayedVideoCost)}`}
                               >
                                 {item.image_cost > 0 && <div className="bg-blue-400" style={{ height: `${imageHeight}%` }} />}
@@ -263,7 +263,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                         <th className="text-left py-2 pr-4">用户名</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
                         <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                        {isSuperAdmin && <th className="text-right py-2 pr-4">失败/异常消耗</th>}
+                        {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                         <th className="text-right py-2 pr-4">其他</th>
                         <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">实际消耗</th>
@@ -297,7 +297,7 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
                 </div>
               )}
               <p className="text-xs text-gray-500 mt-3">项目消耗包含早期统计中未被计入用户消耗的积分，其他为龙虾对话消耗的积分</p>
-              {isSuperAdmin && <p className="text-xs text-gray-500 mt-2">失败/异常消耗统计状态为 failed / poll_failed 且当前仍被本地消耗统计计入的视频记录；已退款记录不计入。</p>}
+              {isSuperAdmin && <p className="text-xs text-gray-500 mt-2">历史失败待退费仅统计旧版未退款且错误码为 OutputVideoSensitiveContentDetected.PolicyViolation 的计费视频；已退款记录、任务过期或查询不到任务的轮询异常不计入。</p>}
             </div>
           )}
         </div>

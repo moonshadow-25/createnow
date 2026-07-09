@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from typing import List, Optional
 from pydantic import BaseModel
 import asyncio
+import json
 import threading
 import uuid
 from datetime import datetime
@@ -17,6 +18,7 @@ from app.api.generation.utils import calc_video_compute_units, get_image_cost, g
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 PROJECT_HOME_STATS_CONCURRENCY = 10
+POLICY_VIOLATION_ERROR_CODE = "OutputVideoSensitiveContentDetected.PolicyViolation"
 _project_stats_locks: dict[str, threading.Lock] = {}
 _project_stats_locks_guard = threading.Lock()
 
@@ -28,6 +30,43 @@ def _get_project_stats_lock(project_id: str) -> threading.Lock:
             lock = threading.Lock()
             _project_stats_locks[project_id] = lock
         return lock
+
+
+def _find_error_code(value) -> str | None:
+    if isinstance(value, str):
+        if POLICY_VIOLATION_ERROR_CODE in value:
+            return POLICY_VIOLATION_ERROR_CODE
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+        return _find_error_code(parsed)
+    if isinstance(value, dict):
+        code = value.get("code")
+        if code == POLICY_VIOLATION_ERROR_CODE:
+            return code
+        for nested in value.values():
+            found = _find_error_code(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _find_error_code(item)
+            if found:
+                return found
+    return None
+
+
+def _is_legacy_policy_violation_unrefunded(video: dict) -> bool:
+    if video.get("billing_started_at") or video.get("refund_status") or video.get("billing_status"):
+        return False
+    if get_video_cost(video) <= 0:
+        return False
+    return _find_error_code(video) == POLICY_VIOLATION_ERROR_CODE
+
+
+def _get_policy_violation_cost(video: dict) -> float:
+    return get_video_cost(video) if _is_legacy_policy_violation_unrefunded(video) else 0.0
 
 
 def _get_projects_dir():
@@ -55,9 +94,7 @@ def _build_project_stats(project_id: str) -> dict:
     failed_video_compute_units = 0.0
     for v in videos:
         compute_units = _gvc(v)
-        is_failed_or_poll_failed = v.get("status") in {"failed", "poll_failed"}
-        if is_failed_or_poll_failed:
-            failed_video_compute_units += compute_units
+        failed_video_compute_units += _get_policy_violation_cost(v)
         total_video_compute_units += compute_units
         if v.get("storyboard_id"):
             storyboard_video_compute_units += compute_units
@@ -121,8 +158,7 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
             cost = get_video_cost(video)
             entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["video_cost"] += cost
-            if video.get("status") in {"failed", "poll_failed"}:
-                entry["failed_video_cost"] += cost
+            entry["failed_video_cost"] += _get_policy_violation_cost(video)
             entry["total_cost"] += cost
 
     unknown = user_costs.pop("__unknown__", {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
@@ -202,13 +238,17 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
 
     for video in VideoService.list_videos(project_id):
         cost = get_video_cost(video)
-        cost_type = "failed_video_cost" if video.get("status") in {"failed", "poll_failed"} else "video_cost"
+        failed_cost = _get_policy_violation_cost(video)
         created_at = video.get("created_at")
         if created_at:
-            add_daily_cost(str(created_at)[:10], cost_type, cost)
+            add_daily_cost(str(created_at)[:10], "video_cost", cost)
+            if failed_cost:
+                add_daily_cost(str(created_at)[:10], "failed_video_cost", failed_cost)
         episode_id = storyboard_episode_map.get(video.get("storyboard_id"))
         if episode_id:
-            add_episode_cost(episode_id, cost_type, cost)
+            add_episode_cost(episode_id, "video_cost", cost)
+            if failed_cost:
+                add_episode_cost(episode_id, "failed_video_cost", failed_cost)
 
     return {
         "daily_costs": [
@@ -263,13 +303,11 @@ def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[st
         if username:
             entry = user_costs.setdefault(username, {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0})
             entry["video_cost"] += cost
-            if video.get("status") in {"failed", "poll_failed"}:
-                entry["failed_video_cost"] += cost
+            entry["failed_video_cost"] += _get_policy_violation_cost(video)
             entry["total_cost"] += cost
         else:
             unknown_costs["video_cost"] += cost
-            if video.get("status") in {"failed", "poll_failed"}:
-                unknown_costs["failed_video_cost"] += cost
+            unknown_costs["failed_video_cost"] += _get_policy_violation_cost(video)
             unknown_costs["total_cost"] += cost
 
     return user_costs, unknown_costs
