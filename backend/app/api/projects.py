@@ -69,6 +69,20 @@ def _get_policy_violation_cost(video: dict) -> float:
     return get_video_cost(video) if _is_legacy_policy_violation_unrefunded(video) else 0.0
 
 
+def _has_video_input(video: dict) -> bool:
+    if video.get("video_urls"):
+        return True
+    for item in video.get("reference_media") or []:
+        if isinstance(item, dict) and item.get("type") == "video":
+            return True
+    return False
+
+
+# 计算视频算力（兼容旧字段）
+def _gvc(v: dict) -> float:
+    return get_video_cost(v)
+
+
 def _get_projects_dir():
     from app.core.config import settings
     data_root = get_current_data_root()
@@ -103,7 +117,7 @@ def _build_project_stats(project_id: str) -> dict:
         if v.get("status") == "completed":
             duration = float(v.get("duration") or 0)
             total_video_seconds += duration
-            if v.get("video_urls"):
+            if _has_video_input(v):
                 video_edit_seconds += duration
             if v.get("storyboard_id"):
                 storyboard_video_seconds += duration
