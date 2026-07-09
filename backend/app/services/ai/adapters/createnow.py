@@ -4,6 +4,7 @@ CreateNow 官方平台适配器
 CreateNow API 与字节 Seed 完全兼容，直接继承 ByteSeedVideoAdapter
 """
 
+import json
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -35,6 +36,30 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
             if video_url:
                 return video_url
         return ""
+
+    @staticmethod
+    def _is_running_tos_subtitle_error(response_text: str) -> bool:
+        if "TOS subtitle erase error" not in response_text:
+            return False
+
+        error_text = response_text
+        try:
+            parsed = json.loads(response_text)
+            error_text = str(parsed.get("error") or response_text)
+        except Exception:
+            pass
+
+        if '"State":"Running"' in error_text or '\\"State\\":\\"Running\\"' in response_text:
+            return True
+
+        marker = "TOS subtitle erase error:"
+        if marker not in error_text:
+            return False
+        tos_payload = error_text.split(marker, 1)[1].strip()
+        try:
+            return str(json.loads(tos_payload).get("State") or "").lower() == "running"
+        except Exception:
+            return False
 
     def __init__(
         self,
@@ -201,8 +226,7 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
                 }
                 is_transient_subtitle_error = (
                     response.status_code in (400, 500, 503)
-                    and "TOS subtitle erase error" in response.text
-                    and "\"State\":\"Running\"" in response.text
+                    and self._is_running_tos_subtitle_error(response.text)
                 )
                 self._log(
                     operation="video_subtitle_erase_poll",
