@@ -142,13 +142,14 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
             {[
               { label: '总消耗', value: fmt(costs.total_cost), color: 'text-white' },
               { label: '图片费用', value: fmt(costs.image_cost), color: 'text-blue-400' },
-              { label: '视频消耗', value: `${fmt(canViewHistoricalFailedRefunds ? costs.video_cost : costs.video_cost + costs.failed_video_cost)}（含${fmtSeconds(videoEditSeconds)}秒的视频编辑）`, color: 'text-green-400' },
+              { label: '视频消耗', value: fmt(canViewHistoricalFailedRefunds ? costs.video_cost : costs.video_cost + costs.failed_video_cost), subValue: `含${fmtSeconds(videoEditSeconds)}秒的视频编辑`, color: 'text-green-400' },
               ...(canViewHistoricalFailedRefunds ? [{ label: '历史失败待退费', value: fmt(costs.failed_video_cost), color: 'text-red-400' }] : []),
               { label: '其他', value: fmt(costs.other_cost), color: 'text-purple-400' },
               { label: '预估费用', value: fmty(costs.total_cost), color: 'text-yellow-400' },
             ].map(card => (
               <div key={card.label} className="bg-gray-700 rounded-lg p-4 text-center min-w-0">
                 <div className={`text-xl font-bold ${card.color} whitespace-nowrap`}>{card.value}</div>
+                {'subValue' in card && <div className="text-[11px] text-gray-400 mt-1 whitespace-nowrap">{card.subValue}</div>}
                 <div className="text-xs text-gray-400 mt-1">{card.label}</div>
               </div>
             ))}
