@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, BarChart2 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer
@@ -77,9 +77,10 @@ const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 export function CostDashboard({ projects, projectStats, userCosts, unknownCost, isAdmin, onClose }: CostDashboardProps) {
   const username = useAdminAuthStore((state) => state.username);
   const showHistoricalFailedRefunds = useUiConfigStore((state) => state.showHistoricalFailedRefunds);
+  const globalCreditsPerYuan = useUiConfigStore((state) => state.creditsPerYuan);
+  const saveGlobalCreditsPerYuan = useUiConfigStore((state) => state.saveCreditsPerYuan);
   const canViewHistoricalFailedRefunds = username === 'admin' || showHistoricalFailedRefunds;
-  const [creditsPerYuan, setCreditsPerYuan] = useState(200);
-  const [rateInput, setRateInput] = useState('200');
+  const [rateInput, setRateInput] = useState(String(globalCreditsPerYuan || 200));
   const [selectedUser, setSelectedUser] = useState<UserCost | null>(null);
 
   // 计算每个项目费用
@@ -121,15 +122,21 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
   const selectedUserProjectFailedVideoCost = selectedUserProjectCosts.reduce((s, p) => s + p.failed_video_cost, 0);
   const selectedUserProjectTotalCost = selectedUserProjectCosts.reduce((s, p) => s + p.total_cost, 0);
 
-  const fmty = (n: number) => (n / creditsPerYuan).toFixed(2) + '元';
+  const effectiveCreditsPerYuan = globalCreditsPerYuan > 0 ? globalCreditsPerYuan : 200;
+  const refundAdjustedTotalCost = Math.max(totalCost - totalFailedVideoCost, 0);
+  const fmty = (n: number) => (n / effectiveCreditsPerYuan).toFixed(2) + '元';
 
-  const handleRateBlur = () => {
+  useEffect(() => {
+    setRateInput(String(effectiveCreditsPerYuan));
+  }, [effectiveCreditsPerYuan]);
+
+  const handleRateBlur = async () => {
     const v = parseFloat(rateInput);
     if (v > 0 && !isNaN(v)) {
-      setCreditsPerYuan(v);
+      await saveGlobalCreditsPerYuan(v);
       setRateInput(String(v));
     } else {
-      setRateInput(String(creditsPerYuan));
+      setRateInput(String(effectiveCreditsPerYuan));
     }
   };
 
@@ -178,15 +185,16 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
           {/* 汇总卡片 */}
           <div className={`grid ${canViewHistoricalFailedRefunds ? 'grid-cols-6' : 'grid-cols-5'} gap-4`}>
             {[
-              { label: '总消耗', value: `${fmt(totalCost)}`, color: 'text-white' },
+              { label: '总消耗', value: `${fmt(totalCost)}`, subValue: canViewHistoricalFailedRefunds ? `退费后 ${fmt(refundAdjustedTotalCost)}` : undefined, color: 'text-white' },
               { label: '图片费用', value: `${fmt(totalImageCost)}`, color: 'text-blue-400' },
               { label: canViewHistoricalFailedRefunds ? '成功视频费用' : '视频费用', value: `${fmt(canViewHistoricalFailedRefunds ? totalSuccessVideoCost : totalVideoCost)}`, color: 'text-green-400' },
               ...(canViewHistoricalFailedRefunds ? [{ label: '历史失败待退费', value: `${fmt(totalFailedVideoCost)}`, color: 'text-red-400' }] : []),
               { label: '其他', value: `${fmt(totalOtherCost)}`, color: 'text-purple-400' },
-              { label: '预估费用', value: fmty(totalCost), color: 'text-yellow-400' },
+              { label: '预估费用', value: fmty(totalCost), subValue: canViewHistoricalFailedRefunds ? `退费后 ${fmty(refundAdjustedTotalCost)}` : undefined, color: 'text-yellow-400' },
             ].map(c => (
               <div key={c.label} className="bg-gray-700 rounded-lg p-4 text-center min-w-0">
                 <div className={`text-2xl font-bold ${c.color} whitespace-nowrap`}>{c.value}</div>
+                {'subValue' in c && c.subValue && <div className="text-xs text-gray-400 mt-1 whitespace-nowrap">{c.subValue}</div>}
                 <div className="text-xs text-gray-400 mt-1">{c.label}</div>
               </div>
             ))}

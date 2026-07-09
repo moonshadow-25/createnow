@@ -23,7 +23,6 @@ interface CostSummary {
 }
 
 const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
-const fmty = (n: number) => (n / 200).toFixed(2) + '元';
 const fmtSeconds = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(1);
 
 function calcCost(stats?: ProjectStats | null): CostSummary {
@@ -56,12 +55,16 @@ interface ChartItem {
 export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknownCosts, onClose }: ProjectCostDashboardProps) {
   const username = useAdminAuthStore((state) => state.username);
   const showHistoricalFailedRefunds = useUiConfigStore((state) => state.showHistoricalFailedRefunds);
+  const creditsPerYuan = useUiConfigStore((state) => state.creditsPerYuan);
   const canViewHistoricalFailedRefunds = username === 'admin' || showHistoricalFailedRefunds;
   const [costBreakdown, setCostBreakdown] = useState<ProjectCostBreakdown>({ daily_costs: [], episode_costs: [] });
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState('');
   const [viewMode, setViewMode] = useState<CostViewMode>('daily');
   const costs = calcCost(stats);
+  const effectiveCreditsPerYuan = creditsPerYuan > 0 ? creditsPerYuan : 200;
+  const refundAdjustedTotalCost = Math.max(costs.total_cost - costs.failed_video_cost, 0);
+  const fmty = (n: number) => (n / effectiveCreditsPerYuan).toFixed(2) + '元';
   const videoEditSeconds = stats?.video_edit_seconds || 0;
   const participants = Object.entries(userCosts)
     .map(([username, cost]) => ({ username, other_cost: 0, ...cost }))
@@ -140,16 +143,16 @@ export function ProjectCostDashboard({ projectId, stats, userCosts = {}, unknown
         <div className="p-6 overflow-auto space-y-6">
           <div className={`grid ${canViewHistoricalFailedRefunds ? 'grid-cols-6' : 'grid-cols-5'} gap-4`}>
             {[
-              { label: '总消耗', value: fmt(costs.total_cost), color: 'text-white' },
+              { label: '总消耗', value: fmt(costs.total_cost), subValue: canViewHistoricalFailedRefunds ? `退费后 ${fmt(refundAdjustedTotalCost)}` : undefined, color: 'text-white' },
               { label: '图片费用', value: fmt(costs.image_cost), color: 'text-blue-400' },
               { label: '视频消耗', value: fmt(canViewHistoricalFailedRefunds ? costs.video_cost : costs.video_cost + costs.failed_video_cost), subValue: `含${fmtSeconds(videoEditSeconds)}秒的视频编辑`, color: 'text-green-400' },
               ...(canViewHistoricalFailedRefunds ? [{ label: '历史失败待退费', value: fmt(costs.failed_video_cost), color: 'text-red-400' }] : []),
               { label: '其他', value: fmt(costs.other_cost), color: 'text-purple-400' },
-              { label: '预估费用', value: fmty(costs.total_cost), color: 'text-yellow-400' },
+              { label: '预估费用', value: fmty(costs.total_cost), subValue: canViewHistoricalFailedRefunds ? `退费后 ${fmty(refundAdjustedTotalCost)}` : undefined, color: 'text-yellow-400' },
             ].map(card => (
               <div key={card.label} className="bg-gray-700 rounded-lg p-4 text-center min-w-0">
                 <div className={`text-xl font-bold ${card.color} whitespace-nowrap`}>{card.value}</div>
-                {'subValue' in card && <div className="text-[11px] text-gray-400 mt-1 whitespace-nowrap">{card.subValue}</div>}
+                {'subValue' in card && card.subValue && <div className="text-[11px] text-gray-400 mt-1 whitespace-nowrap">{card.subValue}</div>}
                 <div className="text-xs text-gray-400 mt-1">{card.label}</div>
               </div>
             ))}

@@ -142,6 +142,7 @@ async def get_frontend_config():
         "deploy_mode": settings.DEPLOY_MODE,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
         "show_historical_failed_refunds": bool(ui_cfg.get("show_historical_failed_refunds", False)),
+        "credits_per_yuan": float(ui_cfg.get("credits_per_yuan") or 200),
         "app_name": app_name,
         "createnow_model_config": get_createnow_model_config(),
     }
@@ -173,6 +174,14 @@ async def update_ui_config(request: Request, body: dict):
         ui_cfg["hide_cost_for_subaccounts"] = bool(body.get("hide_cost_for_subaccounts", False))
     if "show_historical_failed_refunds" in body:
         ui_cfg["show_historical_failed_refunds"] = bool(body.get("show_historical_failed_refunds", False))
+    if "credits_per_yuan" in body:
+        try:
+            credits_per_yuan = float(body.get("credits_per_yuan"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="积分兑换比例必须是数字")
+        if credits_per_yuan <= 0:
+            raise HTTPException(status_code=400, detail="积分兑换比例必须大于0")
+        ui_cfg["credits_per_yuan"] = credits_per_yuan
     if "app_name" in body:
         app_name = str(body.get("app_name") or "").strip()
         if not app_name:
@@ -188,6 +197,7 @@ async def update_ui_config(request: Request, body: dict):
         "success": True,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
         "show_historical_failed_refunds": bool(ui_cfg.get("show_historical_failed_refunds", False)),
+        "credits_per_yuan": float(ui_cfg.get("credits_per_yuan") or 200),
         "app_name": str(ui_cfg.get("app_name") or "ViPro").strip() or "ViPro",
     }
 

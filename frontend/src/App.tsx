@@ -31,6 +31,7 @@ function App() {
   const { theme, appearanceMode } = useThemeStore();
   const setCreatenowModelConfig = useCreatenowModelConfigStore(state => state.setConfig);
   const setShowHistoricalFailedRefunds = useUiConfigStore(state => state.setShowHistoricalFailedRefunds);
+  const setCreditsPerYuan = useUiConfigStore(state => state.setCreditsPerYuan);
 
   // 组件挂载时确保 DOM 属性和 store 同步
   useEffect(() => {
@@ -78,6 +79,7 @@ function App() {
         const mode = cfg.deploy_mode === 'saas' ? 'saas' : 'selfhosted';
         setCreatenowModelConfig(cfg.createnow_model_config);
         setShowHistoricalFailedRefunds(!!cfg.show_historical_failed_refunds);
+        setCreditsPerYuan(Number(cfg.credits_per_yuan) > 0 ? Number(cfg.credits_per_yuan) : 200);
         setDeployMode(mode);
         if (mode === 'saas') {
           saasAuth.restoreFromStorage();
