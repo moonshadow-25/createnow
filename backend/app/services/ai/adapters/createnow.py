@@ -195,6 +195,15 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
 
             if response.status_code != 200:
                 error_msg = f"HTTP {response.status_code}: {response.text}"
+                raw_poll_response = {
+                    "status_code": response.status_code,
+                    "response_text": response.text,
+                }
+                is_transient_subtitle_error = (
+                    response.status_code in (400, 500, 503)
+                    and "TOS subtitle erase error" in response.text
+                    and "\"State\":\"Running\"" in response.text
+                )
                 self._log(
                     operation="video_subtitle_erase_poll",
                     url=url,
@@ -204,15 +213,19 @@ class CreatenowVideoAdapter(ByteSeedVideoAdapter):
                     status_code=response.status_code,
                     duration_ms=duration_ms,
                 )
+                if is_transient_subtitle_error:
+                    return {
+                        "success": True,
+                        "status": "in_progress",
+                        "task_id": task_id,
+                        "raw_poll_response": raw_poll_response,
+                    }
                 return {
                     "success": False,
                     "status": "poll_failed",
                     "error": error_msg,
                     "task_id": task_id,
-                    "raw_poll_response": {
-                        "status_code": response.status_code,
-                        "response_text": response.text,
-                    },
+                    "raw_poll_response": raw_poll_response,
                 }
 
             data = response.json()
