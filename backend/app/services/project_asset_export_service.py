@@ -119,6 +119,8 @@ class ProjectAssetExportService:
             filename_prefix="square",
             image_summary_key="square_images",
             video_summary_key="square_videos",
+            # 广场视频历史未写 generation_scope：无 scope、无分镜、无剧集归属的视频默认按广场导出
+            treat_untagged_video_as_scope=True,
         )
 
         manifest["summary"]["skipped"] = len(manifest["skipped"])
@@ -522,15 +524,26 @@ class ProjectAssetExportService:
         filename_prefix: str,
         image_summary_key: str,
         video_summary_key: str,
+        treat_untagged_video_as_scope: bool = False,
     ) -> None:
         scoped_images = [
             image for image in ProjectAssetExportService._sort_created(images)
             if image.get("generation_scope") == scope
             or (image.get("asset_type") == "generate" and image.get("asset_id") == legacy_asset_id)
         ]
+
+        def _is_scope_video(video: Dict[str, Any]) -> bool:
+            if video.get("generation_scope") == scope:
+                return True
+            # 广场视频历史未写 generation_scope：无 scope、无分镜、无剧集归属的视频默认归为广场
+            if treat_untagged_video_as_scope and not video.get("generation_scope") \
+                    and not video.get("storyboard_id") and not video.get("episode_id"):
+                return True
+            return False
+
         scoped_videos = [
             video for video in ProjectAssetExportService._sort_created(videos)
-            if video.get("generation_scope") == scope
+            if _is_scope_video(video)
         ]
 
         image_index = 1
