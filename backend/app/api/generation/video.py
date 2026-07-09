@@ -9,7 +9,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File
 
@@ -96,11 +95,15 @@ def _is_remote_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith(("http://", "https://"))
 
 
-def _is_local_video_api_url(url: str, project_id: str) -> bool:
-    marker = f"/api/projects/{project_id}/videos/files/"
-    parsed = urlparse(url)
-    path = parsed.path or ""
-    return marker in path or marker in url
+def _video_record_public_url(request: Request, project_id: str, video: Dict[str, Any]) -> str:
+    local_path = (video.get("local_path") or "").strip()
+    if local_path:
+        return str(request.base_url).rstrip("/") + f"/api/projects/{project_id}/videos/files/{local_path}"
+
+    video_path = (video.get("video_path") or "").strip()
+    if _is_remote_url(video_path):
+        return video_path
+    return ""
 
 
 def _is_data_url(url: Optional[str]) -> bool:
@@ -918,16 +921,23 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
 
 
 @router.post("/video-subtitle-removal")
-async def create_video_subtitle_removal_task(project_id: str, request: VideoSubtitleRemovalRequest):
+async def create_video_subtitle_removal_task(project_id: str, http_request: Request, request: VideoSubtitleRemovalRequest):
     """创建视频字幕擦除任务（生成新视频记录，不覆盖旧视频）"""
     from app.services import ProjectService
 
-    source_video_url = (request.source_video_url or "").strip()
-    if not _is_remote_url(source_video_url):
-        raise HTTPException(status_code=400, detail="source_video_url 必须是远程 http(s) URL")
+    source_video = next(
+        (video for video in VideoService.list_videos(project_id) if video.get("video_id") == request.source_video_id),
+        None,
+    )
+    if not source_video:
+        raise HTTPException(status_code=404, detail="Source video not found")
 
-    if _is_local_video_api_url(source_video_url, project_id):
-        raise HTTPException(status_code=400, detail="字幕擦除仅支持原始远程 URL，不支持本地视频 URL")
+    source_video_url = _video_record_public_url(http_request, project_id, source_video)
+    if not source_video_url and request.source_video_url:
+        source_video_url = request.source_video_url.strip()
+
+    if not _is_remote_url(source_video_url):
+        raise HTTPException(status_code=400, detail="源视频没有可访问的远程 URL")
 
     project = ProjectService.get_project(project_id)
     if not project:

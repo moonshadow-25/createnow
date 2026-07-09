@@ -278,8 +278,8 @@ export const generationApi = {
   pollVideo: (projectId: string, videoId: string) =>
     api.post(`/projects/${projectId}/generate/videos/${videoId}/poll`),
   removeVideoSubtitle: (projectId: string, data: {
-    source_video_url: string;
-    source_video_id?: string;
+    source_video_id: string;
+    source_video_url?: string;
     storyboard_id?: string;
     episode_id?: string;
     prompt?: string;

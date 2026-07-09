@@ -317,16 +317,9 @@ export function VideoGallery({
 
   // 发起字幕擦除（创建新视频记录，不覆盖旧视频）
   const handleRemoveSubtitle = async (video: VideoRecord) => {
-    const sourceVideoUrl = (video.video_path || '').trim();
-    if (!sourceVideoUrl.startsWith('http://') && !sourceVideoUrl.startsWith('https://')) {
-      toast('字幕擦除仅支持远程原始 URL', 'error');
-      return;
-    }
-
     try {
       const res = await generationApi.removeVideoSubtitle(projectId, {
         source_video_id: video.video_id,
-        source_video_url: sourceVideoUrl,
         storyboard_id: video.storyboard_id,
         episode_id: video.episode_id,
         prompt: `去除字幕: ${video.prompt}`,

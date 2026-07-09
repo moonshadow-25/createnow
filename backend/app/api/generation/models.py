@@ -117,8 +117,8 @@ class VideoBatchGenerateRequest(BaseModel):
 
 class VideoSubtitleRemovalRequest(BaseModel):
     """视频字幕擦除请求"""
-    source_video_url: str
-    source_video_id: Optional[str] = None
+    source_video_id: str
+    source_video_url: Optional[str] = None
     storyboard_id: Optional[str] = None
     episode_id: Optional[str] = None
     prompt: str = "去除字幕"
