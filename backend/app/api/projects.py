@@ -343,22 +343,7 @@ def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> di
 
 def _get_project_home_stats(project_id: str) -> dict:
     with _get_project_stats_lock(project_id):
-        from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
         from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
-
-        has_runtime_cache = project_id in _images_cache or project_id in _videos_cache or project_id in _assets_cache
-        if has_runtime_cache:
-            stats = _build_project_stats(project_id)
-            user_costs, unknown_costs = _build_project_user_costs(project_id)
-            if not read_snapshot(project_id):
-                write_snapshot(project_id, stats, user_costs, unknown_costs)
-                print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]} runtime_cache=true")
-            return {
-                "stats": stats,
-                "user_costs": user_costs,
-                "unknown_cost": unknown_costs["total_cost"],
-                "unknown_costs": unknown_costs,
-            }
 
         snapshot = read_snapshot(project_id)
         if snapshot and snapshot.get("unknown_costs"):
