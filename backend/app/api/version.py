@@ -141,6 +141,7 @@ async def get_frontend_config():
     return {
         "deploy_mode": settings.DEPLOY_MODE,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
+        "show_historical_failed_refunds": bool(ui_cfg.get("show_historical_failed_refunds", False)),
         "app_name": app_name,
         "createnow_model_config": get_createnow_model_config(),
     }
@@ -158,6 +159,8 @@ async def update_ui_config(request: Request, body: dict):
     admin_user = getattr(request.state, "admin_user", None)
     if not admin_user or admin_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可修改该配置")
+    if "show_historical_failed_refunds" in body and admin_user.get("sub") != "admin":
+        raise HTTPException(status_code=403, detail="仅超级管理员可修改历史失败待退费显示")
 
     cfg = _read_global_config()
     if not isinstance(cfg, dict):
@@ -168,6 +171,8 @@ async def update_ui_config(request: Request, body: dict):
 
     if "hide_cost_for_subaccounts" in body:
         ui_cfg["hide_cost_for_subaccounts"] = bool(body.get("hide_cost_for_subaccounts", False))
+    if "show_historical_failed_refunds" in body:
+        ui_cfg["show_historical_failed_refunds"] = bool(body.get("show_historical_failed_refunds", False))
     if "app_name" in body:
         app_name = str(body.get("app_name") or "").strip()
         if not app_name:
@@ -182,6 +187,7 @@ async def update_ui_config(request: Request, body: dict):
     return {
         "success": True,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
+        "show_historical_failed_refunds": bool(ui_cfg.get("show_historical_failed_refunds", False)),
         "app_name": str(ui_cfg.get("app_name") or "ViPro").strip() or "ViPro",
     }
 

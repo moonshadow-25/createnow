@@ -12,6 +12,7 @@ import { VibeDramaPanel } from '@/components/chat/VibeDramaPanel';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useThemeStore, applyStoredTheme } from '@/store/themeStore';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
+import { useUiConfigStore } from '@/store/uiConfigStore';
 
 // 立即同步主题，避免闪白/闪黑
 applyStoredTheme();
@@ -29,6 +30,7 @@ function App() {
   const { isOpen: vibeDramaOpen, panelWidth: vibeDramaPanelWidth, toggle: toggleVibeDrama } = useVibeDramaStore();
   const { theme, appearanceMode } = useThemeStore();
   const setCreatenowModelConfig = useCreatenowModelConfigStore(state => state.setConfig);
+  const setShowHistoricalFailedRefunds = useUiConfigStore(state => state.setShowHistoricalFailedRefunds);
 
   // 组件挂载时确保 DOM 属性和 store 同步
   useEffect(() => {
@@ -75,6 +77,7 @@ function App() {
       .then((cfg) => {
         const mode = cfg.deploy_mode === 'saas' ? 'saas' : 'selfhosted';
         setCreatenowModelConfig(cfg.createnow_model_config);
+        setShowHistoricalFailedRefunds(!!cfg.show_historical_failed_refunds);
         setDeployMode(mode);
         if (mode === 'saas') {
           saasAuth.restoreFromStorage();

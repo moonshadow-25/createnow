@@ -749,7 +749,7 @@ export const versionApi = {
   checkUpdate: () => api.get('/version/check'),
   triggerUpdate: () => api.post('/version/update'),
   getFrontendConfig: () => api.get('/config'),
-  updateUiConfig: (data: { hide_cost_for_subaccounts?: boolean; app_name?: string }) => api.put('/config/ui', data),
+  updateUiConfig: (data: { hide_cost_for_subaccounts?: boolean; show_historical_failed_refunds?: boolean; app_name?: string }) => api.put('/config/ui', data),
   updateCreatenowModelConfig: (data: any) => api.put('/config/createnow-models', data),
 };
 

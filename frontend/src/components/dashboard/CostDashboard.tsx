@@ -6,6 +6,7 @@ import {
 import { Project } from '@/types';
 import { DEFAULT_IMAGE_COST, DEFAULT_VIDEO_COST_PER_SEC } from '@/constants/pricing';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { useUiConfigStore } from '@/store/uiConfigStore';
 
 interface ProjectStats {
   total_images: number;
@@ -75,7 +76,8 @@ const fmt = (n: number) => (n / 10000).toFixed(2) + '万积分';
 
 export function CostDashboard({ projects, projectStats, userCosts, unknownCost, isAdmin, onClose }: CostDashboardProps) {
   const username = useAdminAuthStore((state) => state.username);
-  const isSuperAdmin = username === 'admin';
+  const showHistoricalFailedRefunds = useUiConfigStore((state) => state.showHistoricalFailedRefunds);
+  const canViewHistoricalFailedRefunds = username === 'admin' || showHistoricalFailedRefunds;
   const [creditsPerYuan, setCreditsPerYuan] = useState(200);
   const [rateInput, setRateInput] = useState('200');
   const [selectedUser, setSelectedUser] = useState<UserCost | null>(null);
@@ -174,12 +176,12 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
 
         <div className="p-6 space-y-6">
           {/* 汇总卡片 */}
-          <div className={`grid ${isSuperAdmin ? 'grid-cols-6' : 'grid-cols-5'} gap-4`}>
+          <div className={`grid ${canViewHistoricalFailedRefunds ? 'grid-cols-6' : 'grid-cols-5'} gap-4`}>
             {[
               { label: '总消耗', value: `${fmt(totalCost)}`, color: 'text-white' },
               { label: '图片费用', value: `${fmt(totalImageCost)}`, color: 'text-blue-400' },
-              { label: isSuperAdmin ? '成功视频费用' : '视频费用', value: `${fmt(isSuperAdmin ? totalSuccessVideoCost : totalVideoCost)}`, color: 'text-green-400' },
-              ...(isSuperAdmin ? [{ label: '历史失败待退费', value: `${fmt(totalFailedVideoCost)}`, color: 'text-red-400' }] : []),
+              { label: canViewHistoricalFailedRefunds ? '成功视频费用' : '视频费用', value: `${fmt(canViewHistoricalFailedRefunds ? totalSuccessVideoCost : totalVideoCost)}`, color: 'text-green-400' },
+              ...(canViewHistoricalFailedRefunds ? [{ label: '历史失败待退费', value: `${fmt(totalFailedVideoCost)}`, color: 'text-red-400' }] : []),
               { label: '其他', value: `${fmt(totalOtherCost)}`, color: 'text-purple-400' },
               { label: '预估费用', value: fmty(totalCost), color: 'text-yellow-400' },
             ].map(c => (
@@ -233,8 +235,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                       <tr className="text-gray-400 border-b border-gray-700">
                         <th className="text-left py-2 pr-4">项目名称</th>
                         <th className="text-right py-2 pr-4">图片费用</th>
-                        <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                        {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
+                        <th className="text-right py-2 pr-4">{canViewHistoricalFailedRefunds ? '成功视频费用' : '视频费用'}</th>
+                        {canViewHistoricalFailedRefunds && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                         <th className="text-right py-2 pr-4">其他</th>
                         <th className="text-right py-2 pr-4">预估费用</th>
                         <th className="text-right py-2">总计</th>
@@ -251,8 +253,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                             {p.name}
                           </td>
                           <td className="text-right py-2 pr-4 text-blue-400">{fmt(p.image_cost)}</td>
-                          <td className="text-right py-2 pr-4 text-green-400">{fmt(isSuperAdmin ? Math.max(p.video_cost - p.failed_video_cost, 0) : p.video_cost)}</td>
-                          {isSuperAdmin && <td className="text-right py-2 pr-4 text-red-400">{fmt(p.failed_video_cost)}</td>}
+                          <td className="text-right py-2 pr-4 text-green-400">{fmt(canViewHistoricalFailedRefunds ? Math.max(p.video_cost - p.failed_video_cost, 0) : p.video_cost)}</td>
+                          {canViewHistoricalFailedRefunds && <td className="text-right py-2 pr-4 text-red-400">{fmt(p.failed_video_cost)}</td>}
                           <td className="text-right py-2 pr-4 text-purple-400">{fmt(p.other_cost)}</td>
                           <td className="text-right py-2 pr-4 text-yellow-400">{fmty(p.total_cost)}</td>
                           <td className="text-right py-2 font-medium">{fmt(p.total_cost)}</td>
@@ -263,8 +265,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                       <tr className="text-gray-300 font-semibold">
                         <td className="py-2 pr-4">合计</td>
                         <td className="text-right py-2 pr-4 text-blue-400">{fmt(totalImageCost)}</td>
-                        <td className="text-right py-2 pr-4 text-green-400">{fmt(isSuperAdmin ? totalSuccessVideoCost : totalVideoCost)}</td>
-                        {isSuperAdmin && <td className="text-right py-2 pr-4 text-red-400">{fmt(totalFailedVideoCost)}</td>}
+                        <td className="text-right py-2 pr-4 text-green-400">{fmt(canViewHistoricalFailedRefunds ? totalSuccessVideoCost : totalVideoCost)}</td>
+                        {canViewHistoricalFailedRefunds && <td className="text-right py-2 pr-4 text-red-400">{fmt(totalFailedVideoCost)}</td>}
                         <td className="text-right py-2 pr-4 text-purple-400">{fmt(totalOtherCost)}</td>
                         <td className="text-right py-2 pr-4 text-yellow-400">{fmty(totalCost)}</td>
                         <td className="text-right py-2">{fmt(totalCost)}</td>
@@ -284,8 +286,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                         <tr className="text-gray-400 border-b border-gray-700">
                           <th className="text-left py-2 pr-4">用户名</th>
                           <th className="text-right py-2 pr-4">图片费用</th>
-                          <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                          {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
+                          <th className="text-right py-2 pr-4">{canViewHistoricalFailedRefunds ? '成功视频费用' : '视频费用'}</th>
+                          {canViewHistoricalFailedRefunds && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                           <th className="text-right py-2 pr-4">预估费用</th>
                           <th className="text-right py-2">实际消耗</th>
                         </tr>
@@ -304,10 +306,10 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                                 className="text-green-400 hover:text-green-300 hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-default"
                                 title="查看该用户在各项目中的消耗"
                               >
-                                {fmt(isSuperAdmin ? Math.max(u.video_cost - (u.failed_video_cost || 0), 0) : u.video_cost)}
+                                {fmt(canViewHistoricalFailedRefunds ? Math.max(u.video_cost - (u.failed_video_cost || 0), 0) : u.video_cost)}
                               </button>
                             </td>
-                            {isSuperAdmin && <td className="text-right py-2 pr-4 text-red-400">{fmt(u.failed_video_cost || 0)}</td>}
+                            {canViewHistoricalFailedRefunds && <td className="text-right py-2 pr-4 text-red-400">{fmt(u.failed_video_cost || 0)}</td>}
                             <td className="text-right py-2 pr-4 text-yellow-400">{fmty(u.total_cost)}</td>
                             <td className="text-right py-2 font-medium">{fmt(u.total_cost)}</td>
                           </tr>
@@ -315,7 +317,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                       </tbody>
                     </table>
                   </div>
-                  {isSuperAdmin && <p className="text-xs text-gray-500 mt-2">历史失败待退费仅统计旧版未退款且错误码为 OutputVideoSensitiveContentDetected.PolicyViolation 的计费视频；已退款记录、任务过期或查询不到任务的轮询异常不计入。</p>}
+                  {canViewHistoricalFailedRefunds && <p className="text-xs text-gray-500 mt-2">已退款记录、任务过期或查询不到任务的轮询异常不计入。</p>}
               {unknownCost > 0 && (
                     <p className="text-xs text-gray-500 mt-2">* 历史记录（无归属）：{fmt(unknownCost)}，已从各用户消耗中排除</p>
                   )}
@@ -336,7 +338,7 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                     : selectedUser.username} 的项目消耗
                 </h3>
                 <div className="text-xs text-gray-400 mt-1">
-                  {selectedUserProjectCosts.length} 个项目 · 视频 {fmt(isSuperAdmin ? Math.max(selectedUserProjectVideoCost - selectedUserProjectFailedVideoCost, 0) : selectedUserProjectVideoCost)} · 合计 {fmt(selectedUserProjectTotalCost)}
+                  {selectedUserProjectCosts.length} 个项目 · 视频 {fmt(canViewHistoricalFailedRefunds ? Math.max(selectedUserProjectVideoCost - selectedUserProjectFailedVideoCost, 0) : selectedUserProjectVideoCost)} · 合计 {fmt(selectedUserProjectTotalCost)}
                 </div>
               </div>
               <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-white transition" title="关闭">
@@ -352,8 +354,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                     <tr className="text-gray-400 border-b border-gray-700">
                       <th className="text-left py-2 pr-4">项目名称</th>
                       <th className="text-right py-2 pr-4">图片费用</th>
-                      <th className="text-right py-2 pr-4">{isSuperAdmin ? '成功视频费用' : '视频费用'}</th>
-                      {isSuperAdmin && <th className="text-right py-2 pr-4">历史失败待退费</th>}
+                      <th className="text-right py-2 pr-4">{canViewHistoricalFailedRefunds ? '成功视频费用' : '视频费用'}</th>
+                      {canViewHistoricalFailedRefunds && <th className="text-right py-2 pr-4">历史失败待退费</th>}
                       <th className="text-right py-2 pr-4">预估费用</th>
                       <th className="text-right py-2">实际消耗</th>
                     </tr>
@@ -363,8 +365,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                       <tr key={project.project_id} className="border-b border-gray-700/50 hover:bg-gray-700/30">
                         <td className="py-2 pr-4">{project.name}</td>
                         <td className="text-right py-2 pr-4 text-blue-400">{fmt(project.image_cost)}</td>
-                        <td className="text-right py-2 pr-4 text-green-400">{fmt(isSuperAdmin ? Math.max(project.video_cost - project.failed_video_cost, 0) : project.video_cost)}</td>
-                        {isSuperAdmin && <td className="text-right py-2 pr-4 text-red-400">{fmt(project.failed_video_cost)}</td>}
+                        <td className="text-right py-2 pr-4 text-green-400">{fmt(canViewHistoricalFailedRefunds ? Math.max(project.video_cost - project.failed_video_cost, 0) : project.video_cost)}</td>
+                        {canViewHistoricalFailedRefunds && <td className="text-right py-2 pr-4 text-red-400">{fmt(project.failed_video_cost)}</td>}
                         <td className="text-right py-2 pr-4 text-yellow-400">{fmty(project.total_cost)}</td>
                         <td className="text-right py-2 font-medium">{fmt(project.total_cost)}</td>
                       </tr>
@@ -374,8 +376,8 @@ export function CostDashboard({ projects, projectStats, userCosts, unknownCost, 
                     <tr className="text-gray-300 font-semibold">
                       <td className="py-2 pr-4">合计</td>
                       <td className="text-right py-2 pr-4 text-blue-400">{fmt(selectedUserProjectImageCost)}</td>
-                      <td className="text-right py-2 pr-4 text-green-400">{fmt(isSuperAdmin ? Math.max(selectedUserProjectVideoCost - selectedUserProjectFailedVideoCost, 0) : selectedUserProjectVideoCost)}</td>
-                      {isSuperAdmin && <td className="text-right py-2 pr-4 text-red-400">{fmt(selectedUserProjectFailedVideoCost)}</td>}
+                      <td className="text-right py-2 pr-4 text-green-400">{fmt(canViewHistoricalFailedRefunds ? Math.max(selectedUserProjectVideoCost - selectedUserProjectFailedVideoCost, 0) : selectedUserProjectVideoCost)}</td>
+                      {canViewHistoricalFailedRefunds && <td className="text-right py-2 pr-4 text-red-400">{fmt(selectedUserProjectFailedVideoCost)}</td>}
                       <td className="text-right py-2 pr-4 text-yellow-400">{fmty(selectedUserProjectTotalCost)}</td>
                       <td className="text-right py-2">{fmt(selectedUserProjectTotalCost)}</td>
                     </tr>
