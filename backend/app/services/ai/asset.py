@@ -14,6 +14,8 @@ import time
 import datetime
 from typing import Optional, Dict, Any
 
+import httpx
+
 from app.services.ai.base import AIService
 from app.services.ai_log_service import AILogService
 
@@ -142,6 +144,28 @@ class AssetService(AIService):
             )
             logger.info(f"[AssetService] CreateNow 提交视频素材成功: {asset_id}")
             return asset_id
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            response_body = e.response.text
+            error = f"{e}; status_code={status_code}; response_body={response_body}"
+            logger.error(
+                "[AssetService] CreateNow 提交视频素材失败 status=%s url=%s request=%s response_body=%s",
+                status_code,
+                url,
+                req_log,
+                response_body,
+            )
+            self._log_interaction(
+                AILogService.TYPE_ASSET,
+                "cn_submit_video",
+                url,
+                "POST",
+                request_payload=req_log,
+                error=error,
+                duration_ms=(time.time() - start) * 1000,
+                status_code=status_code,
+            )
+            raise
         except Exception as e:
             self._log_interaction(
                 AILogService.TYPE_ASSET,
