@@ -268,9 +268,6 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     ...(isSaasUser ? [
       { id: 'image-skill' as const, icon: Download, label: '图像技能' },
     ] : []),
-    ...(isSaasUser ? [
-      { id: 'image-skill' as const, icon: Download, label: '图像技能' },
-    ] : []),
     { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
     ...(isAdmin ? [
