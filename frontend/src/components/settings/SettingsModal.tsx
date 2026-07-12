@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw, Tags } from 'lucide-react';
+import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw, Tags, Download } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
@@ -12,9 +12,10 @@ import { GlobalStylePanel } from './GlobalStylePanel';
 import { GlobalPromptPanel } from './GlobalPromptPanel';
 import { UpdatePanel } from './UpdatePanel';
 import { CreatenowModelConfigPanel } from './CreatenowModelConfigPanel';
+import { CreateNowImageSkillPanel } from './CreateNowImageSkillPanel';
 import type { ApiConfig, ApiConfigPresetsMap } from '@/types';
 
-type SettingsPanel = 'api' | 'global-style' | 'model-tags' | 'prompts' | 'global-prompts' | 'logs' | 'update';
+type SettingsPanel = 'api' | 'global-style' | 'model-tags' | 'image-skill' | 'prompts' | 'global-prompts' | 'logs' | 'update';
 
 interface SettingsModalProps {
   projectId: string;
@@ -264,6 +265,12 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     ...(isSuperAdmin ? [
       { id: 'model-tags' as const, icon: Tags, label: '模型标签' },
     ] : []),
+    ...(isSaasUser ? [
+      { id: 'image-skill' as const, icon: Download, label: '图像技能' },
+    ] : []),
+    ...(isSaasUser ? [
+      { id: 'image-skill' as const, icon: Download, label: '图像技能' },
+    ] : []),
     { id: 'global-style' as const, icon: Palette, label: '全局风格' },
     { id: 'prompts' as const, icon: Wand2, label: '提示词管理' },
     ...(isAdmin ? [
@@ -313,6 +320,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
               <h2 className="text-lg font-semibold">
                 {settingsPanel === 'api' && 'API配置'}
                 {settingsPanel === 'model-tags' && '模型标签'}
+                {settingsPanel === 'image-skill' && '图像技能'}
                 {settingsPanel === 'global-style' && '全局风格'}
                 {settingsPanel === 'prompts' && '提示词管理'}
                 {settingsPanel === 'global-prompts' && '全局提示词'}
@@ -345,6 +353,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
             )}
             {settingsPanel === 'model-tags' && (
               <CreatenowModelConfigPanel />
+            )}
+            {settingsPanel === 'image-skill' && isSaasUser && (
+              <CreateNowImageSkillPanel />
             )}
             {settingsPanel === 'global-style' && (
               <div className="flex-1 overflow-y-auto">

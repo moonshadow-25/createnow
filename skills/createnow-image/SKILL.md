@@ -7,20 +7,17 @@ description: Generate or edit images through the CreateNow official image API. U
 
 Use the bundled CLI to generate images through the CreateNow official API.
 
-## Required environment
+## Configuration
 
-The caller must provide a CreateNow API key through `CREATENOW_API_KEY`. Never ask for, print, store, or place the key in a command argument.
-
-```bash
-export CREATENOW_API_KEY="..."
-```
-
-Optional environment variables:
-
-- `CREATENOW_API_BASE_URL`: API base URL. Defaults to `https://myapi.firstarpc.com/v1`.
-- `CREATENOW_IMAGE_MODEL`: Default image model. Defaults to `nova-pro`.
+The downloaded skill includes a local `.env` with its CreateNow API configuration and a `models.json` list of available image models. Do not print, move, commit, or pass the API key as a command argument. Explicit environment variables can override the downloaded configuration when needed.
 
 ## Commands
+
+List available models and the default model:
+
+```bash
+python scripts/createnow_image.py models
+```
 
 Generate an image from text:
 
@@ -51,7 +48,7 @@ python scripts/createnow_image.py edit \
   --output ./createnow-edited.png
 ```
 
-Use `--model` to choose an explicit available model. Known models include `nova-pro`, `nova-max`, `r-gi2`, and `g-gi2`.
+Use `--model` to choose an explicit model shown by the `models` command. Without `--model`, the downloaded default model is used.
 
 Use `--json` when a machine-readable API response is needed. Otherwise the CLI downloads the first returned image and prints the absolute output path and source URL.
 
@@ -60,5 +57,5 @@ Use `--json` when a machine-readable API response is needed. Otherwise the CLI d
 - Send text-to-image requests to `POST /images/generations` with `model`, `prompt`, and `size`.
 - Send image-to-image requests to the same endpoint with an additional `image` array. Local files are converted to a data URI; URLs are sent unchanged.
 - Treat output URLs as the generated image result. Download them immediately when `--output` is provided because providers may expire result URLs.
-- Report the API error response without exposing `CREATENOW_API_KEY`.
+- Report API errors without exposing `CREATENOW_API_KEY`.
 - Do not claim the image is generated until the API response contains an image URL and the requested output file has been written.

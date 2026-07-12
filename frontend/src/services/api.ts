@@ -57,6 +57,11 @@ export async function downloadWithAuth(url: string, filename?: string): Promise<
   setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
 }
 
+export const userSkillsApi = {
+  downloadCreateNowImageSkill: () =>
+    downloadWithAuth('/api/user/skills/createnow-image.zip', 'createnow-image-skill.zip'),
+};
+
 // 项目相关API
 export const projectApi = {
   list: (includeStats: boolean = false) => api.get('/projects', { params: includeStats ? { include_stats: true } : {} }),

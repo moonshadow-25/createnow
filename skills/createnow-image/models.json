@@ -1,0 +1,13 @@
+{
+  "models": [
+    {
+      "label": "image2",
+      "model": "nova-max"
+    },
+    {
+      "label": "nano2",
+      "model": "nova-pro"
+    }
+  ],
+  "default_model": "nova-pro"
+}

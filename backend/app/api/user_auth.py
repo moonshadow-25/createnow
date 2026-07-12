@@ -17,18 +17,66 @@ SaaS 登录流程：
 
 PaaS 认证（/api/auth/*）完全不受影响。
 """
+import io
+import json
 import logging
+import zipfile
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from starlette.responses import Response
 
+from app.core.config import settings
 from app.services.auth_service import get_saas_login_url, check_saas_status, fetch_saas_credits
 from app.services import user_saas_service
+from app.services.createnow_model_config import get_createnow_model_config
 from app.core.saas_security import create_saas_token
 
 router = APIRouter(prefix="/user", tags=["user-auth"])
 
 logger = logging.getLogger(__name__)
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_SKILL_TEMPLATE_DIR = _PROJECT_ROOT / "skills" / "createnow-image"
+_SKILL_TEMPLATE_FILES = {
+    "createnow-image/SKILL.md": _SKILL_TEMPLATE_DIR / "SKILL.md",
+    "createnow-image/.gitignore": _SKILL_TEMPLATE_DIR / ".gitignore",
+    "createnow-image/scripts/createnow_image.py": _SKILL_TEMPLATE_DIR / "scripts" / "createnow_image.py",
+}
+
+
+def _dotenv_value(value: object) -> str:
+    """Quote a dotenv value without allowing additional configuration entries."""
+    escaped = str(value or "").replace("\\", "\\\\")
+    escaped = escaped.replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def _build_createnow_image_skill_zip(api_key: str) -> bytes:
+    """Build the fixed CreateNow image skill package entirely in memory."""
+    model_config = get_createnow_model_config()
+    image_models = model_config["suggestions"]["image"]
+    default_model = model_config["default_models"]["image"]
+    models_json = json.dumps(
+        {"models": image_models, "default_model": default_model},
+        ensure_ascii=False,
+        indent=2,
+    )
+    dotenv = "\n".join((
+        f"CREATENOW_API_KEY={_dotenv_value(api_key)}",
+        f"CREATENOW_API_BASE_URL={_dotenv_value(settings.CREATENOW_BASE_URL)}",
+        f"CREATENOW_IMAGE_MODEL={_dotenv_value(default_model)}",
+        "",
+    ))
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as package:
+        for archive_path, template_path in _SKILL_TEMPLATE_FILES.items():
+            package.writestr(archive_path, template_path.read_bytes())
+        package.writestr("createnow-image/.env", dotenv.encode("utf-8"))
+        package.writestr("createnow-image/models.json", models_json.encode("utf-8"))
+    return archive.getvalue()
 
 
 # ============================================================
@@ -120,6 +168,34 @@ async def get_credits(request: Request):
         return {"credits": None}
     credits = await fetch_saas_credits(api_key)
     return {"credits": credits}
+
+
+@router.get("/skills/createnow-image.zip")
+async def download_createnow_image_skill(request: Request):
+    """Download a configured CreateNow image skill for the authenticated SaaS user."""
+    user = getattr(request.state, "saas_user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    api_key = str(user.get("api_key") or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=409, detail="CreateNow API key is unavailable for this account")
+
+    try:
+        content = _build_createnow_image_skill_zip(api_key)
+    except OSError:
+        logger.exception("Unable to prepare CreateNow image skill template")
+        raise HTTPException(status_code=500, detail="CreateNow image skill is temporarily unavailable")
+
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="createnow-image-skill.zip"',
+            "Cache-Control": "private, no-store",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 # ============================================================
