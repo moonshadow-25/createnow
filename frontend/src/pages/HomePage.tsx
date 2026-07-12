@@ -253,7 +253,7 @@ export default function HomePage() {
           <div className="flex items-center gap-3 pr-10">
             {isAdmin && !isSaasUser && loggedIn && (
               <a
-                href="http://47.117.182.216:8003/admin/login.html"
+                href="https://myapi.firstarpc.com/admin/login.html"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm"
