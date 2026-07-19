@@ -163,7 +163,6 @@ export function VideoReverseDialog({
           <div className="bg-gray-700 border border-gray-600 rounded-lg p-3 text-sm text-gray-200">
             将使用当前项目的 VLM 配置分析视频，并覆盖本集剧本。分镜与关键资产将在“按剧本生成”时按现有一键生成流程处理。
           </div>
-
         </div>
 
         <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-700">

@@ -464,6 +464,28 @@ TOOLS = [
         }
     },
     {
+        "name": "import_reverse_segments",
+        "description": "视频反推专用：读取 episode.video_reverse_segments 字符串数组，每个 [Segment] 成品提示词导入为一个分镜骨架。只创建骨架并保留原始 video_prompt，不判断/删除旧分镜，不调用 LLM，不做资产匹配，不调用 estimate_storyboard_plan。导入后应并发调用 generate_storyboard_video_prompt_subagent(mode='adopt_reverse') 处理每个分镜。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID，使用系统提示中注入的当前 episode_id"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
+        "name": "create_storyboards_from_video_reverse_segments",
+        "description": "兼容旧工具名：等同 import_reverse_segments。只导入反推分段为分镜骨架，不做资产匹配/提示词规范化。新流程优先使用 import_reverse_segments。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "episode_id": {"type": "string", "description": "剧集ID，使用系统提示中注入的当前 episode_id"}
+            },
+            "required": ["episode_id"]
+        }
+    },
+    {
         "name": "generate_storyboard_video_prompt_subagent",
         "description": "独立子代理：为单个分镜从零生成提示词。prompt_type='video' 生成视频提示词（含 @图N 资产顺序校验），prompt_type='image' 生成图片提示词。⚠️ 仅用于纯生成/重新生成，禁止用于修改已有提示词。修改请用 update_storyboard。批量并发时可同一轮发起多个调用（每次一个 storyboard_id），执行时无需确认。",
         "parameters": {
@@ -471,6 +493,7 @@ TOOLS = [
             "properties": {
                 "storyboard_id": {"type": "string", "description": "分镜ID（单次仅支持一个）"},
                 "prompt_type": {"type": "string", "enum": ["video", "image"], "description": "提示词类型：video=视频提示词，image=图片提示词。默认 video。"},
+                "mode": {"type": "string", "enum": ["generate", "adopt_reverse"], "description": "video 模式可选：generate=从零生成；adopt_reverse=采用 storyboard.video_prompt 中已有反推提示词，只做资产匹配、description 提取和 @图N 引用规范化，不改写主体。"},
                 "user_request": {"type": "string", "description": "生成指令（如'生成视频提示词'、'重新生成图片提示词'）。仅用于生成/重新生成，不含修改。"},
                 "storyboard_description": {"type": "string", "description": "可选：覆盖分镜 description 参与本次生成（不写回 description）"},
                 "dialogue": {"type": "string", "description": "可选：覆盖分镜 dialogue 参与本次生成（仅 video）"},

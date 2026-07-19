@@ -27,6 +27,8 @@ from .generation import (
     handle_generate_asset_image, handle_generate_all_asset_images,
     handle_generate_storyboard_image, handle_generate_storyboard_video,
     handle_generate_storyboard_video_prompt_subagent,
+    handle_import_reverse_segments,
+    handle_create_storyboards_from_video_reverse_segments,
     handle_generate_all_storyboard_images, handle_generate_all_storyboard_videos,
     handle_submit_images_for_review,
 )
@@ -90,6 +92,8 @@ _HANDLERS = {
     "submit_images_for_review": handle_submit_images_for_review,
     "generate_storyboard_video": handle_generate_storyboard_video,
     "generate_all_storyboard_videos": handle_generate_all_storyboard_videos,
+    "create_storyboards_from_video_reverse_segments": handle_create_storyboards_from_video_reverse_segments,
+    "import_reverse_segments": handle_import_reverse_segments,
 }
 
 # 需要 ai_config 的工具（生成类）

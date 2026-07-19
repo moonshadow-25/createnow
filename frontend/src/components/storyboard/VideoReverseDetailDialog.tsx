@@ -31,38 +31,47 @@ export function VideoReverseDetailDialog({
   const [analysisText, setAnalysisText] = useState('{}');
   const [saving, setSaving] = useState(false);
 
+  const splitSegmentPrompts = (text: string): string[] => {
+    const trimmed = text.trim();
+    if (!trimmed) return [];
+    return trimmed.split(/\n\s*(?=\[Segment\])/).map(item => item.trim()).filter(Boolean);
+  };
+
   useEffect(() => {
     if (!isOpen || !episode) return;
     setActiveTab('screenplay');
-    setScreenplay(episode.video_reverse_screenplay || episode.script || '');
-    setSegmentsText(JSON.stringify(episode.video_reverse_segments || [], null, 2));
-    setAnalysisText(JSON.stringify(episode.video_reverse_analysis || {}, null, 2));
+    setScreenplay(episode.video_reverse_screenplay || episode.video_reverse_screenplay_text || episode.script || '');
+    const segmentPrompts = Array.isArray(episode.video_reverse_segments)
+      ? episode.video_reverse_segments
+          .filter((item: any) => typeof item === 'string' && item.trim())
+          .join('\n\n')
+      : '';
+    setSegmentsText(
+      segmentPrompts
+      || episode.video_reverse_segment_prompts_text
+      || ''
+    );
+    setAnalysisText(
+      episode.video_reverse_drama_analysis_text
+      || episode.video_reverse_analysis?.content
+      || (episode.video_reverse_analysis ? JSON.stringify(episode.video_reverse_analysis, null, 2) : '')
+    );
   }, [isOpen, episode]);
 
   if (!isOpen || !episode) return null;
 
-  const parseJson = (text: string, fallback: any) => {
-    const trimmed = text.trim();
-    if (!trimmed) return fallback;
-    return JSON.parse(trimmed);
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
-      const segments = parseJson(segmentsText, []);
-      const analysis = parseJson(analysisText, {});
-      if (!Array.isArray(segments)) {
-        throw new Error('分段提示词必须是 JSON 数组');
-      }
-      if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) {
-        throw new Error('剧本分析必须是 JSON 对象');
-      }
-
+      const segmentPrompts = splitSegmentPrompts(segmentsText);
+      const analysis = analysisText.trim() ? { content: analysisText } : {};
       const payload = {
         script: screenplay,
         video_reverse_screenplay: screenplay,
-        video_reverse_segments: segments,
+        video_reverse_screenplay_text: screenplay,
+        video_reverse_segments: segmentPrompts,
+        video_reverse_segment_prompts_text: segmentsText,
+        video_reverse_drama_analysis_text: analysisText,
         video_reverse_analysis: analysis,
         video_reverse_updated_at: new Date().toISOString(),
       };

@@ -200,31 +200,31 @@
 - 如果 `video_reverse_screenplay` 为空，告知用户需要先上传视频完成反推解析
 
 **步骤R1（资产创建/补全）**：
-- 基于 `video_reverse_analysis.characters/scenes/props` 和 `video_reverse_segments` 中出现的角色、场景、道具，判断需要创建或更新哪些资产
+- 基于 `video_reverse_analysis.characters/scenes/props` 和 `video_reverse_segments` 字符串数组中出现的角色、场景、道具，判断需要创建或更新哪些资产
 - 已存在资产：有 image_prompt 则跳过；缺少 image_prompt 才调用 update 补全
 - 不存在资产：才调用 create_character / create_scene / create_prop 新建
 - 只创建主要角色、主要场景、重要道具；禁止为路人、背景物、临时无名角色建档
 - 禁止重复创建同名资产
 - 本轮创建/更新资产后停下来，等待工具结果返回
 
-**步骤R2（分镜规划与批量创建）**：
-- 先调用 `get_episode_storyboards` 检查是否已有分镜
-- 已有分镜且用户没有明确要求重新生成：跳过创建分镜，直接进入步骤R3
-- 用户明确要求重新生成时，先调用 `delete_all_storyboards`，等待确认和工具结果后再继续
-- 没有分镜或已确认重新生成时：优先使用 `video_reverse_segments` 作为分镜规划依据
-- 每个 segment 对应一个九宫格分镜；每个分镜 duration 默认 15 秒且不得超过 15 秒
-- `description` 必须从 `segment.screenplay` 或 `line_numbered_reverse_screenplay` 对应原文复制，不得把 `segment.prompt` 当成 description
-- `segment.prompt` 是参考提示词，不是最终 video_prompt
-- 从 `existing_assets` 或刚创建的资产中匹配角色/场景，填入真实 asset_id，严禁编造
-- 调用 `estimate_storyboard_plan` 批量创建分镜，提交前按其规则校验 line_start/line_end/dialogue_units
+**步骤R2（按反推字符串数组导入分镜骨架）**：
+- 先调用 `get_episode_storyboards` 检查是否已有真实分镜
+- 已有分镜且用户没有明确要求重新生成：停止并询问用户是否删除旧分镜后重建
+- 用户确认重新生成时，先调用删除分镜工具删除旧分镜，再继续导入
+- `video_reverse_segments` 是字符串数组，数组中每个元素就是一个完整 `[Segment]` 成品提示词
+- 禁止调用 `estimate_storyboard_plan`，禁止重新规划分镜数量、行号或分段
+- 调用 `import_reverse_segments`，由后端按数组顺序为每个 segment 创建一个 storyboard 骨架，并把原始 segment prompt 保存到 storyboard.video_prompt
+- `import_reverse_segments` 只导入骨架，不做资产匹配，不调用 LLM，不做 @图N 规范化
 
-**步骤R3（生成分镜 video_prompt）**：
-- 对每个缺少 video_prompt 的分镜，调用 `generate_storyboard_video_prompt_subagent`
-- 生成时必须参考对应 `video_reverse_segments.prompt`，但最终 video_prompt 必须结合真实资产、分镜 description、dialogue_units 和项目风格重新生成
-- 最终 video_prompt 必须使用项目现有资产引用规则；不要直接复制反推 prompt
+**步骤R3（并发子代理采用已有反推提示词）**：
+- 对 `import_reverse_segments` 返回的每个 storyboard_id，并发调用 `generate_storyboard_video_prompt_subagent`
+- 调用参数必须包含 `prompt_type="video"` 和 `mode="adopt_reverse"`
+- 新模式子代理会读取 storyboard.video_prompt 中的已有反推提示词，结合全剧本和资产库语义匹配角色/场景/道具，提取 description 剧本原文，并只规范 `[Asset Definitions]` 的 @图N 引用
+- 禁止使用默认 generate 模式从零重写这些反推提示词
+- 子代理会自己更新对应 storyboard 的 description、asset ids、video_prompt
 
 **步骤R4（停止）**：
-- 一键反推默认只执行到分镜创建和 video_prompt 生成完成
+- 一键反推默认只执行到分镜骨架导入和 adopt_reverse 子代理处理完成
 - 禁止自动生成资产图片
 - 禁止自动提交审核
 - 禁止生成分镜图

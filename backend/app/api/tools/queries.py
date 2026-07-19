@@ -417,6 +417,8 @@ async def handle_get_episode_reverse_detail(project_id: str, parameters: Dict, a
         "line_numbered_screenplay": _line_number_text(screenplay),
         "line_numbered_reverse_screenplay": _line_number_text(reverse_screenplay),
         "video_reverse_segments": reverse_segments,
+        "video_reverse_segment_prompts_text": episode.get("video_reverse_segment_prompts_text", ""),
+        "video_reverse_drama_analysis_text": episode.get("video_reverse_drama_analysis_text", ""),
         "video_reverse_analysis": reverse_analysis,
         "video_reverse_raw": {
             "source_video": reverse_raw.get("source_video", {}),

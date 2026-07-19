@@ -15,8 +15,8 @@
 
 ```bash
 export API_BASE="http://localhost:8501/api"
-export USERNAME="menglaoshi"
-export PASSWORD="menglaoshi123"
+export USERNAME="test"
+export PASSWORD="test123"
 ```
 
 > 如果测试环境提供了专用账号，请替换 `USERNAME` / `PASSWORD`。

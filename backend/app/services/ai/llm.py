@@ -327,6 +327,232 @@ class LLMService(AIService):
                 "error": str(e)
             }
 
+    async def upload_video_file(
+        self,
+        video_path: str,
+        preprocess_fps: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Upload a video once through the Files API and return its file_id."""
+        import httpx
+
+        path_obj = Path(video_path)
+        if not path_obj.exists() or not path_obj.is_file():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+
+        upload_url = f"{self.api_url}/files"
+        mime_type = mimetypes.guess_type(path_obj.name)[0] or "video/mp4"
+        start_time = datetime.now()
+        file_size = path_obj.stat().st_size
+
+        try:
+            with path_obj.open("rb") as handle:
+                files = {
+                    "model": (None, self.model),
+                    "purpose": (None, "user_data"),
+                    "file": (path_obj.name, handle, mime_type),
+                    "preprocess_configs[video][fps]": (None, str(preprocess_fps)),
+                }
+                response = await self.client.post(
+                    upload_url,
+                    headers=self._get_headers(exclude_content_type=True),
+                    files=files,
+                    timeout=None,
+                )
+            response.raise_for_status()
+            response_data = response.json()
+            file_id = response_data.get("id") or response_data.get("file_id")
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            self._log_interaction(
+                interaction_type="llm",
+                operation="upload_video_file",
+                url=upload_url,
+                method="POST",
+                request_payload={
+                    "model": self.model,
+                    "purpose": "user_data",
+                    "filename": path_obj.name,
+                    "mime_type": mime_type,
+                    "file_size": file_size,
+                    "preprocess_configs": {"video": {"fps": preprocess_fps}},
+                },
+                response_data=response_data,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+            if not file_id:
+                return {"error": "Files API response missing file id", "raw": response_data}
+            return {"file_id": file_id, "raw": response_data}
+        except httpx.HTTPError as e:
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            error_detail = str(e)
+            status_code = None
+            if hasattr(e, "response") and e.response is not None:
+                status_code = e.response.status_code
+                try:
+                    error_detail = e.response.text
+                except Exception:
+                    pass
+            self._log_interaction(
+                interaction_type="llm",
+                operation="upload_video_file",
+                url=upload_url,
+                method="POST",
+                request_payload={"model": self.model, "filename": path_obj.name, "file_size": file_size, "preprocess_fps": preprocess_fps},
+                error=error_detail,
+                status_code=status_code,
+                duration_ms=duration_ms,
+            )
+            return {"error": error_detail, "raw": None}
+
+    async def wait_video_file_ready(
+        self,
+        file_id: str,
+        poll_interval_seconds: float = 10.0,
+        timeout_seconds: float = 300.0,
+    ) -> Dict[str, Any]:
+        """Poll Files API until the uploaded video can be referenced by responses."""
+        import asyncio
+        import httpx
+
+        file_url = f"{self.api_url}/files/{file_id}"
+        start_time = datetime.now()
+        ready_statuses = {"processed", "ready", "completed", "succeeded", "success", "available", "uploaded", "active"}
+        pending_statuses = {"processing", "pending", "queued", "running", "in_progress"}
+        failed_statuses = {"failed", "error", "cancelled", "canceled", "expired"}
+        last_data: Dict[str, Any] = {}
+
+        while (datetime.now() - start_time).total_seconds() < timeout_seconds:
+            try:
+                file_headers = self._get_headers()
+                file_headers["x-proxy-model"] = self.model
+                response = await self.client.get(file_url, headers=file_headers, timeout=None)
+                response.raise_for_status()
+                data = response.json()
+                last_data = data if isinstance(data, dict) else {"data": data}
+                status = str(last_data.get("status") or last_data.get("state") or "").lower()
+                if not status or status in ready_statuses:
+                    duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+                    self._log_interaction(
+                        interaction_type="llm",
+                        operation="wait_video_file_ready",
+                        url=file_url,
+                        method="GET",
+                        request_payload={"file_id": file_id},
+                        response_data=last_data,
+                        status_code=response.status_code,
+                        duration_ms=duration_ms,
+                    )
+                    return {"file_id": file_id, "status": status or "unknown", "raw": last_data}
+                if status in failed_statuses:
+                    return {"error": f"Video file preprocessing failed: {status}", "raw": last_data}
+                if status not in pending_statuses:
+                    logger.info("Unknown video file status for %s: %s", file_id, status)
+                await asyncio.sleep(poll_interval_seconds)
+            except httpx.HTTPError as e:
+                duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+                error_detail = str(e)
+                status_code = None
+                if hasattr(e, "response") and e.response is not None:
+                    status_code = e.response.status_code
+                    try:
+                        error_detail = e.response.text
+                    except Exception:
+                        pass
+                self._log_interaction(
+                    interaction_type="llm",
+                    operation="wait_video_file_ready",
+                    url=file_url,
+                    method="GET",
+                    request_payload={"file_id": file_id},
+                    error=error_detail,
+                    status_code=status_code,
+                    duration_ms=duration_ms,
+                )
+                return {"error": error_detail, "raw": last_data or None}
+
+        return {"error": f"Video file preprocessing timed out after {timeout_seconds:.0f}s", "raw": last_data or None}
+
+    async def analyze_video_file(
+        self,
+        file_id: str,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.2,
+        max_output_tokens: int = 128000,
+        extra_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Analyze an uploaded video by referencing file_id through Responses API."""
+        import httpx
+
+        response_url = f"{self.api_url}/responses"
+        response_payload: Dict[str, Any] = {
+            "model": self.model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_video", "file_id": file_id},
+                        {"type": "input_text", "text": prompt},
+                    ],
+                }
+            ],
+        }
+        if system_prompt:
+            response_payload["instructions"] = system_prompt
+        if temperature is not None:
+            response_payload["temperature"] = temperature
+        if max_output_tokens is not None:
+            response_payload["max_output_tokens"] = max_output_tokens
+        if extra_body:
+            response_payload.update(extra_body)
+
+        start_time = datetime.now()
+        try:
+            response = await self.client.post(
+                response_url,
+                headers=self._get_headers(),
+                json=response_payload,
+                timeout=None,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            output_text = self._extract_response_text(response_data)
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            self._log_interaction(
+                interaction_type="llm",
+                operation="analyze_video_file_response",
+                url=response_url,
+                method="POST",
+                request_payload=response_payload,
+                response_data=response_data,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+            if not output_text:
+                return {"error": "Invalid VLM response: empty content", "raw": response_data, "usage": response_data.get("usage", {})}
+            return {"content": output_text, "raw": response_data, "usage": response_data.get("usage", {})}
+        except httpx.HTTPError as e:
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            error_detail = str(e)
+            status_code = None
+            if hasattr(e, "response") and e.response is not None:
+                status_code = e.response.status_code
+                try:
+                    error_detail = e.response.text
+                except Exception:
+                    pass
+            self._log_interaction(
+                interaction_type="llm",
+                operation="analyze_video_file_response",
+                url=response_url,
+                method="POST",
+                request_payload=response_payload,
+                error=error_detail,
+                status_code=status_code,
+                duration_ms=duration_ms,
+            )
+            return {"error": error_detail, "raw": None}
+
     async def analyze_video(
         self,
         video_path: str,
@@ -337,206 +563,22 @@ class LLMService(AIService):
         extra_body: Optional[Dict[str, Any]] = None,
         preprocess_fps: float = 1.0,
     ) -> Dict[str, Any]:
-        """使用 OpenAI 兼容 Responses 协议，以 base64 video_url 单次流式请求分析视频。"""
-        import httpx
-
-        path_obj = Path(video_path)
-        if not path_obj.exists() or not path_obj.is_file():
-            raise FileNotFoundError(f"Video file not found: {video_path}")
-
-        file_size = path_obj.stat().st_size
-        max_file_size = 45 * 1024 * 1024
-        if file_size > max_file_size:
-            return {
-                "error": "视频文件超过 45MB，Base64 视频输入无法处理，请压缩视频后重试。",
-                "raw": {"file_size": file_size, "max_file_size": max_file_size},
-            }
-
-        mime_type = mimetypes.guess_type(path_obj.name)[0] or "video/mp4"
-        video_base64 = base64.b64encode(path_obj.read_bytes()).decode("ascii")
-        video_url = f"data:{mime_type};base64,{video_base64}"
-        response_url = f"{self.api_url}/responses"
-        response_payload: Dict[str, Any] = {
-            "model": self.model,
-            "input": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_video", "video_url": video_url, "fps": preprocess_fps},
-                        {"type": "input_text", "text": prompt},
-                    ],
-                }
-            ],
-            "stream": True,
-        }
-        if system_prompt:
-            response_payload["instructions"] = system_prompt
-        if temperature is not None:
-            response_payload["temperature"] = temperature
-        if max_output_tokens is not None:
-            response_payload["max_output_tokens"] = max_output_tokens
-        if extra_body:
-            response_payload.update(extra_body)
-        response_payload["stream"] = True
-
-        request_payload_for_log = {
-            **response_payload,
-            "input": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_video", "video_url": f"data:{mime_type};base64,<omitted>", "fps": preprocess_fps, "file_size": file_size},
-                        {"type": "input_text", "text": prompt},
-                    ],
-                }
-            ],
-        }
-
-        start_time = datetime.now()
-        output_parts: List[str] = []
-        event_types: List[str] = []
-        final_response_data: Optional[Dict[str, Any]] = None
-        printed_stream_header = False
-
-        try:
-            async with self.client.stream(
-                "POST",
-                response_url,
-                headers=self._get_headers(),
-                json=response_payload,
-                timeout=None,
-            ) as inference_response:
-                inference_response.raise_for_status()
-                async for raw_line in inference_response.aiter_lines():
-                    line = (raw_line or "").strip()
-                    if not line:
-                        continue
-                    if line.startswith("data:"):
-                        line = line[5:].strip()
-                    if line == "[DONE]":
-                        break
-
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        logger.debug("无法解析视频分析流式行: %s", line[:500])
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-
-                    event_type = event.get("type")
-                    if isinstance(event_type, str):
-                        event_types.append(event_type)
-                    if event_type in {"response.completed", "response.done"} and isinstance(event.get("response"), dict):
-                        final_response_data = event["response"]
-
-                    delta = self._extract_response_stream_delta(event)
-                    if delta:
-                        output_parts.append(delta)
-                        if not printed_stream_header:
-                            print("\n[VLM视频反推流式输出开始]", flush=True)
-                            printed_stream_header = True
-                        print(delta, end="", flush=True)
-
-            if printed_stream_header:
-                print("\n[VLM视频反推流式输出结束]", flush=True)
-
-            output_text = "".join(output_parts).strip()
-            if not output_text and final_response_data:
-                output_text = self._extract_response_text(final_response_data)
-
-            usage = final_response_data.get("usage", {}) if final_response_data else {}
-            response_data: Dict[str, Any] = {
-                "stream": True,
-                "events": event_types[-200:],
-                "output_text": output_text,
-            }
-            if final_response_data:
-                response_data["response"] = final_response_data
-
-            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
-            self._log_interaction(
-                interaction_type="llm",
-                operation="analyze_video_response_stream",
-                url=response_url,
-                method="POST",
-                request_payload=request_payload_for_log,
-                response_data=response_data,
-                status_code=200,
-                duration_ms=duration_ms,
-            )
-
-            if not output_text:
-                return {
-                    "error": "Invalid VLM response: empty stream content",
-                    "raw": response_data,
-                    "usage": usage,
-                }
-
-            return {
-                "content": output_text,
-                "raw": response_data,
-                "usage": usage,
-            }
-
-        except httpx.HTTPError as e:
-            if printed_stream_header:
-                print("\n[VLM视频反推流式输出异常]", flush=True)
-            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
-            error_detail = str(e)
-            status_code = None
-            if hasattr(e, "response") and e.response is not None:
-                status_code = e.response.status_code
-                try:
-                    error_detail = e.response.text
-                except Exception:
-                    pass
-
-            self._log_interaction(
-                interaction_type="llm",
-                operation="analyze_video_response_stream",
-                url=response_url,
-                method="POST",
-                request_payload=request_payload_for_log,
-                error=error_detail,
-                status_code=status_code,
-                duration_ms=duration_ms,
-            )
-            return {
-                "error": error_detail,
-                "raw": None,
-            }
-
-    def _extract_response_stream_delta(self, event: Dict[str, Any]) -> str:
-        """从 Responses/Chat 兼容流式事件中提取文本增量。"""
-        delta = event.get("delta")
-        if isinstance(delta, str):
-            return delta
-        if isinstance(delta, dict):
-            text = delta.get("text") or delta.get("content") or delta.get("value")
-            if isinstance(text, str):
-                return text
-
-        text = event.get("text") or event.get("content") or event.get("output_text")
-        if isinstance(text, str):
-            return text
-
-        choices = event.get("choices")
-        if isinstance(choices, list) and choices:
-            first = choices[0]
-            if isinstance(first, dict):
-                first_delta = first.get("delta") or {}
-                if isinstance(first_delta, dict):
-                    content = first_delta.get("content")
-                    if isinstance(content, str):
-                        return content
-                message = first.get("message") or {}
-                if isinstance(message, dict):
-                    content = message.get("content")
-                    if isinstance(content, str):
-                        return content
-
-        return ""
+        """Upload a video once and analyze it by file_id for backward compatibility."""
+        upload_result = await self.upload_video_file(video_path, preprocess_fps=preprocess_fps)
+        if upload_result.get("error"):
+            return upload_result
+        file_id = upload_result["file_id"]
+        ready_result = await self.wait_video_file_ready(file_id)
+        if ready_result.get("error"):
+            return ready_result
+        return await self.analyze_video_file(
+            file_id=file_id,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            extra_body=extra_body,
+        )
 
     def _extract_response_text(self, response_data: Dict[str, Any]) -> str:
         """从 OpenAI Responses 风格响应中提取文本。"""

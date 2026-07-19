@@ -1,3 +1,4 @@
+import asyncio
 import json
 import mimetypes
 import os
@@ -433,50 +434,91 @@ class VideoReverseService:
 
         vlm = get_ai_service(ai_config, "vlm", project_id)
         try:
-            prompt = cls._build_vlm_prompt(
-                ai_config,
-                "video_reverse_full_analysis",
-                episode_number=episode.get("episode_number", ""),
-                episode_title=episode.get("name", ""),
-                preprocess_fps=preprocess_fps,
-                max_duration_seconds=int(cls.MAX_DURATION_SECONDS),
-                actual_duration_seconds=f"{duration_seconds:.2f}",
-            )
-            result = await vlm.analyze_video(
-                video_path=str(saved_video_path),
-                prompt=prompt,
-                preprocess_fps=preprocess_fps,
-            )
-            if result.get("error"):
-                raise HTTPException(status_code=502, detail=f"VLM 视频反推失败：{result['error']}")
+            upload_result = await vlm.upload_video_file(str(saved_video_path), preprocess_fps=preprocess_fps)
+            if upload_result.get("error"):
+                raise HTTPException(status_code=502, detail=f"VLM 视频上传失败：{upload_result['error']}")
+            file_id = upload_result.get("file_id")
+            if not file_id:
+                raise HTTPException(status_code=502, detail="VLM 视频上传失败：未返回 file_id")
 
-            try:
-                parsed = cls._extract_json_object(result.get("content") or "")
-            except Exception as e:
-                raise HTTPException(status_code=502, detail=f"VLM 视频反推 JSON 解析失败：{e}") from e
+            ready_result = await vlm.wait_video_file_ready(file_id)
+            if ready_result.get("error"):
+                raise HTTPException(status_code=502, detail=f"VLM 视频预处理失败：{ready_result['error']}")
 
-            screenplay_text = str(parsed.get("screenplay") or parsed.get("script") or "").strip()
+            prompt_context = {
+                "episode_number": episode.get("episode_number", ""),
+                "episode_title": episode.get("name", ""),
+                "preprocess_fps": preprocess_fps,
+                "max_duration_seconds": int(cls.MAX_DURATION_SECONDS),
+                "actual_duration_seconds": f"{duration_seconds:.2f}",
+            }
+
+            screenplay_prompt = cls._build_vlm_prompt(ai_config, "video_reverse_screenplay", **prompt_context)
+            screenplay_result = await vlm.analyze_video_file(file_id=file_id, prompt=screenplay_prompt)
+            if screenplay_result.get("error"):
+                raise HTTPException(status_code=502, detail=f"VLM 剧本反推失败：{screenplay_result['error']}")
+
+            screenplay_text = (screenplay_result.get("content") or "").strip()
             if not screenplay_text:
                 raise HTTPException(status_code=502, detail="VLM 返回的完整剧本为空")
 
-            raw_segments = (
-                parsed.get("segments")
-                or parsed.get("segment_prompts")
-                or parsed.get("story_segments")
-                or []
+            segment_prompt = cls._build_vlm_prompt(
+                ai_config,
+                "video_reverse_storyboard",
+                **{**prompt_context, "screenplay_text": screenplay_text},
             )
-            if not isinstance(raw_segments, list):
-                raw_segments = []
-            segments = [cls._normalize_reverse_segment(idx, item) for idx, item in enumerate(raw_segments, start=1)]
+            placeholder_storyboard_json = "[]"
+            analysis_prompt = cls._build_vlm_prompt(
+                ai_config,
+                "video_reverse_drama_analysis",
+                **{
+                    **prompt_context,
+                    "screenplay_text": screenplay_text,
+                    "storyboard_json": placeholder_storyboard_json,
+                },
+            )
+            direct_video_instruction = (
+                "\n\n重要补充：上述剧本或分镜只用于统一角色名、对白和剧情顺序；"
+                "本轮任务必须仍然直接以视频画面、声音、镜头、动作、光影和节奏为准。"
+                "如果文字参考与视频冲突，以视频为准。"
+            )
+            segment_prompt += direct_video_instruction
+            analysis_prompt += direct_video_instruction
 
-            analysis = parsed.get("analysis") or parsed.get("drama_analysis") or {}
-            if not isinstance(analysis, dict):
-                analysis = {"content": str(analysis or "").strip()}
+            segment_result, analysis_result = await asyncio.gather(
+                vlm.analyze_video_file(file_id=file_id, prompt=segment_prompt),
+                vlm.analyze_video_file(file_id=file_id, prompt=analysis_prompt),
+            )
+            if segment_result.get("error"):
+                raise HTTPException(status_code=502, detail=f"VLM 分段提示词反推失败：{segment_result['error']}")
+            if analysis_result.get("error"):
+                raise HTTPException(status_code=502, detail=f"VLM 剧情分析失败：{analysis_result['error']}")
+
+            try:
+                raw_segments = cls._extract_json_array(segment_result.get("content") or "")
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"VLM 分段提示词字符串数组解析失败：{e}") from e
+            if not isinstance(raw_segments, list):
+                raise HTTPException(status_code=502, detail="VLM 分段提示词返回结果不是 JSON 数组")
+            segments = [str(item).strip() for item in raw_segments if str(item or "").strip()]
+            if not segments:
+                raise HTTPException(status_code=502, detail="VLM 返回的分段提示词为空")
+            if not all(isinstance(item, str) and item.strip().startswith("[Segment]") for item in segments):
+                raise HTTPException(status_code=502, detail="VLM 分段提示词必须是 [Segment] 字符串数组")
+            segment_prompts_text = "\n\n".join(segments)
+
+            drama_analysis_text = (analysis_result.get("content") or "").strip()
+            if not drama_analysis_text:
+                raise HTTPException(status_code=502, detail="VLM 返回的剧情详解为空")
+            analysis = {"content": drama_analysis_text}
 
             if overwrite_script or not episode.get("script"):
                 episode["script"] = screenplay_text
             now = datetime.now().isoformat()
             episode["video_reverse_screenplay"] = screenplay_text
+            episode["video_reverse_screenplay_text"] = screenplay_text
+            episode["video_reverse_segment_prompts_text"] = segment_prompts_text
+            episode["video_reverse_drama_analysis_text"] = drama_analysis_text
             episode["video_reverse_segments"] = segments
             episode["video_reverse_analysis"] = analysis
             episode["video_reverse_raw"] = {
@@ -486,10 +528,22 @@ class VideoReverseService:
                     "duration_seconds": duration_seconds,
                     "mime_type": cls._guess_mime_type(saved_video_path),
                     "preprocess_fps": preprocess_fps,
+                    "file_id": file_id,
+                    "file_ready_status": ready_result.get("status"),
                 },
                 "model": getattr(vlm, "model", None),
-                "usage": result.get("usage", {}),
-                "raw": result.get("raw", {}),
+                "usage": {
+                    "screenplay": screenplay_result.get("usage", {}),
+                    "segments": segment_result.get("usage", {}),
+                    "analysis": analysis_result.get("usage", {}),
+                },
+                "raw": {
+                    "upload": upload_result.get("raw", {}),
+                    "ready": ready_result.get("raw", {}),
+                    "screenplay": screenplay_result.get("raw", {}),
+                    "segments": segment_result.get("raw", {}),
+                    "analysis": analysis_result.get("raw", {}),
+                },
             }
             episode["video_reverse_updated_at"] = now
             episode["updated_at"] = now

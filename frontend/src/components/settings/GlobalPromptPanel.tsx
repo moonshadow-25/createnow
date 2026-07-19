@@ -40,7 +40,9 @@ const SERVICE_KEYS = new Set([
   'full_script_extract_merge',
   'material_look',
   'material_node',
-  'video_reverse_full_analysis',
+  'video_reverse_screenplay',
+  'video_reverse_storyboard',
+  'video_reverse_drama_analysis',
 ]);
 
 // ── 组件 ──────────────────────────────────────────────────────────────────────

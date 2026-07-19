@@ -1,9 +1,12 @@
 """生成工具执行逻辑"""
 from datetime import datetime
+import asyncio
+import re
+import uuid
 from typing import Dict, Optional, Tuple, List, Any
 import logging
 import json
-from app.services import AssetService
+from app.services import AssetService, ProjectService, get_ai_service
 from app.models.project import normalize_global_style_config
 
 logger = logging.getLogger(__name__)
@@ -74,6 +77,22 @@ def _strip_markdown_fence(text: str) -> str:
     text = re.sub(r'^```[\w-]*\s*\n?', '', text)
     text = re.sub(r'\n?```\s*$', '', text)
     return text.strip()
+
+
+def _extract_json_object_from_text(text: str) -> Dict[str, Any]:
+    """从 LLM 输出中提取 JSON 对象。"""
+    cleaned = _strip_markdown_fence(text or "")
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start < 0 or end < start:
+            raise ValueError("未找到 JSON 对象")
+        data = json.loads(cleaned[start:end + 1])
+    if not isinstance(data, dict):
+        raise ValueError("LLM 返回不是 JSON 对象")
+    return data
 
 
 def _build_expected_asset_lines(characters: List[Dict[str, Any]], scenes: List[Dict[str, Any]], props: List[Dict[str, Any]]) -> List[str]:
@@ -182,6 +201,186 @@ def _evaluate_asset_order(prompt_text: str, expected_lines: List[str]) -> Dict[s
         "actual_compact": actual_compact,
         "mismatches": mismatches,
         "message": "asset definitions 顺序已校验" if strict_match else "asset definitions 顺序不一致，请按 expected 顺序使用 @图N",
+    }
+
+
+def _split_reverse_segments_text(text: str) -> List[str]:
+    """把用户编辑的大文本按 [Segment] 边界切回字符串数组。"""
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"\n\s*(?=\[Segment\])", raw)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _parse_reverse_segment_meta(segment_prompt: str, sequence: int) -> Dict[str, Any]:
+    title = f"视频反推分段 {sequence}"
+    first_line = next((line.strip() for line in str(segment_prompt or "").splitlines() if line.strip()), "")
+    if first_line.startswith("[Segment]"):
+        title = first_line.replace("[Segment]", "", 1).strip() or title
+
+    time_range = ""
+    duration = 15
+    m = re.search(r"时间范围[:：]\s*([^\n\r]+)", segment_prompt or "")
+    if m:
+        time_range = m.group(1).strip()
+        tm = re.search(r"(\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})", time_range)
+        if tm:
+            def to_seconds(value: str) -> int:
+                pieces = [int(x) for x in value.split(":")]
+                if len(pieces) == 2:
+                    return pieces[0] * 60 + pieces[1]
+                return pieces[0] * 3600 + pieces[1] * 60 + pieces[2]
+            try:
+                duration = max(1, min(15, to_seconds(tm.group(2)) - to_seconds(tm.group(1))))
+            except Exception:
+                duration = 15
+
+    return {"title": title, "time_range": time_range, "duration": duration}
+
+
+
+def _extract_asset_definition_block(segment_prompt: str) -> str:
+    lines = str(segment_prompt or "").splitlines()
+    asset_idx = next((i for i, line in enumerate(lines) if line.strip().lower() == "[asset definitions]"), -1)
+    if asset_idx < 0:
+        return ""
+    end_idx = len(lines)
+    for i in range(asset_idx + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("[") and not stripped.startswith("@图"):
+            end_idx = i
+            break
+    return "\n".join(lines[asset_idx:end_idx]).strip()
+
+
+def _build_reverse_asset_library(project_id: str) -> Dict[str, List[Dict[str, Any]]]:
+    def compact(asset: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "asset_id": asset.get("asset_id"),
+            "name": asset.get("name", ""),
+            "aliases": asset.get("aliases", []),
+            "description": asset.get("description", ""),
+            "appearance": asset.get("appearance", ""),
+            "personality": asset.get("personality", ""),
+            "role": asset.get("role", ""),
+        }
+    return {
+        "characters": [compact(a) for a in AssetService.list_assets(project_id, "character") or []],
+        "scenes": [compact(a) for a in AssetService.list_assets(project_id, "scene") or []],
+        "props": [compact(a) for a in AssetService.list_assets(project_id, "prop") or []],
+    }
+
+
+def _coerce_id_list(values: Any, allowed: set) -> List[str]:
+    result: List[str] = []
+    if not isinstance(values, list):
+        return result
+    for value in values:
+        text = str(value or "").strip()
+        if text in allowed and text not in result:
+            result.append(text)
+    return result
+
+
+def _replace_asset_definition_lines(segment_prompt: str, expected_asset_lines: List[str]) -> str:
+    lines = str(segment_prompt or "").splitlines()
+    canonical = list(expected_asset_lines or [])
+    if not lines:
+        return segment_prompt
+
+    asset_idx = next((i for i, line in enumerate(lines) if line.strip().lower() == "[asset definitions]"), -1)
+    if asset_idx < 0:
+        return "\n".join([lines[0], "[Asset Definitions]", *canonical, *lines[1:]])
+
+    end_idx = len(lines)
+    for i in range(asset_idx + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("[") and not stripped.startswith("@图"):
+            end_idx = i
+            break
+
+    body = lines[asset_idx + 1:end_idx]
+    without_old_refs = [line for line in body if not line.strip().startswith("@图") and not line.strip().startswith("图")]
+    replacement = canonical + without_old_refs
+    return "\n".join(lines[:asset_idx + 1] + replacement + lines[end_idx:])
+
+
+async def _adopt_reverse_segment_prompt_with_llm(
+    project_id: str,
+    llm: Any,
+    segment_prompt: str,
+    sequence: int,
+    screenplay_text: str,
+    asset_library: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    meta = _parse_reverse_segment_meta(segment_prompt, sequence)
+    allowed_character_ids = {a.get("asset_id") for a in asset_library.get("characters", []) if a.get("asset_id")}
+    allowed_scene_ids = {a.get("asset_id") for a in asset_library.get("scenes", []) if a.get("asset_id")}
+    allowed_prop_ids = {a.get("asset_id") for a in asset_library.get("props", []) if a.get("asset_id")}
+
+    prompt = f"""你是已有视频生成提示词的资产匹配子代理，不是提示词重写器。
+
+任务：只根据当前 segment_prompt、全剧本和项目资产库，完成资产匹配、剧本分段原文提取、@图N 引用规范化建议。必须输出纯 JSON 对象，不要 markdown，不要解释。
+
+硬性规则：
+1. 不得改写 segment_prompt 主体内容，包括 Shot、主体动作、物理细节、镜头语言、光影、[Native Audio]、SFX、Dialogue、严禁字幕/BGM 等。
+2. 只允许为 [Asset Definitions] 开头部分匹配资产引用；真正的 @图N 行会由后端按资产顺序生成。
+3. description 必须是该 segment 对应的剧本分段原文/动作对白片段，不是标题，不是摘要。可从全剧本和 segment_prompt 的 Dialogue/时间范围综合提取；无法精确定位时，输出与本 segment 内容最贴近的剧本原文片段。
+4. character_ids、scene_ids、prop_ids 必须只从资产库中选择真实 asset_id，严禁编造。
+5. 人物匹配要考虑称呼、身份、关系、台词、服装和行为。例如“林太太/紫衣贵妇/主家”可能匹配同一角色资产；“大小姐/林清”、“娇娇/林娇”、“佣人/张妈”等也要结合资产库判断。
+6. 如果没有可信匹配，返回空数组，并在 warnings 说明原因。
+
+当前 sequence: {sequence}
+当前标题: {meta.get('title')}
+当前时间范围: {meta.get('time_range')}
+
+[SEGMENT_PROMPT]
+{segment_prompt}
+
+[ASSET_DEFINITIONS_BLOCK]
+{_extract_asset_definition_block(segment_prompt)}
+
+[FULL_SCREENPLAY]
+{screenplay_text}
+
+[PROJECT_ASSETS]
+{json.dumps(asset_library, ensure_ascii=False)}
+
+输出 JSON 格式：
+{{
+  "sequence": {sequence},
+  "description": "该 segment 对应的剧本分段原文，包含动作和对白",
+  "character_ids": ["真实角色asset_id"],
+  "scene_ids": ["真实场景asset_id"],
+  "prop_ids": ["真实道具asset_id"],
+  "warnings": []
+}}
+"""
+    llm_result = await llm.chat([{"role": "user", "content": prompt}])
+    parsed = _extract_json_object_from_text(llm_result.get("content", "") or "")
+
+    character_ids = _coerce_id_list(parsed.get("character_ids"), allowed_character_ids)
+    scene_ids = _coerce_id_list(parsed.get("scene_ids"), allowed_scene_ids)
+    prop_ids = _coerce_id_list(parsed.get("prop_ids"), allowed_prop_ids)
+    ordered_assets = _build_ordered_assets(project_id, character_ids, scene_ids, prop_ids)
+    normalized_prompt = _replace_asset_definition_lines(segment_prompt, ordered_assets["expected_asset_lines"])
+    asset_guard = _evaluate_asset_order(normalized_prompt, ordered_assets["expected_asset_lines"])
+
+    return {
+        "success": asset_guard.get("status") == "ok",
+        "sequence": sequence,
+        "title": meta["title"],
+        "time_range": meta["time_range"],
+        "duration": meta["duration"],
+        "description": str(parsed.get("description") or "").strip() or segment_prompt,
+        "normalized_video_prompt": normalized_prompt,
+        "character_ids": character_ids,
+        "scene_ids": scene_ids,
+        "prop_ids": prop_ids,
+        "warnings": parsed.get("warnings") if isinstance(parsed.get("warnings"), list) else [],
+        "asset_order_guard": asset_guard,
+        "ordered_assets": ordered_assets,
     }
 
 
@@ -305,6 +504,63 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
         project_ai_config = ai_config or project.get("ai_config", {})
         llm = get_ai_service(project_ai_config, "llm", project_id)
         prompt_type = parameters.get("prompt_type", "video")
+        mode = parameters.get("mode", "generate")
+
+        if prompt_type == "video" and mode == "adopt_reverse":
+            episode = AssetService.load_asset(project_id, "episode", storyboard.get("episode_id", "")) if storyboard.get("episode_id") else None
+            segment_prompt = str(storyboard.get("video_prompt") or storyboard.get("raw_video_prompt") or "").strip()
+            if not segment_prompt:
+                await llm.close()
+                return {"success": False, "error": "分镜缺少反推 segment prompt，无法采用已有提示词"}
+
+            asset_library = _build_reverse_asset_library(project_id)
+            screenplay_text = str(
+                (episode or {}).get("video_reverse_screenplay")
+                or (episode or {}).get("video_reverse_screenplay_text")
+                or (episode or {}).get("script")
+                or ""
+            )
+            result = await _adopt_reverse_segment_prompt_with_llm(
+                project_id,
+                llm,
+                segment_prompt,
+                int(storyboard.get("sequence") or 1),
+                screenplay_text,
+                asset_library,
+            )
+            if not result.get("success"):
+                await llm.close()
+                return {
+                    "success": False,
+                    "error": "反推提示词资产匹配/引用规范化失败",
+                    "storyboard_id": storyboard_id,
+                    **result,
+                }
+
+            storyboard["description"] = result.get("description") or storyboard.get("description", "")
+            storyboard["video_prompt"] = result.get("normalized_video_prompt") or segment_prompt
+            storyboard["character_ids"] = result.get("character_ids", [])
+            storyboard["scene_ids"] = result.get("scene_ids", [])
+            storyboard["prop_ids"] = result.get("prop_ids", [])
+            storyboard["video_reverse_time_range"] = result.get("time_range", storyboard.get("video_reverse_time_range", ""))
+            storyboard["asset_order_guard"] = result.get("asset_order_guard")
+            storyboard["updated_at"] = datetime.now().isoformat()
+            AssetService.save_asset(project_id, "storyboard", storyboard)
+            await llm.close()
+            return {
+                "success": True,
+                "storyboard_id": storyboard_id,
+                "sequence": storyboard.get("sequence"),
+                "mode": "adopt_reverse",
+                "description": storyboard.get("description"),
+                "character_ids": storyboard.get("character_ids", []),
+                "scene_ids": storyboard.get("scene_ids", []),
+                "prop_ids": storyboard.get("prop_ids", []),
+                "video_prompt": storyboard.get("video_prompt", ""),
+                "asset_order_guard": result.get("asset_order_guard"),
+                "warnings": result.get("warnings", []),
+                "saved": True,
+            }
 
         # ── 图片提示词分支 ──────────────────────────────────────────────
         if prompt_type == "image":
@@ -587,6 +843,87 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+
+async def handle_import_reverse_segments(project_id: str, parameters: Dict) -> Dict:
+    """把 video_reverse_segments 字符串数组导入为分镜骨架；不做删除确认、不调用 LLM、不做资产匹配。"""
+    episode_id = parameters.get("episode_id")
+    if not episode_id:
+        return {"success": False, "error": "缺少必需字段: episode_id"}
+
+    episode = AssetService.load_asset(project_id, "episode", episode_id)
+    if not episode:
+        return {"success": False, "error": "剧集不存在"}
+
+    raw_segments = episode.get("video_reverse_segments") or []
+    if isinstance(raw_segments, str):
+        segment_prompts = _split_reverse_segments_text(raw_segments)
+    elif isinstance(raw_segments, list):
+        segment_prompts = [str(item).strip() for item in raw_segments if isinstance(item, str) and item.strip()]
+    else:
+        segment_prompts = []
+
+    if not segment_prompts:
+        text = episode.get("video_reverse_segment_prompts_text") or ""
+        segment_prompts = _split_reverse_segments_text(text)
+
+    if not segment_prompts:
+        return {"success": False, "error": "未找到 video_reverse_segments 字符串数组，请先完成视频反推分段提示词。"}
+
+    created = []
+    storyboard_ids = []
+    now = datetime.now().isoformat()
+    for index, segment_prompt in enumerate(segment_prompts):
+        meta = _parse_reverse_segment_meta(segment_prompt, index + 1)
+        storyboard = {
+            "asset_id": str(uuid.uuid4()),
+            "episode_id": episode_id,
+            "sequence": index + 1,
+            "description": "",
+            "script_scene_label": meta.get("title", ""),
+            "video_prompt": segment_prompt,
+            "raw_video_prompt": segment_prompt,
+            "duration": meta.get("duration") or 15,
+            "character_ids": [],
+            "scene_ids": [],
+            "prop_ids": [],
+            "source": "video_reverse_segment_prompt",
+            "video_reverse_time_range": meta.get("time_range", ""),
+            "created_at": now,
+            "updated_at": now,
+        }
+        saved = AssetService.save_asset(project_id, "storyboard", storyboard)
+        storyboard_ids.append(saved["asset_id"])
+        created.append({
+            "storyboard_id": saved["asset_id"],
+            "sequence": saved.get("sequence"),
+            "title": meta.get("title"),
+            "time_range": meta.get("time_range"),
+            "duration": meta.get("duration"),
+        })
+
+    episode = AssetService.load_asset(project_id, "episode", episode_id) or episode
+    existing_ids = list(episode.get("storyboard_ids", []) or [])
+    episode["storyboard_ids"] = existing_ids + [sid for sid in storyboard_ids if sid not in existing_ids]
+    episode["video_reverse_segments"] = segment_prompts
+    episode["video_reverse_segment_prompts_text"] = "\n\n".join(segment_prompts)
+    episode["updated_at"] = datetime.now().isoformat()
+    AssetService.save_asset(project_id, "episode", episode)
+
+    return {
+        "success": True,
+        "episode_id": episode_id,
+        "count": len(created),
+        "storyboards_created": len(created),
+        "created": created,
+        "message": f"已导入 {len(created)} 个视频反推分段为分镜骨架。请继续并发调用 generate_storyboard_video_prompt_subagent(mode=adopt_reverse)。",
+    }
+
+
+async def handle_create_storyboards_from_video_reverse_segments(project_id: str, parameters: Dict) -> Dict:
+    """兼容旧工具名：转调用 import_reverse_segments，仅创建骨架。"""
+    return await handle_import_reverse_segments(project_id, parameters)
 
 
 async def handle_generate_storyboard_video_prompt_subagent(project_id: str, parameters: Dict, ai_config: Dict) -> Dict:
