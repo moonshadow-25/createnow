@@ -56,6 +56,7 @@ export default function HomePage() {
   const [participants, setParticipants] = useState<ParticipantUser[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState('');
+  const [allUsersCache, setAllUsersCache] = useState<ParticipantUser[]>([]);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdForm, setPwdForm] = useState({ old: '', new1: '', new2: '' });
   const [pwdLoading, setPwdLoading] = useState(false);
@@ -223,10 +224,31 @@ export default function HomePage() {
     setParticipantsLoading(true);
     try {
       const response = await adminUserApi.list();
-      const users = (response.data as ParticipantUser[]).filter((user) =>
+      const allUsers = response.data as ParticipantUser[];
+      setAllUsersCache(allUsers);
+      const projectUsers = allUsers.filter((user) =>
         (user.assigned_project_ids || []).includes(project.project_id)
       );
-      setParticipants(users);
+      setParticipants(projectUsers);
+    } catch {
+      setParticipantsError('加载参与者失败');
+    } finally {
+      setParticipantsLoading(false);
+    }
+  };
+
+  const handleRefreshParticipants = async () => {
+    if (!participantsProject) return;
+    setParticipantsLoading(true);
+    setParticipantsError('');
+    try {
+      const response = await adminUserApi.list();
+      const allUsers = response.data as ParticipantUser[];
+      setAllUsersCache(allUsers);
+      const projectUsers = allUsers.filter((user) =>
+        (user.assigned_project_ids || []).includes(participantsProject.project_id)
+      );
+      setParticipants(projectUsers);
     } catch {
       setParticipantsError('加载参与者失败');
     } finally {
@@ -239,6 +261,7 @@ export default function HomePage() {
     setParticipants([]);
     setParticipantsError('');
     setParticipantsLoading(false);
+    setAllUsersCache([]);
   };
 
   return (
@@ -475,6 +498,8 @@ export default function HomePage() {
           loading={participantsLoading}
           error={participantsError}
           onClose={handleCloseParticipants}
+          onUpdated={handleRefreshParticipants}
+          allUsers={allUsersCache}
         />
       )}
       {showChangePwd && (
