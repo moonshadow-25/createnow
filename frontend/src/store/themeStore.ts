@@ -25,7 +25,7 @@ function applyDomTheme(theme: Theme, appearanceMode: AppearanceMode) {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: 'light',
+      theme: 'dark',
       appearanceMode: 'classic',
       setTheme: (theme) => {
         set({ theme });
@@ -58,10 +58,10 @@ export const useThemeStore = create<ThemeState>()(
 export function applyStoredTheme() {
   try {
     const stored = JSON.parse(localStorage.getItem('app-theme') || '{}');
-    const theme: Theme = stored?.state?.theme ?? 'light';
+    const theme: Theme = stored?.state?.theme ?? 'dark';
     const appearanceMode: AppearanceMode = stored?.state?.appearanceMode ?? 'classic';
     applyDomTheme(theme, appearanceMode);
   } catch {
-    applyDomTheme('light', 'classic');
+    applyDomTheme('dark', 'classic');
   }
 }
