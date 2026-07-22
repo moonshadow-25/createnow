@@ -44,7 +44,7 @@ export default function HomePage() {
     deleteProject,
     setCurrentProject,
   } = useProjectStore();
-  const { loggedIn, apiKeyMasked, fetchAuthInfo, logout } = useAuthStore();
+  const { loggedIn, apiKeyMasked, userName, credits, fetchAuthInfo, logout } = useAuthStore();
   const { username: adminUsername, role: adminRole, logout: adminLogout, isAuthenticated } = useAdminAuthStore();
   const saasAuth = useSaasAuthStore();
   const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
@@ -291,7 +291,12 @@ export default function HomePage() {
                 title={`已登录 | Key: ${apiKeyMasked}`}
               >
                 <CheckCircle2 size={16} />
-                已登录
+                <span>{userName || '已登录'}</span>
+                {credits != null && (
+                  <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-medium">
+                    {credits}
+                  </span>
+                )}
               </button>
             ) : (
               <button

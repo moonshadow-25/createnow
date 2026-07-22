@@ -113,11 +113,11 @@ def get_registration_url() -> Tuple[str, str]:
 # 远程状态检查
 # ============================================================
 
-async def check_remote_status(hardware_id: str) -> Tuple[bool, Optional[str]]:
+async def check_remote_status(hardware_id: str) -> Tuple[bool, Optional[str], Optional[str], Optional[int]]:
     """调用服务端 /api/status 检查注册状态
 
     Returns:
-        (registered: bool, api_key: str | None)
+        (registered: bool, api_key: str | None, user_name: str | None, credits: int | None)
     """
     timestamp_ms = int(time.time() * 1000)
     signature = _make_signature(hardware_id, timestamp_ms)
@@ -133,12 +133,12 @@ async def check_remote_status(hardware_id: str) -> Tuple[bool, Optional[str]]:
 
         status = data.get("status")
         if status == "active":
-            return True, data.get("api_key")
+            return True, data.get("api_key"), data.get("user_name", ""), data.get("credits")
         elif status == "pending":
-            return False, None
+            return False, None, None, None
         else:
             logger.warning(f"[Auth] Unexpected status from server: {data}")
-            return False, None
+            return False, None, None, None
     except Exception as e:
         logger.error(f"[Auth] check_remote_status error: {e}")
         raise
@@ -203,6 +203,20 @@ async def fetch_saas_credits(api_key: str) -> Optional[int]:
         return None
 
 
+async def fetch_auth_user_info(api_key: str) -> Tuple[Optional[str], Optional[int]]:
+    """用 API Key 查询 CreateNow 账户信息（用户名 + 积分），用于老用户懒回填"""
+    base = _get_base_url()
+    url = f"{base}/api/status"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params={"api_key": api_key})
+            data = resp.json()
+        return data.get("user_name", ""), data.get("credits")
+    except Exception as e:
+        logger.error(f"[Auth] fetch_auth_user_info error: {e}")
+        return None, None
+
+
 # ============================================================
 # 本地状态持久化
 # ============================================================
@@ -227,7 +241,8 @@ def get_auth_state() -> dict:
     """读取认证状态
 
     Returns:
-        {"logged_in": bool, "hardware_id": str|None, "api_key": str|None}
+        {"logged_in": bool, "hardware_id": str|None, "api_key": str|None,
+         "user_name": str|None, "credits": int|None}
     """
     config = _read_global_config()
     auth = config.get("auth", {})
@@ -235,17 +250,23 @@ def get_auth_state() -> dict:
         "logged_in": bool(auth.get("logged_in")),
         "hardware_id": auth.get("hardware_id"),
         "api_key": auth.get("api_key"),
+        "user_name": auth.get("user_name"),
+        "credits": auth.get("credits"),
     }
 
 
-def save_auth_state(hardware_id: str, api_key: str) -> None:
+def save_auth_state(hardware_id: str, api_key: str, user_name: str = "", credits: Optional[int] = None) -> None:
     """保存认证状态到 global.json"""
     config = _read_global_config()
-    config["auth"] = {
+    auth_data = {
         "logged_in": True,
         "hardware_id": hardware_id,
         "api_key": api_key,
+        "user_name": user_name,
     }
+    if credits is not None:
+        auth_data["credits"] = credits
+    config["auth"] = auth_data
     _write_global_config(config)
     logger.info(f"[Auth] Auth state saved for device {hardware_id[:8]}...")
 

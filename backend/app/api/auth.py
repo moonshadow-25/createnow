@@ -21,6 +21,24 @@ async def auth_info():
     """获取当前认证状态"""
     state = get_auth_state()
     api_key = state.get("api_key") or ""
+    user_name = state.get("user_name") or ""
+    credits = state.get("credits")
+
+    # 老用户懒回填：已登录但 global.json 中没有 user_name/credits
+    if state["logged_in"] and api_key and (not user_name or credits is None):
+        from app.services.auth_service import fetch_auth_user_info
+        try:
+            fetched_name, fetched_credits = await fetch_auth_user_info(api_key)
+            if fetched_name:
+                user_name = fetched_name
+            if fetched_credits is not None:
+                credits = fetched_credits
+            # 回写到 global.json
+            from app.services.auth_service import save_auth_state
+            save_auth_state(state["hardware_id"], api_key, user_name, credits)
+        except Exception:
+            pass  # 回填失败不影响正常返回
+
     # 对 API Key 做脱敏处理（只显示前8位）
     if api_key and len(api_key) > 8:
         masked = api_key[:8] + "****"
@@ -31,6 +49,8 @@ async def auth_info():
         "logged_in": state["logged_in"],
         "hardware_id": state.get("hardware_id") or get_hardware_id(),
         "api_key_masked": masked,
+        "user_name": user_name or None,
+        "credits": credits,
     }
 
 
@@ -46,13 +66,13 @@ async def auth_poll():
     """轮询注册状态，若成功则保存 API Key"""
     hardware_id = get_hardware_id()
     try:
-        registered, api_key = await check_remote_status(hardware_id)
+        registered, api_key, user_name, credits = await check_remote_status(hardware_id)
     except Exception as e:
         return {"registered": False, "error": str(e)}
 
     if registered and api_key:
-        save_auth_state(hardware_id, api_key)
-        return {"registered": True, "api_key": api_key}
+        save_auth_state(hardware_id, api_key, user_name or "", credits)
+        return {"registered": True, "api_key": api_key, "user_name": user_name, "credits": credits}
 
     return {"registered": False}
 

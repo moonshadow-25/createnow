@@ -52,7 +52,12 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
         if (data.registered) {
           stopPolling();
           setStep('success');
-          setLoggedIn({ hardwareId: hid, apiKeyMasked: data.api_key?.slice(0, 8) + '****' });
+          setLoggedIn({
+            hardwareId: hid,
+            apiKeyMasked: data.api_key?.slice(0, 8) + '****',
+            userName: data.user_name || undefined,
+            credits: typeof data.credits === 'number' ? data.credits : undefined,
+          });
           fetchAuthInfo();
           toast('登录成功！CreateNow 官方接口已激活', 'success');
           setTimeout(() => {
