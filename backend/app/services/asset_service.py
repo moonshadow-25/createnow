@@ -1,6 +1,7 @@
 import json
 import uuid
 import time
+import threading
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 from datetime import datetime
@@ -33,6 +34,8 @@ def _get_projects_dir() -> Path:
 # 首次访问时从磁盘加载，之后读写全走内存，磁盘仍保持同步写入。
 # key: project_id -> List[Dict]
 _images_cache: Dict[str, List[Dict]] = {}
+_images_cache_lock = threading.Lock()
+_images_loading: Dict[str, threading.Lock] = {}  # 每项目一把加载锁，防并发重复读盘
 
 # key: project_id -> List[Dict]
 _videos_cache: Dict[str, List[Dict]] = {}
@@ -365,8 +368,24 @@ class ImageService:
 
     @staticmethod
     def _get_images_cache(project_id: str) -> List[Dict]:
-        """返回项目图片缓存列表，首次访问时从磁盘加载"""
-        if project_id not in _images_cache:
+        """返回项目图片缓存列表，首次访问时从磁盘加载（线程安全：同一项目只允许一个线程读盘）"""
+        # 快速路径：缓存已就绪
+        if project_id in _images_cache:
+            print(
+                f"[CACHE HIT] ImageService._get_images_cache | project={project_id[:8]} | "
+                f"cached_files={len(_images_cache[project_id])}"
+            )
+            return _images_cache[project_id]
+
+        # 慢速路径：持锁加载，双重检查避免多线程同时读盘
+        with _images_cache_lock:
+            if project_id in _images_cache:
+                print(
+                    f"[CACHE HIT] ImageService._get_images_cache | project={project_id[:8]} | "
+                    f"cached_files={len(_images_cache[project_id])} (after lock wait)"
+                )
+                return _images_cache[project_id]
+
             project_dir = _get_projects_dir() / project_id
             images_dir = project_dir / "images"
 
@@ -384,11 +403,6 @@ class ImageService:
                 )
 
             _images_cache[project_id] = images
-        else:
-            print(
-                f"[CACHE HIT] ImageService._get_images_cache | project={project_id[:8]} | "
-                f"cached_files={len(_images_cache[project_id])}"
-            )
 
         return _images_cache[project_id]
 

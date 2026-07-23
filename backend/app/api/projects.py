@@ -114,32 +114,45 @@ def _preinit_caches(project_id: str) -> None:
 
 
 def _load_all_project_assets(project_id: str) -> dict:
-    """并行加载项目的全部 7 类资产数据到进程缓存，返回各项结果"""
-    _preinit_caches(project_id)
+    """并行加载项目的全部 7 类资产数据到进程缓存，返回各项结果。
 
+    策略：先单独加载 images（5860 文件是瓶颈），填充 _images_cache 后
+    再并行加载其他 6 类。这样并发请求在 _get_images_cache 的锁上等待，
+    锁释放后立即命中缓存，避免多个线程同时读盘。
+    """
+    _preinit_caches(project_id)
+    results = {}
     t0 = time.perf_counter()
-    # 直接使用模块级 executor.submit()，不使用 with 上下文管理器
-    # 因为本函数可能运行在该 executor 的线程中，with 退出时会 shutdown()
-    # 尝试 join 当前线程，导致 RuntimeError: cannot join current thread
-    futures = {
+
+    # 第一阶段：先加载 images（最重的一类，填充 _images_cache）
+    t_img = time.perf_counter()
+    results["images"] = ImageService.list_images(project_id)
+    dt_img = 1000 * (time.perf_counter() - t_img)
+    print(
+        f"[PRELOAD] project={project_id[:8]} | asset_type=images (PHASE 1, solo) | "
+        f"result_count={len(results['images'])} | resolve={dt_img:.1f}ms"
+    )
+
+    # 第二阶段：images 缓存已就绪，并行加载其余 6 类
+    t2 = time.perf_counter()
+    other_futures = {
         "storyboards": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "storyboard"),
         "episodes": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "episode"),
         "characters": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "character"),
         "scenes": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "scene"),
         "props": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "prop"),
-        "images": _ASSET_LOADER_EXECUTOR.submit(ImageService.list_images, project_id),
         "videos": _ASSET_LOADER_EXECUTOR.submit(VideoService.list_videos, project_id),
     }
-    results = {}
-    for key, future in futures.items():
+    for key, future in other_futures.items():
         t_item = time.perf_counter()
         results[key] = future.result()
         dt = 1000 * (time.perf_counter() - t_item)
         print(
-            f"[PRELOAD] project={project_id[:8]} | asset_type={key} | "
+            f"[PRELOAD] project={project_id[:8]} | asset_type={key} (phase 2) | "
             f"result_count={len(results[key]) if isinstance(results[key], list) else '?'} | "
             f"resolve={dt:.1f}ms"
         )
+
     total_ms = 1000 * (time.perf_counter() - t0)
     print(f"[PRELOAD] project={project_id[:8]} | DONE | total={total_ms:.1f}ms")
     return results
@@ -877,7 +890,7 @@ _homepage_load_done: int = 0
 
 @router.get("/{project_id}/loading-status")
 async def get_project_loading_status(project_id: str):
-    """查询项目数据加载进度（前端显示进度条）"""
+    """查询项目数据加载进度（前端显示进度条）—— 首次访问时触发预加载"""
     from app.services.asset_service import _assets_cache, _images_cache
     ALL_TYPES = ("character", "scene", "prop", "episode", "storyboard")
     project_cache = _assets_cache.get(project_id, {})
@@ -885,6 +898,12 @@ async def get_project_loading_status(project_id: str):
     pending = [t for t in ALL_TYPES if t not in project_cache]
     images_loaded = project_id in _images_cache
     ready = len(pending) == 0 and images_loaded
+
+    # 缓存冷启动时，触发后台预加载（fire-and-forget）
+    # 后续的 asset 请求会在 _get_images_cache 的锁上排队等待，而非同时读盘
+    if not ready:
+        asyncio.create_task(_ensure_project_loaded(project_id))
+
     total_steps = len(ALL_TYPES) + 1  # 5 assets + images
     done_steps = len(loaded) + (1 if images_loaded else 0)
     return {
