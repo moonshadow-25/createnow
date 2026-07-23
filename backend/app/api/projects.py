@@ -155,20 +155,6 @@ def _load_all_project_assets(project_id: str) -> dict:
 
     total_ms = 1000 * (time.perf_counter() - t0)
     print(f"[PRELOAD] project={project_id[:8]} | DONE | total={total_ms:.1f}ms")
-
-    # 第三阶段：预热 video_service.VideoService 缓存
-    # storyboards/episode handler 使用的是 video_service.VideoService（独立缓存）
-    # 此处扫描全量视频 JSON 写入缓存，避免后续请求 15s+ 冷扫描
-    try:
-        from app.services.video_service import VideoService as VsVideoService
-        storyboard_ids = [s["asset_id"] for s in results.get("storyboards", [])]
-        t_vs = time.perf_counter()
-        VsVideoService.get_primary_videos_batch(project_id, storyboard_ids)
-        dt_vs = 1000 * (time.perf_counter() - t_vs)
-        print(f"[PRELOAD] project={project_id[:8]} | video_service_cache_warm | resolve={dt_vs:.1f}ms")
-    except Exception as e:
-        print(f"[PRELOAD] project={project_id[:8]} | video_service_cache_warm FAILED: {e}")
-
     return results
 
 
