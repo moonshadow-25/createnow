@@ -116,16 +116,18 @@ def _load_all_project_assets(project_id: str) -> dict:
     """并行加载项目的全部 7 类资产数据到进程缓存，返回各项结果"""
     _preinit_caches(project_id)
 
-    with _ASSET_LOADER_EXECUTOR as executor:
-        futures = {
-            "storyboards": executor.submit(AssetService.list_assets, project_id, "storyboard"),
-            "episodes": executor.submit(AssetService.list_assets, project_id, "episode"),
-            "characters": executor.submit(AssetService.list_assets, project_id, "character"),
-            "scenes": executor.submit(AssetService.list_assets, project_id, "scene"),
-            "props": executor.submit(AssetService.list_assets, project_id, "prop"),
-            "images": executor.submit(ImageService.list_images, project_id),
-            "videos": executor.submit(VideoService.list_videos, project_id),
-        }
+    # 直接使用模块级 executor.submit()，不使用 with 上下文管理器
+    # 因为本函数可能运行在该 executor 的线程中，with 退出时会 shutdown()
+    # 尝试 join 当前线程，导致 RuntimeError: cannot join current thread
+    futures = {
+        "storyboards": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "storyboard"),
+        "episodes": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "episode"),
+        "characters": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "character"),
+        "scenes": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "scene"),
+        "props": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "prop"),
+        "images": _ASSET_LOADER_EXECUTOR.submit(ImageService.list_images, project_id),
+        "videos": _ASSET_LOADER_EXECUTOR.submit(VideoService.list_videos, project_id),
+    }
     return {key: future.result() for key, future in futures.items()}
 
 
