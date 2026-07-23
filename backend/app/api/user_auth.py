@@ -120,6 +120,9 @@ async def poll_and_login(body: PollRequest):
         email=email or "",
     )
 
+    # 同步更新该用户所有已有项目的 api_key
+    await user_saas_service.update_all_project_keys(user["user_id"], api_key)
+
     jti = await user_saas_service.create_session(user["user_id"])
     token = create_saas_token(
         user_id=user["user_id"],

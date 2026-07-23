@@ -8,12 +8,15 @@ SaaS 用户服务 —— 基于 Redis 的用户存储和 Session 管理。
   session:{jti}           String → user_id  (TTL=7天)
   blacklist:{jti}         String → 1        (TTL=7天，支持即时注销)
 """
+import json
 import uuid
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from app.core.redis_client import get_redis
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -123,3 +126,42 @@ async def revoke_session(jti: str) -> None:
     await r.set(f"blacklist:{jti}", "1", ex=_SESSION_TTL)
     await r.delete(f"session:{jti}")
     logger.info(f"[UserService] Session revoked: {jti[:8]}...")
+
+
+async def update_all_project_keys(user_id: str, new_api_key: str) -> int:
+    """登录时同步更新用户所有项目中的 api_key。
+
+    SaaS 用户不允许手动修改 key，所以无脑覆盖即可。
+    返回更新的项目数。
+    """
+    projects_dir = settings.USERS_DIR / user_id / "projects"
+    if not projects_dir.exists():
+        return 0
+
+    updated = 0
+    AI_SERVICES = ("llm", "vlm", "image", "video", "tts")
+
+    for project_dir in projects_dir.iterdir():
+        meta_path = project_dir / "metadata.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            ai_config = meta.get("ai_config", {})
+            changed = False
+            for svc in AI_SERVICES:
+                if svc in ai_config and ai_config[svc].get("api_key"):
+                    ai_config[svc]["api_key"] = new_api_key
+                    changed = True
+            if changed:
+                meta_path.write_text(
+                    json.dumps(meta, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                updated += 1
+        except (json.JSONDecodeError, OSError):
+            logger.warning(f"[UserService] Failed to update api_key in {meta_path}", exc_info=True)
+
+    if updated:
+        logger.info(f"[UserService] Updated api_key in {updated} projects for user {user_id}")
+    return updated
