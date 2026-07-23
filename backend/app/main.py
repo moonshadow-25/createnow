@@ -168,6 +168,25 @@ class ProjectContextMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ProjectContextMiddleware)
 
 
+# ==================== 请求耗时诊断中间件 ====================
+class RequestTimingMiddleware(BaseHTTPMiddleware):
+    """记录每个 API 请求的耗时，用于诊断阻塞问题"""
+    async def dispatch(self, request: Request, call_next):
+        import time
+        t0 = time.perf_counter()
+        path = request.url.path
+        method = request.method
+
+        response = await call_next(request)
+        dt_ms = (time.perf_counter() - t0) * 1000
+        if dt_ms > 100 or "loading-status" not in path:
+            print(f"[REQ] {method} {path} → {dt_ms:.0f}ms")
+        return response
+
+
+app.add_middleware(RequestTimingMiddleware)
+
+
 # ==================== 管理员认证中间件 ====================
 class AdminAuthMiddleware(BaseHTTPMiddleware):
     """验证所有 /api/ 路由（白名单除外）必须携带有效的管理员 JWT"""

@@ -60,6 +60,7 @@ async def create_asset(project_id: str, asset: AssetCreate):
 async def list_assets(project_id: str, asset_type: str, include_children: bool = False):
     """列出资产（include_children=true时包含子资产，包含主图URL和图片数量）"""
     t0 = time.perf_counter()
+    print(f"[REQ-IN] assets/{asset_type} project={project_id[:8]}")
     assets = await asyncio.to_thread(AssetService.list_assets, project_id, asset_type, include_children)
     t1 = time.perf_counter()
 
