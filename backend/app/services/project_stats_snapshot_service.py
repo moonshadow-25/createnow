@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from app.core.config import settings
 from app.core.context import get_current_data_root
 
-SNAPSHOT_VERSION = 7  # bump: 修复 _preinit_caches 导致 videos/images 缓存被预初始化为空
+SNAPSHOT_VERSION = 8  # bump: 修复 _preinit_caches + 串行加载导致缓存数据为 0
 
 
 def _get_projects_dir() -> Path:
