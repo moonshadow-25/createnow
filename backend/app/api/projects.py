@@ -660,6 +660,7 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         semaphore = asyncio.Semaphore(PROJECT_HOME_STATS_CONCURRENCY)
 
         async def _load_project_stats(project: dict) -> dict:
+            global _homepage_load_done
             async with semaphore:
                 result = await _get_project_home_stats_async(project["project_id"])
                 _homepage_load_done += 1
