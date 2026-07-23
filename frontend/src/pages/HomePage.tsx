@@ -14,7 +14,7 @@ import { ProjectRatingModal } from '@/components/project/ProjectRatingModal';
 import { ProjectParticipantsModal } from '@/components/project/ProjectParticipantsModal';
 import { QuickStartSection } from '@/components/project/QuickStartSection';
 import { Plus, LogIn, CheckCircle2, Users, LogOut, KeyRound, Sun, Moon, BarChart2, WalletCards } from 'lucide-react';
-import { versionApi, adminAuthApi, adminUserApi } from '@/services/api';
+import { versionApi, adminAuthApi, adminUserApi, projectApi } from '@/services/api';
 import { Project } from '@/types';
 import { useThemeStore } from '@/store/themeStore';
 import { CostDashboard } from '@/components/dashboard/CostDashboard';
@@ -63,6 +63,10 @@ export default function HomePage() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [appName, setAppName] = useState('');
+  // 主页加载进度
+  const [homepageProgress, setHomepageProgress] = useState<{
+    total: number; loaded: number; progress_pct: number;
+  }>({ total: 0, loaded: 0, progress_pct: 0 });
   // SaaS 模式：已登录用户即有完整权限；selfhosted：需要 admin 角色
   const isSaasUser = saasAuth.isAuthenticated;
   const isAdmin = adminRole === 'admin' || isSaasUser;
@@ -115,6 +119,32 @@ export default function HomePage() {
       fetchProjects();
     }
   }, [saasAuth.isAuthenticated, isAuthenticated, fetchProjects]);
+
+  // 主页加载进度轮询
+  useEffect(() => {
+    if (!loading) {
+      setHomepageProgress({ total: 0, loaded: 0, progress_pct: 0 });
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await projectApi.getLoadingProgress();
+        if (cancelled) return;
+        const d = res.data;
+        setHomepageProgress({
+          total: d.total_projects || 0,
+          loaded: d.projects_loaded || 0,
+          progress_pct: d.progress_pct || 0,
+        });
+        if (!d.ready) {
+          setTimeout(poll, 500);
+        }
+      } catch { /* ignore */ }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [loading]);
 
   const handleCreateProject = async () => {
     const name = prompt('请输入项目名称:');
@@ -431,6 +461,20 @@ export default function HomePage() {
 
         {loading && projects.length === 0 ? (
           <div className="text-center py-12">
+            <div className="mb-6">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-3" />
+              <p className="text-gray-400 text-sm">
+                正在加载项目统计 ({homepageProgress.loaded}/{homepageProgress.total})
+              </p>
+              {homepageProgress.total > 0 && (
+                <div className="mt-3 w-64 mx-auto bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                    style={{ width: `${homepageProgress.progress_pct}%` }}
+                  />
+                </div>
+              )}
+            </div>
             <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="bg-gray-800 p-6 rounded-lg animate-pulse">

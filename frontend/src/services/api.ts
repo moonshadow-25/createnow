@@ -78,6 +78,7 @@ export const projectApi = {
   exportAssets: (id: string) => api.post(`/projects/${id}/export-assets`),
   getStatsByUser: () => api.get('/projects/stats/by-user'),
   getLoadingStatus: (id: string) => api.get(`/projects/${id}/loading-status`),
+  getLoadingProgress: () => api.get('/projects/loading-progress'),
 };
 
 // 管理员相关API

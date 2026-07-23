@@ -653,11 +653,17 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         projects = [p for p in projects if p.get("project_id") in allowed]
 
     if include_stats:
+        global _homepage_load_total, _homepage_load_done
+        _homepage_load_total = len(projects)
+        _homepage_load_done = 0
+
         semaphore = asyncio.Semaphore(PROJECT_HOME_STATS_CONCURRENCY)
 
         async def _load_project_stats(project: dict) -> dict:
             async with semaphore:
-                return await _get_project_home_stats_async(project["project_id"])
+                result = await _get_project_home_stats_async(project["project_id"])
+                _homepage_load_done += 1
+                return result
 
         project_costs = await asyncio.gather(*[_load_project_stats(p) for p in projects])
         for p, item in zip(projects, project_costs):
@@ -836,15 +842,42 @@ def _sync_get_stats_by_user():
     }
 
 
+# 主页加载进度追踪
+_homepage_load_total: int = 0
+_homepage_load_done: int = 0
+
+
 @router.get("/{project_id}/loading-status")
 async def get_project_loading_status(project_id: str):
-    """查询项目数据是否已完全加载到内存缓存（前端用于判断是否需要显示加载遮罩）"""
+    """查询项目数据加载进度（前端显示进度条）"""
     from app.services.asset_service import _assets_cache, _images_cache
-    # 必须等所有 5 类资产 + 图片都加载完成，否则前端渲染空白
-    asset_types_loaded = all(
-        asset_type in _assets_cache.get(project_id, {})
-        for asset_type in ("character", "scene", "prop", "episode", "storyboard")
-    )
+    ALL_TYPES = ("character", "scene", "prop", "episode", "storyboard")
+    project_cache = _assets_cache.get(project_id, {})
+    loaded = [t for t in ALL_TYPES if t in project_cache]
+    pending = [t for t in ALL_TYPES if t not in project_cache]
     images_loaded = project_id in _images_cache
-    ready = asset_types_loaded and images_loaded
-    return {"ready": ready}
+    ready = len(pending) == 0 and images_loaded
+    total_steps = len(ALL_TYPES) + 1  # 5 assets + images
+    done_steps = len(loaded) + (1 if images_loaded else 0)
+    return {
+        "ready": ready,
+        "loaded": loaded,
+        "pending": pending,
+        "total_assets": len(ALL_TYPES),
+        "images_loaded": images_loaded,
+        "progress_pct": round(done_steps / total_steps * 100) if total_steps else 0,
+    }
+
+
+@router.get("/loading-progress")
+async def get_homepage_loading_progress():
+    """查询主页项目统计加载进度"""
+    nonlocal_total = _homepage_load_total
+    nonlocal_done = _homepage_load_done
+    ready = nonlocal_done >= nonlocal_total and nonlocal_total > 0
+    return {
+        "ready": ready,
+        "total_projects": nonlocal_total,
+        "projects_loaded": nonlocal_done,
+        "progress_pct": round(nonlocal_done / nonlocal_total * 100) if nonlocal_total else 0,
+    }
