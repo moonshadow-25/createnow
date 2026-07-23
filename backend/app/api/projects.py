@@ -103,14 +103,10 @@ def _get_projects_dir():
 
 
 def _preinit_caches(project_id: str) -> None:
-    """预初始化 project_id 的缓存容器，避免 7 线程并发时的 setdefault 竞态"""
-    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
+    """预初始化 project_id 的 _assets_cache 容器，避免并发 setdefault 竞态"""
+    from app.services.asset_service import _assets_cache
     if project_id not in _assets_cache:
         _assets_cache[project_id] = {}
-    if project_id not in _images_cache:
-        _images_cache[project_id] = []
-    if project_id not in _videos_cache:
-        _videos_cache[project_id] = []
 
 
 def _load_all_project_assets(project_id: str) -> dict:

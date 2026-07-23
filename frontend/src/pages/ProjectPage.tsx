@@ -6,6 +6,7 @@ import { useAssetStore } from '@/store/assetStore';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
 import { adminApi, projectApi } from '@/services/api';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
+import { useSaasAuthStore } from '@/store/saasAuthStore';
 import { useToast } from '@/components/common/Toast';
 import { ChatTab } from '@/components/chat/ChatTab';
 import { AssetsTab } from '@/components/assets/AssetsTab';
@@ -29,6 +30,7 @@ export default function ProjectPage() {
   const setVibeDramaContext = useVibeDramaStore(s => s.setContext);
   const { theme, toggle: toggleTheme, appearanceMode } = useThemeStore();
   const adminRole = useAdminAuthStore(s => s.role);
+  const isSaasUser = useSaasAuthStore(s => s.isAuthenticated);
   const { toast } = useToast();
   const isAdmin = adminRole === 'admin';
   const isVipMode = appearanceMode === 'vip';
@@ -290,6 +292,7 @@ export default function ProjectPage() {
             <h1 className="text-2xl font-bold inline">{currentProject.name}</h1>
           </div>
           <div className="flex items-center gap-2 pr-10">
+            {!isSaasUser && (
             <button
               onClick={() => setShowProjectCostDashboard(true)}
               className={`px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm ${isVipMode ? 'bg-[#151922] hover:bg-[#1b2130] text-gray-200 border border-transparent' : 'bg-gray-700 hover:bg-gray-600'}`}
@@ -298,6 +301,7 @@ export default function ProjectPage() {
               <BarChart2 size={18} className="inline mr-2" />
               消耗看板
             </button>
+            )}
             <button
               onClick={() => setActiveTab('storyboard')}
               className={`px-4 py-2 rounded-lg transition flex items-center gap-2 text-sm ${
