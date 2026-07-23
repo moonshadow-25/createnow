@@ -220,7 +220,7 @@ export default function ProjectPage() {
           progress_pct: data.progress_pct || 0,
         });
         // 后端缓存就绪 + 前端 assetStore 已拉取过该项目 → 数据真正可用
-        if (data.ready && loadedProjectId === projectId) {
+        if (data.ready) {
           setProjectDataLoading(false);
         } else {
           timer = setTimeout(check, 500);
