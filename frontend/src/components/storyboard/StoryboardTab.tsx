@@ -35,6 +35,7 @@ interface StoryboardTabProps {
   onUpdated: () => void;
   multimodalReference?: boolean;
   showAssetSubmit?: boolean;
+  onStoryboardsReady?: () => void;
 }
 
 export function StoryboardTab({
@@ -46,6 +47,7 @@ export function StoryboardTab({
   onUpdated,
   multimodalReference = false,
   showAssetSubmit = false,
+  onStoryboardsReady,
 }: StoryboardTabProps) {
   const appearanceMode = useThemeStore(s => s.appearanceMode);
   return (
@@ -64,6 +66,7 @@ export function StoryboardTab({
           onUpdated={onUpdated}
           multimodalReference={multimodalReference}
           showAssetSubmit={showAssetSubmit}
+          onStoryboardsReady={onStoryboardsReady}
         />
       </div>
     </div>

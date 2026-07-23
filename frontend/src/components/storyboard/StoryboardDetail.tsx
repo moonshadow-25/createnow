@@ -43,6 +43,7 @@ interface StoryboardDetailProps {
   onUpdated: () => void;
   multimodalReference?: boolean;
   showAssetSubmit?: boolean;
+  onStoryboardsReady?: () => void;
 }
 
 interface SortableEpisodeButtonProps {
@@ -88,6 +89,7 @@ export function StoryboardDetail({
   props,
   onUpdated,
   multimodalReference = false,
+  onStoryboardsReady,
 }: StoryboardDetailProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -103,6 +105,7 @@ export function StoryboardDetail({
   const appearanceMode = useThemeStore(s => s.appearanceMode);
   const isVipMode = appearanceMode === 'vip';
   const isReorderingEpisodes = useRef(false);
+  const storyboardsReadyFired = useRef(false);
   const [storyboards, setStoryboards] = useState<any[]>([]);
   const [storyboardPrimaryImages, setStoryboardPrimaryImages] = useState<Map<string, string>>(new Map());
   const [imageStatuses, setImageStatuses] = useState<Record<string, { asset_id: string; status: string }>>({});
@@ -489,11 +492,24 @@ export function StoryboardDetail({
       // 异步加载所有图片的审核状态
       loadImageStatuses(sortedData);
 
+      // 首次加载完成时通知父组件（ProjectPage 据此隐藏遮罩）
+      if (!storyboardsReadyFired.current && onStoryboardsReady) {
+        storyboardsReadyFired.current = true;
+        onStoryboardsReady();
+      }
+
       return sortedData;  // ✅ 返回最新数据供调用者使用
     } catch (error) {
       console.error('Failed to load storyboards:', error);
       setStoryboards([]);
       setStoryboardPrimaryImages(new Map());
+
+      // 即使出错也通知（避免遮罩永远不消失）
+      if (!storyboardsReadyFired.current && onStoryboardsReady) {
+        storyboardsReadyFired.current = true;
+        onStoryboardsReady();
+      }
+
       return [];  // 错误时返回空数组
     }
   };

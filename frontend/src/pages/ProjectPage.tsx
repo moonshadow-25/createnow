@@ -42,6 +42,7 @@ export default function ProjectPage() {
   const [isExportingAssets, setIsExportingAssets] = useState(false);
   // 项目数据加载状态（用于显示加载遮罩和进度）
   const [projectDataLoading, setProjectDataLoading] = useState(true);
+  const [storyboardsReady, setStoryboardsReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState<{
     loaded: string[]; pending: string[]; images_loaded: boolean; progress_pct: number;
   }>({ loaded: [], pending: [], images_loaded: false, progress_pct: 0 });
@@ -230,6 +231,7 @@ export default function ProjectPage() {
     };
 
     setProjectDataLoading(true);
+    setStoryboardsReady(false);
     setLoadProgress({ loaded: [], pending: [], images_loaded: false, progress_pct: 0 });
     check();
 
@@ -253,8 +255,8 @@ export default function ProjectPage() {
 
   return (
     <div className="h-full min-h-0 bg-gray-900 text-white flex flex-col overflow-hidden">
-      {/* 数据加载遮罩：显示具体加载进度 */}
-      {projectDataLoading && (
+      {/* 数据加载遮罩：后端缓存就绪 + 前端分镜数据到达才算完成 */}
+      {(projectDataLoading || !storyboardsReady) && (
         <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-85 flex flex-col items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4" />
           <p className="text-gray-300 text-lg font-medium">正在加载项目数据...</p>
@@ -433,6 +435,7 @@ export default function ProjectPage() {
                 onUpdated={handleRefreshAssets}
                 multimodalReference={currentProject?.ai_config?.video?.multimodal_reference || false}
                 showAssetSubmit={['createnow', 'byteseed'].includes(currentProject?.ai_config?.video?.api_type || '')}
+                onStoryboardsReady={() => setStoryboardsReady(true)}
               />
             </div>
           )}
