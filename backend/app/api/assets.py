@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional, Any
 from pydantic import BaseModel, ConfigDict
+import asyncio
 import logging
 import time
 
@@ -51,7 +52,7 @@ class AssetUpdate(BaseModel):
 async def create_asset(project_id: str, asset: AssetCreate):
     """创建资产"""
     asset_data = asset.model_dump()
-    result = AssetService.save_asset(project_id, asset.asset_type, asset_data)
+    result = await asyncio.to_thread(AssetService.save_asset, project_id, asset.asset_type, asset_data)
     return result
 
 
@@ -59,11 +60,11 @@ async def create_asset(project_id: str, asset: AssetCreate):
 async def list_assets(project_id: str, asset_type: str, include_children: bool = False):
     """列出资产（include_children=true时包含子资产，包含主图URL和图片数量）"""
     t0 = time.perf_counter()
-    assets = AssetService.list_assets(project_id, asset_type, include_children)
+    assets = await asyncio.to_thread(AssetService.list_assets, project_id, asset_type, include_children)
     t1 = time.perf_counter()
 
     asset_ids = [a["asset_id"] for a in assets]
-    image_info = ImageService.get_primary_images_with_count_batch(project_id, asset_ids)
+    image_info = await asyncio.to_thread(ImageService.get_primary_images_with_count_batch, project_id, asset_ids)
     t2 = time.perf_counter()
 
     for asset in assets:
@@ -99,7 +100,7 @@ async def list_assets(project_id: str, asset_type: str, include_children: bool =
 @router.get("/{asset_type}/{asset_id}", response_model=dict)
 async def get_asset(project_id: str, asset_type: str, asset_id: str):
     """获取资产详情"""
-    result = AssetService.load_asset(project_id, asset_type, asset_id)
+    result = await asyncio.to_thread(AssetService.load_asset, project_id, asset_type, asset_id)
     if not result:
         raise HTTPException(status_code=404, detail="Asset not found")
     return result
@@ -109,7 +110,7 @@ async def get_asset(project_id: str, asset_type: str, asset_id: str):
 async def update_asset(project_id: str, asset_type: str, asset_id: str, asset: AssetUpdate):
     """更新资产"""
     # 先加载现有资产
-    current = AssetService.load_asset(project_id, asset_type, asset_id)
+    current = await asyncio.to_thread(AssetService.load_asset, project_id, asset_type, asset_id)
     if not current:
         raise HTTPException(status_code=404, detail="Asset not found")
 
@@ -128,11 +129,11 @@ async def update_asset(project_id: str, asset_type: str, asset_id: str, asset: A
             current[key] = value
             logger.info(f"[DEBUG] Updated {key} to: {value}")
 
-    result = AssetService.save_asset(project_id, asset_type, current)
+    result = await asyncio.to_thread(AssetService.save_asset, project_id, asset_type, current)
 
     # 如果指定了image_id，更新主图
     if asset.image_id is not None:
-        AssetService.update_asset_image(project_id, asset_type, asset_id, asset.image_id)
+        await asyncio.to_thread(AssetService.update_asset_image, project_id, asset_type, asset_id, asset.image_id)
 
     return result
 
@@ -140,13 +141,13 @@ async def update_asset(project_id: str, asset_type: str, asset_id: str, asset: A
 @router.delete("/{asset_type}/{asset_id}")
 async def delete_asset(project_id: str, asset_type: str, asset_id: str):
     """删除资产，并级联清理分镜中的引用"""
-    success = AssetService.delete_asset(project_id, asset_type, asset_id)
+    success = await asyncio.to_thread(AssetService.delete_asset, project_id, asset_type, asset_id)
     if not success:
         raise HTTPException(status_code=404, detail="Asset not found")
 
     # 级联清理：从所有分镜中移除对该资产的引用
     if asset_type in ("character", "scene", "prop"):
-        all_storyboards = AssetService.list_assets(project_id, "storyboard")
+        all_storyboards = await asyncio.to_thread(AssetService.list_assets, project_id, "storyboard")
         for sb in all_storyboards:
             changed = False
             if asset_type == "character" and asset_id in sb.get("character_ids", []):
@@ -163,15 +164,15 @@ async def delete_asset(project_id: str, asset_type: str, asset_id: str):
                 sb["prop_ids"] = [x for x in sb["prop_ids"] if x != asset_id]
                 changed = True
             if changed:
-                AssetService.save_asset(project_id, "storyboard", sb)
+                await asyncio.to_thread(AssetService.save_asset, project_id, "storyboard", sb)
 
     # 删除集后自动重排剩余集的 episode_number
     if asset_type == "episode":
-        remaining = AssetService.list_assets(project_id, "episode")
+        remaining = await asyncio.to_thread(AssetService.list_assets, project_id, "episode")
         remaining.sort(key=lambda e: e.get("episode_number", 0))
         for index, ep in enumerate(remaining):
             ep["episode_number"] = index + 1
-            AssetService.save_asset(project_id, "episode", ep)
+            await asyncio.to_thread(AssetService.save_asset, project_id, "episode", ep)
 
     return {"success": True}
 
@@ -181,7 +182,7 @@ async def create_child_asset(project_id: str, asset_type: str, parent_id: str, a
     """创建子资产（继承父资产的属性和图片）"""
     try:
         asset_data = asset.model_dump()
-        result = AssetService.create_child_asset(project_id, asset_type, parent_id, asset_data)
+        result = await asyncio.to_thread(AssetService.create_child_asset, project_id, asset_type, parent_id, asset_data)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -194,11 +195,11 @@ async def create_child_asset(project_id: str, asset_type: str, parent_id: str, a
 async def reorder_episodes(project_id: str, body: EpisodeReorderRequest):
     """按传入顺序更新每集的 episode_number（从1开始）"""
     for index, episode_id in enumerate(body.episode_ids):
-        episode = AssetService.load_asset(project_id, "episode", episode_id)
+        episode = await asyncio.to_thread(AssetService.load_asset, project_id, "episode", episode_id)
         if not episode:
             raise HTTPException(status_code=404, detail=f"Episode {episode_id} not found")
         episode["episode_number"] = index + 1
-        AssetService.save_asset(project_id, "episode", episode)
+        await asyncio.to_thread(AssetService.save_asset, project_id, "episode", episode)
     return {"success": True, "count": len(body.episode_ids)}
 
 
