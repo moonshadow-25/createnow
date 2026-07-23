@@ -838,11 +838,13 @@ def _sync_get_stats_by_user():
 
 @router.get("/{project_id}/loading-status")
 async def get_project_loading_status(project_id: str):
-    """查询项目数据是否已加载到内存缓存（前端用于判断是否需要显示加载遮罩）"""
-    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
-    ready = (
-        (project_id in _assets_cache)
-        or (project_id in _images_cache)
-        or (project_id in _videos_cache)
+    """查询项目数据是否已完全加载到内存缓存（前端用于判断是否需要显示加载遮罩）"""
+    from app.services.asset_service import _assets_cache, _images_cache
+    # 必须等所有 5 类资产 + 图片都加载完成，否则前端渲染空白
+    asset_types_loaded = all(
+        asset_type in _assets_cache.get(project_id, {})
+        for asset_type in ("character", "scene", "prop", "episode", "storyboard")
     )
+    images_loaded = project_id in _images_cache
+    ready = asset_types_loaded and images_loaded
     return {"ready": ready}
