@@ -200,7 +200,7 @@ export default function ProjectPage() {
     }
   }, [(currentProject as any)?.ai_config?.global_style_config]);
 
-  // 数据加载状态轮询：检查项目数据是否已完全加载到后端缓存
+  // 数据加载状態轮询：检查项目数据是否已完全加载到后端缓存
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
@@ -219,6 +219,8 @@ export default function ProjectPage() {
         });
         if (data.ready) {
           setProjectDataLoading(false);
+          // 数据就绪后通知子组件刷新（解决 storyboard 初次加载空白问题）
+          window.dispatchEvent(new CustomEvent('project:data-ready', { detail: { projectId } }));
         } else {
           timer = setTimeout(check, 500);
         }
