@@ -240,9 +240,6 @@ async def reverse_episode_video(
 @router.get("/episode/{episode_id}", response_model=List[dict])
 async def list_episode_storyboards(project_id: str, episode_id: str):
     """列出剧集的所有分镜（包含主图URL）"""
-    # [DEBUG] 人为延迟 5 秒，测试前端加载遮罩是否等待此请求完成
-    print(f"[DEBUG SLEEP] storyboards/episode sleeping 5s for frontend test | project={project_id[:8]}")
-    await asyncio.sleep(5)
     t0 = time.perf_counter()
     storyboards = await asyncio.to_thread(AssetService.list_assets, project_id, "storyboard")
     episode_storyboards = [sb for sb in storyboards if sb.get("episode_id") == episode_id]

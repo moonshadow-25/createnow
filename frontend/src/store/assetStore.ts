@@ -29,6 +29,11 @@ export const useAssetStore = create<AssetState>()((set, get) => ({
 
   fetchAssets: async (projectId, assetType) => {
     const state = get();
+    // 切换项目时清空旧数据，避免 StoryboardDetail 用上一项目的 episodes
+    // 触发多余的 loadStoryboards() 请求
+    if (state.loadedProjectId && state.loadedProjectId !== projectId) {
+      set({ characters: [], scenes: [], props: [], episodes: [], storyboards: [], loading: true, loadedProjectId: null });
+    }
     const hasData = (
       assetType === 'character'  ? state.characters.length > 0 :
       assetType === 'scene'      ? state.scenes.length > 0 :
