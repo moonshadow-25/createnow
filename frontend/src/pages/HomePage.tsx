@@ -429,9 +429,20 @@ export default function HomePage() {
           </div>
         </div>
 
-        {loading ? (
-          <div className="text-center py-12">加载中...</div>
-        ) : projects.length === 0 ? (
+        {loading && projects.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-gray-800 p-6 rounded-lg animate-pulse">
+                  <div className="h-5 bg-gray-700 rounded w-32 mb-4" />
+                  <div className="h-3 bg-gray-700 rounded w-full mb-2" />
+                  <div className="h-3 bg-gray-700 rounded w-2/3 mb-4" />
+                  <div className="h-8 bg-gray-700 rounded w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : projects.length === 0 && !loading ? (
           <div>
             <QuickStartSection />
             {isAdmin && (

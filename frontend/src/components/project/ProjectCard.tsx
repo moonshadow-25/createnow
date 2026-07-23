@@ -197,7 +197,13 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit,
           </div>
           <button
             onClick={onOpen}
-            className="h-8 px-4 rounded-lg bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] text-xs font-semibold shadow-[0_6px_18px_rgba(216,179,96,0.38)] hover:brightness-105"
+            disabled={!stats}
+            className={`h-8 px-4 rounded-lg text-xs font-semibold shadow-[0_6px_18px_rgba(216,179,96,0.38)] ${
+              stats
+                ? 'bg-gradient-to-r from-[#efd488] to-[#cfab5f] text-[#241b0d] hover:brightness-105'
+                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            }`}
+            title={stats ? undefined : '数据加载中，请稍候...'}
           >
             <span className="flex items-center gap-1">
               <FolderOpen size={13} />
@@ -283,10 +289,20 @@ export function ProjectCard({ project, stats, isAdmin, onOpen, onDelete, onEdit,
 
       <div className="flex justify-between items-center mt-auto pt-2 border-t border-gray-700">
         <span className="text-xs text-gray-500">{new Date(project.created_at).toLocaleDateString()}</span>
-        <button onClick={onOpen} className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm">
-          <FolderOpen size={16} />
-          打开项目
-        </button>
+        {stats === undefined ? (
+          <button
+            disabled
+            className="flex items-center gap-1 text-gray-500 text-sm cursor-not-allowed"
+            title="数据加载中，请稍候..."
+          >
+            加载中...
+          </button>
+        ) : (
+          <button onClick={onOpen} className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm">
+            <FolderOpen size={16} />
+            打开项目
+          </button>
+        )}
       </div>
     </div>
   );

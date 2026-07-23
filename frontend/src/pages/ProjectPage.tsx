@@ -40,6 +40,8 @@ export default function ProjectPage() {
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [showFullScriptImport, setShowFullScriptImport] = useState(false);
   const [isExportingAssets, setIsExportingAssets] = useState(false);
+  // 项目数据加载状态（用于显示加载遮罩）
+  const [projectDataLoading, setProjectDataLoading] = useState(true);
   // 项目没有分集时自动弹出导入弹框
   const autoImportTriggered = useRef(false);
   const [episodesInitLoaded, setEpisodesInitLoaded] = useState(false);
@@ -195,6 +197,36 @@ export default function ProjectPage() {
     }
   }, [(currentProject as any)?.ai_config?.global_style_config]);
 
+  // 数据加载状态轮询：检查项目数据是否已完全加载到后端缓存
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const check = async () => {
+      try {
+        const res = await projectApi.getLoadingStatus(projectId!);
+        if (cancelled) return;
+        if (res.data?.ready) {
+          setProjectDataLoading(false);
+        } else {
+          timer = setTimeout(check, 500);
+        }
+      } catch {
+        // 出错也继续轮询
+        if (!cancelled) timer = setTimeout(check, 1000);
+      }
+    };
+
+    setProjectDataLoading(true);
+    check();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [projectId]);
+
   const handleOpenSettings = () => {
     setShowSettings(true);
   };
@@ -202,13 +234,21 @@ export default function ProjectPage() {
   if (!currentProject) {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div>加载中...</div>
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent" />
       </div>
     );
   }
 
   return (
     <div className="h-full min-h-0 bg-gray-900 text-white flex flex-col overflow-hidden">
+      {/* 数据加载遮罩：项目数据尚未加载到后端缓存时显示，防止用户操作不完整数据 */}
+      {projectDataLoading && (
+        <div className="fixed inset-0 z-50 bg-gray-900 bg-opacity-85 flex flex-col items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4" />
+          <p className="text-gray-300 text-lg font-medium">正在加载项目数据...</p>
+          <p className="text-gray-500 text-sm mt-2">数据就绪后将自动进入，请稍候</p>
+        </div>
+      )}
       {/* 顶部导航 */}
       <div className={`border-b px-6 py-4 flex-shrink-0 ${isVipMode ? 'vip-nav-shell bg-gray-800 border-gray-700' : 'bg-gray-800 border-gray-700'}`}>
         <div className="flex justify-between items-center">

@@ -77,6 +77,7 @@ export const projectApi = {
     api.put(`/projects/${id}/budget`, { budget_total: budgetTotal }),
   exportAssets: (id: string) => api.post(`/projects/${id}/export-assets`),
   getStatsByUser: () => api.get('/projects/stats/by-user'),
+  getLoadingStatus: (id: string) => api.get(`/projects/${id}/loading-status`),
 };
 
 // 管理员相关API

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from typing import List, Optional
 from pydantic import BaseModel
 import asyncio
+import concurrent.futures
 import json
 import threading
 import uuid
@@ -17,10 +18,19 @@ from app.api.generation.utils import calc_video_compute_units, get_image_cost, g
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-PROJECT_HOME_STATS_CONCURRENCY = 10
+PROJECT_HOME_STATS_CONCURRENCY = 16
 POLICY_VIOLATION_ERROR_CODE = "OutputVideoSensitiveContentDetected.PolicyViolation"
 _project_stats_locks: dict[str, threading.Lock] = {}
 _project_stats_locks_guard = threading.Lock()
+
+# 专用线程池：用于 glob + read + json.load 等 I/O 密集型操作
+_ASSET_LOADER_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=32)
+
+# 项目加载状态追踪（asyncio 层面）
+# "loaded" = 数据已在进程缓存中; "loading" = 正在加载; None/缺失 = 未加载
+_project_load_state: dict[str, str] = {}
+_project_ready_events: dict[str, asyncio.Event] = {}
+_state_guard = asyncio.Lock()
 
 
 def _get_project_stats_lock(project_id: str) -> threading.Lock:
@@ -91,15 +101,104 @@ def _get_projects_dir():
     return settings.PROJECTS_DIR
 
 
-def _build_project_stats(project_id: str) -> dict:
-    """构建项目统计数据（复用缓存，避免磁盘遍历）"""
-    storyboards = AssetService.list_assets(project_id, "storyboard")
+def _preinit_caches(project_id: str) -> None:
+    """预初始化 project_id 的缓存容器，避免 7 线程并发时的 setdefault 竞态"""
+    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
+    if project_id not in _assets_cache:
+        _assets_cache[project_id] = {}
+    if project_id not in _images_cache:
+        _images_cache[project_id] = []
+    if project_id not in _videos_cache:
+        _videos_cache[project_id] = []
+
+
+def _load_all_project_assets(project_id: str) -> dict:
+    """并行加载项目的全部 7 类资产数据到进程缓存，返回各项结果"""
+    _preinit_caches(project_id)
+
+    with _ASSET_LOADER_EXECUTOR as executor:
+        futures = {
+            "storyboards": executor.submit(AssetService.list_assets, project_id, "storyboard"),
+            "episodes": executor.submit(AssetService.list_assets, project_id, "episode"),
+            "characters": executor.submit(AssetService.list_assets, project_id, "character"),
+            "scenes": executor.submit(AssetService.list_assets, project_id, "scene"),
+            "props": executor.submit(AssetService.list_assets, project_id, "prop"),
+            "images": executor.submit(ImageService.list_images, project_id),
+            "videos": executor.submit(VideoService.list_videos, project_id),
+        }
+    return {key: future.result() for key, future in futures.items()}
+
+
+async def _ensure_project_loaded(project_id: str) -> None:
+    """确保项目数据已加载到进程缓存。若已在加载中则等待，若已加载则立即返回。"""
+    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
+
+    # 快速路径：内存中已有数据
+    has_cache = (
+        (project_id in _assets_cache)
+        or (project_id in _images_cache)
+        or (project_id in _videos_cache)
+    )
+    if has_cache:
+        return
+
+    # 检查是否需要等待正在进行的加载（先持锁读取状态，再在锁外等待）
+    async with _state_guard:
+        state = _project_load_state.get(project_id)
+        if state == "loaded":
+            _project_load_state.pop(project_id, None)  # 清理过时状态
+            return
+        if state == "loading":
+            event = _project_ready_events[project_id]
+        else:
+            # 标记为加载中
+            _project_load_state[project_id] = "loading"
+            event = asyncio.Event()
+            _project_ready_events[project_id] = event
+
+    if state == "loading":
+        await event.wait()
+        return
+
+    # 开始加载（event 已创建，state 已标记为 loading）
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(_ASSET_LOADER_EXECUTOR, _load_all_project_assets, project_id)
+    finally:
+        async with _state_guard:
+            _project_load_state[project_id] = "loaded"
+            event.set()
+
+
+def _build_project_stats(project_id: str, assets: dict = None) -> dict:
+    """构建项目统计数据（复用缓存，避免磁盘遍历）。
+
+    Args:
+        project_id: 项目 ID
+        assets: 预加载的资产数据，包含 storyboards/episodes/characters/scenes/props/images/videos。
+                若为 None，则从缓存或磁盘加载。
+    """
+    if assets is not None:
+        storyboards = assets["storyboards"]
+        videos = assets["videos"]
+        images = assets["images"]
+        episodes = assets["episodes"]
+        characters = assets["characters"]
+        scenes = assets["scenes"]
+        props = assets["props"]
+    else:
+        storyboards = AssetService.list_assets(project_id, "storyboard")
+        videos = VideoService.list_videos(project_id)
+        images = ImageService.list_images(project_id)
+        episodes = AssetService.list_assets(project_id, "episode")
+        characters = AssetService.list_assets(project_id, "character")
+        scenes = AssetService.list_assets(project_id, "scene")
+        props = AssetService.list_assets(project_id, "prop")
     total_storyboards = len(storyboards)
     storyboards_with_image = sum(1 for s in storyboards if s.get("image_id"))
 
     from app.api.generation.utils import get_image_cost as _gic, get_video_cost as _gvc
 
-    videos = VideoService.list_videos(project_id)
     completed_storyboard_ids: set = set()
     total_video_seconds = 0.0
     storyboard_video_seconds = 0.0
@@ -124,14 +223,9 @@ def _build_project_stats(project_id: str) -> dict:
                 completed_storyboard_ids.add(v["storyboard_id"])
 
     # 图片消耗改为按记录遍历（尊重 actual_cost / ZERO_COST_MODELS）
-    images = ImageService.list_images(project_id)
     total_image_cost = sum(_gic(img) for img in images)
     total_images = len(images)
     generated_images = sum(1 for img in images if img.get("model") not in {"manual_upload", "split"})
-    episodes = AssetService.list_assets(project_id, "episode")
-    characters = AssetService.list_assets(project_id, "character")
-    scenes = AssetService.list_assets(project_id, "scene")
-    props = AssetService.list_assets(project_id, "prop")
     total_assets = len(characters) + len(scenes) + len(props)
     other_cost = total_storyboards * 40 + total_assets * 4
     total_compute_spent = round(total_image_cost + total_video_compute_units + other_cost, 2)
@@ -195,7 +289,7 @@ def _build_user_cost_summary(projects: list[dict]) -> dict:
     }
 
 
-def _build_project_cost_breakdown(project_id: str) -> dict:
+def _build_project_cost_breakdown(project_id: str, assets: dict = None) -> dict:
     daily_costs: dict[str, dict] = {}
     episode_costs: dict[str, dict] = {}
 
@@ -221,8 +315,17 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
         entry[cost_type] += cost
         entry["total_cost"] += cost
 
-    episodes = AssetService.list_assets(project_id, "episode")
-    storyboards = AssetService.list_assets(project_id, "storyboard")
+    if assets is not None:
+        episodes = assets["episodes"]
+        storyboards = assets["storyboards"]
+        images = assets["images"]
+        videos = assets["videos"]
+    else:
+        episodes = AssetService.list_assets(project_id, "episode")
+        storyboards = AssetService.list_assets(project_id, "storyboard")
+        images = ImageService.list_images(project_id)
+        videos = VideoService.list_videos(project_id)
+
     storyboard_episode_map = {
         storyboard.get("asset_id"): storyboard.get("episode_id")
         for storyboard in storyboards
@@ -244,7 +347,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
             "total_cost": 0.0,
         }
 
-    for img in ImageService.list_images(project_id):
+    for img in images:
         cost = get_image_cost(img)
         created_at = img.get("created_at")
         if created_at:
@@ -254,7 +357,7 @@ def _build_project_cost_breakdown(project_id: str) -> dict:
             if episode_id:
                 add_episode_cost(episode_id, "image_cost", cost)
 
-    for video in VideoService.list_videos(project_id):
+    for video in videos:
         cost = get_video_cost(video)
         failed_cost = _get_policy_violation_cost(video)
         created_at = video.get("created_at")
@@ -300,11 +403,23 @@ def _build_project_daily_costs(project_id: str) -> list[dict]:
     return _build_project_cost_breakdown(project_id)["daily_costs"]
 
 
-def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[str, float]]:
+def _build_project_user_costs(project_id: str, images: list[dict] = None, videos: list[dict] = None) -> tuple[dict[str, dict], dict[str, float]]:
+    """构建项目用户消耗统计。
+
+    Args:
+        project_id: 项目 ID
+        images: 预加载的图片记录列表。若为 None，则从缓存/磁盘加载。
+        videos: 预加载的视频记录列表。若为 None，则从缓存/磁盘加载。
+    """
+    if images is None:
+        images = ImageService.list_images(project_id)
+    if videos is None:
+        videos = VideoService.list_videos(project_id)
+
     user_costs: dict[str, dict] = {}
     unknown_costs = {"image_cost": 0.0, "video_cost": 0.0, "failed_video_cost": 0.0, "total_cost": 0.0}
 
-    for img in ImageService.list_images(project_id):
+    for img in images:
         username = (img.get("created_by") or "").strip()
         cost = get_image_cost(img)
         if username:
@@ -315,7 +430,7 @@ def _build_project_user_costs(project_id: str) -> tuple[dict[str, dict], dict[st
             unknown_costs["image_cost"] += cost
             unknown_costs["total_cost"] += cost
 
-    for video in VideoService.list_videos(project_id):
+    for video in videos:
         username = (video.get("created_by") or "").strip()
         cost = get_video_cost(video)
         if username:
@@ -359,25 +474,46 @@ def _build_user_cost_summary_from_project_costs(project_costs: list[dict]) -> di
     return {"users": users, "unknown_cost": round(unknown_cost, 2)}
 
 
-def _get_project_home_stats(project_id: str) -> dict:
-    with _get_project_stats_lock(project_id):
-        from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
+async def _get_project_home_stats_async(project_id: str) -> dict:
+    """异步版本：先尝试快照，失败则并行加载资产后计算"""
+    from app.services.project_stats_snapshot_service import read_snapshot, write_snapshot
 
-        snapshot = read_snapshot(project_id)
-        if snapshot and snapshot.get("unknown_costs"):
-            print(f"[STATS SNAPSHOT HIT] project={project_id[:8]}")
-            return snapshot
+    # 1. 检查快照
+    snapshot = await asyncio.to_thread(read_snapshot, project_id)
+    if snapshot and snapshot.get("unknown_costs"):
+        print(f"[STATS SNAPSHOT HIT] project={project_id[:8]}")
+        return snapshot
 
-        stats = _build_project_stats(project_id)
-        user_costs, unknown_costs = _build_project_user_costs(project_id)
-        write_snapshot(project_id, stats, user_costs, unknown_costs)
-        print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]}")
-        return {
-            "stats": stats,
-            "user_costs": user_costs,
-            "unknown_cost": unknown_costs["total_cost"],
-            "unknown_costs": unknown_costs,
-        }
+    # 2. 确保项目数据已加载（自动处理并发去重）
+    await _ensure_project_loaded(project_id)
+
+    # 3. 从内存缓存获取数据（此时数据已在缓存中）
+    images = ImageService.list_images(project_id)
+    videos = VideoService.list_videos(project_id)
+    assets = {
+        "storyboards": AssetService.list_assets(project_id, "storyboard"),
+        "episodes": AssetService.list_assets(project_id, "episode"),
+        "characters": AssetService.list_assets(project_id, "character"),
+        "scenes": AssetService.list_assets(project_id, "scene"),
+        "props": AssetService.list_assets(project_id, "prop"),
+        "images": images,
+        "videos": videos,
+    }
+
+    # 4. 计算统计（CPU 密集型，放默认线程池）
+    stats = await asyncio.to_thread(_build_project_stats, project_id, assets)
+    user_costs, unknown_costs = await asyncio.to_thread(_build_project_user_costs, project_id, images, videos)
+
+    # 5. 写快照
+    await asyncio.to_thread(write_snapshot, project_id, stats, user_costs, unknown_costs)
+    print(f"[STATS SNAPSHOT WRITE] project={project_id[:8]}")
+
+    return {
+        "stats": stats,
+        "user_costs": user_costs,
+        "unknown_cost": unknown_costs["total_cost"],
+        "unknown_costs": unknown_costs,
+    }
 
 
 class ProjectCreate(BaseModel):
@@ -495,11 +631,11 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
         if saas_user:
             from app.services.user_saas_service import get_user_project_ids
             project_ids = await get_user_project_ids(saas_user["user_id"])
-            all_projects = ProjectService.list_projects()
+            all_projects = await asyncio.to_thread(ProjectService.list_projects)
             projects = [p for p in all_projects if p.get("project_id") in set(project_ids)]
             if include_stats:
                 for p in projects:
-                    p["stats"] = _build_project_stats(p["project_id"])
+                    p["stats"] = await asyncio.to_thread(_build_project_stats, p["project_id"])
                 return {
                     "projects": projects,
                     "user_summary": _build_user_cost_summary(projects),
@@ -507,7 +643,7 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
             return projects
         return []
 
-    projects = ProjectService.list_projects()
+    projects = await asyncio.to_thread(ProjectService.list_projects)
     admin_user = getattr(request.state, "admin_user", None)
     if admin_user and admin_user.get("role") == "user":
         user = get_user_by_username(admin_user["sub"])
@@ -519,7 +655,7 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
 
         async def _load_project_stats(project: dict) -> dict:
             async with semaphore:
-                return await asyncio.to_thread(_get_project_home_stats, project["project_id"])
+                return await _get_project_home_stats_async(project["project_id"])
 
         project_costs = await asyncio.gather(*[_load_project_stats(p) for p in projects])
         for p, item in zip(projects, project_costs):
@@ -537,11 +673,9 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
 @router.get("/{project_id}", response_model=dict)
 async def get_project(project_id: str):
     """获取项目详情"""
-    result = ProjectService.get_project(project_id)
+    result = await asyncio.to_thread(ProjectService.get_project, project_id)
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
-    from app.services.project_stats_snapshot_service import delete_snapshot
-    delete_snapshot(project_id)
     return result
 
 
@@ -591,7 +725,7 @@ async def get_project_stats(project_id: str):
     project_dir = _get_projects_dir() / project_id
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
-    return _build_project_stats(project_id)
+    return await asyncio.to_thread(_build_project_stats, project_id)
 
 
 @router.get("/{project_id}/cost-daily")
@@ -600,7 +734,7 @@ async def get_project_daily_costs(project_id: str):
     project_dir = _get_projects_dir() / project_id
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
-    return _build_project_daily_costs(project_id)
+    return await asyncio.to_thread(_build_project_daily_costs, project_id)
 
 
 @router.get("/{project_id}/cost-breakdown")
@@ -609,7 +743,7 @@ async def get_project_cost_breakdown(project_id: str):
     project_dir = _get_projects_dir() / project_id
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project not found")
-    return _build_project_cost_breakdown(project_id)
+    return await asyncio.to_thread(_build_project_cost_breakdown, project_id)
 
 
 @router.delete("/{project_id}")
@@ -644,6 +778,11 @@ async def set_project_budget(project_id: str, body: SetBudgetRequest, request: R
 @router.get("/stats/by-user")
 async def get_stats_by_user():
     """按用户汇总所有项目的实际消耗（基于 created_by 字段，优先 actual_cost）"""
+    return await asyncio.to_thread(_sync_get_stats_by_user)
+
+
+def _sync_get_stats_by_user():
+    """同步版本：遍历所有项目目录计算用户消耗"""
     import json as _json
     projects_dir = _get_projects_dir()
     user_costs: dict[str, dict] = {}  # username -> {image_cost, video_cost, total_cost}
@@ -693,3 +832,15 @@ async def get_stats_by_user():
         "users": users,
         "unknown_cost": round(unknown["total_cost"], 2),
     }
+
+
+@router.get("/{project_id}/loading-status")
+async def get_project_loading_status(project_id: str):
+    """查询项目数据是否已加载到内存缓存（前端用于判断是否需要显示加载遮罩）"""
+    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
+    ready = (
+        (project_id in _assets_cache)
+        or (project_id in _images_cache)
+        or (project_id in _videos_cache)
+    )
+    return {"ready": ready}

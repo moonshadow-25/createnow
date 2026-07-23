@@ -158,7 +158,6 @@ class AssetService:
         if project_id not in _assets_cache:
             _assets_cache[project_id] = {}
         _assets_cache[project_id][asset_type] = all_assets
-        _delete_stats_snapshot(project_id)
 
         print(
             f"[CACHE MISS] list_assets/{asset_type} | "
@@ -385,7 +384,6 @@ class ImageService:
                 )
 
             _images_cache[project_id] = images
-            _delete_stats_snapshot(project_id)
 
         return _images_cache[project_id]
 
@@ -615,7 +613,6 @@ class VideoService:
                     f"files={len(files)} | load={1000*(t1-t0):.1f}ms"
                 )
             _videos_cache[project_id] = videos
-            _delete_stats_snapshot(project_id)
         return _videos_cache[project_id]
 
     @staticmethod
