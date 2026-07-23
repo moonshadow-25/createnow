@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import threading
 import subprocess
 from pathlib import Path
 from typing import Optional, List
@@ -11,6 +12,7 @@ from ..core.config import settings
 # 进程级缓存：get_primary_videos_batch 首次扫描后缓存结果
 # key: project_id -> {storyboard_id: video_data}
 _primary_videos_batch_cache: dict = {}
+_primary_videos_batch_lock = threading.Lock()
 
 # 优先使用项目内置的 ffmpeg，其次 fallback 到系统 PATH
 _APP_BUNDLED_FFMPEG = Path(__file__).resolve().parents[1] / "bin" / "ffmpeg.exe"
@@ -228,7 +230,7 @@ class VideoService:
     @staticmethod
     def get_primary_videos_batch(project_id: str, storyboard_ids: List[str], *, videos_dir: str = None) -> dict:
         """
-        批量获取多个分镜的主视频（一次扫描全量缓存，后续 O(1) 查询）
+        批量获取多个分镜的主视频（一次扫描全量缓存，后续 O(1) 查询，线程安全）
 
         Returns:
             dict: {storyboard_id: video_data}，只包含有 local_path 的视频
@@ -242,54 +244,61 @@ class VideoService:
             id_set = set(storyboard_ids)
             return {sid: cached[sid] for sid in id_set if sid in cached}
 
-        # 慢速路径：全量扫描 + 缓存
-        t0 = time.perf_counter()
-        if videos_dir is None:
-            videos_dir = os.path.join(settings.DATA_DIR, "projects", project_id, "videos")
-        if not os.path.exists(videos_dir):
-            _primary_videos_batch_cache[project_id] = {}
-            return {}
+        # 慢速路径：持锁加载，双重检查避免多线程同时扫描
+        with _primary_videos_batch_lock:
+            if project_id in _primary_videos_batch_cache:
+                cached = _primary_videos_batch_cache[project_id]
+                id_set = set(storyboard_ids)
+                return {sid: cached[sid] for sid in id_set if sid in cached}
 
-        primary: dict = {}   # storyboard_id -> is_primary video
-        latest: dict = {}    # storyboard_id -> latest video (fallback)
+            # 全量扫描 + 缓存
+            t0 = time.perf_counter()
+            if videos_dir is None:
+                videos_dir = os.path.join(settings.DATA_DIR, "projects", project_id, "videos")
+            if not os.path.exists(videos_dir):
+                _primary_videos_batch_cache[project_id] = {}
+                return {}
 
-        json_count = 0
-        for filename in os.listdir(videos_dir):
-            if not filename.endswith('.json'):
-                continue
-            json_count += 1
-            try:
-                with open(os.path.join(videos_dir, filename), 'r', encoding='utf-8') as f:
-                    video = json.load(f)
-            except Exception:
-                continue
+            primary: dict = {}   # storyboard_id -> is_primary video
+            latest: dict = {}    # storyboard_id -> latest video (fallback)
 
-            sb_id = video.get("storyboard_id")
-            if not sb_id or not video.get("local_path"):
-                continue
+            json_count = 0
+            for filename in os.listdir(videos_dir):
+                if not filename.endswith('.json'):
+                    continue
+                json_count += 1
+                try:
+                    with open(os.path.join(videos_dir, filename), 'r', encoding='utf-8') as f:
+                        video = json.load(f)
+                except Exception:
+                    continue
 
-            if video.get("is_primary"):
-                primary[sb_id] = video
-            elif sb_id not in latest or video.get("created_at", "") > latest[sb_id].get("created_at", ""):
-                latest[sb_id] = video
+                sb_id = video.get("storyboard_id")
+                if not sb_id or not video.get("local_path"):
+                    continue
 
-        # 合并 + 缓存全量结果
-        all_matched = {**latest, **primary}
-        _primary_videos_batch_cache[project_id] = all_matched
+                if video.get("is_primary"):
+                    primary[sb_id] = video
+                elif sb_id not in latest or video.get("created_at", "") > latest[sb_id].get("created_at", ""):
+                    latest[sb_id] = video
 
-        t1 = time.perf_counter()
-        print(
-            f"[VIDEO BATCH] video_service.VideoService.get_primary_videos_batch | "
-            f"project={project_id[:8]} | "
-            f"video_jsons_scanned={json_count} | "
-            f"cached_entries={len(all_matched)} | "
-            f"requested={len(storyboard_ids)} | "
-            f"duration={1000*(t1-t0):.1f}ms (cold, cached for subsequent calls)"
-        )
+            # 合并 + 缓存全量结果
+            all_matched = {**latest, **primary}
+            _primary_videos_batch_cache[project_id] = all_matched
 
-        # 返回请求的子集
-        id_set = set(storyboard_ids)
-        return {sid: all_matched[sid] for sid in id_set if sid in all_matched}
+            t1 = time.perf_counter()
+            print(
+                f"[VIDEO BATCH] video_service.VideoService.get_primary_videos_batch | "
+                f"project={project_id[:8]} | "
+                f"video_jsons_scanned={json_count} | "
+                f"cached_entries={len(all_matched)} | "
+                f"requested={len(storyboard_ids)} | "
+                f"duration={1000*(t1-t0):.1f}ms (cold, cached for subsequent calls)"
+            )
+
+            # 返回请求的子集
+            id_set = set(storyboard_ids)
+            return {sid: all_matched[sid] for sid in id_set if sid in all_matched}
 
     @staticmethod
     def get_video_info(video_path: str) -> dict:

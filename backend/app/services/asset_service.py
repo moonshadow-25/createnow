@@ -43,7 +43,20 @@ _videos_cache_lock = threading.Lock()
 
 # key: project_id -> asset_type -> List[Dict]
 _assets_cache: Dict[str, Dict[str, List[Dict]]] = {}
-_assets_cache_lock = threading.Lock()
+# 按 (project_id, asset_type) 粒度的加载锁，不同类资产可并行加载
+_asset_load_locks: Dict[str, threading.Lock] = {}
+_asset_load_locks_guard = threading.Lock()
+
+
+def _get_asset_load_lock(project_id: str, asset_type: str) -> threading.Lock:
+    """获取或创建 (project_id, asset_type) 粒度的加载锁"""
+    key = f"{project_id}:{asset_type}"
+    if key in _asset_load_locks:
+        return _asset_load_locks[key]
+    with _asset_load_locks_guard:
+        if key not in _asset_load_locks:
+            _asset_load_locks[key] = threading.Lock()
+        return _asset_load_locks[key]
 
 
 def _delete_stats_snapshot(project_id: str) -> None:
@@ -132,7 +145,7 @@ class AssetService:
 
     @staticmethod
     def list_assets(project_id: str, asset_type: str, include_children: bool = False) -> List[Dict]:
-        """列出资产，首次从磁盘加载并缓存，后续直接走内存（线程安全）"""
+        """列出资产，首次从磁盘加载并缓存，后续直接走内存（线程安全，按类型粒度加锁）"""
         # 快速路径：缓存命中
         if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
             cache = _assets_cache[project_id][asset_type]
@@ -140,8 +153,9 @@ class AssetService:
                 return list(cache)
             return [a for a in cache if not a.get("parent_id")]
 
-        # 慢速路径：持锁加载，双重检查避免多线程同时读盘
-        with _assets_cache_lock:
+        # 慢速路径：按 (project, type) 粒度持锁，不同类可并行
+        type_lock = _get_asset_load_lock(project_id, asset_type)
+        with type_lock:
             if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
                 cache = _assets_cache[project_id][asset_type]
                 if include_children:
