@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
+import asyncio
 from typing import List, Optional, Union
 from pydantic import BaseModel
 from datetime import datetime
@@ -240,16 +241,16 @@ async def reverse_episode_video(
 async def list_episode_storyboards(project_id: str, episode_id: str):
     """列出剧集的所有分镜（包含主图URL）"""
     t0 = time.perf_counter()
-    storyboards = AssetService.list_assets(project_id, "storyboard")
+    storyboards = await asyncio.to_thread(AssetService.list_assets, project_id, "storyboard")
     episode_storyboards = [sb for sb in storyboards if sb.get("episode_id") == episode_id]
 
     asset_ids = [sb["asset_id"] for sb in episode_storyboards]
-    primary_images = ImageService.get_primary_images_batch(project_id, asset_ids)
+    primary_images = await asyncio.to_thread(ImageService.get_primary_images_batch, project_id, asset_ids)
     t1 = time.perf_counter()
 
     # 批量查询主视频用于注入 primary_video_url（无论是否有主图）
     videos_dir = str(_get_projects_dir() / project_id / "videos")
-    primary_videos = VideoService.get_primary_videos_batch(project_id, asset_ids, videos_dir=videos_dir) if asset_ids else {}
+    primary_videos = await asyncio.to_thread(VideoService.get_primary_videos_batch, project_id, asset_ids, videos_dir=videos_dir) if asset_ids else {}
 
     for sb in episode_storyboards:
         primary_image = primary_images.get(sb["asset_id"])
