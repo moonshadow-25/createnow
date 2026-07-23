@@ -243,14 +243,16 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
     t0 = time.perf_counter()
     storyboards = await asyncio.to_thread(AssetService.list_assets, project_id, "storyboard")
     episode_storyboards = [sb for sb in storyboards if sb.get("episode_id") == episode_id]
+    t1 = time.perf_counter()
 
     asset_ids = [sb["asset_id"] for sb in episode_storyboards]
     primary_images = await asyncio.to_thread(ImageService.get_primary_images_batch, project_id, asset_ids)
-    t1 = time.perf_counter()
+    t2 = time.perf_counter()
 
     # 批量查询主视频用于注入 primary_video_url（无论是否有主图）
     videos_dir = str(_get_projects_dir() / project_id / "videos")
     primary_videos = await asyncio.to_thread(VideoService.get_primary_videos_batch, project_id, asset_ids, videos_dir=videos_dir) if asset_ids else {}
+    t3 = time.perf_counter()
 
     for sb in episode_storyboards:
         primary_image = primary_images.get(sb["asset_id"])
@@ -303,8 +305,12 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
     episode_storyboards.sort(key=lambda x: x.get("sequence", 0))
 
     print(
-        f"[PERF] list_episode_storyboards | "
-        f"storyboards={len(episode_storyboards)} total={1000*(t1-t0):.1f}ms"
+        f"[PERF] list_episode_storyboards | project={project_id[:8]} | "
+        f"episode_storyboards={len(episode_storyboards)} | "
+        f"step1_list_storyboards={1000*(t1-t0):.1f}ms | "
+        f"step2_get_primary_images={1000*(t2-t1):.1f}ms | "
+        f"step3_get_primary_videos={1000*(t3-t2):.1f}ms | "
+        f"TOTAL={1000*(t3-t0):.1f}ms"
     )
     return episode_storyboards
 

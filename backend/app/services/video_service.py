@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import subprocess
 from pathlib import Path
 from typing import Optional, List
@@ -228,6 +229,7 @@ class VideoService:
         Returns:
             dict: {storyboard_id: video_data}，只包含有 local_path 的视频
         """
+        t0 = time.perf_counter()
         if not storyboard_ids:
             return {}
 
@@ -240,9 +242,11 @@ class VideoService:
         primary: dict = {}   # storyboard_id -> is_primary video
         latest: dict = {}    # storyboard_id -> latest video (fallback)
 
+        json_count = 0
         for filename in os.listdir(videos_dir):
             if not filename.endswith('.json'):
                 continue
+            json_count += 1
             try:
                 with open(os.path.join(videos_dir, filename), 'r', encoding='utf-8') as f:
                     video = json.load(f)
@@ -258,6 +262,15 @@ class VideoService:
             elif sb_id not in latest or video.get("created_at", "") > latest[sb_id].get("created_at", ""):
                 latest[sb_id] = video
 
+        t1 = time.perf_counter()
+        print(
+            f"[VIDEO BATCH] video_service.VideoService.get_primary_videos_batch | "
+            f"project={project_id[:8]} | "
+            f"video_jsons_scanned={json_count} | "
+            f"storyboard_ids_requested={len(storyboard_ids)} | "
+            f"matched={len(primary) + len(latest)} | "
+            f"duration={1000*(t1-t0):.1f}ms"
+        )
         return {**latest, **primary}
 
     @staticmethod

@@ -182,19 +182,6 @@ export function StoryboardDetail({
     return () => window.removeEventListener('vibe-drama:assets-created', handler);
   }, [projectId, selectedEpisode]);
 
-  // 数据加载完成后强制刷新（解决首次加载 storyboard 空白问题）
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.projectId === projectId) {
-        loadStoryboards();
-      }
-    };
-    window.addEventListener('project:data-ready', handler);
-    return () => window.removeEventListener('project:data-ready', handler);
-  }, [projectId, selectedEpisode]);
-
-  // 监听审核状态更新事件，重新加载图片状态（更新徽章）
   // 监听审核状态更新事件，重新加载图片状态（更新徽章）
   useEffect(() => {
     const handler = (e: Event) => {

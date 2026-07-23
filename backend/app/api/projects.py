@@ -5,6 +5,7 @@ import asyncio
 import concurrent.futures
 import json
 import threading
+import time
 import uuid
 from datetime import datetime
 
@@ -116,6 +117,7 @@ def _load_all_project_assets(project_id: str) -> dict:
     """并行加载项目的全部 7 类资产数据到进程缓存，返回各项结果"""
     _preinit_caches(project_id)
 
+    t0 = time.perf_counter()
     # 直接使用模块级 executor.submit()，不使用 with 上下文管理器
     # 因为本函数可能运行在该 executor 的线程中，with 退出时会 shutdown()
     # 尝试 join 当前线程，导致 RuntimeError: cannot join current thread
@@ -128,7 +130,19 @@ def _load_all_project_assets(project_id: str) -> dict:
         "images": _ASSET_LOADER_EXECUTOR.submit(ImageService.list_images, project_id),
         "videos": _ASSET_LOADER_EXECUTOR.submit(VideoService.list_videos, project_id),
     }
-    return {key: future.result() for key, future in futures.items()}
+    results = {}
+    for key, future in futures.items():
+        t_item = time.perf_counter()
+        results[key] = future.result()
+        dt = 1000 * (time.perf_counter() - t_item)
+        print(
+            f"[PRELOAD] project={project_id[:8]} | asset_type={key} | "
+            f"result_count={len(results[key]) if isinstance(results[key], list) else '?'} | "
+            f"resolve={dt:.1f}ms"
+        )
+    total_ms = 1000 * (time.perf_counter() - t0)
+    print(f"[PRELOAD] project={project_id[:8]} | DONE | total={total_ms:.1f}ms")
+    return results
 
 
 async def _ensure_project_loaded(project_id: str) -> None:
@@ -136,12 +150,18 @@ async def _ensure_project_loaded(project_id: str) -> None:
     from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
 
     # 快速路径：内存中已有数据
-    has_cache = (
-        (project_id in _assets_cache)
-        or (project_id in _images_cache)
-        or (project_id in _videos_cache)
-    )
+    has_assets = project_id in _assets_cache
+    has_images = project_id in _images_cache
+    has_videos = project_id in _videos_cache
+    has_cache = has_assets or has_images or has_videos
     if has_cache:
+        print(
+            f"[ENSURE LOADED] SKIP project={project_id[:8]} | "
+            f"reason=already_cached | "
+            f"_assets_cache={has_assets} | "
+            f"_images_cache={has_images} | "
+            f"_videos_cache={has_videos}"
+        )
         return
 
     # 检查是否需要等待正在进行的加载（先持锁读取状态，再在锁外等待）
@@ -159,13 +179,19 @@ async def _ensure_project_loaded(project_id: str) -> None:
             _project_ready_events[project_id] = event
 
     if state == "loading":
+        print(f"[ENSURE LOADED] WAIT project={project_id[:8]} | waiting for another request to finish loading")
         await event.wait()
+        print(f"[ENSURE LOADED] WAIT_DONE project={project_id[:8]} | load completed by another request")
         return
 
     # 开始加载（event 已创建，state 已标记为 loading）
+    t_load = time.perf_counter()
+    print(f"[ENSURE LOADED] TRIGGER project={project_id[:8]} | starting _load_all_project_assets")
     try:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(_ASSET_LOADER_EXECUTOR, _load_all_project_assets, project_id)
+        dt = 1000 * (time.perf_counter() - t_load)
+        print(f"[ENSURE LOADED] DONE project={project_id[:8]} | load took {dt:.1f}ms")
     finally:
         async with _state_guard:
             _project_load_state[project_id] = "loaded"
@@ -485,6 +511,7 @@ async def _get_project_home_stats_async(project_id: str) -> dict:
     if snapshot and snapshot.get("unknown_costs"):
         print(f"[STATS SNAPSHOT HIT] project={project_id[:8]}")
         return snapshot
+    print(f"[STATS SNAPSHOT MISS] project={project_id[:8]} | will load assets and compute")
 
     # 2. 确保项目数据已加载（自动处理并发去重）
     await _ensure_project_loaded(project_id)

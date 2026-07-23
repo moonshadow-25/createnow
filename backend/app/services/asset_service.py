@@ -379,11 +379,16 @@ class ImageService:
                         images.append(json.load(f))
                 t1 = time.perf_counter()
                 print(
-                    f"[CACHE MISS] ImageService | project={project_id[:8]} | "
+                    f"[CACHE MISS] ImageService._get_images_cache | project={project_id[:8]} | "
                     f"files={len(files)} | load={1000*(t1-t0):.1f}ms"
                 )
 
             _images_cache[project_id] = images
+        else:
+            print(
+                f"[CACHE HIT] ImageService._get_images_cache | project={project_id[:8]} | "
+                f"cached_files={len(_images_cache[project_id])}"
+            )
 
         return _images_cache[project_id]
 
