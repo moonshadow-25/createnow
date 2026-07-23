@@ -71,14 +71,6 @@ export default function ProjectPage() {
   useEffect(() => {
     if (!projectId) return;
     if (!projectWithStats?.stats || !projectWithStats?.unknown_costs) {
-      console.warn(
-        '[LOOP-DEBUG] fetchProjects triggered |',
-        'projectId:', projectId?.slice(0, 8),
-        'hasStats:', !!projectWithStats?.stats,
-        'hasUnknownCosts:', !!projectWithStats?.unknown_costs,
-        'unknownCosts is undefined:', projectWithStats?.unknown_costs === undefined,
-        'unknownCosts is null:', projectWithStats?.unknown_costs === null,
-      );
       fetchProjects();
     }
   }, [projectId, projectWithStats?.stats, projectWithStats?.unknown_costs, fetchProjects]);
@@ -247,7 +239,7 @@ export default function ProjectPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [projectId, loadedProjectId]);
+  }, [projectId]);
 
   const handleOpenSettings = () => {
     setShowSettings(true);

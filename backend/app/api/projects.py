@@ -678,6 +678,9 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
             if include_stats:
                 for p in projects:
                     p["stats"] = await asyncio.to_thread(_build_project_stats, p["project_id"])
+                    user_costs, unknown_costs = await asyncio.to_thread(_build_project_user_costs, p["project_id"])
+                    p["user_costs"] = user_costs or {}
+                    p["unknown_costs"] = unknown_costs or {}
                 return {
                     "projects": projects,
                     "user_summary": _build_user_cost_summary(projects),
