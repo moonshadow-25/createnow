@@ -34,8 +34,18 @@ def _get_projects_dir() -> Path:
 # 首次访问时从磁盘加载，之后读写全走内存，磁盘仍保持同步写入。
 # key: project_id -> List[Dict]
 _images_cache: Dict[str, List[Dict]] = {}
-_images_cache_lock = threading.Lock()
-_images_loading: Dict[str, threading.Lock] = {}  # 每项目一把加载锁，防并发重复读盘
+_images_cache_locks: Dict[str, threading.Lock] = {}
+_images_cache_locks_guard = threading.Lock()
+
+
+def _get_images_cache_lock(project_id: str) -> threading.Lock:
+    """获取或创建 project 粒度的 images 加载锁"""
+    if project_id in _images_cache_locks:
+        return _images_cache_locks[project_id]
+    with _images_cache_locks_guard:
+        if project_id not in _images_cache_locks:
+            _images_cache_locks[project_id] = threading.Lock()
+        return _images_cache_locks[project_id]
 
 # key: project_id -> List[Dict]
 _videos_cache: Dict[str, List[Dict]] = {}
@@ -401,8 +411,9 @@ class ImageService:
             )
             return _images_cache[project_id]
 
-        # 慢速路径：持锁加载，双重检查避免多线程同时读盘
-        with _images_cache_lock:
+        # 慢速路径：按 project 粒度持锁，不同项目可并行加载
+        lock = _get_images_cache_lock(project_id)
+        with lock:
             if project_id in _images_cache:
                 print(
                     f"[CACHE HIT] ImageService._get_images_cache | project={project_id[:8]} | "

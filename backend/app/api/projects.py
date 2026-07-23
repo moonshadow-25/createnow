@@ -112,26 +112,15 @@ def _preinit_caches(project_id: str) -> None:
 def _load_all_project_assets(project_id: str) -> dict:
     """并行加载项目的全部 7 类资产数据到进程缓存，返回各项结果。
 
-    策略：先单独加载 images（5860 文件是瓶颈），填充 _images_cache 后
-    再并行加载其他 6 类。这样并发请求在 _get_images_cache 的锁上等待，
-    锁释放后立即命中缓存，避免多个线程同时读盘。
+    _get_images_cache 和 _assets_cache 均按 (project, type) 粒度持锁，
+    不同项目和不同类型可真正并行，无需串行隔离。
     """
     _preinit_caches(project_id)
     results = {}
     t0 = time.perf_counter()
 
-    # 第一阶段：先加载 images（最重的一类，填充 _images_cache）
-    t_img = time.perf_counter()
-    results["images"] = ImageService.list_images(project_id)
-    dt_img = 1000 * (time.perf_counter() - t_img)
-    print(
-        f"[PRELOAD] project={project_id[:8]} | asset_type=images (PHASE 1, solo) | "
-        f"result_count={len(results['images'])} | resolve={dt_img:.1f}ms"
-    )
-
-    # 第二阶段：images 缓存已就绪，并行加载其余 6 类
-    t2 = time.perf_counter()
-    other_futures = {
+    futures = {
+        "images": _ASSET_LOADER_EXECUTOR.submit(ImageService.list_images, project_id),
         "storyboards": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "storyboard"),
         "episodes": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "episode"),
         "characters": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "character"),
@@ -139,12 +128,12 @@ def _load_all_project_assets(project_id: str) -> dict:
         "props": _ASSET_LOADER_EXECUTOR.submit(AssetService.list_assets, project_id, "prop"),
         "videos": _ASSET_LOADER_EXECUTOR.submit(VideoService.list_videos, project_id),
     }
-    for key, future in other_futures.items():
+    for key, future in futures.items():
         t_item = time.perf_counter()
         results[key] = future.result()
         dt = 1000 * (time.perf_counter() - t_item)
         print(
-            f"[PRELOAD] project={project_id[:8]} | asset_type={key} (phase 2) | "
+            f"[PRELOAD] project={project_id[:8]} | asset_type={key} | "
             f"result_count={len(results[key]) if isinstance(results[key], list) else '?'} | "
             f"resolve={dt:.1f}ms"
         )
