@@ -719,6 +719,20 @@ async def list_projects(request: Request, include_stats: bool = Query(False)):
     return projects
 
 
+@router.get("/loading-progress")
+async def get_homepage_loading_progress():
+    """查询主页项目统计加载进度"""
+    nonlocal_total = _homepage_load_total
+    nonlocal_done = _homepage_load_done
+    ready = nonlocal_done >= nonlocal_total and nonlocal_total > 0
+    return {
+        "ready": ready,
+        "total_projects": nonlocal_total,
+        "projects_loaded": nonlocal_done,
+        "progress_pct": round(nonlocal_done / nonlocal_total * 100) if nonlocal_total else 0,
+    }
+
+
 @router.get("/{project_id}", response_model=dict)
 async def get_project(project_id: str):
     """获取项目详情"""
@@ -913,18 +927,4 @@ async def get_project_loading_status(project_id: str):
         "total_assets": len(ALL_TYPES),
         "images_loaded": images_loaded,
         "progress_pct": round(done_steps / total_steps * 100) if total_steps else 0,
-    }
-
-
-@router.get("/loading-progress")
-async def get_homepage_loading_progress():
-    """查询主页项目统计加载进度"""
-    nonlocal_total = _homepage_load_total
-    nonlocal_done = _homepage_load_done
-    ready = nonlocal_done >= nonlocal_total and nonlocal_total > 0
-    return {
-        "ready": ready,
-        "total_projects": nonlocal_total,
-        "projects_loaded": nonlocal_done,
-        "progress_pct": round(nonlocal_done / nonlocal_total * 100) if nonlocal_total else 0,
     }
