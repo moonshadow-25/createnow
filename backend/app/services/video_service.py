@@ -8,6 +8,10 @@ from uuid import uuid4
 from datetime import datetime
 from ..core.config import settings
 
+# 进程级缓存：get_primary_videos_batch 首次扫描后缓存结果
+# key: project_id -> {storyboard_id: video_data}
+_primary_videos_batch_cache: dict = {}
+
 # 优先使用项目内置的 ffmpeg，其次 fallback 到系统 PATH
 _APP_BUNDLED_FFMPEG = Path(__file__).resolve().parents[1] / "bin" / "ffmpeg.exe"
 _LEGACY_BUNDLED_FFMPEG = Path(__file__).resolve().parents[2] / "bin" / "ffmpeg.exe"
@@ -224,21 +228,28 @@ class VideoService:
     @staticmethod
     def get_primary_videos_batch(project_id: str, storyboard_ids: List[str], *, videos_dir: str = None) -> dict:
         """
-        批量获取多个分镜的主视频（一次遍历，效率等同 ImageService.get_primary_images_batch）
+        批量获取多个分镜的主视频（一次扫描全量缓存，后续 O(1) 查询）
 
         Returns:
             dict: {storyboard_id: video_data}，只包含有 local_path 的视频
         """
-        t0 = time.perf_counter()
         if not storyboard_ids:
             return {}
 
+        # 快速路径：缓存命中 → O(storyboard_ids) 过滤
+        if project_id in _primary_videos_batch_cache:
+            cached = _primary_videos_batch_cache[project_id]
+            id_set = set(storyboard_ids)
+            return {sid: cached[sid] for sid in id_set if sid in cached}
+
+        # 慢速路径：全量扫描 + 缓存
+        t0 = time.perf_counter()
         if videos_dir is None:
             videos_dir = os.path.join(settings.DATA_DIR, "projects", project_id, "videos")
         if not os.path.exists(videos_dir):
+            _primary_videos_batch_cache[project_id] = {}
             return {}
 
-        id_set = set(storyboard_ids)
         primary: dict = {}   # storyboard_id -> is_primary video
         latest: dict = {}    # storyboard_id -> latest video (fallback)
 
@@ -254,7 +265,7 @@ class VideoService:
                 continue
 
             sb_id = video.get("storyboard_id")
-            if sb_id not in id_set or not video.get("local_path"):
+            if not sb_id or not video.get("local_path"):
                 continue
 
             if video.get("is_primary"):
@@ -262,16 +273,23 @@ class VideoService:
             elif sb_id not in latest or video.get("created_at", "") > latest[sb_id].get("created_at", ""):
                 latest[sb_id] = video
 
+        # 合并 + 缓存全量结果
+        all_matched = {**latest, **primary}
+        _primary_videos_batch_cache[project_id] = all_matched
+
         t1 = time.perf_counter()
         print(
             f"[VIDEO BATCH] video_service.VideoService.get_primary_videos_batch | "
             f"project={project_id[:8]} | "
             f"video_jsons_scanned={json_count} | "
-            f"storyboard_ids_requested={len(storyboard_ids)} | "
-            f"matched={len(primary) + len(latest)} | "
-            f"duration={1000*(t1-t0):.1f}ms"
+            f"cached_entries={len(all_matched)} | "
+            f"requested={len(storyboard_ids)} | "
+            f"duration={1000*(t1-t0):.1f}ms (cold, cached for subsequent calls)"
         )
-        return {**latest, **primary}
+
+        # 返回请求的子集
+        id_set = set(storyboard_ids)
+        return {sid: all_matched[sid] for sid in id_set if sid in all_matched}
 
     @staticmethod
     def get_video_info(video_path: str) -> dict:

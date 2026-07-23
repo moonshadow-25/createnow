@@ -39,9 +39,11 @@ _images_loading: Dict[str, threading.Lock] = {}  # 每项目一把加载锁，�
 
 # key: project_id -> List[Dict]
 _videos_cache: Dict[str, List[Dict]] = {}
+_videos_cache_lock = threading.Lock()
 
 # key: project_id -> asset_type -> List[Dict]
 _assets_cache: Dict[str, Dict[str, List[Dict]]] = {}
+_assets_cache_lock = threading.Lock()
 
 
 def _delete_stats_snapshot(project_id: str) -> None:
@@ -130,47 +132,55 @@ class AssetService:
 
     @staticmethod
     def list_assets(project_id: str, asset_type: str, include_children: bool = False) -> List[Dict]:
-        """列出资产，首次从磁盘加载并缓存，后续直接走内存"""
-        # 检查缓存
+        """列出资产，首次从磁盘加载并缓存，后续直接走内存（线程安全）"""
+        # 快速路径：缓存命中
         if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
             cache = _assets_cache[project_id][asset_type]
             if include_children:
                 return list(cache)
             return [a for a in cache if not a.get("parent_id")]
 
-        # 缓存未命中，从磁盘加载
-        project_dir = _get_projects_dir() / project_id
-        asset_dir = project_dir / f"{asset_type}s"
+        # 慢速路径：持锁加载，双重检查避免多线程同时读盘
+        with _assets_cache_lock:
+            if project_id in _assets_cache and asset_type in _assets_cache[project_id]:
+                cache = _assets_cache[project_id][asset_type]
+                if include_children:
+                    return list(cache)
+                return [a for a in cache if not a.get("parent_id")]
 
-        if not asset_dir.exists():
-            return []
+            # 缓存未命中，从磁盘加载
+            project_dir = _get_projects_dir() / project_id
+            asset_dir = project_dir / f"{asset_type}s"
 
-        t0 = time.perf_counter()
-        files = list(asset_dir.glob("*.json"))
-        t1 = time.perf_counter()
+            if not asset_dir.exists():
+                return []
 
-        all_assets = []
-        for file_path in files:
-            with open(file_path, "r", encoding="utf-8") as f:
-                all_assets.append(json.load(f))
+            t0 = time.perf_counter()
+            files = list(asset_dir.glob("*.json"))
+            t1 = time.perf_counter()
 
-        t2 = time.perf_counter()
-        all_assets.sort(key=lambda x: x.get("created_at", ""))
+            all_assets = []
+            for file_path in files:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    all_assets.append(json.load(f))
 
-        # 存入缓存（存全量，include_children 过滤在返回时做）
-        if project_id not in _assets_cache:
-            _assets_cache[project_id] = {}
-        _assets_cache[project_id][asset_type] = all_assets
+            t2 = time.perf_counter()
+            all_assets.sort(key=lambda x: x.get("created_at", ""))
 
-        print(
-            f"[CACHE MISS] list_assets/{asset_type} | "
-            f"files={len(files)} loaded={len(all_assets)} | "
-            f"glob={1000*(t1-t0):.1f}ms read_json={1000*(t2-t1):.1f}ms"
-        )
+            # 存入缓存（存全量，include_children 过滤在返回时做）
+            if project_id not in _assets_cache:
+                _assets_cache[project_id] = {}
+            _assets_cache[project_id][asset_type] = all_assets
 
-        if include_children:
-            return list(all_assets)
-        return [a for a in all_assets if not a.get("parent_id")]
+            print(
+                f"[CACHE MISS] list_assets/{asset_type} | "
+                f"files={len(files)} loaded={len(all_assets)} | "
+                f"glob={1000*(t1-t0):.1f}ms read_json={1000*(t2-t1):.1f}ms"
+            )
+
+            if include_children:
+                return list(all_assets)
+            return [a for a in all_assets if not a.get("parent_id")]
 
     @staticmethod
     def delete_asset(project_id: str, asset_type: str, asset_id: str) -> bool:
@@ -612,8 +622,14 @@ class VideoService:
 
     @staticmethod
     def _get_cache(project_id: str) -> List[Dict]:
-        """返回项目视频缓存列表，首次访问时从磁盘加载"""
-        if project_id not in _videos_cache:
+        """返回项目视频缓存列表，首次访问时从磁盘加载（线程安全）"""
+        if project_id in _videos_cache:
+            return _videos_cache[project_id]
+
+        with _videos_cache_lock:
+            if project_id in _videos_cache:
+                return _videos_cache[project_id]
+
             project_dir = _get_projects_dir() / project_id
             videos_dir = project_dir / "videos"
             videos: List[Dict] = []
