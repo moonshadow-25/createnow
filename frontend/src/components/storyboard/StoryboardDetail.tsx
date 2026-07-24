@@ -493,7 +493,6 @@ export function StoryboardDetail({
       loadImageStatuses(sortedData);
 
       // 首次加载完成时通知父组件（ProjectPage 据此隐藏遮罩）
-      console.warn('[MASK-DEBUG] loadStoryboards success | fired:', storyboardsReadyFired.current, '| hasCallback:', !!onStoryboardsReady, '| count:', sortedData.length);
       if (!storyboardsReadyFired.current && onStoryboardsReady) {
         storyboardsReadyFired.current = true;
         onStoryboardsReady();
