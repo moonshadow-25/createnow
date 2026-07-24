@@ -227,8 +227,17 @@ export default function ProjectPage() {
           // 项目无剧集 → 无需等待 storyboard 加载
           // 用 getState() 绕过闭包：episodesInitLoaded 不在 effect 依赖中，闭包值可能是旧的
           const assetState = useAssetStore.getState();
+          console.warn('[MASK-DEBUG] data.ready=true |',
+            'episodes:', assetState.episodes.length,
+            'loadedProjectId:', assetState.loadedProjectId?.slice(0, 8),
+            'projectId:', projectId?.slice(0, 8),
+            'match:', assetState.loadedProjectId === projectId,
+          );
           if (assetState.episodes.length === 0 && assetState.loadedProjectId === projectId) {
             setStoryboardsReady(true);
+          } else if (assetState.loadedProjectId !== projectId) {
+            // 前端资产尚未拉取完成 → 继续轮询等待
+            timer = setTimeout(check, 500);
           }
         } else {
           timer = setTimeout(check, 500);
