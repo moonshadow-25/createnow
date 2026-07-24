@@ -224,6 +224,10 @@ export default function ProjectPage() {
         // 后端缓存就绪 + 前端 assetStore 已拉取过该项目 → 数据真正可用
         if (data.ready) {
           setProjectDataLoading(false);
+          // 项目无剧集 → 无需等待 storyboard 加载
+          if (episodesInitLoaded && episodes.length === 0) {
+            setStoryboardsReady(true);
+          }
         } else {
           timer = setTimeout(check, 500);
         }
