@@ -225,7 +225,9 @@ export default function ProjectPage() {
         if (data.ready) {
           setProjectDataLoading(false);
           // 项目无剧集 → 无需等待 storyboard 加载
-          if (episodesInitLoaded && episodes.length === 0) {
+          // 用 getState() 绕过闭包：episodesInitLoaded 不在 effect 依赖中，闭包值可能是旧的
+          const assetState = useAssetStore.getState();
+          if (assetState.episodes.length === 0 && assetState.loadedProjectId === projectId) {
             setStoryboardsReady(true);
           }
         } else {
