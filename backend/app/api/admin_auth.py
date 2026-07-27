@@ -166,27 +166,32 @@ async def admin_clear_cache(
     - project_id 为空：清除所有项目缓存
     - project_id 有值：仅清除该项目缓存
     """
-    from app.services.asset_service import _assets_cache, _images_cache
+    from app.services.asset_service import _assets_cache, _images_cache, _videos_cache
 
     if project_id:
         assets_cleared = bool(_assets_cache.pop(project_id, None))
         images_cleared = bool(_images_cache.pop(project_id, None))
+        videos_cleared = bool(_videos_cache.pop(project_id, None))
         return {
             "success": True,
             "project_id": project_id,
             "assets_cache_cleared": assets_cleared,
             "images_cache_cleared": images_cleared,
+            "videos_cache_cleared": videos_cleared,
         }
     else:
         assets_count = len(_assets_cache)
         images_count = len(_images_cache)
+        videos_count = len(_videos_cache)
         _assets_cache.clear()
         _images_cache.clear()
+        _videos_cache.clear()
         return {
             "success": True,
             "project_id": None,
             "assets_projects_cleared": assets_count,
             "images_projects_cleared": images_count,
+            "videos_projects_cleared": videos_count,
         }
 
 

@@ -250,8 +250,7 @@ async def list_episode_storyboards(project_id: str, episode_id: str):
     t2 = time.perf_counter()
 
     # 批量查询主视频用于注入 primary_video_url（无论是否有主图）
-    videos_dir = str(_get_projects_dir() / project_id / "videos")
-    primary_videos = await asyncio.to_thread(VideoService.get_primary_videos_batch, project_id, asset_ids, videos_dir=videos_dir) if asset_ids else {}
+    primary_videos = await asyncio.to_thread(VideoService.get_primary_videos_batch, project_id, asset_ids) if asset_ids else {}
     t3 = time.perf_counter()
 
     for sb in episode_storyboards:
@@ -398,10 +397,7 @@ async def get_video_thumbnail(project_id: str, storyboard_id: str):
     首次请求时用 FFmpeg 提取并缓存到 videos/thumbnails/{video_id}.jpg，
     后续直接返回缓存文件。
     """
-    projects_dir = _get_projects_dir()
-    videos_dir = str(projects_dir / project_id / "videos")
-
-    primary_video = VideoService.get_primary_video(project_id, storyboard_id, videos_dir=videos_dir)
+    primary_video = VideoService.get_primary_video(project_id, storyboard_id)
     if not primary_video or not primary_video.get("local_path"):
         raise HTTPException(status_code=404, detail="No completed video for this storyboard")
 
