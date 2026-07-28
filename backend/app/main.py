@@ -37,7 +37,8 @@ from app.api import (
     assets_router,
     materials_router,
     conversation_router,
-    generation_router
+    generation_router,
+    silicon_platform_router,
 )
 from app.api.storyboards import router as storyboards_router
 from app.api.videos import router as videos_router
@@ -713,6 +714,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(admin_auth_router, prefix="/api")
 app.include_router(user_auth_router, prefix="/api")
 app.include_router(full_script_router, prefix="/api")
+app.include_router(silicon_platform_router, prefix="/api")
 
 
 # ==================== 前端静态文件服务 ====================

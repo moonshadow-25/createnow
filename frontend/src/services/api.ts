@@ -133,6 +133,22 @@ export const materialApi = {
     api.post(`/projects/${projectId}/materials/${materialId}/audit-resubmit-all`),
 };
 
+// 硅星人角色库 API
+export const siliconPlatformApi = {
+  getCredentials: (projectId: string) =>
+    api.get(`/projects/${projectId}/platform/silicon/credentials`),
+  saveCredentials: (projectId: string, data: { app_id: string; app_secret: string }) =>
+    api.put(`/projects/${projectId}/platform/silicon/credentials`, data),
+  listTalents: (projectId: string, params?: { search?: string; page?: number; page_size?: number }) =>
+    api.get(`/projects/${projectId}/platform/silicon/talents`, { params }),
+  getTalent: (projectId: string, talentId: number) =>
+    api.get(`/projects/${projectId}/platform/silicon/talents/${talentId}`),
+  getTalentAssets: (projectId: string, talentId: number) =>
+    api.get(`/projects/${projectId}/platform/silicon/talents/${talentId}/assets`),
+  acquire: (projectId: string, data: { asset_id: string; role_type: string; character_id: string; project_name?: string }) =>
+    api.post(`/projects/${projectId}/platform/silicon/acquire`, data),
+};
+
 // 对话相关API
 export const chatApi = {
   send: (projectId: string, message: string, conversationId?: string) => {
@@ -756,7 +772,7 @@ export const versionApi = {
   checkUpdate: () => api.get('/version/check'),
   triggerUpdate: () => api.post('/version/update'),
   getFrontendConfig: () => api.get('/config'),
-  updateUiConfig: (data: { hide_cost_for_subaccounts?: boolean; show_historical_failed_refunds?: boolean; credits_per_yuan?: number; app_name?: string }) => api.put('/config/ui', data),
+  updateUiConfig: (data: { hide_cost_for_subaccounts?: boolean; show_historical_failed_refunds?: boolean; enable_silicon_platform?: boolean; credits_per_yuan?: number; app_name?: string }) => api.put('/config/ui', data),
   updateCreatenowModelConfig: (data: any) => api.put('/config/createnow-models', data),
 };
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Plus, Info, Mic, Upload, Play, Pause } from 'lucide-react';
+import { Trash2, Images, ChevronDown, ChevronRight, Wand2, ImagePlus, Edit3, CheckCircle, AlertCircle, X, Plus, Info, Mic, Upload, Play, Pause, Download } from 'lucide-react';
 import { useToast } from '@/components/common/Toast';
 import { ImageGallery } from './ImageGallery';
 import { assetApi, generationApi } from '@/services/api';
@@ -8,8 +8,10 @@ import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore'
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
 import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
+import { useUiConfigStore } from '@/store/uiConfigStore';
 import { getDefaultImageSize, getDefaultServiceModel } from '@/utils/generationDefaults';
 import { normalizeTags, toggleTag } from '@/utils/assetTags';
+import { PlatformImagePicker } from './PlatformImagePicker';
 
 interface AssetCardProps {
   projectId: string;
@@ -53,6 +55,9 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
   const [showImageEditDialog, setShowImageEditDialog] = useState(false);
   // 隐藏图片状态
   const [hiddenImageIds, setHiddenImageIds] = useState<Set<string>>(new Set());
+  // 平台导入
+  const enableSiliconPlatform = useUiConfigStore(s => s.enableSiliconPlatform);
+  const [showPlatformPicker, setShowPlatformPicker] = useState(false);
 
   // 音色状态（仅角色）
   const [voicePrompt, setVoicePrompt] = useState(asset.voice_prompt || '');
@@ -871,6 +876,16 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
                         <ImagePlus size={16} />
                         {generating ? '生成中...' : '生成图片'}
                       </button>
+                      {enableSiliconPlatform && (
+                        <button
+                          onClick={() => setShowPlatformPicker(true)}
+                          className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg"
+                          disabled={generating}
+                        >
+                          <Download size={16} />
+                          从平台导入
+                        </button>
+                      )}
                     </div>
                   </div>
               </div>
@@ -1206,6 +1221,21 @@ export function AssetCard({ projectId, assetType, asset, onDeleted, childAssets 
             onDeleted();
           }}
           onClose={() => setShowImageEditDialog(false)}
+        />
+      )}
+
+      {/* 硅星人平台导入 */}
+      {showPlatformPicker && (
+        <PlatformImagePicker
+          open={showPlatformPicker}
+          projectId={projectId}
+          characterName={asset.name}
+          characterId={asset.asset_id}
+          onClose={() => setShowPlatformPicker(false)}
+          onImported={async () => {
+            await loadImages();
+            onDeleted();
+          }}
         />
       )}
     </>

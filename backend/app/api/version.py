@@ -142,6 +142,7 @@ async def get_frontend_config():
         "deploy_mode": settings.DEPLOY_MODE,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
         "show_historical_failed_refunds": bool(ui_cfg.get("show_historical_failed_refunds", False)),
+        "enable_silicon_platform": bool(ui_cfg.get("enable_silicon_platform", False)),
         "credits_per_yuan": float(ui_cfg.get("credits_per_yuan") or 200),
         "app_name": app_name,
         "createnow_model_config": get_createnow_model_config(),
@@ -162,6 +163,8 @@ async def update_ui_config(request: Request, body: dict):
         raise HTTPException(status_code=403, detail="仅管理员可修改该配置")
     if "show_historical_failed_refunds" in body and admin_user.get("sub") != "admin":
         raise HTTPException(status_code=403, detail="仅超级管理员可修改历史失败待退费显示")
+    if "enable_silicon_platform" in body and admin_user.get("sub") != "admin":
+        raise HTTPException(status_code=403, detail="仅超级管理员可修改角色库开关")
 
     cfg = _read_global_config()
     if not isinstance(cfg, dict):
@@ -174,6 +177,8 @@ async def update_ui_config(request: Request, body: dict):
         ui_cfg["hide_cost_for_subaccounts"] = bool(body.get("hide_cost_for_subaccounts", False))
     if "show_historical_failed_refunds" in body:
         ui_cfg["show_historical_failed_refunds"] = bool(body.get("show_historical_failed_refunds", False))
+    if "enable_silicon_platform" in body:
+        ui_cfg["enable_silicon_platform"] = bool(body.get("enable_silicon_platform", False))
     if "credits_per_yuan" in body:
         try:
             credits_per_yuan = float(body.get("credits_per_yuan"))
@@ -197,6 +202,7 @@ async def update_ui_config(request: Request, body: dict):
         "success": True,
         "hide_cost_for_subaccounts": bool(ui_cfg.get("hide_cost_for_subaccounts", False)),
         "show_historical_failed_refunds": bool(ui_cfg.get("show_historical_failed_refunds", False)),
+        "enable_silicon_platform": bool(ui_cfg.get("enable_silicon_platform", False)),
         "credits_per_yuan": float(ui_cfg.get("credits_per_yuan") or 200),
         "app_name": str(ui_cfg.get("app_name") or "ViPro").strip() or "ViPro",
     }

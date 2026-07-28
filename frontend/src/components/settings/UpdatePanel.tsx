@@ -20,7 +20,10 @@ export function UpdatePanel() {
   const isSuperAdmin = username === 'admin';
   const showHistoricalFailedRefunds = useUiConfigStore((s) => s.showHistoricalFailedRefunds);
   const saveShowHistoricalFailedRefunds = useUiConfigStore((s) => s.saveShowHistoricalFailedRefunds);
+  const enableSiliconPlatform = useUiConfigStore((s) => s.enableSiliconPlatform);
+  const saveEnableSiliconPlatform = useUiConfigStore((s) => s.saveEnableSiliconPlatform);
   const [isSavingHistoricalFailedRefunds, setIsSavingHistoricalFailedRefunds] = useState(false);
+  const [isSavingSiliconPlatform, setIsSavingSiliconPlatform] = useState(false);
   const [state, setState] = useState<State>('idle');
   const frontendVersion = __APP_VERSION__;
   const frontendReleaseDate = __APP_RELEASE_DATE__;
@@ -71,6 +74,19 @@ export function UpdatePanel() {
       toast(e.response?.data?.detail || e.message || '保存失败', 'error');
     } finally {
       setIsSavingHistoricalFailedRefunds(false);
+    }
+  };
+
+  const handleSiliconPlatformToggle = async () => {
+    const nextValue = !enableSiliconPlatform;
+    setIsSavingSiliconPlatform(true);
+    try {
+      await saveEnableSiliconPlatform(nextValue);
+      toast(nextValue ? '已开启角色库' : '已关闭角色库', 'success');
+    } catch (e: any) {
+      toast(e.response?.data?.detail || e.message || '保存失败', 'error');
+    } finally {
+      setIsSavingSiliconPlatform(false);
     }
   };
 
@@ -162,7 +178,23 @@ export function UpdatePanel() {
       </div>
 
       {isSuperAdmin && (
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 flex items-center justify-between gap-4">
+        <>
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium text-gray-200">启用角色库</div>
+              <div className="text-xs text-gray-500 mt-1">开启后，所有用户可在资产编辑中从硅星人平台导入角色图片。</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleSiliconPlatformToggle}
+              disabled={isSavingSiliconPlatform}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition disabled:opacity-50 ${enableSiliconPlatform ? 'bg-blue-600' : 'bg-gray-600'}`}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${enableSiliconPlatform ? 'translate-x-5' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-gray-200">显示历史失败待退费</div>
             <div className="text-xs text-gray-500 mt-1">开启后，所有用户都可以在消耗面板查看历史失败待退费。</div>
@@ -176,6 +208,7 @@ export function UpdatePanel() {
             <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${showHistoricalFailedRefunds ? 'translate-x-5' : 'translate-x-1'}`} />
           </button>
         </div>
+        </>
       )}
 
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 text-xs text-gray-400 leading-relaxed space-y-3">
