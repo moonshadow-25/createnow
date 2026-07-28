@@ -64,7 +64,22 @@ class SiliconClient:
             params=params,
         )
 
-        result = response.json()
+        # 先检查 HTTP 状态码
+        if not response.ok:
+            raise SiliconAPIError(
+                f"HTTP {response.status_code}: {response.text[:200]}",
+                code=response.status_code
+            )
+
+        # 尝试解析 JSON，失败则给出有意义的错误
+        try:
+            result = response.json()
+        except Exception:
+            raise SiliconAPIError(
+                f"API 返回非 JSON 响应 (HTTP {response.status_code}): {response.text[:300]}",
+                code=response.status_code
+            )
+
         if result.get('code') != 0:
             error_msg = result.get('message', '未知错误')
             raise SiliconAPIError(error_msg, result.get('code'))
