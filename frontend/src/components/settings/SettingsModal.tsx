@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw, Tags, Download } from 'lucide-react';
+import { Settings, Key, Wand2, FolderTree, X, Save, Palette, Globe, RefreshCw, Tags, Download, UserCheck } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useProjectStore } from '@/store/projectStore';
 import { useToast } from '@/components/common/Toast';
 import { useAdminAuthStore } from '@/store/adminAuthStore';
 import { useSaasAuthStore } from '@/store/saasAuthStore';
+import { useUiConfigStore } from '@/store/uiConfigStore';
 import { ApiConfigPanel } from './ApiConfigPanel';
 import { PromptPanel } from './PromptPanel';
 import { LogsPanel } from './LogsPanel';
@@ -13,9 +14,10 @@ import { GlobalPromptPanel } from './GlobalPromptPanel';
 import { UpdatePanel } from './UpdatePanel';
 import { CreatenowModelConfigPanel } from './CreatenowModelConfigPanel';
 import { CreateNowImageSkillPanel } from './CreateNowImageSkillPanel';
+import { SiliconPlatformPanel } from './SiliconPlatformPanel';
 import type { ApiConfig, ApiConfigPresetsMap } from '@/types';
 
-type SettingsPanel = 'api' | 'global-style' | 'model-tags' | 'image-skill' | 'prompts' | 'global-prompts' | 'logs' | 'update';
+type SettingsPanel = 'api' | 'global-style' | 'model-tags' | 'image-skill' | 'prompts' | 'global-prompts' | 'logs' | 'update' | 'silicon-platform';
 
 interface SettingsModalProps {
   projectId: string;
@@ -31,6 +33,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
   const isAdmin = role === 'admin';
   const isSuperAdmin = username === 'admin';
   const canSeeApiSettings = !isSaasUser;
+  const enableSiliconPlatform = useUiConfigStore((s) => s.enableSiliconPlatform);
   const apiSettingsLimitedMode = !isAdmin;
   const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(() => canSeeApiSettings ? 'api' : 'global-style');
   const [saving, setSaving] = useState(false);
@@ -277,6 +280,9 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
     ...(isAdmin ? [
       { id: 'update' as const, icon: RefreshCw, label: '检查更新' },
     ] : []),
+    ...(enableSiliconPlatform ? [
+      { id: 'silicon-platform' as const, icon: UserCheck, label: '角色库' },
+    ] : []),
   ];
 
   return (
@@ -323,6 +329,7 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
                 {settingsPanel === 'global-prompts' && '全局提示词'}
                 {settingsPanel === 'logs' && 'AI日志'}
                 {settingsPanel === 'update' && '检查更新'}
+                {settingsPanel === 'silicon-platform' && '角色库'}
               </h2>
               <button
                 onClick={onClose}
@@ -373,6 +380,11 @@ export function SettingsModal({ projectId, onClose }: SettingsModalProps) {
             {settingsPanel === 'update' && (
               <div className="flex-1 overflow-y-auto">
                 <UpdatePanel />
+              </div>
+            )}
+            {settingsPanel === 'silicon-platform' && (
+              <div className="flex-1 overflow-y-auto">
+                <SiliconPlatformPanel projectId={projectId} />
               </div>
             )}
 

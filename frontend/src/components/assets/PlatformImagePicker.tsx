@@ -58,9 +58,6 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
 
   // ── 凭证 ──
   const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
-  const [appId, setAppId] = useState('');
-  const [appSecret, setAppSecret] = useState('');
-  const [savingCreds, setSavingCreds] = useState(false);
 
   // ── 艺人列表 ──
   const [talents, setTalents] = useState<Talent[]>([]);
@@ -122,27 +119,6 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
       loadTalents(talentPage, talentSearch);
     }
   }, [open, hasCredentials, talentPage, talentSearch, loadTalents]);
-
-  // ── 凭证保存 ──
-  const handleSaveCredentials = async () => {
-    if (!appId.trim() || !appSecret.trim()) {
-      toast('请填写 app_id 和 app_secret', 'error');
-      return;
-    }
-    setSavingCreds(true);
-    try {
-      await siliconPlatformApi.saveCredentials(projectId, {
-        app_id: appId.trim(),
-        app_secret: appSecret.trim(),
-      });
-      setHasCredentials(true);
-      toast('凭证已保存', 'success');
-    } catch (e: any) {
-      toast(e.response?.data?.detail || '保存凭证失败', 'error');
-    } finally {
-      setSavingCreds(false);
-    }
-  };
 
   // ── 选中艺人 → 加载资产 ──
   const handleSelectTalent = async (talent: Talent) => {
@@ -238,37 +214,19 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
             </div>
           )}
 
-          {/* ── 凭证配置 ── */}
+          {/* ── 凭证未配置 ── */}
           {hasCredentials === false && (
-            <div className="bg-gray-700 rounded-lg p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-300">配置硅星人平台凭证</h3>
-              <p className="text-xs text-gray-400">
-                请填入在硅星人平台申请的开发者应用凭证。凭证将保存在当前项目中。
-              </p>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={appId}
-                  onChange={e => setAppId(e.target.value)}
-                  placeholder="App ID (如 APP-XXXX)"
-                  className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white text-sm"
-                />
-                <input
-                  type="password"
-                  value={appSecret}
-                  onChange={e => setAppSecret(e.target.value)}
-                  placeholder="App Secret"
-                  className="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-white text-sm"
-                />
+            <div className="bg-gray-700 rounded-lg p-6 text-center space-y-3">
+              <AlertCircle size={32} className="text-yellow-400 mx-auto" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">未配置硅星人平台凭证</h3>
+                <p className="text-xs text-gray-400 mt-1">
+                  请先在项目设置中配置 App ID 和 App Secret。
+                </p>
               </div>
-              <button
-                onClick={handleSaveCredentials}
-                disabled={savingCreds}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm disabled:opacity-50"
-              >
-                {savingCreds ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                保存凭证
-              </button>
+              <p className="text-xs text-gray-500">
+                设置 → 角色库 → 填入凭证
+              </p>
             </div>
           )}
 
