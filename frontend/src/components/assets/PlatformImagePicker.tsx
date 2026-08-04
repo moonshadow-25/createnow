@@ -4,35 +4,14 @@ import { siliconPlatformApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 
 interface Talent {
-  id: number;
+  talent_id: number;
   name: string;
   gender: string;
   age_range: string;
   level_name: string;
   main_image_url: string;
-  total_revenue: number;
-}
-
-interface AssetItem {
-  asset_id: string;
-  asset_type: string;
-  sub_type: string;
-  name: string;
-  description: string;
-  preview_url: string;
-  tags: string[];
-  talent_id: number;
-  talent_name: string;
-}
-
-interface TalentAssetsGrouped {
-  talent_id: number;
-  talent_name: string;
-  groups: Array<{
-    asset_type: string;
-    asset_type_display: string;
-    items: AssetItem[];
-  }>;
+  asset_count: number;
+  description?: string;
 }
 
 interface Props {
@@ -44,7 +23,7 @@ interface Props {
   onImported: () => void;
 }
 
-type Step = 'select-talent' | 'select-image' | 'confirm';
+type Step = 'select-talent' | 'confirm';
 
 const ROLE_TYPES = ['主角', '配角', '群演'] as const;
 
@@ -68,15 +47,12 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
 
   // ── 选中艺人 ──
   const [selectedTalent, setSelectedTalent] = useState<Talent | null>(null);
-  const [talentAssets, setTalentAssets] = useState<TalentAssetsGrouped | null>(null);
-
-  // ── 选中资产 ──
-  const [selectedAsset, setSelectedAsset] = useState<AssetItem | null>(null);
   const [roleType, setRoleType] = useState<string>('主角');
 
   // ── 导入状态 ──
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
 
   const PAGE_SIZE = 20;
 
@@ -85,10 +61,9 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
     if (!open) return;
     setStep('select-talent');
     setSelectedTalent(null);
-    setTalentAssets(null);
-    setSelectedAsset(null);
     setError('');
     setImportDone(false);
+    setImportResult(null);
 
     siliconPlatformApi.getCredentials(projectId)
       .then(r => setHasCredentials(r.data?.configured ?? false))
@@ -101,10 +76,10 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
     setError('');
     try {
       const params: any = { page, page_size: PAGE_SIZE };
-      if (search.trim()) params.search = search.trim();
+      if (search.trim()) params.keyword = search.trim();
       const r = await siliconPlatformApi.listTalents(projectId, params);
-      setTalents(r.data?.results || []);
-      setTalentCount(r.data?.count || 0);
+      setTalents(r.data?.items || []);
+      setTalentCount(r.data?.total || 0);
     } catch (e: any) {
       setError(e.response?.data?.detail || '加载艺人列表失败');
       setTalents([]);
@@ -120,48 +95,31 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
     }
   }, [open, hasCredentials, talentPage, talentSearch, loadTalents]);
 
-  // ── 选中艺人 → 加载资产 ──
-  const handleSelectTalent = async (talent: Talent) => {
+  // ── 选中艺人 → 确认 ──
+  const handleSelectTalent = (talent: Talent) => {
     setSelectedTalent(talent);
-    setSelectedAsset(null);
-    setLoading(true);
-    setError('');
-    try {
-      const r = await siliconPlatformApi.getTalentAssets(projectId, talent.id);
-      setTalentAssets(r.data);
-      setStep('select-image');
-    } catch (e: any) {
-      setError(e.response?.data?.detail || '加载艺人资产失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── 选中图片 → 确认 ──
-  const handleSelectImage = (asset: AssetItem) => {
-    setSelectedAsset(asset);
     setStep('confirm');
   };
 
-  // ── 确认导入 ──
+  // ── 确认导入（批量获取全部三视图）──
   const handleConfirmImport = async () => {
-    if (!selectedAsset) return;
+    if (!selectedTalent) return;
     setImporting(true);
     setError('');
     try {
-      await siliconPlatformApi.acquire(projectId, {
-        asset_id: selectedAsset.asset_id,
+      const r = await siliconPlatformApi.acquireTalent(projectId, {
+        talent_id: selectedTalent.talent_id,
         role_type: roleType,
         character_id: characterId,
-        project_name: projectId,
       });
+      setImportResult(r.data);
       setImportDone(true);
-      toast('图片导入成功！', 'success');
+      toast('三视图导入成功！', 'success');
       // 延迟关闭让用户看到成功状态
       setTimeout(() => {
         onImported();
         onClose();
-      }, 800);
+      }, 1200);
     } catch (e: any) {
       const detail = e.response?.data?.detail || '导入失败';
       if (e.response?.status === 402) {
@@ -268,7 +226,7 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {talents.map(talent => (
                       <div
-                        key={talent.id}
+                        key={talent.talent_id}
                         role="button"
                         tabIndex={0}
                         onClick={() => handleSelectTalent(talent)}
@@ -285,7 +243,7 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-500 text-3xl font-bold">
-                              {talent.name[0]}
+                              {talent.name?.[0] || '?'}
                             </div>
                           )}
                         </div>
@@ -294,6 +252,11 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
                           <div className="text-xs text-gray-400 mt-1">
                             {talent.gender} · {talent.age_range} · {talent.level_name}
                           </div>
+                          {typeof talent.asset_count === 'number' && (
+                            <div className="text-[10px] text-gray-500 mt-0.5">
+                              {talent.asset_count} 个公开资产
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -328,96 +291,43 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
             </div>
           )}
 
-          {/* ── 步骤2: 选图片 ── */}
-          {!loading && step === 'select-image' && talentAssets && (
+          {/* ── 步骤2: 确认 ── */}
+          {!loading && step === 'confirm' && selectedTalent && (
             <div className="space-y-4">
               <button
-                onClick={() => { setStep('select-talent'); setSelectedTalent(null); setTalentAssets(null); }}
+                onClick={() => { setStep('select-talent'); setSelectedTalent(null); }}
                 className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
               >
                 <ChevronLeft size={14} />
                 返回艺人列表
               </button>
 
-              {talentAssets.groups.map((group, gi) => (
-                <div key={gi}>
-                  <h3 className="text-sm font-semibold text-gray-300 mb-2">
-                    {group.asset_type_display} ({group.items.length})
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {group.items.map(asset => (
-                      <div
-                        key={asset.asset_id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleSelectImage(asset)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSelectImage(asset); }}
-                        className="bg-gray-700 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-green-500 transition"
-                      >
-                        <div className="aspect-square bg-gray-600 relative">
-                          {asset.preview_url ? (
-                            <img
-                              src={asset.preview_url}
-                              alt={asset.name}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-500">
-                              无预览
-                            </div>
-                          )}
-                          {/* 水印提示 */}
-                          <div className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
-                            水印预览
-                          </div>
-                        </div>
-                        <div className="p-2">
-                          <div className="text-xs text-white truncate">{asset.name}</div>
-                          <div className="text-[10px] text-gray-400 mt-0.5">
-                            {asset.sub_type} · {asset.tags?.slice(0, 2).join('、')}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-              {talentAssets.groups.length === 0 && (
-                <div className="text-center py-12 text-gray-500">该艺人暂无公开资产</div>
-              )}
-            </div>
-          )}
-
-          {/* ── 步骤3: 确认 ── */}
-          {!loading && step === 'confirm' && selectedAsset && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setStep('select-image')}
-                className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
-              >
-                <ChevronLeft size={14} />
-                返回图片选择
-              </button>
-
               <div className="bg-gray-700 rounded-lg p-4 flex gap-4">
-                {/* 预览 */}
+                {/* 艺人主图 */}
                 <div className="w-40 h-40 bg-gray-600 rounded overflow-hidden shrink-0">
-                  {selectedAsset.preview_url ? (
-                    <img src={selectedAsset.preview_url} alt={selectedAsset.name} className="w-full h-full object-cover" />
+                  {selectedTalent.main_image_url ? (
+                    <img
+                      src={getImageUrl(selectedTalent.main_image_url)}
+                      alt={selectedTalent.name}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500">无预览</div>
+                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-3xl font-bold">
+                      {selectedTalent.name?.[0] || '?'}
+                    </div>
                   )}
                 </div>
 
                 {/* 详情 */}
                 <div className="flex-1 space-y-2">
-                  <div className="text-sm font-medium text-white">{selectedAsset.name}</div>
-                  <div className="text-xs text-gray-400">{selectedAsset.description || '暂无描述'}</div>
-                  <div className="text-xs text-gray-500">
-                    类型: {selectedAsset.sub_type} · 艺人: {selectedAsset.talent_name}
+                  <div className="text-sm font-medium text-white">{selectedTalent.name}</div>
+                  <div className="text-xs text-gray-400">
+                    {selectedTalent.gender} · {selectedTalent.age_range} · {selectedTalent.level_name}
+                    {typeof selectedTalent.asset_count === 'number' && ` · ${selectedTalent.asset_count} 个公开资产`}
                   </div>
+                  {selectedTalent.description && (
+                    <div className="text-xs text-gray-500">{selectedTalent.description}</div>
+                  )}
 
                   <div className="pt-2">
                     <label className="block text-xs text-gray-400 mb-1">角色类型（影响价格）</label>
@@ -432,10 +342,21 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
                     </select>
                   </div>
 
-                  <div className="text-xs text-yellow-400 bg-yellow-900/20 rounded px-3 py-2">
-                    导入对象：角色「{characterName}」<br />
-                    费用将从已绑定的硅星人平台余额中扣除。余额不足请先在硅星人 WEB 端充值。
+                  <div className="text-xs text-yellow-400 bg-yellow-900/20 rounded px-3 py-2 space-y-1">
+                    <div>导入对象：角色「{characterName}」</div>
+                    <div>将获取该艺人的全部三视图资产（正脸 / 侧面 / 全身 / 后背），下载为角色的多张图片。</div>
+                    <div>费用将从已绑定的硅星人平台余额中扣除；同一项目重复获取同一资产不重复扣费。余额不足请先在硅星人 WEB 端充值。</div>
                   </div>
+
+                  {/* 导入成功摘要 */}
+                  {importDone && importResult && (
+                    <div className="flex items-center gap-2 text-sm text-green-400 bg-green-900/20 rounded px-3 py-2">
+                      <Check size={16} />
+                      已导入 {importResult.images?.length || 0} 张图片
+                      {typeof importResult.total_cost === 'number' && ` · 本次费用 ¥${importResult.total_cost}`}
+                      {importResult.charged_assets === 0 && '（已获取过，未重复扣费）'}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -445,9 +366,8 @@ export function PlatformImagePicker({ open, projectId, characterName, characterI
         {/* 底部按钮 */}
         <div className="flex justify-between items-center px-4 py-3 border-t border-gray-700 shrink-0">
           <div className="text-xs text-gray-500">
-            {step === 'select-talent' && '步骤 1/3: 选择艺人'}
-            {step === 'select-image' && '步骤 2/3: 选择图片'}
-            {step === 'confirm' && '步骤 3/3: 确认导入'}
+            {step === 'select-talent' && '步骤 1/2: 选择艺人'}
+            {step === 'confirm' && '步骤 2/2: 确认导入'}
           </div>
           <div className="flex gap-2">
             <button

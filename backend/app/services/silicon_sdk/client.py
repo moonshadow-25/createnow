@@ -12,7 +12,7 @@ class SiliconClient:
     def __init__(self, app_id: str, app_secret: str, base_url: str = "https://ai.npaigc.com"):
         """
         初始化客户端
-        
+
         Args:
             app_id: 开发者应用ID
             app_secret: 开发者应用密钥
@@ -23,6 +23,7 @@ class SiliconClient:
         self.base_url = base_url.rstrip('/')
         self._session = requests.Session()
         self.assets = AssetsAPI(self)
+        self.talents = TalentsAPI(self)
         self.calls = CallsAPI(self)
         self.billing = BillingAPI(self)
 
@@ -94,6 +95,66 @@ class SiliconAPIError(Exception):
         super().__init__(message)
 
 
+class TalentsAPI:
+    """数字艺人API"""
+
+    def __init__(self, client: SiliconClient):
+        self._client = client
+
+    def list(self, keyword: Optional[str] = None, level: Optional[str] = None,
+             ordering: str = '-total_revenue',
+             page: int = 1, page_size: int = 20) -> Dict:
+        """
+        查询数字艺人列表（含主视图预览，免费）
+
+        Args:
+            keyword: 按姓名/描述搜索
+            level: 按等级筛选，如 "L1"、"L2"
+            ordering: 排序：-total_revenue（默认）、-created_at、-sort_order、name
+            page: 页码
+            page_size: 每页数量
+
+        Returns:
+            {
+                "total": 50,
+                "items": [
+                    {
+                        "talent_id": 1,
+                        "name": "苏清月",
+                        "gender": "女",
+                        "age_range": "18-25岁",
+                        "level_name": "L1",
+                        "main_image_url": "https://...",
+                        "description": "...",
+                        "asset_count": 12,
+                        "total_revenue": 12800.00,
+                        "created_at": "2026-01-15T10:30:00Z"
+                    }
+                ],
+                "page": 1,
+                "page_size": 20
+            }
+        """
+        params = {'page': page, 'page_size': page_size, 'ordering': ordering}
+        if keyword:
+            params['keyword'] = keyword
+        if level:
+            params['level'] = level
+        return self._client._request('GET', '/api/v1/talents/', params=params)
+
+    def get(self, talent_id: int) -> Dict:
+        """
+        获取数字艺人详情（含主视图预览，免费）
+
+        Args:
+            talent_id: 数字艺人ID
+
+        Returns:
+            艺人详情，含 main_image_url 主视图URL
+        """
+        return self._client._request('GET', f'/api/v1/talents/{talent_id}/')
+
+
 class AssetsAPI:
     """资产查询API"""
 
@@ -105,7 +166,7 @@ class AssetsAPI:
              page: int = 1, page_size: int = 20) -> Dict:
         """
         查询资产列表
-        
+
         Args:
             asset_type: 资产类型 (threeviews_image / image_asset / audio_sample)
             talent_id: 数字艺人ID
@@ -113,7 +174,7 @@ class AssetsAPI:
             keyword: 搜索关键词
             page: 页码
             page_size: 每页数量
-            
+
         Returns:
             {
                 "total": 100,
@@ -136,10 +197,10 @@ class AssetsAPI:
     def get(self, asset_id: str) -> Dict:
         """
         获取资产详情
-        
+
         Args:
             asset_id: 资产UUID
-            
+
         Returns:
             资产详情，含 preview_url 预览图
         """
@@ -148,10 +209,10 @@ class AssetsAPI:
     def by_talent(self, talent_id: int) -> Dict:
         """
         按数字艺人获取全部已公开资产（分组展示）
-        
+
         Args:
             talent_id: 数字艺人ID
-            
+
         Returns:
             {
                 "talent_id": 1,
@@ -179,14 +240,14 @@ class CallsAPI:
                 request_id: Optional[str] = None) -> Dict:
         """
         付费获取资产原图（按次扣费，价格由角色类型 × 艺人等级决定）
-        
+
         Args:
             asset_id: 资产UUID
             role_type: 角色类型，如 "主角"、"配角"、"群演"
             project_name: 项目/作品名称（可选），如"XX品牌宣传片"
             project_type: 项目类型（可选），如"短视频"、"宣传片"、"电商主图"
             request_id: 第三方请求唯一标识（可选）
-            
+
         Returns:
             {
                 "call_id": "ACQ-...",
@@ -214,10 +275,59 @@ class CallsAPI:
             data['request_id'] = request_id
         return self._client._request('POST', '/api/v1/calls/acquire/', data=data)
 
+    def acquire_talent(self, talent_id: int, role_type: str,
+                       project_name: Optional[str] = None, project_type: Optional[str] = None,
+                       request_id: Optional[str] = None) -> Dict:
+        """
+        按艺人批量付费获取三视图资产（一次性获取该艺人全部三视图下载链接）
+
+        Args:
+            talent_id: 数字艺人ID
+            role_type: 角色类型，如 "主角"、"配角"、"群演"
+            project_name: 项目/作品名称（可选），平台据此去重，同项目同资产不重复收费
+            project_type: 项目类型（可选）
+            request_id: 第三方请求唯一标识（可选）
+
+        Returns:
+            {
+                "talent_id": 1,
+                "talent_name": "苏清月",
+                "role_type": "主角",
+                "price_per_asset": 80.00,
+                "total_assets": 4,
+                "charged_assets": 4,
+                "total_cost": 320.00,
+                "balance_after": 680.00,
+                "items": [
+                    {
+                        "call_id": "ACQ-...",
+                        "asset_id": "uuid",
+                        "asset_name": "苏清月-正脸照",
+                        "asset_type": "threeviews_image",
+                        "sub_type": "front",
+                        "cost": 80.00,
+                        "asset_url": "临时下载URL（15分钟有效）",
+                        "expires_at": "2026-07-01T12:15:00Z"
+                    }
+                ]
+            }
+        """
+        data = {
+            'talent_id': talent_id,
+            'role_type': role_type,
+        }
+        if project_name:
+            data['project_name'] = project_name
+        if project_type:
+            data['project_type'] = project_type
+        if request_id:
+            data['request_id'] = request_id
+        return self._client._request('POST', '/api/v1/calls/acquire-talent/', data=data)
+
     def get_result(self, call_id: str) -> Dict:
         """
         查询调用结果
-        
+
         Args:
             call_id: 调用记录ID
         """
@@ -246,7 +356,7 @@ class BillingAPI:
     def get_balance(self) -> Dict:
         """
         查询余额和配额
-        
+
         Returns:
             {
                 "balance": 1000.00,
@@ -269,7 +379,7 @@ class BillingAPI:
     def usage(self, period: str = 'daily', days: int = 30) -> Dict:
         """
         查询用量统计
-        
+
         Args:
             period: 统计周期 (daily / monthly)
             days: 最近天数

@@ -8,16 +8,11 @@ import hashlib
 import json
 import logging
 import os
-import time
-import uuid
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
 
-from app.core.config import settings
-from app.services.asset_service import AssetService, ImageService, ProjectService, _get_projects_dir
+from app.services.asset_service import AssetService, ImageService, _get_projects_dir
 from app.services.silicon_sdk import SiliconClient
 
 logger = logging.getLogger(__name__)
@@ -101,144 +96,127 @@ class SiliconPlatformService:
         )
 
     # ═══════════════════════════════════════════════════════════════
-    # 公开 API（无需 HMAC 签名）
+    # 艺人查询（开放 API v1，HMAC 签名，走 SDK）
     # ═══════════════════════════════════════════════════════════════
 
     @staticmethod
     def list_talents(
-        search: Optional[str] = None,
+        project_id: str,
+        keyword: Optional[str] = None,
         ordering: str = "-total_revenue",
         level: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
-        """艺人列表（公开 API）"""
-        params: Dict[str, Any] = {
-            "ordering": ordering,
-            "page": page,
-            "page_size": page_size,
-        }
-        if search:
-            params["search"] = search
-        if level:
-            params["level"] = level
-
+        """艺人列表（开放 API v1）"""
+        client = SiliconPlatformService._get_client(project_id)
         try:
-            resp = requests.get(
-                f"{SILICON_PUBLIC_BASE}/api/talents/",
-                params=params,
-                timeout=15,
+            return client.talents.list(
+                keyword=keyword,
+                level=level,
+                ordering=ordering,
+                page=page,
+                page_size=page_size,
             )
-            resp.raise_for_status()
-            data = resp.json()
-            # 此公开接口无统一 code 字段，直接返回分页数据
-            return {
-                "count": data.get("count", 0),
-                "next": data.get("next"),
-                "previous": data.get("previous"),
-                "results": data.get("results", []),
-            }
-        except requests.RequestException as e:
+        except Exception as e:
             logger.error(f"[SiliconPlatform] list_talents error: {e}")
             raise SiliconPlatformError(f"获取艺人列表失败: {e}")
 
     @staticmethod
-    def get_talent(talent_id: int) -> Dict[str, Any]:
-        """艺人详情（公开 API）"""
+    def get_talent(project_id: str, talent_id: int) -> Dict[str, Any]:
+        """艺人详情（开放 API v1）"""
+        client = SiliconPlatformService._get_client(project_id)
         try:
-            resp = requests.get(
-                f"{SILICON_PUBLIC_BASE}/api/talents/{talent_id}/",
-                timeout=15,
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            if result.get("code") != 0:
-                raise SiliconPlatformError(
-                    result.get("message", "未知错误"), code=result.get("code")
-                )
-            return result.get("data", {})
-        except requests.RequestException as e:
+            return client.talents.get(talent_id)
+        except Exception as e:
             logger.error(f"[SiliconPlatform] get_talent error: {e}")
             raise SiliconPlatformError(f"获取艺人详情失败: {e}")
 
     # ═══════════════════════════════════════════════════════════════
-    # 开放 API v1（HMAC 签名，走 SDK）
+    # 付费获取（开放 API v1，HMAC 签名，走 SDK）
     # ═══════════════════════════════════════════════════════════════
 
     @staticmethod
-    def get_talent_assets(project_id: str, talent_id: int) -> Dict[str, Any]:
-        """按艺人获取资产分组（开放 API v1）"""
-        client = SiliconPlatformService._get_client(project_id)
-        try:
-            return client.assets.by_talent(talent_id)
-        except Exception as e:
-            logger.error(f"[SiliconPlatform] get_talent_assets error: {e}")
-            raise SiliconPlatformError(f"获取艺人资产失败: {e}")
-
-    @staticmethod
-    def acquire_and_download(
+    def acquire_talent_and_download(
         project_id: str,
-        asset_id: str,
+        talent_id: int,
         role_type: str,
         character_id: str,
-        project_name: str = "",
     ) -> Dict[str, Any]:
-        """付费获取资产 + 下载原图到本地 + 设置角色主图。
+        """按艺人批量付费获取全部三视图 + 下载到本地 + 关联角色图片。
 
-        request_id 格式 {project_id}:{character_id}:{asset_id} 保证幂等，
-        同一项目+同一角色+同一平台资产重复调用不重复扣费。
+        project_name 传项目 ID，平台据此去重（同项目同资产不重复收费）；
+        request_id 格式 {project_id}:{character_id}:{talent_id} 保证幂等。
+        所有下载的图片均为普通图片记录，第一张设为主图。
         """
         client = SiliconPlatformService._get_client(project_id)
 
-        # 1. 付费获取原图 URL
+        # 1. 批量付费获取三视图下载链接
         try:
-            result = client.calls.acquire(
-                asset_id=asset_id,
+            result = client.calls.acquire_talent(
+                talent_id=talent_id,
                 role_type=role_type,
-                project_name=project_name or project_id,
+                project_name=project_id,
                 project_type="AI短剧",
-                request_id=f"{project_id}:{character_id}:{asset_id}",
+                request_id=f"{project_id}:{character_id}:{talent_id}",
             )
         except Exception as e:
-            logger.error(f"[SiliconPlatform] acquire error: {e}")
-            raise SiliconPlatformError(f"获取资产失败: {e}")
+            logger.error(f"[SiliconPlatform] acquire_talent error: {e}")
+            raise SiliconPlatformError(f"获取艺人资产失败: {e}")
 
-        asset_url = result.get("asset_url")
-        if not asset_url:
-            raise SiliconPlatformError("平台未返回资产下载链接")
+        items = result.get("items") or []
+        if not items:
+            raise SiliconPlatformError("平台未返回任何资产下载链接")
 
-        # 2. 下载原图到本地 project/images/files/
-        local_path = _download_image_to_project(project_id, asset_url)
+        # 2. 逐个下载 + 创建图片记录（第一张设为主图）
+        downloaded: list = []
+        for index, item in enumerate(items):
+            asset_url = item.get("asset_url")
+            asset_id = item.get("asset_id", "")
+            if not asset_url:
+                continue
 
-        # 3. 创建 ImageRecord（普通图片，无任何特殊标记）
-        image = ImageService.create_image_from_file(
-            project_id=project_id,
-            asset_id=character_id,
-            asset_type="character",
-            local_file_path=local_path,
-            prompt=f"硅星人平台导入: {result.get('asset_name', asset_id)}",
-            is_primary=True,
-        )
+            local_path = _download_image_to_project(project_id, asset_url, asset_id)
+            image = ImageService.create_image_from_file(
+                project_id=project_id,
+                asset_id=character_id,
+                asset_type="character",
+                local_file_path=local_path,
+                prompt=f"硅星人平台导入: {item.get('asset_name', '') or result.get('talent_name', '')}",
+                is_primary=(index == 0),
+            )
+            downloaded.append({
+                "image_id": image["image_id"],
+                "local_path": local_path,
+                "asset_id": asset_id,
+                "asset_name": item.get("asset_name", ""),
+                "sub_type": item.get("sub_type", ""),
+            })
 
-        # 4. 设为角色主图
+        if not downloaded:
+            raise SiliconPlatformError("资产下载全部失败")
+
+        # 3. 设置角色主图为第一张
         AssetService.update_asset_image(
-            project_id, "character", character_id, image["image_id"]
+            project_id, "character", character_id, downloaded[0]["image_id"]
         )
 
         logger.info(
-            f"[SiliconPlatform] acquire success | "
+            f"[SiliconPlatform] acquire_talent success | "
             f"project={project_id[:8]} character={character_id[:8]} "
-            f"asset={asset_id[:8]} cost={result.get('cost')} "
-            f"call_id={result.get('call_id')}"
+            f"talent={talent_id} downloaded={len(downloaded)} "
+            f"charged={result.get('charged_assets')} total_cost={result.get('total_cost')}"
         )
 
         return {
-            "image_id": image["image_id"],
-            "local_path": local_path,
-            "call_id": result.get("call_id"),
-            "asset_name": result.get("asset_name"),
-            "cost": result.get("cost"),
+            "talent_id": result.get("talent_id"),
+            "talent_name": result.get("talent_name"),
+            "role_type": result.get("role_type"),
+            "total_assets": result.get("total_assets"),
+            "charged_assets": result.get("charged_assets"),
+            "total_cost": result.get("total_cost"),
             "balance_after": result.get("balance_after"),
+            "images": downloaded,
         }
 
 
@@ -246,14 +224,17 @@ class SiliconPlatformService:
 # 内部工具函数
 # ═══════════════════════════════════════════════════════════════
 
-def _download_image_to_project(project_id: str, url: str) -> str:
-    """下载远程图片到 project/images/files/，返回相对路径"""
+def _download_image_to_project(project_id: str, url: str, asset_id: str = "") -> str:
+    """下载远程图片到 project/images/files/，返回相对路径。
+    文件名基于 asset_id（平台资产 ID），同资产重复获取复用同一文件。
+    """
     projects_dir = _get_projects_dir()
     images_files_dir = projects_dir / project_id / "images" / "files"
     images_files_dir.mkdir(parents=True, exist_ok=True)
 
-    # 用 URL 的 SHA256 作为文件名（去重，避免重复下载同一 URL）
-    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+    # 用 asset_id（或 URL）的 SHA256 作为文件名
+    name_key = asset_id or url
+    url_hash = hashlib.sha256(name_key.encode()).hexdigest()[:16]
     ext = _guess_extension(url)
     filename = f"silicon_{url_hash}{ext}"
     dest = images_files_dir / filename

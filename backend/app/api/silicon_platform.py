@@ -26,11 +26,10 @@ router = APIRouter(
 # 请求模型
 # ═══════════════════════════════════════════════════════════════
 
-class AcquireRequest(BaseModel):
-    asset_id: str
+class AcquireTalentRequest(BaseModel):
+    talent_id: int
     role_type: str  # "主角" / "配角" / "群演"
     character_id: str
-    project_name: str = ""
 
 
 class SaveCredentialsRequest(BaseModel):
@@ -65,21 +64,23 @@ async def save_credentials(project_id: str, body: SaveCredentialsRequest):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 公开 API 代理
+# 艺人查询（开放 API v1，需 HMAC 签名）
 # ═══════════════════════════════════════════════════════════════
 
 @router.get("/talents")
 async def list_talents(
-    search: Optional[str] = Query(None),
+    project_id: str,
+    keyword: Optional[str] = Query(None),
     ordering: str = Query("-total_revenue"),
     level: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    """艺人列表（公开 API）"""
+    """艺人列表（开放 API v1）"""
     try:
         return SiliconPlatformService.list_talents(
-            search=search,
+            project_id=project_id,
+            keyword=keyword,
             ordering=ordering,
             level=level,
             page=page,
@@ -90,47 +91,37 @@ async def list_talents(
 
 
 @router.get("/talents/{talent_id}")
-async def get_talent(talent_id: int):
-    """艺人详情（公开 API，含 share_price 用于展示价格）"""
+async def get_talent(project_id: str, talent_id: int):
+    """艺人详情（开放 API v1，含 main_image_url 主视图）"""
     try:
-        return SiliconPlatformService.get_talent(talent_id)
+        return SiliconPlatformService.get_talent(project_id, talent_id)
     except SiliconPlatformError as e:
         raise HTTPException(status_code=e.code or 502, detail=str(e))
 
 
 # ═══════════════════════════════════════════════════════════════
-# 开放 API v1 代理（需 HMAC 签名，项目需配置凭证）
+# 付费获取（开放 API v1）
 # ═══════════════════════════════════════════════════════════════
 
-@router.get("/talents/{talent_id}/assets")
-async def get_talent_assets(project_id: str, talent_id: int):
-    """按艺人获取资产分组（含水印预览图）"""
-    try:
-        return SiliconPlatformService.get_talent_assets(project_id, talent_id)
-    except SiliconPlatformError as e:
-        raise HTTPException(status_code=e.code or 502, detail=str(e))
-
-
-@router.post("/acquire")
-async def acquire_asset(project_id: str, body: AcquireRequest):
-    """付费获取资产 + 下载原图 + 设为角色主图"""
+@router.post("/acquire-talent")
+async def acquire_talent(project_id: str, body: AcquireTalentRequest):
+    """按艺人批量付费获取全部三视图 + 下载 + 关联角色"""
     if body.role_type not in ("主角", "配角", "群演"):
         raise HTTPException(status_code=400, detail="role_type 必须为 主角/配角/群演")
 
     try:
-        result = SiliconPlatformService.acquire_and_download(
+        result = SiliconPlatformService.acquire_talent_and_download(
             project_id=project_id,
-            asset_id=body.asset_id,
+            talent_id=body.talent_id,
             role_type=body.role_type,
             character_id=body.character_id,
-            project_name=body.project_name,
         )
         return result
     except SiliconPlatformError as e:
         # 余额不足 → 402 Payment Required
         if e.code == 1006:
             raise HTTPException(status_code=402, detail=str(e))
-        # 资产不存在
+        # 资产/艺人不存在
         if e.code == 404:
             raise HTTPException(status_code=404, detail=str(e))
         raise HTTPException(status_code=e.code or 502, detail=str(e))

@@ -139,14 +139,12 @@ export const siliconPlatformApi = {
     api.get(`/projects/${projectId}/platform/silicon/credentials`),
   saveCredentials: (projectId: string, data: { app_id: string; app_secret: string }) =>
     api.put(`/projects/${projectId}/platform/silicon/credentials`, data),
-  listTalents: (projectId: string, params?: { search?: string; page?: number; page_size?: number }) =>
+  listTalents: (projectId: string, params?: { keyword?: string; level?: string; page?: number; page_size?: number }) =>
     api.get(`/projects/${projectId}/platform/silicon/talents`, { params }),
   getTalent: (projectId: string, talentId: number) =>
     api.get(`/projects/${projectId}/platform/silicon/talents/${talentId}`),
-  getTalentAssets: (projectId: string, talentId: number) =>
-    api.get(`/projects/${projectId}/platform/silicon/talents/${talentId}/assets`),
-  acquire: (projectId: string, data: { asset_id: string; role_type: string; character_id: string; project_name?: string }) =>
-    api.post(`/projects/${projectId}/platform/silicon/acquire`, data),
+  acquireTalent: (projectId: string, data: { talent_id: number; role_type: string; character_id: string }) =>
+    api.post(`/projects/${projectId}/platform/silicon/acquire-talent`, data),
 };
 
 // 对话相关API
