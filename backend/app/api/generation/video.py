@@ -69,25 +69,26 @@ def _parse_ratio_resolution(raw_resolution: Optional[str], raw_ratio: Optional[s
     return normalized_resolution, ratio or None
 
 
-def _resolve_video_params(project: dict, request: VideoGenerateRequest) -> Tuple[str, str]:
+def _read_global_video_spec(project: dict) -> Tuple[str, Optional[str]]:
+    """读取项目全局视频规格：新版独立字段（global_video_ratio/global_video_resolution）优先，
+    回退旧版组合字段（global_resolution，如 "16:9-720p" / "1280x720"）。返回 (resolution, ratio_or_None)。"""
     global_style_config = normalize_global_style_config(project.get("ai_config", {}).get("global_style_config"))
-    global_resolution_raw = global_style_config.get("global_resolution", "1280x720")
-    global_resolution, global_ratio = _parse_ratio_resolution(global_resolution_raw, None)
+    ratio = (global_style_config.get("global_video_ratio") or "").strip()
+    resolution = (global_style_config.get("global_video_resolution") or "").strip()
+    if ratio or resolution:
+        return resolution or "720p", (ratio or None)
+    return _parse_ratio_resolution(global_style_config.get("global_resolution", "1280x720"), None)
 
-    # 分镜链路优先使用全局设置；其他入口沿用请求参数
-    if request.storyboard_id:
-        resolution_source = global_resolution
-        ratio_source = global_ratio
-    else:
-        resolution_source = request.resolution
-        ratio_source = request.ratio
+
+def _resolve_video_params(project: dict, request: VideoGenerateRequest) -> Tuple[str, str]:
+    global_resolution, global_ratio = _read_global_video_spec(project)
+
+    # 请求显式传参优先；未传的维度回退项目全局设置
+    # （分镜链路同样适用，分镜页调整比例/分辨率真实生效）
+    resolution_source = request.resolution or global_resolution
+    ratio_source = request.ratio or global_ratio
 
     resolved_resolution, resolved_ratio = _parse_ratio_resolution(resolution_source, ratio_source)
-
-    # 非分镜入口：若请求显式传了 ratio，允许覆盖
-    if not request.storyboard_id and request.ratio in SUPPORTED_RATIOS:
-        resolved_ratio = request.ratio
-
     return resolved_resolution, (resolved_ratio or "16:9")
 
 

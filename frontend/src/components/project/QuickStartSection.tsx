@@ -6,6 +6,7 @@ import { projectApi, assetApi, generationApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
 import { QUICK_START_TEMPLATES, QuickStartTemplate } from '@/data/quickStartTemplates';
 import { useThemeStore } from '@/store/themeStore';
+import { parseVideoSpec } from '@/utils/generationDefaults';
 
 export function QuickStartSection() {
   const navigate = useNavigate();
@@ -36,9 +37,12 @@ export function QuickStartSection() {
         minutes_per_episode: template.minutesPerEpisode,
       });
 
+      // 新版独立字段保存（模板字符串解析为 ratio/resolution）
+      const templateSpec = parseVideoSpec(template.globalResolution);
       await generationApi.updateGlobalStyleConfig(pid, {
         prompt_language: 'zh',
-        global_resolution: template.globalResolution,
+        global_video_ratio: templateSpec.ratio,
+        global_video_resolution: templateSpec.resolution,
         image_style: {
           preset_id: 'custom',
           custom_suffix: template.imageStylePrompt,

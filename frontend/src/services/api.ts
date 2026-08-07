@@ -272,7 +272,7 @@ export const generationApi = {
       image_ids: data.image_ids,
       prompt: data.prompt,
       duration: data.duration || 6,
-      resolution: data.resolution || '1920x1080',
+      resolution: data.resolution,  // 未传时由后端回退项目全局设置
       first_last_frames: data.first_last_frames || false
     }),
   generateVideoMultimodal: (projectId: string, data: {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useGlobalStyleStore } from '@/store/globalStyleStore';
+import { useProjectStore } from '@/store/projectStore';
 import { getDefaultVideoSpec } from '@/utils/generationDefaults';
 
 export interface StoryboardContentEditState {
@@ -25,8 +25,9 @@ export interface StoryboardContentEditState {
 }
 
 export const useStoryboardContentEdit = (): StoryboardContentEditState => {
-  const global_resolution = useGlobalStyleStore(s => s.global_resolution);
-  const videoSpec = getDefaultVideoSpec({ ai_config: { global_style_config: { global_resolution } } } as any);
+  // 分辨率/比例直接读项目配置（新字段优先，兼容旧字段），不再依赖全局 store
+  const currentProject = useProjectStore(s => s.currentProject);
+  const videoSpec = getDefaultVideoSpec(currentProject);
   const [contentExpanded, setContentExpanded] = useState(false);
   const [editDescription, setEditDescription] = useState('');
   const [editScriptSceneLabel, setEditScriptSceneLabel] = useState('');

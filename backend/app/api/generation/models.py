@@ -87,7 +87,7 @@ class VideoGenerateRequest(BaseModel):
     image_ids: Optional[List[str]] = None  # 多图模式（首尾帧）
     prompt: str
     duration: int = 6
-    resolution: str = "1920x1080"
+    resolution: Optional[str] = None  # 未传时回退项目全局设置（global_video_resolution / global_resolution）
     model: Optional[str] = None  # 临时模型覆盖，仅用于本次生成，不修改项目配置
     generation_scope: Optional[str] = None  # 生成范围标记，如 canvas_generate
     video_urls: Optional[List[str]] = None   # 参考视频公网 URL
@@ -236,5 +236,7 @@ class GlobalStyleConfigUpdate(BaseModel):
     prompt_language: Optional[str] = None
     image_style: Optional[StyleConfig] = None
     video_style: Optional[StyleConfig] = None
-    global_resolution: Optional[str] = None
+    global_resolution: Optional[str] = None            # 旧版组合字段（如 "16:9-720p"），兼容保留
+    global_video_ratio: Optional[str] = None           # 新版独立宽高比（如 "16:9"）
+    global_video_resolution: Optional[str] = None      # 新版独立分辨率（如 "480p"）
     nine_grid_mode: Optional[bool] = None

@@ -18,6 +18,7 @@ import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useThemeStore } from '@/store/themeStore';
 import { FullScriptImportModal } from '@/components/script/FullScriptImportModal';
 import { ProjectCostDashboard } from '@/components/dashboard/ProjectCostDashboard';
+import { getDefaultVideoSpec } from '@/utils/generationDefaults';
 
 type TabType = 'chat' | 'assets' | 'storyboard' | 'generate' | 'canvas';
 
@@ -192,12 +193,14 @@ export default function ProjectPage() {
     fetchAssets(projectId, 'storyboard');
   }, [projectId]);
 
-  // 同步全局风格配置到 store
+  // 同步全局风格配置到 store（新字段 global_video_ratio/resolution 优先，兼容旧字段）
   useEffect(() => {
     const cfg = (currentProject as any)?.ai_config?.global_style_config;
     if (cfg) {
+      const spec = getDefaultVideoSpec(currentProject);
       setGlobalStyleConfig({
-        global_resolution: cfg.global_resolution || '16:9-720p',
+        global_video_ratio: spec.ratio,
+        global_video_resolution: spec.resolution,
         nine_grid_mode: cfg.nine_grid_mode || false,
       });
     }

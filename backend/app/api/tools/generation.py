@@ -12,29 +12,6 @@ from app.models.project import normalize_global_style_config
 logger = logging.getLogger(__name__)
 
 
-def _parse_global_video_resolution(raw_resolution: str | None) -> Tuple[str, Optional[str]]:
-    """兼容旧值与新值，返回 (resolution, ratio)。"""
-    value = raw_resolution or "1280x720"
-
-    if value == "21:9-720p":
-        return "1280x720", "21:9"
-    if value == "1280x720":
-        return "1280x720", None
-    if value == "720x1280":
-        return "720x1280", None
-
-    matched = value.split("-", 1)
-    if len(matched) == 2:
-        ratio, resolution = matched
-        if ratio in {"16:9", "9:16", "21:9"} and resolution in {"480p", "720p", "1080p"}:
-            return resolution, ratio
-
-    if value in {"480p", "720p", "1080p"}:
-        return value, None
-
-    return value, None
-
-
 def _extract_generated_asset_lines(prompt_text: str) -> List[str]:
     if not prompt_text:
         return []
@@ -953,7 +930,6 @@ async def handle_generate_storyboard_video(project_id: str, parameters: Dict) ->
     try:
         from app.api.generation.video import generate_video
         from app.api.generation.models import VideoGenerateRequest
-        from app.services import ProjectService
         storyboard_id = parameters.get("storyboard_id")
         if not storyboard_id:
             return {"success": False, "error": "storyboard_id 为必填项"}
@@ -964,12 +940,6 @@ async def handle_generate_storyboard_video(project_id: str, parameters: Dict) ->
         if not video_prompt:
             return {"success": False, "error": f"分镜 {storyboard.get('sequence', storyboard_id)} 尚未设置 video_prompt"}
         ep_id = parameters.get("episode_id") or storyboard.get("episode_id", "")
-        proj = ProjectService.get_project(project_id)
-        global_style_config = normalize_global_style_config(proj.get("ai_config", {}).get("global_style_config"))
-        global_resolution, global_ratio = _parse_global_video_resolution(
-            global_style_config.get("global_resolution", "1280x720")
-        )
-        resolution = storyboard.get("resolution") or global_resolution
         image_ids = []
         for char_id in storyboard.get("character_ids", []):
             char = AssetService.load_asset(project_id, "character", char_id)
@@ -982,7 +952,7 @@ async def handle_generate_storyboard_video(project_id: str, parameters: Dict) ->
             if prop and prop.get("image_id"): image_ids.append(prop["image_id"])
         if not image_ids:
             return {"success": False, "error": "分镜关联的角色/场景/道具均无主图，请先为资产生图"}
-        req = VideoGenerateRequest(storyboard_id=storyboard_id, episode_id=ep_id, image_ids=image_ids, prompt=video_prompt, duration=storyboard.get("duration", 6), resolution=resolution, ratio=global_ratio)
+        req = VideoGenerateRequest(storyboard_id=storyboard_id, episode_id=ep_id, image_ids=image_ids, prompt=video_prompt, duration=storyboard.get("duration", 6), resolution=storyboard.get("resolution") or None, ratio=None)
         data = await generate_video(project_id=project_id, request=req)
         return {"success": True, "video_id": data.get("video_id"), "status": data.get("status"), "storyboard_sequence": storyboard.get("sequence")}
     except Exception as e:
@@ -1029,16 +999,10 @@ async def handle_generate_all_storyboard_videos(project_id: str, parameters: Dic
     try:
         from app.api.generation.video import generate_video
         from app.api.generation.models import VideoGenerateRequest
-        from app.services import ProjectService
         episode_id = parameters.get("episode_id")
         storyboards = AssetService.list_assets(project_id, "storyboard") or []
         if episode_id:
             storyboards = [s for s in storyboards if s.get("episode_id") == episode_id]
-        proj = ProjectService.get_project(project_id)
-        global_style_config = normalize_global_style_config(proj.get("ai_config", {}).get("global_style_config"))
-        global_resolution, global_ratio = _parse_global_video_resolution(
-            global_style_config.get("global_resolution", "1280x720")
-        )
         results, skipped = [], []
         for sb in storyboards:
             sid = sb.get("asset_id")
@@ -1061,7 +1025,7 @@ async def handle_generate_all_storyboard_videos(project_id: str, parameters: Dic
                     skipped.append(f"第{sb.get('sequence', sid)}镜(关联资产无主图)")
                     continue
                 ep_id = episode_id or sb.get("episode_id", "")
-                req = VideoGenerateRequest(storyboard_id=sid, episode_id=ep_id, image_ids=image_ids, prompt=video_prompt, duration=sb.get("duration", 6), resolution=sb.get("resolution") or global_resolution, ratio=global_ratio)
+                req = VideoGenerateRequest(storyboard_id=sid, episode_id=ep_id, image_ids=image_ids, prompt=video_prompt, duration=sb.get("duration", 6), resolution=sb.get("resolution") or None, ratio=None)
                 data = await generate_video(project_id=project_id, request=req)
                 results.append({"sequence": sb.get("sequence"), "video_id": data.get("video_id")})
             except Exception as e:

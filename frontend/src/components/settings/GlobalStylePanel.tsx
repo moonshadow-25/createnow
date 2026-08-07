@@ -4,7 +4,7 @@ import { useToast } from '@/components/common/Toast';
 import { useGlobalStyleStore } from '@/store/globalStyleStore';
 import { useProjectStore } from '@/store/projectStore';
 import type { ImageSizes } from '@/types';
-import { parseVideoSpec, encodeVideoSpec } from '@/utils/generationDefaults';
+import { parseVideoSpec } from '@/utils/generationDefaults';
 
 interface CustomPreset {
   id: string;
@@ -137,7 +137,8 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
       setGlobalRatio(parsedGlobalResolution.ratio);
       setGlobalResolution(parsedGlobalResolution.resolution);
       setGlobalStyleConfig({
-        global_resolution: data.global_resolution || encodeVideoSpec(parsedGlobalResolution),
+        global_video_ratio: parsedGlobalResolution.ratio,
+        global_video_resolution: parsedGlobalResolution.resolution,
         nine_grid_mode: data.nine_grid_mode || false,
       });
     } catch (e) {
@@ -159,10 +160,9 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     if (!config) return;
     setSaving(true);
     try {
-      const encodedGlobalResolution = encodeVideoSpec({ ratio: globalRatio, resolution: globalResolution });
+      // 新版独立字段保存（不再写旧版组合字段 global_resolution）
       const configToSave = {
         ...config,
-        global_resolution: encodedGlobalResolution,
         global_video_ratio: globalRatio,
         global_video_resolution: globalResolution,
       };
@@ -172,7 +172,8 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
       ]);
       setConfig(configToSave);
       setGlobalStyleConfig({
-        global_resolution: configToSave.global_resolution || encodeVideoSpec({ ratio: globalRatio, resolution: globalResolution }),
+        global_video_ratio: globalRatio,
+        global_video_resolution: globalResolution,
         nine_grid_mode: configToSave.nine_grid_mode || false,
       });
       toast('全局风格配置已保存', 'success');

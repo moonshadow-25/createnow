@@ -71,6 +71,11 @@ async def update_global_style_config(
     if "global_resolution" in update_data:
         current_config["global_resolution"] = update_data["global_resolution"]
 
+    if "global_video_ratio" in update_data:
+        current_config["global_video_ratio"] = update_data["global_video_ratio"]
+    if "global_video_resolution" in update_data:
+        current_config["global_video_resolution"] = update_data["global_video_resolution"]
+
     if "nine_grid_mode" in update_data:
         new_nine_grid = bool(update_data["nine_grid_mode"])
         old_nine_grid = bool(current_config.get("nine_grid_mode", False))
