@@ -72,10 +72,10 @@ $CREATENOW_API_BASE_URL/contents/generations/tasks
 | `type` | 对象字段 | `role` | 用途 |
 | --- | --- | --- | --- |
 | `text` | `text` | 无 | 视频提示词。 |
-| `image_url` | `image_url.url` | 无 | 单图首帧图生视频。 |
-| `image_url` | `image_url.url` | `first_frame` | 双图模式中的首帧。 |
-| `image_url` | `image_url.url` | `last_frame` | 双图模式中的尾帧。 |
-| `image_url` | `image_url.url` | `reference_image` | 参考图。 |
+| `image_url` | `image_url.url` | 无 | 单图首帧图生视频（当前仅 happyhorse 等模型使用）。 |
+| `image_url` | `image_url.url` | `first_frame` | 双图模式中的首帧（需上层显式指定首尾帧模式）。 |
+| `image_url` | `image_url.url` | `last_frame` | 双图模式中的尾帧（需上层显式指定首尾帧模式）。 |
+| `image_url` | `image_url.url` | `reference_image` | 参考图（当前默认模式：单图、多图、多模态均使用）。 |
 | `video_url` | `video_url.url` | `reference_video` | 参考视频。 |
 | `audio_url` | `audio_url.url` | `reference_audio` | 参考音频。 |
 
@@ -122,9 +122,11 @@ curl -sS -X POST "$CREATENOW_API_BASE_URL/contents/generations/tasks" \
 JSON
 ```
 
-### 1.5 单图首帧图生视频
+### 1.5 单图图生视频
 
-单张图片使用不带 `role` 的 `image_url`。图片 URL 应可由 CreateNow 服务端访问；也可以按服务支持情况使用 `data:image/...;base64,...`。
+> 当前适配器（`byteseed.py` / `createnow.py`）对单图默认发送 `role: "reference_image"` 的参考图请求，不再使用无 `role` 的首帧模式（官方首帧模式要求输出比例跟随首帧图片，参考图模式无此约束）。无 `role` 的单图首帧请求当前仅保留给 happyhorse 等模型。
+
+参考图模式单图请求示例：
 
 ```bash
 export FIRST_FRAME_URL="https://cdn.example.com/first-frame.png"
@@ -142,7 +144,8 @@ curl -sS -X POST "$CREATENOW_API_BASE_URL/contents/generations/tasks" \
     },
     {
       "type": "image_url",
-      "image_url": {"url": "$FIRST_FRAME_URL"}
+      "image_url": {"url": "$FIRST_FRAME_URL"},
+      "role": "reference_image"
     }
   ],
   "ratio": "16:9",
@@ -154,9 +157,13 @@ curl -sS -X POST "$CREATENOW_API_BASE_URL/contents/generations/tasks" \
 JSON
 ```
 
+图片 URL 应可由 CreateNow 服务端访问；也可以按服务支持情况使用 `data:image/...;base64,...`。
+
 ### 1.6 首尾帧视频
 
 提供两张图片时，第一张为 `first_frame`，第二张为 `last_frame`。
+
+> 当前应用的适配器默认将多图（含 2 张）按参考图发送；仅当上层显式指定首尾帧模式（应用 API 请求传 `first_last_frames: true`，如故事板"插入首尾帧视频"功能）时才使用本节的 `first_frame` / `last_frame` 角色。
 
 ```bash
 export FIRST_FRAME_URL="https://cdn.example.com/start.png"
@@ -336,7 +343,8 @@ curl -sS "$CREATENOW_API_BASE_URL/contents/generations/tasks/$TASK_ID" \
 
 - 参考图片应使用 CreateNow 服务端可访问的公开 URL；当前应用也会在适配器支持时转为图片 `data:` URL。
 - 参考视频应传公网 URL。当前应用本地层会过滤 `data:` 和 `asset://` 形式的视频参考地址。
-- `happyhorse-1.0-r2v` 在当前应用中不会使用 `asset://` 图片地址，会改用 Base64 或公开 URL。
+- `happyhorse-1.0-r2v` 保留原语义：单图不带 `role`（首帧），2 张图使用 `first_frame` / `last_frame`，3 张及以上才使用 `reference_image`；不会使用 `asset://` 图片地址，会改用 Base64 或公开 URL。
+- 除 happyhorse 外，当前适配器对所有模型、任意图片数量统一发送 `role: "reference_image"`。
 - 当前接入层将 Seedance 2.0 兼容模型的 1080p 图片参考视频请求降级为可用分辨率。是否支持某个时长、比例、媒资数或模型专属参数，应以实际账号与官方服务返回结果为准。
 
 ---

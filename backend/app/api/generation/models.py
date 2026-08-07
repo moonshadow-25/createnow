@@ -98,6 +98,7 @@ class VideoGenerateRequest(BaseModel):
     generate_audio: Optional[bool] = None   # 是否生成音频（覆盖项目配置）
     bitrate_mode: Optional[str] = None      # 火山引擎码率模式（如 high）
     reference_media: Optional[List[Dict]] = None  # 参考素材元数据（{type,id?,url,name}列表）
+    first_last_frames: bool = False  # 多图时显式使用首尾帧模式（2张图为 first_frame + last_frame）；默认全部走 reference_image
 
     @validator('image_ids', pre=True, always=True)
     def validate_images(cls, v, values):

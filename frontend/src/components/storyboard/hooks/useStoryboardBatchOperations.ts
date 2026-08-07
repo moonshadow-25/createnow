@@ -446,7 +446,8 @@ export const useStoryboardBatchOperations = (context: BatchOperationsContext) =>
               image_ids: [firstStoryboard.image_id, secondStoryboard.image_id],
               prompt: analyzedPrompt,
               duration: 6,
-              resolution: '1920x1080'
+              resolution: '1920x1080',
+              first_last_frames: true
             });
 
             if (videoResponse.data) {
@@ -467,7 +468,8 @@ export const useStoryboardBatchOperations = (context: BatchOperationsContext) =>
           image_ids: [firstStoryboard.image_id, secondStoryboard.image_id],
           prompt: finalPrompt,
           duration: 6,
-          resolution: '1920x1080'
+          resolution: '1920x1080',
+          first_last_frames: true
         });
 
         if (videoResponse.data) {

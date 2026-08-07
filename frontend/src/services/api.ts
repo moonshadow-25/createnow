@@ -264,6 +264,7 @@ export const generationApi = {
     prompt: string;
     duration?: number;
     resolution?: string;
+    first_last_frames?: boolean;
   }) =>
     api.post(`/projects/${projectId}/generate/video`, {
       storyboard_id: data.storyboard_id,
@@ -271,7 +272,8 @@ export const generationApi = {
       image_ids: data.image_ids,
       prompt: data.prompt,
       duration: data.duration || 6,
-      resolution: data.resolution || '1920x1080'
+      resolution: data.resolution || '1920x1080',
+      first_last_frames: data.first_last_frames || false
     }),
   generateVideoMultimodal: (projectId: string, data: {
     storyboard_id: string;

@@ -845,7 +845,7 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 use_multipart=use_multipart
             )
         else:
-            # 多图模式（首尾帧）
+            # 多图模式（默认参考图；首尾帧需显式指定）
             result = await video_service.generate_multi_image(
                 image_urls=image_urls,
                 prompt=request.prompt,
@@ -853,7 +853,8 @@ async def generate_video(project_id: str, request: VideoGenerateRequest):
                 resolution=request.resolution,
                 ratio=request.ratio,
                 model=request.model,
-                use_multipart=use_multipart
+                use_multipart=use_multipart,
+                first_last_frames=request.first_last_frames
             )
 
         await video_service.close()

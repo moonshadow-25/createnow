@@ -124,17 +124,19 @@ class VideoGenService(AIService):
         resolution: str = "1920x1080",
         ratio: Optional[str] = None,
         model: Optional[str] = None,
-        use_multipart: Optional[bool] = None
+        use_multipart: Optional[bool] = None,
+        first_last_frames: Optional[bool] = None
     ) -> Dict[str, Any]:
-        """生成视频（多图模式，首尾帧）
+        """生成视频（多图模式，默认参考图；首尾帧需显式指定）
 
         Args:
-            image_urls: 输入图片URL或base64列表（2张：首帧+尾帧）
+            image_urls: 输入图片URL或base64列表
             prompt: 提示词
             duration: 视频时长（秒）
             resolution: 分辨率
             model: 指定模型（覆盖默认）
             use_multipart: 是否使用multipart格式（覆盖默认）
+            first_last_frames: 是否显式使用首尾帧模式（2张图时为 first_frame + last_frame）
 
         Returns:
             {
@@ -154,7 +156,8 @@ class VideoGenService(AIService):
             resolution=resolution,
             ratio=ratio,
             model=model,
-            use_multipart=use_multipart if use_multipart is not None else self.use_multipart
+            use_multipart=use_multipart if use_multipart is not None else self.use_multipart,
+            first_last_frames=bool(first_last_frames)
         )
 
     async def generate_multimodal(

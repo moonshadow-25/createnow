@@ -80,6 +80,16 @@ def is_asset_unsupported_model(model: Optional[str]) -> bool:
     return normalized_model in ASSET_UNSUPPORTED_MODELS or "vip" in normalized_model
 
 
+def _keeps_legacy_frame_roles(model: Optional[str]) -> bool:
+    """模型是否保留原首帧/首尾帧语义（不发送 reference_image 角色）
+
+    仅精确匹配 ASSET_UNSUPPORTED_MODELS（如 happyhorse-1.0-r2v 图生视频模型），
+    不使用 is_asset_unsupported_model —— 该函数对含 "vip" 的模型（如 vipro-sd2）
+    也返回 True，而这类模型恰恰要走 reference_image。
+    """
+    return bool(model and (model.strip().lower() in ASSET_UNSUPPORTED_MODELS))
+
+
 class ByteSeedVideoAdapter(VideoAdapter):
     """字节Seed视频生成适配器"""
 
@@ -118,7 +128,7 @@ class ByteSeedVideoAdapter(VideoAdapter):
         resolution: str = "1920x1080",
         **kwargs
     ) -> Dict[str, Any]:
-        """单图模式 - 图生视频（首帧）
+        """单图模式 - 图生视频（首帧或参考图）
 
         Args:
             image_url: 输入图片URL或base64
@@ -136,13 +146,18 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "raw_create_response": dict,  # 原始响应
             }
         """
+        # 默认以参考图角色发送（官方协议要求首帧模式 ratio 跟随图片，参考图无此约束）；
+        # happyhorse 等模型保留原首帧语义（不指定 role）
+        effective_model = kwargs.get("model") or self.model
+        image_item: Dict[str, Any] = {
+            "type": "image_url",
+            "image_url": {"url": image_url}
+        }
+        if not _keeps_legacy_frame_roles(effective_model):
+            image_item["role"] = "reference_image"
         content = [
             {"type": "text", "text": prompt},
-            {
-                "type": "image_url",
-                "image_url": {"url": image_url}
-                # 首帧模式不指定role
-            }
+            image_item,
         ]
 
         ratio = _resolve_resolution_and_ratio(resolution, kwargs.pop('ratio', None))[1]
@@ -156,14 +171,14 @@ class ByteSeedVideoAdapter(VideoAdapter):
         resolution: str = "1920x1080",
         **kwargs
     ) -> Dict[str, Any]:
-        """多图模式 - 首尾帧或参考图
+        """多图模式 - 参考图，或上层显式指定的首尾帧
 
         Args:
             image_urls: 输入图片URL或base64列表
             prompt: 提示词
             duration: 视频时长（秒）
             resolution: 分辨率（如 "1920x1080"）
-            **kwargs: 其他参数（model, generate_audio等）
+            **kwargs: 其他参数（model, generate_audio, first_last_frames等）
 
         Returns:
             {
@@ -176,9 +191,33 @@ class ByteSeedVideoAdapter(VideoAdapter):
         """
         content = [{"type": "text", "text": prompt}]
         override_ratio = kwargs.pop('ratio', None)
+        first_last_frames = bool(kwargs.pop('first_last_frames', False))
+        effective_model = kwargs.get("model") or self.model
 
-        if len(image_urls) == 2:
-            # 首尾帧模式
+        if _keeps_legacy_frame_roles(effective_model):
+            # happyhorse 等模型保持原行为：2张=首尾帧，3张及以上=参考图
+            if len(image_urls) == 2:
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_urls[0]},
+                    "role": "first_frame"
+                })
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_urls[1]},
+                    "role": "last_frame"
+                })
+                ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1]
+            else:
+                for img_url in image_urls:
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": img_url},
+                        "role": "reference_image"
+                    })
+                ratio = "adaptive"  # 参考图模式使用adaptive
+        elif first_last_frames and len(image_urls) == 2:
+            # 上层显式指定首尾帧模式
             content.append({
                 "type": "image_url",
                 "image_url": {"url": image_urls[0]},
@@ -191,14 +230,14 @@ class ByteSeedVideoAdapter(VideoAdapter):
             })
             ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1]
         else:
-            # 参考图模式（3张及以上）
+            # 默认全部作为参考图（任意张数）
             for img_url in image_urls:
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": img_url},
                     "role": "reference_image"
                 })
-            ratio = "adaptive"  # 参考图模式使用adaptive
+            ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1] if len(image_urls) == 2 else "adaptive"
 
         return await self._create_task(content, duration, ratio, resolution=resolution, **kwargs)
 
