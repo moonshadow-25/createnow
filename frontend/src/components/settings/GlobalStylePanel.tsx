@@ -85,6 +85,9 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
   const [videoDetail, setVideoDetail] = useState<StylePresetDetail | null>(null);
   const [globalRatio, setGlobalRatio] = useState('16:9');
   const [globalResolution, setGlobalResolution] = useState('720p');
+  // 分镜时长/字数输入框：自由输入（不即时 clamp），保存时统一校验
+  const [durationInput, setDurationInput] = useState('15');
+  const [charsInput, setCharsInput] = useState('65');
 
   const defaultImageSizes: ImageSizes = { character: '16x9', scene: '16x9', prop: '1x1', storyboard: '16x9' };
   const [imageSizes, setImageSizes] = useState<ImageSizes>(defaultImageSizes);
@@ -133,6 +136,8 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
         image_style: migrateStyle(data.image_style),
         video_style: migrateStyle(data.video_style),
       });
+      setDurationInput(String(data.storyboard_duration_seconds ?? 15));
+      setCharsInput(String(data.dialogue_chars_max ?? 65));
       const parsedGlobalResolution = parseVideoSpec((data as any).global_video_ratio && (data as any).global_video_resolution
         ? `${(data as any).global_video_ratio}-${(data as any).global_video_resolution}`
         : data.global_resolution);
@@ -162,9 +167,14 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     if (!config) return;
     setSaving(true);
     try {
+      // 保存时统一校验：时长 clamp 4-30，字数 ≥1
+      const durationVal = Math.min(30, Math.max(4, parseInt(durationInput) || 15));
+      const charsVal = Math.max(1, parseInt(charsInput) || 65);
       // 新版独立字段保存（不再写旧版组合字段 global_resolution）
       const configToSave = {
         ...config,
+        storyboard_duration_seconds: durationVal,
+        dialogue_chars_max: charsVal,
         global_video_ratio: globalRatio,
         global_video_resolution: globalResolution,
       };
@@ -173,6 +183,8 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
         updateProject(projectId, { ai_config: { image_sizes: imageSizes } }),
       ]);
       setConfig(configToSave);
+      setDurationInput(String(durationVal));
+      setCharsInput(String(charsVal));
       setGlobalStyleConfig({
         global_video_ratio: globalRatio,
         global_video_resolution: globalResolution,
@@ -195,15 +207,16 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     }
   };
 
-  // 修改分镜时长上限时，自动按公式重新计算对白字数（round(65 × s / 15)），可再手动调整
+  // 修改分镜时长上限时，自动按公式重新计算对白字数（round(65 × s / 15)），可再手动调整。
+  // 输入过程自由（不即时 clamp），只在字数联动时对有效数字做归一
   const handleDurationChange = (raw: string) => {
     if (!config) return;
-    const s = Math.min(30, Math.max(4, parseInt(raw) || 15));
-    setConfig({
-      ...config,
-      storyboard_duration_seconds: s,
-      dialogue_chars_max: Math.max(1, Math.round(65 * s / 15)),
-    });
+    setDurationInput(raw);
+    const s = parseInt(raw);
+    if (Number.isFinite(s) && s >= 1) {
+      const clamped = Math.min(30, Math.max(4, s));
+      setConfig({ ...config, dialogue_chars_max: Math.max(1, Math.round(65 * clamped / 15)) });
+    }
   };
 
   const addCustomPreset = (type: 'image' | 'video') => {
@@ -421,7 +434,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
               type="number"
               min={4}
               max={30}
-              value={config.storyboard_duration_seconds ?? 15}
+              value={durationInput}
               onChange={e => handleDurationChange(e.target.value)}
               className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
             />
@@ -432,8 +445,8 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
             <input
               type="number"
               min={1}
-              value={config.dialogue_chars_max ?? 65}
-              onChange={e => setConfig({ ...config, dialogue_chars_max: Math.max(1, parseInt(e.target.value) || 65) })}
+              value={charsInput}
+              onChange={e => setCharsInput(e.target.value)}
               className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
             />
             <span className="block text-xs text-gray-500 mt-1">修改时长后自动按公式计算，可手动调整</span>
