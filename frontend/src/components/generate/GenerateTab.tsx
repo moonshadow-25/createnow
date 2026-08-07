@@ -15,7 +15,7 @@ import { translateError } from '@/utils/errorMessages';
 import { useCreatenowModelConfigStore, IMAGE_SIZE_OPTIONS, VIDEO_RATIO_OPTIONS, VIDEO_RESOLUTION_OPTIONS } from '@/store/createnowModelConfigStore';
 import { useProjectStore } from '@/store/projectStore';
 import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
-import { getDefaultImageSize, getDefaultServiceModel, getDefaultVideoSpec } from '@/utils/generationDefaults';
+import { getDefaultImageSize, getDefaultServiceModel, getDefaultStoryboardDuration, getDefaultVideoSpec } from '@/utils/generationDefaults';
 import { isAssetUnsupportedVideoModel } from '@/utils/assetReview';
 import { AssetPickerPanel, getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 
@@ -200,7 +200,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const [selectedImageModel, setSelectedImageModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'image'));
   const [selectedVideoModel, setSelectedVideoModel] = useState(() => getDefaultServiceModel(currentProject, createnowModelConfig, 'video'));
   const [onlyMine, setOnlyMine] = useState(false);
-  const [duration, setDuration] = useState(6);
+  const [duration, setDuration] = useState<number>(() => getDefaultStoryboardDuration(currentProject));
   const [resolution, setResolution] = useState(defaultVideoSpec.resolution);
   const [ratio, setRatio] = useState(defaultVideoSpec.ratio);
   const [imageSize, setImageSize] = useState(() => getDefaultImageSize(currentProject, 'storyboard'));
@@ -1079,7 +1079,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
                     </button>
                     {showDurationMenu && (
                       <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden max-h-48 overflow-y-auto">
-                        {Array.from({ length: 12 }, (_, i) => i + 4).map(s => (
+                        {Array.from({ length: 27 }, (_, i) => i + 4).map(s => (
                           <button
                             key={s}
                             onClick={() => { setDuration(s); setShowDurationMenu(false); }}

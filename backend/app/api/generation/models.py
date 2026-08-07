@@ -229,6 +229,8 @@ class GlobalStyleConfig(BaseModel):
     video_style: StyleConfig = Field(default_factory=StyleConfig)
     global_resolution: str = "1280x720"  # 全局默认分辨率
     nine_grid_mode: bool = False          # 九宫格模式
+    storyboard_duration_seconds: int = 15  # 分镜时长上限（秒，4-30）
+    dialogue_chars_max: int = 65           # 单镜对白建议字数上限
 
 
 class GlobalStyleConfigUpdate(BaseModel):
@@ -240,3 +242,5 @@ class GlobalStyleConfigUpdate(BaseModel):
     global_video_ratio: Optional[str] = None           # 新版独立宽高比（如 "16:9"）
     global_video_resolution: Optional[str] = None      # 新版独立分辨率（如 "480p"）
     nine_grid_mode: Optional[bool] = None
+    storyboard_duration_seconds: Optional[int] = None  # 分镜时长上限（秒，4-30）
+    dialogue_chars_max: Optional[int] = None           # 单镜对白建议字数上限

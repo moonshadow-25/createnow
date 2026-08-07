@@ -1241,9 +1241,9 @@ export default function StoryboardEditorPage() {
                     <input
                       type="number"
                       value={editDuration}
-                      min={1}
-                      max={60}
-                      onChange={e => setEditDuration(Math.max(1, parseInt(e.target.value) || 6))}
+                      min={4}
+                      max={30}
+                      onChange={e => setEditDuration(Math.min(30, Math.max(4, parseInt(e.target.value) || 15)))}
                       className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
                     />
                   </div>

@@ -17,6 +17,14 @@
       "default_ai": {
         "name": "默认AI",
         "description": "对话AI生成video_prompt时使用的格式规范（多行分时段格式、@图N引用规则、对白规则）",
+        "variables": [
+          "{storyboard_duration_seconds}",
+          "{shot_count}",
+          "{per_shot_seconds}",
+          "{dialogue_chars_best_low}",
+          "{dialogue_chars_best_high}",
+          "{dialogue_chars_max}"
+        ],
         "content_file": "video/default_ai.md"
       }
     }
@@ -98,9 +106,11 @@
       },
       "nine_grid": {
         "name": "九宫格",
-        "description": "根据剧本自动拆分为九宫格分镜组（每组15秒），每个分镜包含9个段落的详细描述",
+        "description": "根据剧本自动拆分为九宫格分镜组（每组按项目分镜时长），每个分镜包含9个段落的详细描述",
         "variables": [
-          "{script}"
+          "{script}",
+          "{storyboard_duration_seconds}",
+          "{dialogue_chars_max}"
         ],
         "content_file": "storyboard/nine_grid.md"
       }

@@ -445,12 +445,18 @@ class VideoReverseService:
             if ready_result.get("error"):
                 raise HTTPException(status_code=502, detail=f"VLM 视频预处理失败：{ready_result['error']}")
 
+            from app.models.duration_config import get_storyboard_duration_config, derive_dialogue_limits
+            _cfg = get_storyboard_duration_config(ai_config)
+            _limits = derive_dialogue_limits(_cfg["duration_seconds"])
             prompt_context = {
                 "episode_number": episode.get("episode_number", ""),
                 "episode_title": episode.get("name", ""),
                 "preprocess_fps": preprocess_fps,
                 "max_duration_seconds": int(cls.MAX_DURATION_SECONDS),
                 "actual_duration_seconds": f"{duration_seconds:.2f}",
+                "storyboard_duration_seconds": _cfg["duration_seconds"],
+                "shot_count": _limits["shot_count"],
+                "per_shot_seconds": _limits["per_shot_seconds"],
             }
 
             screenplay_prompt = cls._build_vlm_prompt(ai_config, "video_reverse_screenplay", **prompt_context)

@@ -48,6 +48,8 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
         ("image",               "资产图片提示词（角色/场景/道具 image_prompt）格式规范"),
         ("storyboard_image_edit", "分镜图生图提示词（storyboard image_prompt）格式规范"),
     ]
+    from app.models.duration_config import get_storyboard_duration_config, render_duration_template
+    _duration_cfg = get_storyboard_duration_config(ai_config)
     _format_parts = []
     _overrides = ai_config.get("prompt_overrides", {})
     for _key, _label in _FORMAT_KEYS:
@@ -59,6 +61,12 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
         else:
             _fmt_content = (_presets.get("default_ai", {}).get("content", "")
                             or _presets.get("default", {}).get("content", ""))
+        # 渲染时长/字数占位符（无占位符的模板原样返回）
+        _fmt_content = render_duration_template(
+            _fmt_content,
+            _duration_cfg["duration_seconds"],
+            _duration_cfg["dialogue_chars_max"],
+        )
         if _fmt_content:
             _format_parts.append(f"### {_label}\n\n{_fmt_content}")
     ai_formats_context = (
@@ -108,6 +116,16 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
         if image_style_text:
             style_lines.append(f"- 图片风格（image_prompt 风格字段）：{image_style_text}")
         system_prompt += "\n\n" + "\n".join(style_lines)
+
+    # 注入分镜时长与对白字数约束（供规划分镜与生成 video_prompt 使用）
+    from app.models.duration_config import derive_dialogue_limits
+    _limits = derive_dialogue_limits(_duration_cfg["duration_seconds"])
+    system_prompt += (
+        "\n\n## 分镜时长与对白字数约束（最高优先级，规划分镜与生成 video_prompt 时严格执行）\n"
+        f"- 当前项目分镜时长上限：{_duration_cfg['duration_seconds']} 秒（每个分镜的 duration 字段按此值填写）\n"
+        f"- video_prompt 矩阵：约 {_limits['shot_count']} 个 Shot、每 Shot 约 {_limits['per_shot_seconds']} 秒\n"
+        f"- 单镜对白建议字数区间：{_limits['chars_best_low']}-{_limits['chars_best_high']} 字；硬性上限 {_limits['chars_max']} 字；后端分段校验上限 {_limits['chars_validate_max']} 字\n"
+    )
 
     return system_prompt, tools_desc
 

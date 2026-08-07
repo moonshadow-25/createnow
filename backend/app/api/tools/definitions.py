@@ -106,7 +106,7 @@ TOOLS = [
     },
     {
         "name": "create_storyboard",
-        "description": "创建单个分镜（视频段落）。每个分镜是一段独立的15秒视频，由video_prompt驱动。需要指定所属的剧集ID。",
+        "description": "创建单个分镜（视频段落）。每个分镜是一段独立视频（时长按项目全局风格中的分镜时长设置，默认15秒），由video_prompt驱动。需要指定所属的剧集ID。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -117,7 +117,7 @@ TOOLS = [
                 "description": {"type": "string", "description": "剧本原文片段（LLM 直接从剧本分段复制，禁止改写或摘要）"},
                 "script_scene_label": {"type": "string", "description": "剧本中的场次行原文。若剧本存在场次结构，则该字段必填"},
                 "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。@图N编号规则（严格执行）：按character_ids数组顺序依次编为@图1、@图2...，scene_ids紧接所有角色之后继续编号，prop_ids再接其后。"},
-                "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
+                "duration": {"type": "integer", "description": "视频时长（秒），默认按项目配置（全局风格-分镜时长，4-30秒）"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
                 "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
                 "scene_id": {"type": "string", "description": "场景ID（兼容旧版，优先使用scene_ids）"},
@@ -203,7 +203,7 @@ TOOLS = [
                 "description": {"type": "string", "description": "分镜画面描述（可选，新版主要使用video_prompt）"},
                 "script_scene_label": {"type": "string", "description": "剧本中的场次行原文。若剧本存在场次结构，则该字段必填，description 中不得再重复场次行"},
                 "video_prompt": {"type": "string", "description": "Seedance 2.0格式的视频提示词。"},
-                "duration": {"type": "integer", "description": "视频时长（秒），默认15秒"},
+                "duration": {"type": "integer", "description": "视频时长（秒），默认按项目配置（全局风格-分镜时长，4-30秒）"},
                 "character_ids": {"type": "array", "items": {"type": "string"}, "description": "出场角色ID列表（可选）"},
                 "scene_ids": {"type": "array", "items": {"type": "string"}, "description": "场景ID列表（可选）"},
                 "scene_id": {"type": "string", "description": "场景ID（兼容旧版）"},

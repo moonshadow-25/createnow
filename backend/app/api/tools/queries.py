@@ -8,8 +8,12 @@ from app.models.project import normalize_global_style_config
 from .helpers import check_asset_exists, KEY_ALIASES, count_dialogue_chars
 
 
-def _validate_segments(script: str, segments: list) -> Dict:
-    """校验分段方案：字数上限、末段完整性。纯 Python，不涉及 LLM。"""
+def _validate_segments(script: str, segments: list, max_allowed: int = 100) -> Dict:
+    """校验分段方案：字数上限、末段完整性。纯 Python，不涉及 LLM。
+
+    max_allowed 由项目配置的 dialogue_chars_max 换算得出（见
+    app.models.duration_config.derive_dialogue_limits），默认 100 兼容旧调用。
+    """
     if not segments or not isinstance(segments, list):
         return {"ok": False, "error": "segments 为空或格式错误"}
 
@@ -18,7 +22,7 @@ def _validate_segments(script: str, segments: list) -> Dict:
     if total_lines == 0:
         return {"ok": False, "error": "剧本为空"}
 
-    max_allowed = 100
+    max_allowed = max(1, int(max_allowed or 100))
     char_details = []  # 收集所有段字数
     has_error = False
     error_lines = []   # 逐行错误（单一 fatal error 用）
@@ -78,7 +82,7 @@ def _validate_segments(script: str, segments: list) -> Dict:
     return {"ok": True}
 
 
-def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, segments: list, plan_id: str) -> Dict:
+def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, segments: list, plan_id: str, duration_seconds: int = 15) -> Dict:
     """用校验通过的 segments 批量创建分镜，纯后端操作，不涉及 LLM。"""
     from datetime import datetime as dt
     created = []
@@ -107,7 +111,7 @@ def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, se
             "dialogue_chars_declared": count_dialogue_chars(seg.get("dialogue_units", [])),
             "character_ids": seg.get("character_ids", []),
             "scene_ids": seg.get("scene_ids", []),
-            "duration": 15,
+            "duration": duration_seconds,
             "created_at": dt.now().isoformat(),
             "updated_at": dt.now().isoformat(),
         }
@@ -467,8 +471,11 @@ async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_
     if not script:
         return {"success": False, "error": "剧本为空"}
 
-    # 建议字数：优先用 LLM 传入值，否则从已有 plan 读取，否则默认 65
-    suggested = 65
+    # 分镜时长/字数配置：优先用 LLM 传入值，否则从项目配置读取，否则回退默认
+    from app.models.duration_config import get_storyboard_duration_config, derive_dialogue_limits
+    _cfg = get_storyboard_duration_config(ai_config)
+    _limits = derive_dialogue_limits(_cfg["duration_seconds"])
+    suggested = _cfg["dialogue_chars_max"]
     if suggested_chars_raw is not None:
         try:
             suggested = int(suggested_chars_raw)
@@ -477,8 +484,8 @@ async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_
     if suggested <= 0:
         return {"success": False, "error": "suggested_dialogue_chars 必须大于0"}
 
-    # 校验
-    validation = _validate_segments(script, segments)
+    # 校验（上限随项目配置的字数设置换算）
+    validation = _validate_segments(script, segments, max_allowed=_limits["chars_validate_max"])
     if not validation.get("ok"):
         return {
             "success": False,
@@ -488,7 +495,7 @@ async def handle_estimate_storyboard_plan(project_id: str, parameters: Dict, ai_
 
     # 校验通过 → 批量创建
     plan_id = str(uuid.uuid4())
-    batch_result = _batch_create_storyboards_from_segments(project_id, episode_id, segments, plan_id)
+    batch_result = _batch_create_storyboards_from_segments(project_id, episode_id, segments, plan_id, duration_seconds=_cfg["duration_seconds"])
     if not batch_result.get("success"):
         return {"success": False, "error": batch_result.get("error", "批量创建分镜失败")}
 

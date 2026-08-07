@@ -190,14 +190,14 @@ def _split_reverse_segments_text(text: str) -> List[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-def _parse_reverse_segment_meta(segment_prompt: str, sequence: int) -> Dict[str, Any]:
+def _parse_reverse_segment_meta(segment_prompt: str, sequence: int, max_duration: int = 15) -> Dict[str, Any]:
     title = f"视频反推分段 {sequence}"
     first_line = next((line.strip() for line in str(segment_prompt or "").splitlines() if line.strip()), "")
     if first_line.startswith("[Segment]"):
         title = first_line.replace("[Segment]", "", 1).strip() or title
 
     time_range = ""
-    duration = 15
+    duration = max_duration
     m = re.search(r"时间范围[:：]\s*([^\n\r]+)", segment_prompt or "")
     if m:
         time_range = m.group(1).strip()
@@ -209,9 +209,9 @@ def _parse_reverse_segment_meta(segment_prompt: str, sequence: int) -> Dict[str,
                     return pieces[0] * 60 + pieces[1]
                 return pieces[0] * 3600 + pieces[1] * 60 + pieces[2]
             try:
-                duration = max(1, min(15, to_seconds(tm.group(2)) - to_seconds(tm.group(1))))
+                duration = max(1, min(max_duration, to_seconds(tm.group(2)) - to_seconds(tm.group(1))))
             except Exception:
-                duration = 15
+                duration = max_duration
 
     return {"title": title, "time_range": time_range, "duration": duration}
 
@@ -291,7 +291,11 @@ async def _adopt_reverse_segment_prompt_with_llm(
     screenplay_text: str,
     asset_library: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
-    meta = _parse_reverse_segment_meta(segment_prompt, sequence)
+    from app.services import ProjectService
+    from app.models.duration_config import get_storyboard_duration_config
+    _proj = ProjectService.get_project(project_id)
+    _max_duration = get_storyboard_duration_config((_proj or {}).get("ai_config"))["duration_seconds"]
+    meta = _parse_reverse_segment_meta(segment_prompt, sequence, max_duration=_max_duration)
     allowed_character_ids = {a.get("asset_id") for a in asset_library.get("characters", []) if a.get("asset_id")}
     allowed_scene_ids = {a.get("asset_id") for a in asset_library.get("scenes", []) if a.get("asset_id")}
     allowed_prop_ids = {a.get("asset_id") for a in asset_library.get("props", []) if a.get("asset_id")}
@@ -672,6 +676,8 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
         expected_asset_lines = ordered_assets["expected_asset_lines"]
         canonical_asset_lines = "\n".join(expected_asset_lines)
         from app.services.global_prompt_service import get_prompt_content
+        from app.models.duration_config import get_storyboard_duration_config, render_duration_template
+        _duration_cfg = get_storyboard_duration_config(project_ai_config)
         contract_template = get_prompt_content("video_subagent_contract", project_ai_config)
         if not contract_template:
             await llm.close()
@@ -698,7 +704,7 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
                 "## 当前集完整剧本\n"
                 f"{script_content or '（无剧本）'}\n\n"
                 "## 视频提示词模板（必须遵循）\n"
-                f"{custom_template or get_prompt_content('video', project_ai_config) or ''}\n\n"
+                f"{render_duration_template(custom_template or get_prompt_content('video', project_ai_config) or '', _duration_cfg['duration_seconds'], _duration_cfg['dialogue_chars_max'])}\n\n"
                 "## 当前分镜完整数据\n"
                 f"{json.dumps(storyboard_context, ensure_ascii=False, indent=2)}\n\n"
                 "## 分镜引用资产完整信息\n"
@@ -851,8 +857,12 @@ async def handle_import_reverse_segments(project_id: str, parameters: Dict) -> D
     created = []
     storyboard_ids = []
     now = datetime.now().isoformat()
+    from app.services import ProjectService
+    from app.models.duration_config import get_storyboard_duration_config
+    _proj = ProjectService.get_project(project_id)
+    _max_duration = get_storyboard_duration_config((_proj or {}).get("ai_config"))["duration_seconds"]
     for index, segment_prompt in enumerate(segment_prompts):
-        meta = _parse_reverse_segment_meta(segment_prompt, index + 1)
+        meta = _parse_reverse_segment_meta(segment_prompt, index + 1, max_duration=_max_duration)
         storyboard = {
             "asset_id": str(uuid.uuid4()),
             "episode_id": episode_id,
@@ -861,7 +871,7 @@ async def handle_import_reverse_segments(project_id: str, parameters: Dict) -> D
             "script_scene_label": meta.get("title", ""),
             "video_prompt": segment_prompt,
             "raw_video_prompt": segment_prompt,
-            "duration": meta.get("duration") or 15,
+            "duration": meta.get("duration") or _max_duration,
             "character_ids": [],
             "scene_ids": [],
             "prop_ids": [],

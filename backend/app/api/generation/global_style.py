@@ -106,6 +106,11 @@ async def update_global_style_config(
                             prompt_overrides[ttype]["active"] = "default"
             ai_config["prompt_overrides"] = prompt_overrides
 
+    if "storyboard_duration_seconds" in update_data:
+        current_config["storyboard_duration_seconds"] = update_data["storyboard_duration_seconds"]
+    if "dialogue_chars_max" in update_data:
+        current_config["dialogue_chars_max"] = update_data["dialogue_chars_max"]
+
     # 保存到项目metadata
     ai_config["global_style_config"] = current_config
     ProjectService.update_project(project_id, ai_config=ai_config)

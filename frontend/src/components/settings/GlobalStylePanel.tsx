@@ -26,6 +26,8 @@ interface GlobalStyleConfig {
   video_style: StyleConfig;
   global_resolution?: string;
   nine_grid_mode?: boolean;
+  storyboard_duration_seconds?: number;
+  dialogue_chars_max?: number;
 }
 
 const RATIO_OPTIONS = [
@@ -191,6 +193,17 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     } else {
       setConfig({ ...config, video_style: { ...config.video_style, ...updates } });
     }
+  };
+
+  // 修改分镜时长上限时，自动按公式重新计算对白字数（round(65 × s / 15)），可再手动调整
+  const handleDurationChange = (raw: string) => {
+    if (!config) return;
+    const s = Math.min(30, Math.max(4, parseInt(raw) || 15));
+    setConfig({
+      ...config,
+      storyboard_duration_seconds: s,
+      dialogue_chars_max: Math.max(1, Math.round(65 * s / 15)),
+    });
   };
 
   const addCustomPreset = (type: 'image' | 'video') => {
@@ -394,6 +407,37 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
+        </div>
+      </div>
+
+
+      {/* 分镜生成参数 */}
+      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+        <h4 className="font-medium text-gray-100 text-sm mb-3">分镜生成</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="block text-xs text-gray-400 mb-1">分镜时长上限（秒）</span>
+            <input
+              type="number"
+              min={4}
+              max={30}
+              value={config.storyboard_duration_seconds ?? 15}
+              onChange={e => handleDurationChange(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
+            />
+            <span className="block text-xs text-gray-500 mt-1">4-30 秒，默认 15 秒</span>
+          </label>
+          <label className="block">
+            <span className="block text-xs text-gray-400 mb-1">单镜对白字数（建议）</span>
+            <input
+              type="number"
+              min={1}
+              value={config.dialogue_chars_max ?? 65}
+              onChange={e => setConfig({ ...config, dialogue_chars_max: Math.max(1, parseInt(e.target.value) || 65) })}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
+            />
+            <span className="block text-xs text-gray-500 mt-1">修改时长后自动按公式计算，可手动调整</span>
+          </label>
         </div>
       </div>
 

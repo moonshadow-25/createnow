@@ -6,6 +6,14 @@ from app.services import AssetService
 from .helpers import _resolve_episode_id, validate_asset_refs, validate_declared_dialogue
 
 
+def _default_duration(project_id: str) -> int:
+    """读取项目配置的分镜时长上限，作为分镜 duration 的默认值。"""
+    from app.services import ProjectService
+    from app.models.duration_config import get_storyboard_duration_config
+    _proj = ProjectService.get_project(project_id)
+    return get_storyboard_duration_config((_proj or {}).get("ai_config"))["duration_seconds"]
+
+
 def _validate_dialogue_payload(project_id: str, parameters: Dict) -> Dict:
     check = validate_declared_dialogue(project_id, parameters)
     if not check.get("ok"):
@@ -26,7 +34,7 @@ async def handle_create_storyboard(project_id: str, parameters: Dict) -> Dict:
     if "sequence" not in parameters:
         return {"success": False, "error": "缺少必需字段: sequence"}
     if "duration" not in parameters:
-        parameters["duration"] = 15
+        parameters["duration"] = _default_duration(project_id)
     if not str(parameters.get("description") or "").strip():
         return {"success": False, "error": "缺少必需字段: description（必须填写剧本原文片段）"}
 
@@ -273,7 +281,7 @@ async def handle_insert_storyboard(project_id: str, parameters: Dict) -> Dict:
         "description": parameters.get("description", ""),
         "script_scene_label": parameters.get("script_scene_label", ""),
         "video_prompt": parameters.get("video_prompt", ""),
-        "duration": parameters.get("duration", 15),
+        "duration": parameters.get("duration") or _default_duration(project_id),
         "action": parameters.get("action", ""),
         "dialogue": parameters.get("dialogue", ""),
         "camera_angle": parameters.get("camera_angle", ""),

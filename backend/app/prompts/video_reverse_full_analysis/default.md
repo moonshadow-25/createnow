@@ -75,7 +75,7 @@
 二、segment_prompts_text / segments 格式要求
 - segment_prompts_text 必须以 [Segment Prompts] 开头。
 - 每个 segment 对应后续一个九宫格分镜。
-- 每个 segment.duration 必须 <= 15 秒，建议接近 15 秒。
+- 每个 segment.duration 必须 <= {storyboard_duration_seconds} 秒，建议接近 {storyboard_duration_seconds} 秒。
 - 每个 segment.time_range 使用全片绝对时间，例如 00:00:15-00:00:29。
 - 每个 segment.prompt 必须是完整 cloverai 风格 Segment Prompt，格式如下：
 

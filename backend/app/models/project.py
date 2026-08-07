@@ -25,6 +25,9 @@ _DEFAULT_GLOBAL_STYLE_CONFIG = {
     },
     "global_resolution": "1280x720",
     "nine_grid_mode": False,
+    # 分镜生成参数：时长上限（秒，4-30）与单镜对白建议字数上限
+    "storyboard_duration_seconds": 15,
+    "dialogue_chars_max": 65,
 }
 
 
@@ -58,6 +61,19 @@ def normalize_global_style_config(raw: Any) -> Dict[str, Any]:
     if not isinstance(normalized.get("global_resolution"), str) or not normalized["global_resolution"].strip():
         normalized["global_resolution"] = "1280x720"
     normalized["nine_grid_mode"] = bool(normalized.get("nine_grid_mode", False))
+
+    # 分镜生成参数归一化：时长 clamp 4-30 秒，对白字数下限 1
+    try:
+        normalized["storyboard_duration_seconds"] = int(normalized.get("storyboard_duration_seconds", 15))
+    except (TypeError, ValueError):
+        normalized["storyboard_duration_seconds"] = 15
+    normalized["storyboard_duration_seconds"] = min(30, max(4, normalized["storyboard_duration_seconds"]))
+
+    try:
+        normalized["dialogue_chars_max"] = int(normalized.get("dialogue_chars_max", 65))
+    except (TypeError, ValueError):
+        normalized["dialogue_chars_max"] = 65
+    normalized["dialogue_chars_max"] = max(1, normalized["dialogue_chars_max"])
 
     return normalized
 

@@ -87,3 +87,19 @@ export function getDefaultVideoSpec(project: Project | null | undefined): VideoS
 
   return parseVideoSpec(cfg.global_resolution);
 }
+
+export function getDefaultStoryboardDuration(project: Project | null | undefined): number {
+  const aiConfig = project?.ai_config as any;
+  const cfg = aiConfig?.global_style_config || aiConfig;
+  const raw = cfg?.storyboard_duration_seconds;
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : 15;
+  return Math.min(30, Math.max(4, value));
+}
+
+export function getDefaultDialogueCharsMax(project: Project | null | undefined): number {
+  const aiConfig = project?.ai_config as any;
+  const cfg = aiConfig?.global_style_config || aiConfig;
+  const raw = cfg?.dialogue_chars_max;
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : 65;
+  return Math.max(1, value);
+}
