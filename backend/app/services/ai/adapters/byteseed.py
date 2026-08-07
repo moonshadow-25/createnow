@@ -207,7 +207,6 @@ class ByteSeedVideoAdapter(VideoAdapter):
                     "image_url": {"url": image_urls[1]},
                     "role": "last_frame"
                 })
-                ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1]
             else:
                 for img_url in image_urls:
                     content.append({
@@ -215,7 +214,6 @@ class ByteSeedVideoAdapter(VideoAdapter):
                         "image_url": {"url": img_url},
                         "role": "reference_image"
                     })
-                ratio = "adaptive"  # 参考图模式使用adaptive
         elif first_last_frames and len(image_urls) == 2:
             # 上层显式指定首尾帧模式
             content.append({
@@ -228,7 +226,6 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 "image_url": {"url": image_urls[1]},
                 "role": "last_frame"
             })
-            ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1]
         else:
             # 默认全部作为参考图（任意张数）
             for img_url in image_urls:
@@ -237,7 +234,9 @@ class ByteSeedVideoAdapter(VideoAdapter):
                     "image_url": {"url": img_url},
                     "role": "reference_image"
                 })
-            ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1] if len(image_urls) == 2 else "adaptive"
+
+        # ratio 始终使用项目/请求设定值，不随图片数量改变
+        ratio = _resolve_resolution_and_ratio(resolution, override_ratio)[1]
 
         return await self._create_task(content, duration, ratio, resolution=resolution, **kwargs)
 
