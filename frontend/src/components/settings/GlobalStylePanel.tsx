@@ -425,7 +425,7 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
               onChange={e => handleDurationChange(e.target.value)}
               className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-white"
             />
-            <span className="block text-xs text-gray-500 mt-1">4-30 秒，默认 15 秒</span>
+            <span className="block text-xs text-gray-500 mt-1">4-30 秒上限，默认 15 秒；实际时长按各段对白内容自动适配</span>
           </label>
           <label className="block">
             <span className="block text-xs text-gray-400 mb-1">单镜对白字数（建议）</span>

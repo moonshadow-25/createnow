@@ -693,6 +693,12 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
 
         user_request = parameters.get("user_request", "") or ""
 
+        # 模板按分镜实际时长渲染：时长与对白目标字数均随分镜 duration 等比缩放
+        _video_template = custom_template or get_prompt_content('video', project_ai_config) or ''
+        _sb_duration = min(_duration_cfg["duration_seconds"], max(4, int(request_payload["duration"] or _duration_cfg["duration_seconds"])))
+        _sb_chars = max(1, round(_duration_cfg["dialogue_chars_max"] * _sb_duration / max(1, _duration_cfg["duration_seconds"])))
+        _rendered_template = render_duration_template(_video_template, _sb_duration, _sb_chars)
+
         def build_subagent_user_prompt(extra_instruction: str = "") -> str:
             return (
                 "你是视频提示词生成器。请从零生成，不要参考已有的提示词内容。\n\n"
@@ -703,8 +709,8 @@ async def _generate_storyboard_video_prompt_subagent_single(project_id: str, par
                 f"{json.dumps(global_style_context, ensure_ascii=False, indent=2)}\n\n"
                 "## 当前集完整剧本\n"
                 f"{script_content or '（无剧本）'}\n\n"
-                "## 视频提示词模板（必须遵循）\n"
-                f"{render_duration_template(custom_template or get_prompt_content('video', project_ai_config) or '', _duration_cfg['duration_seconds'], _duration_cfg['dialogue_chars_max'])}\n\n"
+                "## 视频提示词模板（必须遵循，总时长与 Shot 数必须与本模板一致）\n"
+                f"{_rendered_template}\n\n"
                 "## 当前分镜完整数据\n"
                 f"{json.dumps(storyboard_context, ensure_ascii=False, indent=2)}\n\n"
                 "## 分镜引用资产完整信息\n"

@@ -408,7 +408,7 @@ TOOLS = [
             "properties": {
                 "episode_id": {"type": "string", "description": "剧集ID（UUID格式）"},
                 "suggested_dialogue_chars": {"type": "integer", "description": "LLM 自算的对白建议字数（单镜目标，整数）"},
-                "segments": {"type": "array", "items": {"type": "object"}, "description": "LLM 产出的分段方案数组，每项含：sequence, scene_label, line_start, line_end, description, dialogue_units, character_ids, scene_ids"}
+                "segments": {"type": "array", "items": {"type": "object"}, "description": "LLM 产出的分段方案数组，每项含：sequence, scene_label, line_start, line_end, description, dialogue_units, character_ids, scene_ids；duration（可选）：该段实际时长（秒），按公式 round(段对白字数×项目分镜时长上限/目标字数) 估算并 clamp 到 4-上限 秒，动作/情节密集的段可上浮但不超过上限；不填则用项目分镜时长上限"}
             },
             "required": ["episode_id", "segments"]
         }

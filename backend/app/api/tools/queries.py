@@ -100,6 +100,15 @@ def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, se
         end = seg.get("line_end")
         # 后端按行号裁切 description（闭区间 [start, end]）
         description = "\n".join(lines[start - 1:end])
+        # 时长：优先用 LLM 按对白字数估算的段 duration，clamp 到 4-上限；否则用项目上限
+        seg_duration = seg.get("duration")
+        try:
+            seg_duration = int(seg_duration)
+        except (TypeError, ValueError):
+            seg_duration = None
+        if seg_duration is None or seg_duration < 1:
+            seg_duration = duration_seconds
+        seg_duration = min(duration_seconds, max(4, seg_duration))
         sb_data = {
             "asset_id": str(uuid.uuid4()),
             "episode_id": episode_id,
@@ -111,7 +120,7 @@ def _batch_create_storyboards_from_segments(project_id: str, episode_id: str, se
             "dialogue_chars_declared": count_dialogue_chars(seg.get("dialogue_units", [])),
             "character_ids": seg.get("character_ids", []),
             "scene_ids": seg.get("scene_ids", []),
-            "duration": duration_seconds,
+            "duration": seg_duration,
             "created_at": dt.now().isoformat(),
             "updated_at": dt.now().isoformat(),
         }
