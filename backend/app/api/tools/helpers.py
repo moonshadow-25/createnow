@@ -289,7 +289,12 @@ def validate_declared_dialogue(project_id: str, parameters: Dict) -> Dict:
     time_evidence = str(parameters.get("short_dialogue_time_evidence") or "").strip()
 
     min_allowed = max(0, suggested - 30)
-    max_allowed = 100
+    # 上限随项目配置的对白字数设置换算（默认 100，30 秒 → 195）
+    from app.services import ProjectService
+    from app.models.duration_config import get_storyboard_duration_config, derive_dialogue_limits
+    _proj = ProjectService.get_project(project_id)
+    _cfg = get_storyboard_duration_config((_proj or {}).get("ai_config"))
+    max_allowed = derive_dialogue_limits(_cfg["duration_seconds"])["chars_validate_max"]
 
     def _audit(status: str) -> Dict:
         return {
