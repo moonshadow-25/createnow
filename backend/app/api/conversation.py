@@ -124,7 +124,9 @@ def _build_system_prompt(project: Dict, ai_config: Dict, episode_id: Optional[st
         "\n\n## 分镜时长与对白字数约束（最高优先级，规划分镜与生成 video_prompt 时严格执行）\n"
         f"- 当前项目分镜时长上限：{_duration_cfg['duration_seconds']} 秒（每个分镜的 duration 字段按此值填写）\n"
         f"- video_prompt 矩阵：约 {_limits['shot_count']} 个 Shot、每 Shot 约 {_limits['per_shot_seconds']} 秒\n"
-        f"- 单镜对白建议字数区间：{_limits['chars_best_low']}-{_limits['chars_best_high']} 字；硬性上限 {_limits['chars_max']} 字；后端分段校验上限 {_limits['chars_validate_max']} 字\n"
+        f"- 单镜对白目标字数：{_duration_cfg['dialogue_chars_max']} 字。规划分段时 S 以此为目标，允许 {_limits['chars_best_low']}-{_limits['chars_best_high']} 字浮动；"
+        f"超过 {_limits['chars_best_high']} 字必须按自然断点拆分到多个分镜；剧本该段对白确实不足时，允许低于 {_limits['chars_best_low']} 字\n"
+        f"- 后端分段校验上限：{_limits['chars_validate_max']} 字（硬性防线，超出将拒绝整批创建）\n"
     )
 
     return system_prompt, tools_desc

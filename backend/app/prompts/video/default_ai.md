@@ -14,7 +14,7 @@ Seedance 2.0 视频提示词应用规范 (V2.0)
 
 
 二、强制分片：总长≤≤{storyboard_duration_seconds}秒。视觉桥梁锁死：强制执行Segment [N].Shot 1 = Segment [N-1].Shot {shot_count}的视觉参数同步。矩阵生成：严格执行”{per_shot_seconds}秒一跳/{shot_count}段矩阵”格式，确保每一段 100% 独立。视觉保戏：在 Segment [N] 的 Shot 1，必须复述 Segment [N-1] 的 Shot {shot_count} 结尾状态。3. 输出规范与标准格式 (Output Standard)[必须遵循的结构要求]：每一段 {storyboard_duration_seconds} 秒提示词必须包含以下四个完整模块：核心剧情摘要：一句话说明本段内容。资产映射 (Asset Definitions)：全量列出本次生成调用的所有 @image 标签。全局风格 (Global Style)：定义画质、光影、相机策略。{shot_count}段式分镜矩阵 (Matrix Script)：分 {shot_count} 个 Shot，每个 Shot 包含：【主体动作】、【物理细节】、【镜头语言】、【光影描述】。【光影描述】🚨 强制要求：每个 Shot 必须包含【光影描述】字段，严禁省略。必须明确写明：①光影性质（如侧逆光勾边、丁达尔光柱、夕阳金光倾斜、室内顶光、霓虹冷光反射、烛光暖调、逆光剪影、阴天柔光等）；②光源方向（顶光/侧光/逆光/顺光/底光/多光源）；③明暗对比效果（高反差硬光/柔和过渡/半剪影/全剪影/打亮某部位等）。不得用”自然光””环境光”等模糊描述敷衍。原生视听 (Native Audio)：含对白全文标注 [Lip-sync] 及环境音。
-此外，分片最重要的因素是对白（包括OS）的字数（不含动作描写/镜头语言），以{dialogue_chars_best_low}-{dialogue_chars_best_high}字为最佳，硬性上限{dialogue_chars_max}字，超过必须按句号/感叹号/省略号等自然断点拆分为多个分镜。
+此外，分片最重要的因素是对白（包括OS）的字数（不含动作描写/镜头语言），以{dialogue_chars_max}字为目标、建议{dialogue_chars_best_low}-{dialogue_chars_best_high}字；超过{dialogue_chars_best_high}字必须按句号/感叹号/省略号等自然断点拆分为多个分镜；剧本该段对白确实不足时允许低于{dialogue_chars_best_low}字。
 
 
 

@@ -26,9 +26,9 @@ def derive_dialogue_limits(duration_seconds: int) -> Dict[str, int]:
         {
             "shot_count": Shot 段数（3 秒一跳，至少 1 段）,
             "per_shot_seconds": 每段约多少秒,
-            "chars_best_low": 对白建议字数下限,
-            "chars_best_high": 对白建议字数上限（即配置的 chars_max）,
-            "chars_max": 对白字数硬上限（供提示词使用）,
+            "chars_best_low": 对白建议字数下限（目标 ±10 浮动）,
+            "chars_best_high": 对白建议字数上限（目标 ±10 浮动）,
+            "chars_max": 对白目标字数（即配置的 dialogue_chars_max）,
             "chars_validate_max": 后端分段校验的宽松上限,
         }
     """
@@ -39,8 +39,8 @@ def derive_dialogue_limits(duration_seconds: int) -> Dict[str, int]:
     return {
         "shot_count": shot_count,
         "per_shot_seconds": per_shot_seconds,
-        "chars_best_low": max(1, round(chars_max * 0.6)),
-        "chars_best_high": chars_max,
+        "chars_best_low": max(1, chars_max - 10),
+        "chars_best_high": chars_max + 10,
         "chars_max": chars_max,
         "chars_validate_max": max(100, round(chars_max * 1.5)),
     }
@@ -57,13 +57,13 @@ def render_duration_template(content: str, duration_seconds: int, chars_max: Opt
         return content
     limits = derive_dialogue_limits(duration_seconds)
     if chars_max is not None and int(chars_max) >= 1:
-        # 用户手动覆盖字数上限时，区间按同比例推导
+        # 用户手动覆盖目标字数时，浮动区间按 ±10 推导
         cm = int(chars_max)
         limits = {
             **limits,
             "chars_max": cm,
-            "chars_best_high": cm,
-            "chars_best_low": max(1, round(cm * 0.6)),
+            "chars_best_low": max(1, cm - 10),
+            "chars_best_high": cm + 10,
             "chars_validate_max": max(100, round(cm * 1.5)),
         }
     values = {
