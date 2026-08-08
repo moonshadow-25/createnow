@@ -43,10 +43,11 @@ class SiliconClient:
         nonce = uuid.uuid4().hex[:16]
 
         body = b''
+        json_data = None
         if data is not None:
             import json
-            # ensure_ascii=False：中文原文编码，与平台端签名校验一致
-            body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+            json_data = json.dumps(data)
+            body = json_data.encode('utf-8')
 
         signature = self._sign(method, path, timestamp, nonce, body)
 
@@ -60,7 +61,7 @@ class SiliconClient:
             method=method,
             url=url,
             headers=headers,
-            data=body if body else None,
+            json=json_data if data else None,
             params=params,
         )
 
@@ -283,7 +284,7 @@ class CallsAPI:
         Args:
             talent_id: 数字艺人ID
             role_type: 角色类型，如 "主角"、"配角"、"群演"
-            project_name: 项目/作品名称（可选），平台据此去重，同项目同资产不重复收费
+            project_name: 项目/作品名称（可选）
             project_type: 项目类型（可选）
             request_id: 第三方请求唯一标识（可选）
 
