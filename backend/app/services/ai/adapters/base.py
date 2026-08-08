@@ -207,7 +207,8 @@ class VideoAdapter(ABC):
         response_data: Optional[Dict] = None,
         error: Optional[str] = None,
         status_code: Optional[int] = None,
-        duration_ms: Optional[float] = None
+        duration_ms: Optional[float] = None,
+        **extra_metadata
     ):
         """记录日志"""
         if self.log_callback:
@@ -220,7 +221,8 @@ class VideoAdapter(ABC):
                 response_data=response_data,
                 error=error,
                 status_code=status_code,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                **extra_metadata
             )
 
 

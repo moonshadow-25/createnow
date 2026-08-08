@@ -90,7 +90,8 @@ class AILogService:
         project_id: str,
         interaction_type: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        task_id: Optional[str] = None
     ) -> List[Dict]:
         """
         获取项目的AI交互日志
@@ -100,6 +101,7 @@ class AILogService:
             interaction_type: 过滤类型 (llm/image/video)，None表示全部
             limit: 返回条数限制
             offset: 偏移量
+            task_id: 按任务ID过滤（metadata.task_id），用于按视频任务取回输入输出
 
         Returns:
             日志条目列表，按时间倒序
@@ -119,7 +121,9 @@ class AILogService:
                         entry = json.loads(line)
                         # 类型过滤
                         if interaction_type is None or entry.get("type") == interaction_type:
-                            logs.append(entry)
+                            # 任务过滤
+                            if task_id is None or entry.get("metadata", {}).get("task_id") == task_id:
+                                logs.append(entry)
                     except json.JSONDecodeError:
                         continue
         except Exception as e:
@@ -132,9 +136,9 @@ class AILogService:
         return logs[offset:offset + limit]
 
     @staticmethod
-    def get_log_count(project_id: str, interaction_type: Optional[str] = None) -> int:
+    def get_log_count(project_id: str, interaction_type: Optional[str] = None, task_id: Optional[str] = None) -> int:
         """获取日志总数"""
-        return len(AILogService.get_logs(project_id, interaction_type, limit=999999))
+        return len(AILogService.get_logs(project_id, interaction_type, limit=999999, task_id=task_id))
 
     @staticmethod
     def clear_logs(project_id: str, interaction_type: Optional[str] = None) -> Dict:

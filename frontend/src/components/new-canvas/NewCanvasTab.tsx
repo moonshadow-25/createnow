@@ -3,6 +3,7 @@ import { CheckCircle, Layers, Loader2, Play, Plus, Save, Trash2, X } from 'lucid
 import { canvasApi, generationApi } from '@/services/api';
 import { useAssetStore } from '@/store/assetStore';
 import { useToast } from '@/components/common/Toast';
+import { buildVideoErrorLogPayload } from '@/utils/errorMessages';
 import { ImagePreviewModal } from '@/components/common/ImagePreviewModal';
 import { getAssetImageUrl } from '@/components/assets/AssetPickerPanel';
 import { CanvasAssetPickerDialog } from './CanvasAssetPickerDialog';
@@ -953,7 +954,14 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       await syncVideoOutputToCanvasNodes(updated);
       if (!silent) toast('视频轮询已更新', 'success');
     } catch (error: any) {
-      if (!silent) toast(error?.response?.data?.detail || error?.message || '视频轮询失败', 'error');
+      if (!silent) {
+        toast(
+          error?.response?.data?.detail || error?.message || '视频轮询失败',
+          'error',
+          undefined,
+          () => buildVideoErrorLogPayload(projectId, videoId)
+        );
+      }
     } finally {
       pollingVideoIdsRef.current.delete(videoId);
       setPollingVideoIds(new Set(pollingVideoIdsRef.current));

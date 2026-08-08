@@ -90,7 +90,8 @@ class AIService:
         response_data: Optional[Dict] = None,
         error: Optional[str] = None,
         duration_ms: Optional[float] = None,
-        status_code: Optional[int] = None
+        status_code: Optional[int] = None,
+        **extra_metadata
     ):
         """记录AI交互日志"""
         # 优先使用实例的 project_id，如果没有就从上下文获取
@@ -126,7 +127,8 @@ class AIService:
                 metadata={
                     "model": self.model,
                     "api_url": self.api_url,
-                    "operation": operation
+                    "operation": operation,
+                    **extra_metadata,
                 }
             )
         except Exception as e:

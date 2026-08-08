@@ -4,6 +4,8 @@
  * 顺序按出现频率排列，命中第一个即返回。
  */
 
+import api from '@/services/api';
+
 interface ErrorTranslation {
   keyword: string;
   cn: string;
@@ -57,4 +59,27 @@ export function translateError(detail: string | null | undefined): string | null
 /** 从 axios 错误对象中提取 detail 字符串 */
 export function extractErrorDetail(err: any): string {
   return err?.response?.data?.detail || err?.message || String(err || '未知错误');
+}
+
+/**
+ * 从后端 AI 交互日志构造视频错误的完整复制内容（输入 + 输出）。
+ * videoId 为上游任务 ID（metadata.task_id）；不传时取该项目最近的视频日志（用于提交阶段即失败、尚无任务 ID 的场景）。
+ * 找不到日志时抛错，由调用方决定回退策略。
+ */
+export async function buildVideoErrorLogPayload(projectId: string, videoId?: string): Promise<string> {
+  const { data } = await api.get(`/projects/${projectId}/generate/ai-logs`, {
+    params: { type: 'video', task_id: videoId, limit: 1 },
+  });
+  const entry = (data?.logs || [])[0];
+  if (!entry) throw new Error('未找到该任务的日志记录');
+
+  const payload: Record<string, unknown> = {
+    video_id: videoId || entry.metadata?.task_id || null,
+    operation: entry.metadata?.operation || null,
+    请求: entry.request || null,
+  };
+  if (entry.response) payload['响应'] = entry.response;
+  if (entry.error) payload['错误'] = entry.error;
+
+  return JSON.stringify(payload, null, 2);
 }

@@ -23,6 +23,7 @@ import { X, Video, RefreshCw, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useToast } from '@/components/common/Toast';
 import { generationApi } from '@/services/api';
+import { buildVideoErrorLogPayload } from '@/utils/errorMessages';
 import { VideoCard, VideoRecord } from './VideoCard';
 import { getVideoUrl } from './utils/mediaUtils';
 
@@ -291,14 +292,14 @@ export function VideoGallery({
       if (updatedVideo.status === 'completed') {
         toast(`视频生成完成`, 'success');
       } else if (updatedVideo.status === 'poll_failed') {
-        toast(`轮询失败，已暂停自动轮询，可手动继续`, 'error');
+        toast(`轮询失败，已暂停自动轮询，可手动继续: ${updatedVideo.error || '未知错误'}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
       } else if (updatedVideo.status === 'failed') {
         if (updatedVideo.refund_status === 'refunded') {
-          toast('视频生成失败，24小时内已退还积分', 'error');
+          toast('视频生成失败，24小时内已退还积分', 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
         } else if (updatedVideo.refund_status === 'expired') {
-          toast('视频生成失败，已超过24小时', 'error');
+          toast('视频生成失败，已超过24小时', 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
         } else {
-          toast(`视频生成失败: ${updatedVideo.error || '未知错误'}`, 'error');
+          toast(`视频生成失败: ${updatedVideo.error || '未知错误'}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
         }
       }
 

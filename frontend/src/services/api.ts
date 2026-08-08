@@ -422,7 +422,7 @@ export const generationApi = {
       storyboard_ids: storyboardIds
     }),
   // AI日志
-  getAILogs: (projectId: string, params?: { type?: string; limit?: number; offset?: number }) =>
+  getAILogs: (projectId: string, params?: { type?: string; limit?: number; offset?: number; task_id?: string }) =>
     api.get(`/projects/${projectId}/generate/ai-logs`, { params }),
   clearAILogs: (projectId: string, type?: string) =>
     api.delete(`/projects/${projectId}/generate/ai-logs`, { params: { type } }),

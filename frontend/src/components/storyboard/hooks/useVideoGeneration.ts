@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { assetApi, generationApi, storyboardApi } from '@/services/api';
 import { useToast } from '@/components/common/Toast';
+import { buildVideoErrorLogPayload } from '@/utils/errorMessages';
 import { useStoryboardGenerationStore } from '@/store/storyboardGenerationStore';
 
 interface UseVideoGenerationOptions {
@@ -244,7 +245,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       const errorMsg = error.response?.data?.detail
         ? (typeof error.response.data.detail === 'string' ? error.response.data.detail : JSON.stringify(error.response.data.detail))
         : error.message || '生成失败';
-      toast(`视频生成失败: ${errorMsg}`, 'error');
+      toast(`视频生成失败: ${errorMsg}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId));
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
   }, [projectId, episodeId, videoPrompt, multimodalReference, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess, primaryImage]);
@@ -295,7 +296,7 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       const errorMsg = error.response?.data?.detail
         ? (typeof error.response.data.detail === 'string' ? error.response.data.detail : JSON.stringify(error.response.data.detail))
         : error.message || '生成失败';
-      toast(`视频生成失败: ${errorMsg}`, 'error');
+      toast(`视频生成失败: ${errorMsg}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId));
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
   }, [projectId, episodeId, videoPrompt, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);

@@ -431,7 +431,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 request_payload=payload_for_log,
                 response_data=data,
                 status_code=response.status_code,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                task_id=task_id,
             )
 
             return {
@@ -500,7 +501,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
                     request_payload={"task_id": task_id},
                     error=error_msg,
                     status_code=response.status_code,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    task_id=task_id,
                 )
                 return {
                     "success": False,
@@ -526,7 +528,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
                     response_data=data,
                     error=error_msg,
                     status_code=response.status_code,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    task_id=task_id,
                 )
                 return {
                     "success": False,
@@ -548,7 +551,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 request_payload={"task_id": task_id},
                 response_data=data,
                 status_code=response.status_code,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                task_id=task_id,
             )
 
             # 根据状态返回不同结果
@@ -610,7 +614,8 @@ class ByteSeedVideoAdapter(VideoAdapter):
                 method="GET",
                 request_payload={"task_id": task_id},
                 error=error_msg,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                task_id=task_id,
             )
 
             return {
