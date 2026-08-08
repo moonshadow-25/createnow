@@ -224,12 +224,13 @@ class SiliconPlatformService:
 # 内部工具函数
 # ═══════════════════════════════════════════════════════════════
 
-def _download_image_to_project(project_id: str, url: str, asset_id: str = "") -> str:
-    """下载远程图片到 project/images/files/，返回相对路径。
+def _download_image_to_project(project_id: str, url: str, asset_id: str = "", asset_type: str = "character") -> str:
+    """下载远程图片到 project/images/files/{asset_type}/，返回带类型前缀的相对路径。
     文件名基于 asset_id（平台资产 ID），同资产重复获取复用同一文件。
+    local_path 格式 {asset_type}/{filename}，与系统图片路由（三段式）一致。
     """
     projects_dir = _get_projects_dir()
-    images_files_dir = projects_dir / project_id / "images" / "files"
+    images_files_dir = projects_dir / project_id / "images" / "files" / asset_type
     images_files_dir.mkdir(parents=True, exist_ok=True)
 
     # 用 asset_id（或 URL）的 SHA256 作为文件名
@@ -251,7 +252,7 @@ def _download_image_to_project(project_id: str, url: str, asset_id: str = "") ->
             logger.error(f"[SiliconPlatform] download error: {url} -> {e}")
             raise SiliconPlatformError(f"下载图片失败: {e}")
 
-    return filename
+    return f"{asset_type}/{filename}"
 
 
 def _guess_extension(url: str) -> str:
