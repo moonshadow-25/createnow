@@ -106,8 +106,8 @@ class VideoGenerateRequest(BaseModel):
         image_id = values.get('image_id')
         if v is None and image_id:
             return [image_id]
-        if v and len(v) > 10:
-            raise ValueError('最多支持10个分镜')
+        if v and len(v) > 30:
+            raise ValueError('最多支持30个分镜')
         return v
 
 
