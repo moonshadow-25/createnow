@@ -182,6 +182,17 @@ class Project:
             "review": self.review,
         }
         metadata_path = self.project_dir / "metadata.json"
+        # 保留扩展字段（如 silicon_credentials 等第三方模块写入的字段），
+        # 避免白名单序列化覆盖时丢失
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+                for key, value in existing.items():
+                    if key not in metadata:
+                        metadata[key] = value
+            except Exception:
+                pass
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
 
