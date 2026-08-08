@@ -288,7 +288,7 @@ export function CanvasPropertyPanel({
               <span className="text-xs text-gray-400">时长</span>
               <input
                 type="number"
-                min={4}
+                min={1}
                 max={30}
                 value={selectedNode.config.duration || 6}
                 onChange={(event) => updateNodeConfig(selectedNode.node_id, { duration: Number(event.target.value) || 6 })}
