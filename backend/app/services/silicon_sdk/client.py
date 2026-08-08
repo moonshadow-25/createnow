@@ -43,11 +43,10 @@ class SiliconClient:
         nonce = uuid.uuid4().hex[:16]
 
         body = b''
-        json_data = None
         if data is not None:
             import json
-            json_data = json.dumps(data)
-            body = json_data.encode('utf-8')
+            # ensure_ascii=False：中文原文编码，与平台端签名校验一致
+            body = json.dumps(data, ensure_ascii=False).encode('utf-8')
 
         signature = self._sign(method, path, timestamp, nonce, body)
 
@@ -61,7 +60,7 @@ class SiliconClient:
             method=method,
             url=url,
             headers=headers,
-            json=json_data if data else None,
+            data=body if body else None,
             params=params,
         )
 
