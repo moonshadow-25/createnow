@@ -215,7 +215,9 @@ export const GlobalStylePanel: React.FC<GlobalStylePanelProps> = ({ projectId })
     const s = parseInt(raw);
     if (Number.isFinite(s) && s >= 1) {
       const clamped = Math.min(30, Math.max(4, s));
-      setConfig({ ...config, dialogue_chars_max: Math.max(1, Math.round(65 * clamped / 15)) });
+      const newChars = Math.max(1, Math.round(65 * clamped / 15));
+      setConfig({ ...config, dialogue_chars_max: newChars });
+      setCharsInput(String(newChars)); // 同步输入框显示，否则联动结果被保存时的 charsInput 覆盖
     }
   };
 
