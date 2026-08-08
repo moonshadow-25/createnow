@@ -9,18 +9,20 @@ from typing import Optional, Dict, Any, List
 class SiliconClient:
     """硅星人数字资产平台 SDK 客户端"""
 
-    def __init__(self, app_id: str, app_secret: str, base_url: str = "https://ai.npaigc.com"):
+    def __init__(self, app_id: str, app_secret: str, base_url: str = "https://ai.npaigc.com", timeout: int = 30):
         """
         初始化客户端
-
+        
         Args:
             app_id: 开发者应用ID
             app_secret: 开发者应用密钥
             base_url: API基础地址，默认生产环境
+            timeout: 请求超时时间（秒），默认30秒
         """
         self.app_id = app_id
         self.app_secret = app_secret
         self.base_url = base_url.rstrip('/')
+        self.timeout = timeout
         self._session = requests.Session()
         self.assets = AssetsAPI(self)
         self.talents = TalentsAPI(self)
@@ -43,11 +45,9 @@ class SiliconClient:
         nonce = uuid.uuid4().hex[:16]
 
         body = b''
-        json_data = None
         if data is not None:
             import json
-            json_data = json.dumps(data)
-            body = json_data.encode('utf-8')
+            body = json.dumps(data, ensure_ascii=False).encode('utf-8')
 
         signature = self._sign(method, path, timestamp, nonce, body)
 
@@ -57,29 +57,32 @@ class SiliconClient:
         }
 
         url = f"{self.base_url}{path}"
-        response = self._session.request(
-            method=method,
-            url=url,
-            headers=headers,
-            json=json_data if data else None,
-            params=params,
-        )
-
-        # 先检查 HTTP 状态码
-        if not response.ok:
-            raise SiliconAPIError(
-                f"HTTP {response.status_code}: {response.text[:200]}",
-                code=response.status_code
+        try:
+            response = self._session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                data=body if body else None,
+                params=params,
+                timeout=self.timeout,
             )
+        except requests.RequestException as e:
+            raise SiliconAPIError(f'网络请求失败: {e}') from e
 
-        # 尝试解析 JSON，失败则给出有意义的错误
+        # 非 2xx 状态码：优先提取服务端返回的业务错误信息
+        if response.status_code < 200 or response.status_code >= 300:
+            try:
+                detail = response.json()
+                msg = detail.get('message') if isinstance(detail, dict) and detail.get('message') else str(detail)
+            except ValueError:
+                msg = (response.text or '').strip()[:200] or f'HTTP {response.status_code}'
+            raise SiliconAPIError(f'HTTP {response.status_code}: {msg}', response.status_code)
+
+        # 响应必须为 JSON
         try:
             result = response.json()
-        except Exception:
-            raise SiliconAPIError(
-                f"API 返回非 JSON 响应 (HTTP {response.status_code}): {response.text[:300]}",
-                code=response.status_code
-            )
+        except ValueError:
+            raise SiliconAPIError(f'响应解析失败（非JSON）: HTTP {response.status_code}', response.status_code)
 
         if result.get('code') != 0:
             error_msg = result.get('message', '未知错误')
@@ -106,14 +109,14 @@ class TalentsAPI:
              page: int = 1, page_size: int = 20) -> Dict:
         """
         查询数字艺人列表（含主视图预览，免费）
-
+        
         Args:
             keyword: 按姓名/描述搜索
-            level: 按等级筛选，如 "L1"、"L2"
+            level: 按等级筛选，如 "L1"、"L1 基础数字艺人"（兼容等级序号 1）
             ordering: 排序：-total_revenue（默认）、-created_at、-sort_order、name
             page: 页码
-            page_size: 每页数量
-
+            page_size: 每页数量（上限 100）
+            
         Returns:
             {
                 "total": 50,
@@ -145,10 +148,10 @@ class TalentsAPI:
     def get(self, talent_id: int) -> Dict:
         """
         获取数字艺人详情（含主视图预览，免费）
-
+        
         Args:
             talent_id: 数字艺人ID
-
+            
         Returns:
             艺人详情，含 main_image_url 主视图URL
         """
@@ -166,15 +169,15 @@ class AssetsAPI:
              page: int = 1, page_size: int = 20) -> Dict:
         """
         查询资产列表
-
+        
         Args:
             asset_type: 资产类型 (threeviews_image / image_asset / audio_sample)
             talent_id: 数字艺人ID
             sub_type: 三视图子类型 (front / side / full / back)
             keyword: 搜索关键词
             page: 页码
-            page_size: 每页数量
-
+            page_size: 每页数量（上限 100）
+            
         Returns:
             {
                 "total": 100,
@@ -197,10 +200,10 @@ class AssetsAPI:
     def get(self, asset_id: str) -> Dict:
         """
         获取资产详情
-
+        
         Args:
             asset_id: 资产UUID
-
+            
         Returns:
             资产详情，含 preview_url 预览图
         """
@@ -209,10 +212,10 @@ class AssetsAPI:
     def by_talent(self, talent_id: int) -> Dict:
         """
         按数字艺人获取全部已公开资产（分组展示）
-
+        
         Args:
             talent_id: 数字艺人ID
-
+            
         Returns:
             {
                 "talent_id": 1,
@@ -240,14 +243,16 @@ class CallsAPI:
                 request_id: Optional[str] = None) -> Dict:
         """
         付费获取资产原图（按次扣费，价格由角色类型 × 艺人等级决定）
-
+        
+        建议传入 project_name（项目/作品名称），同项目同资产重复获取时自动去重、不重复扣费。
+        
         Args:
             asset_id: 资产UUID
             role_type: 角色类型，如 "主角"、"配角"、"群演"
             project_name: 项目/作品名称（可选），如"XX品牌宣传片"
             project_type: 项目类型（可选），如"短视频"、"宣传片"、"电商主图"
             request_id: 第三方请求唯一标识（可选）
-
+            
         Returns:
             {
                 "call_id": "ACQ-...",
@@ -280,14 +285,16 @@ class CallsAPI:
                        request_id: Optional[str] = None) -> Dict:
         """
         按艺人批量付费获取三视图资产（一次性获取该艺人全部三视图下载链接）
-
+        
+        建议传入 project_name（项目/作品名称），同项目已获取过的资产自动去重、不重复扣费。
+        
         Args:
             talent_id: 数字艺人ID
             role_type: 角色类型，如 "主角"、"配角"、"群演"
             project_name: 项目/作品名称（可选）
             project_type: 项目类型（可选）
             request_id: 第三方请求唯一标识（可选）
-
+            
         Returns:
             {
                 "talent_id": 1,
@@ -327,17 +334,35 @@ class CallsAPI:
     def get_result(self, call_id: str) -> Dict:
         """
         查询调用结果
-
+        
         Args:
             call_id: 调用记录ID
         """
         return self._client._request('GET', f'/api/v1/calls/{call_id}/result/')
 
-    def list(self, page: int = 1, page_size: int = 20) -> Dict:
+    def list(self, page: int = 1, page_size: int = 20,
+             asset_id: Optional[str] = None, status: Optional[str] = None,
+             start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict:
         """
         查询调用记录列表
+        
+        Args:
+            page: 页码
+            page_size: 每页数量（上限 100）
+            asset_id: 按资产UUID筛选（可选）
+            status: 按状态筛选：completed / expired（可选）
+            start_date: 开始日期 YYYY-MM-DD（可选）
+            end_date: 结束日期 YYYY-MM-DD（可选）
         """
         params = {'page': page, 'page_size': page_size}
+        if asset_id:
+            params['asset_id'] = asset_id
+        if status:
+            params['status'] = status
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
         return self._client._request('GET', '/api/v1/calls/', params=params)
 
     def detail(self, call_id: str) -> Dict:
@@ -356,7 +381,7 @@ class BillingAPI:
     def get_balance(self) -> Dict:
         """
         查询余额和配额
-
+        
         Returns:
             {
                 "balance": 1000.00,
@@ -369,17 +394,32 @@ class BillingAPI:
         """
         return self._client._request('GET', '/api/v1/billing/balance/')
 
-    def records(self, page: int = 1, page_size: int = 20) -> Dict:
+    def records(self, page: int = 1, page_size: int = 20,
+                billing_type: Optional[str] = None, start_date: Optional[str] = None,
+                end_date: Optional[str] = None) -> Dict:
         """
         查询账单明细
+        
+        Args:
+            page: 页码
+            page_size: 每页数量（上限 100）
+            billing_type: 账单类型：call_deduction(扣费) / recharge(充值) / refund(退款) / adjustment(调整)（可选）
+            start_date: 开始日期 YYYY-MM-DD（可选）
+            end_date: 结束日期 YYYY-MM-DD（可选）
         """
         params = {'page': page, 'page_size': page_size}
+        if billing_type:
+            params['type'] = billing_type
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
         return self._client._request('GET', '/api/v1/billing/records/', params=params)
 
     def usage(self, period: str = 'daily', days: int = 30) -> Dict:
         """
         查询用量统计
-
+        
         Args:
             period: 统计周期 (daily / monthly)
             days: 最近天数
