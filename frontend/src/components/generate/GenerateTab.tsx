@@ -650,7 +650,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
     const imgId = asset.image_id;
     if (!imgId) { toast('该资产暂无主图', 'error'); return false; }
     if (selectedMedia.find(m => m.id === imgId || m.sourceAssetId === asset.asset_id)) { return true; }
-    if (selectedMedia.filter(m => m.type === 'image').length >= 10) { toast('最多支持10张参考图片', 'error'); return false; }
+    if (selectedMedia.filter(m => m.type === 'image').length >= 30) { toast('最多支持30张参考图片', 'error'); return false; }
     const newItem: RefMedia = {
       type: 'image',
       id: imgId,
@@ -690,7 +690,7 @@ export function GenerateTab({ projectId, showAssetSubmit = false, imageApiType, 
   const handleUploadFile = async (file: File) => {
     const fileType = file.type;
     if (fileType.startsWith('image/')) {
-      if (selectedMedia.filter(m => m.type === 'image').length >= 10) { toast('最多支持10张参考图片', 'error'); return; }
+      if (selectedMedia.filter(m => m.type === 'image').length >= 30) { toast('最多支持30张参考图片', 'error'); return; }
       setIsUploading(true);
       try {
         const tempAssetId = crypto.randomUUID();
