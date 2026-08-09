@@ -481,10 +481,11 @@ class VideoReverseService:
         preprocess_fps: int = 1,
     ) -> Dict[str, Any]:
         episode = cls._get_episode(project_id, episode_id)
+        # 尽早写入进度记录：前端提交瞬间就会轮询，记录写晚了会被误判为 404
+        cls._set_reverse_progress(project_id, episode_id, "running", 0, _REVERSE_STEP_MESSAGES[0])
         saved_video_path = await cls.save_temp_video(project_id, upload_file)
         duration_seconds = cls.probe_video_duration(saved_video_path)
 
-        cls._set_reverse_progress(project_id, episode_id, "running", 0, _REVERSE_STEP_MESSAGES[0])
         vlm = get_ai_service(ai_config, "vlm", project_id)
         completed_ok = False
         try:

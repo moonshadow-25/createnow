@@ -45,6 +45,8 @@ export function VideoReverseDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState<ReverseProgress | null>(null);
   const finishedRef = useRef(false);
+  // 是否曾成功读到过进度（用于区分"任务刚开始 404（正常）"与"进度丢失（异常）"）
+  const sawProgressRef = useRef(false);
   // 父组件每次渲染都会重建 onCompleted/onClose（内联函数），useToast 的 toast
   // 在 toast 出现/消失时也会重建——轮询 effect 里必须走 ref，否则 effect 反复重启导致请求风暴
   const onCompletedRef = useRef(onCompleted);
@@ -62,6 +64,7 @@ export function VideoReverseDialog({
       setIsSubmitting(false);
       setProgress(null);
       finishedRef.current = false;
+      sawProgressRef.current = false;
     }
   }, [isOpen]);
 
@@ -74,7 +77,6 @@ export function VideoReverseDialog({
     let timer: ReturnType<typeof setInterval> | null = null;
     let inFlight = false;
     let failedCount = 0;
-    const startedAt = Date.now();
     const stop = () => {
       if (timer) {
         clearInterval(timer);
@@ -88,6 +90,7 @@ export function VideoReverseDialog({
         const res = await storyboardApi.getVideoReverseProgress(projectId, episodeId);
         if (cancelled) return;
         failedCount = 0;
+        sawProgressRef.current = true;
         const data = res.data as ReverseProgress;
         setProgress(data);
         if (data.status === 'completed') {
@@ -103,16 +106,16 @@ export function VideoReverseDialog({
         } else if (data.status === 'failed') {
           stop();
           toastRef.current(data.error || '视频反推失败', 'error');
-        } else if (Date.now() - startedAt > 10 * 60 * 1000) {
-          stop();
-          toastRef.current('反推任务长时间未完成，可能已中断，请查看后端日志', 'error');
         }
       } catch (err: any) {
-        if (err?.response?.status === 404) {
+        if (err?.response?.status === 404 && sawProgressRef.current) {
+          // 之前见过进度、现在 404 = 进度记录真的丢了（如服务重启）
           stop();
           toastRef.current('反推任务状态丢失，可能已被服务重启中断', 'error');
+        } else if (err?.response?.status === 404) {
+          // 任务刚开始，后端进度记录尚未建立（文件上传中），静默等待
         } else if (++failedCount >= 5) {
-          // 后端不可用（如未重启、500 等）时停止轮询，避免无限请求
+          // 后端不可用（未重启、500 等）时停止轮询，避免无限请求
           stop();
           toastRef.current('反推进度查询连续失败，已停止轮询，请检查后端服务', 'error');
         }
@@ -187,6 +190,7 @@ export function VideoReverseDialog({
     setIsSubmitting(true);
     setProgress(null);
     setError('');
+    sawProgressRef.current = false;
     try {
       const response = await storyboardApi.videoReverseEpisode(projectId, episodeId, {
         file,
