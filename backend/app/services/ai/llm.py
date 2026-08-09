@@ -507,15 +507,48 @@ class LLMService(AIService):
             response_payload.update(extra_body)
 
         start_time = datetime.now()
+        # 阶段观测点 1：请求发出前
+        self._log_interaction(
+            interaction_type="llm",
+            operation="analyze_video_file_stage",
+            url=response_url,
+            method="POST",
+            request_payload={"model": self.model, "stage": "request_sent"},
+            metadata={"stage": "request_sent"},
+        )
         try:
-            response = await self.client.post(
+            # 用 stream 把“响应头到达”和“响应体收完”拆成两个可观测的时刻
+            # （普通 .post 会一次性等完整响应体，无法区分卡在哪个阶段）
+            async with self.client.stream(
+                "POST",
                 response_url,
                 headers=self._get_headers(),
                 json=response_payload,
                 timeout=None,
-            )
-            response.raise_for_status()
-            response_data = response.json()
+            ) as response:
+                # 阶段观测点 2：响应头已到达（status_code 可用；体可能还没收完）
+                self._log_interaction(
+                    interaction_type="llm",
+                    operation="analyze_video_file_stage",
+                    url=response_url,
+                    method="POST",
+                    request_payload={"model": self.model, "stage": "headers_received"},
+                    metadata={"stage": "headers_received"},
+                    status_code=response.status_code,
+                )
+                response.raise_for_status()
+                # 阶段观测点 3：响应体收完（卡在这之前 = 体没有完整送达）
+                body = await response.aread()
+                self._log_interaction(
+                    interaction_type="llm",
+                    operation="analyze_video_file_stage",
+                    url=response_url,
+                    method="POST",
+                    request_payload={"model": self.model, "stage": "body_received"},
+                    metadata={"stage": "body_received"},
+                    status_code=response.status_code,
+                )
+                response_data = json.loads(body) if body else {}
             output_text = self._extract_response_text(response_data)
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
             self._log_interaction(
