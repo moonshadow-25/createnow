@@ -103,7 +103,7 @@ export function VideoReverseDialog({
       }
     };
     poll();
-    timer = setInterval(poll, 2000);
+    timer = setInterval(poll, 30000);
     return () => {
       cancelled = true;
       stop();

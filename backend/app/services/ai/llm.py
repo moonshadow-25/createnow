@@ -407,7 +407,7 @@ class LLMService(AIService):
     async def wait_video_file_ready(
         self,
         file_id: str,
-        poll_interval_seconds: float = 10.0,
+        poll_interval_seconds: float = 30.0,
         timeout_seconds: float = 300.0,
     ) -> Dict[str, Any]:
         """Poll Files API until the uploaded video can be referenced by responses."""
