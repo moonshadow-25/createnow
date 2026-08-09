@@ -45,6 +45,14 @@ export function VideoReverseDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [progress, setProgress] = useState<ReverseProgress | null>(null);
   const finishedRef = useRef(false);
+  // 父组件每次渲染都会重建 onCompleted/onClose（内联函数），useToast 的 toast
+  // 在 toast 出现/消失时也会重建——轮询 effect 里必须走 ref，否则 effect 反复重启导致请求风暴
+  const onCompletedRef = useRef(onCompleted);
+  onCompletedRef.current = onCompleted;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   useEffect(() => {
     if (!isOpen) {
@@ -58,11 +66,14 @@ export function VideoReverseDialog({
   }, [isOpen]);
 
   // 提交后轮询反推进度：POST 同步执行期间事件循环空闲，进度查询可并行返回；
-  // 即使网关 504 掐断 POST，任务仍在后端继续执行，这里持续轮询直到终态
+  // 即使网关 504 掐断 POST，任务仍在后端继续执行，这里持续轮询直到终态。
+  // 依赖只保留稳定值（回调走 ref），避免父组件渲染导致 effect 重启、请求风暴
   useEffect(() => {
     if (!isSubmitting || !episodeId) return;
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let inFlight = false;
+    let failedCount = 0;
     const startedAt = Date.now();
     const stop = () => {
       if (timer) {
@@ -71,35 +82,42 @@ export function VideoReverseDialog({
       }
     };
     const poll = async () => {
-      if (cancelled) return;
+      if (cancelled || inFlight) return;
+      inFlight = true;
       try {
         const res = await storyboardApi.getVideoReverseProgress(projectId, episodeId);
         if (cancelled) return;
+        failedCount = 0;
         const data = res.data as ReverseProgress;
         setProgress(data);
         if (data.status === 'completed') {
           stop();
           if (finishedRef.current) return;
           finishedRef.current = true;
-          toast(
+          toastRef.current(
             `视频反推完成：生成 ${data.result?.storyboards_created || 0} 条分镜，新增 ${data.result?.characters_created || 0} 个角色`,
             'success'
           );
-          await onCompleted();
-          onClose();
+          await onCompletedRef.current();
+          onCloseRef.current();
         } else if (data.status === 'failed') {
           stop();
-          toast(data.error || '视频反推失败', 'error');
+          toastRef.current(data.error || '视频反推失败', 'error');
         } else if (Date.now() - startedAt > 10 * 60 * 1000) {
           stop();
-          toast('反推任务长时间未完成，可能已中断，请查看后端日志', 'error');
+          toastRef.current('反推任务长时间未完成，可能已中断，请查看后端日志', 'error');
         }
       } catch (err: any) {
         if (err?.response?.status === 404) {
           stop();
-          toast('反推任务状态丢失，可能已被服务重启中断', 'error');
+          toastRef.current('反推任务状态丢失，可能已被服务重启中断', 'error');
+        } else if (++failedCount >= 5) {
+          // 后端不可用（如未重启、500 等）时停止轮询，避免无限请求
+          stop();
+          toastRef.current('反推进度查询连续失败，已停止轮询，请检查后端服务', 'error');
         }
-        // 其他网络错误静默，下轮重试
+      } finally {
+        inFlight = false;
       }
     };
     poll();
@@ -108,7 +126,7 @@ export function VideoReverseDialog({
       cancelled = true;
       stop();
     };
-  }, [isSubmitting, projectId, episodeId, onCompleted, onClose, toast]);
+  }, [isSubmitting, projectId, episodeId]);
 
   if (!isOpen) return null;
 
