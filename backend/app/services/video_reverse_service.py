@@ -48,7 +48,7 @@ class VideoReverseService:
     ) -> None:
         """更新某集反推的内存进度（key 为 project:episode，同一集重复提交时整体重置）。"""
         key = f"{project_id}:{episode_id}"
-        entry = cls._REVERSE_PROGRESS.get(key)
+        entry = _REVERSE_PROGRESS.get(key)
         if entry is None or (status == "running" and step_index == 0):
             now = datetime.now().isoformat()
             entry = {
@@ -64,7 +64,7 @@ class VideoReverseService:
                 "error": None,
                 "result": None,
             }
-            cls._REVERSE_PROGRESS[key] = entry
+            _REVERSE_PROGRESS[key] = entry
             return
         entry["status"] = status
         if step_index is not None:
@@ -76,7 +76,7 @@ class VideoReverseService:
 
     @classmethod
     def get_reverse_progress(cls, project_id: str, episode_id: str) -> Optional[Dict[str, Any]]:
-        return cls._REVERSE_PROGRESS.get(f"{project_id}:{episode_id}")
+        return _REVERSE_PROGRESS.get(f"{project_id}:{episode_id}")
 
     @staticmethod
     def _get_projects_dir() -> Path:
