@@ -583,6 +583,8 @@ export const storyboardApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  getVideoReverseProgress: (projectId: string, episodeId: string) =>
+    api.get(`/projects/${projectId}/storyboards/episode/${episodeId}/video-reverse/progress`),
 };
 
 // 全局提示词模板API

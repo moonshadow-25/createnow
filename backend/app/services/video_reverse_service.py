@@ -20,11 +20,63 @@ from app.services.prompt_service import PromptService
 from app.services.storyboard_asset_service import match_assets_to_storyboards
 from app.services.video_service import FFMPEG_BIN
 
+# 反推进度（内存态，仅用于前端轮询展示；服务重启即丢失，可接受）
+_REVERSE_PROGRESS: Dict[str, Dict[str, Any]] = {}
+_REVERSE_STEP_MESSAGES = [
+    "正在上传视频到模型平台...",
+    "正在等待平台预处理视频...",
+    "正在反推剧本...",
+    "正在反推分段提示词与剧情分析...",
+    "正在保存反推结果...",
+]
+
 
 class VideoReverseService:
     """分集视频反推剧本服务。"""
 
     MAX_DURATION_SECONDS = 300.0
+
+    @classmethod
+    def _set_reverse_progress(
+        cls,
+        project_id: str,
+        episode_id: str,
+        status: str,
+        step_index: Optional[int] = None,
+        message: Optional[str] = None,
+        **extra: Any,
+    ) -> None:
+        """更新某集反推的内存进度（key 为 project:episode，同一集重复提交时整体重置）。"""
+        key = f"{project_id}:{episode_id}"
+        entry = cls._REVERSE_PROGRESS.get(key)
+        if entry is None or (status == "running" and step_index == 0):
+            now = datetime.now().isoformat()
+            entry = {
+                "project_id": project_id,
+                "episode_id": episode_id,
+                "status": status,
+                "step_index": step_index,
+                "total_steps": len(_REVERSE_STEP_MESSAGES),
+                "message": message,
+                "created_at": now,
+                "started_at": now,
+                "updated_at": now,
+                "error": None,
+                "result": None,
+            }
+            cls._REVERSE_PROGRESS[key] = entry
+            return
+        entry["status"] = status
+        if step_index is not None:
+            entry["step_index"] = step_index
+        if message is not None:
+            entry["message"] = message
+        entry["updated_at"] = datetime.now().isoformat()
+        entry.update(extra)
+
+    @classmethod
+    def get_reverse_progress(cls, project_id: str, episode_id: str) -> Optional[Dict[str, Any]]:
+        return cls._REVERSE_PROGRESS.get(f"{project_id}:{episode_id}")
 
     @staticmethod
     def _get_projects_dir() -> Path:
@@ -432,7 +484,9 @@ class VideoReverseService:
         saved_video_path = await cls.save_temp_video(project_id, upload_file)
         duration_seconds = cls.probe_video_duration(saved_video_path)
 
+        cls._set_reverse_progress(project_id, episode_id, "running", 0, _REVERSE_STEP_MESSAGES[0])
         vlm = get_ai_service(ai_config, "vlm", project_id)
+        completed_ok = False
         try:
             upload_result = await vlm.upload_video_file(str(saved_video_path), preprocess_fps=preprocess_fps)
             if upload_result.get("error"):
@@ -441,6 +495,7 @@ class VideoReverseService:
             if not file_id:
                 raise HTTPException(status_code=502, detail="VLM 视频上传失败：未返回 file_id")
 
+            cls._set_reverse_progress(project_id, episode_id, "running", 1, _REVERSE_STEP_MESSAGES[1])
             ready_result = await vlm.wait_video_file_ready(file_id)
             if ready_result.get("error"):
                 raise HTTPException(status_code=502, detail=f"VLM 视频预处理失败：{ready_result['error']}")
@@ -460,6 +515,7 @@ class VideoReverseService:
             }
 
             screenplay_prompt = cls._build_vlm_prompt(ai_config, "video_reverse_screenplay", **prompt_context)
+            cls._set_reverse_progress(project_id, episode_id, "running", 2, _REVERSE_STEP_MESSAGES[2])
             screenplay_result = await vlm.analyze_video_file(file_id=file_id, prompt=screenplay_prompt)
             if screenplay_result.get("error"):
                 raise HTTPException(status_code=502, detail=f"VLM 剧本反推失败：{screenplay_result['error']}")
@@ -491,6 +547,7 @@ class VideoReverseService:
             segment_prompt += direct_video_instruction
             analysis_prompt += direct_video_instruction
 
+            cls._set_reverse_progress(project_id, episode_id, "running", 3, _REVERSE_STEP_MESSAGES[3])
             segment_result, analysis_result = await asyncio.gather(
                 vlm.analyze_video_file(file_id=file_id, prompt=segment_prompt),
                 vlm.analyze_video_file(file_id=file_id, prompt=analysis_prompt),
@@ -518,6 +575,7 @@ class VideoReverseService:
                 raise HTTPException(status_code=502, detail="VLM 返回的剧情详解为空")
             analysis = {"content": drama_analysis_text}
 
+            cls._set_reverse_progress(project_id, episode_id, "running", 4, _REVERSE_STEP_MESSAGES[4])
             if overwrite_script or not episode.get("script"):
                 episode["script"] = screenplay_text
             now = datetime.now().isoformat()
@@ -555,7 +613,7 @@ class VideoReverseService:
             episode["updated_at"] = now
             AssetService.save_asset(project_id, "episode", episode)
 
-            return {
+            summary = {
                 "episode_id": episode_id,
                 "episode_number": episode.get("episode_number"),
                 "duration_seconds": duration_seconds,
@@ -568,5 +626,16 @@ class VideoReverseService:
                 "characters_created": 0,
                 "matched_storyboards": 0,
             }
+            cls._set_reverse_progress(
+                project_id, episode_id, "completed", len(_REVERSE_STEP_MESSAGES), "视频反推完成", result=summary
+            )
+            completed_ok = True
+            return summary
         finally:
             await vlm.close()
+            if not completed_ok:
+                # 记录失败原因（如网关 504 掐断请求时，前端仍能通过轮询得知任务失败位置与原因）
+                import sys
+                exc = sys.exc_info()[1]
+                detail = getattr(exc, "detail", None) or (str(exc) if exc else "未知错误")
+                cls._set_reverse_progress(project_id, episode_id, "failed", None, f"视频反推失败：{detail}")

@@ -237,6 +237,15 @@ async def reverse_episode_video(
         raise HTTPException(status_code=500, detail=f"视频反推失败: {str(e)}")
 
 
+@router.get("/episode/{episode_id}/video-reverse/progress")
+async def get_video_reverse_progress(project_id: str, episode_id: str):
+    """查询视频反推的内存进度（前端轮询展示分步进度）。"""
+    progress = VideoReverseService.get_reverse_progress(project_id, episode_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail="没有进行中的视频反推任务")
+    return progress
+
+
 @router.get("/episode/{episode_id}", response_model=List[dict])
 async def list_episode_storyboards(project_id: str, episode_id: str):
     """列出剧集的所有分镜（包含主图URL）"""
