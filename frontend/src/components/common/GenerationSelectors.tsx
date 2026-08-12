@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ImagePlus, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Clock, ImagePlus, SlidersHorizontal } from 'lucide-react';
 import {
   IMAGE_SIZE_OPTIONS,
   VIDEO_RATIO_OPTIONS,
@@ -127,7 +127,9 @@ export function GenerationOptionSelector({ value, onChange, kind, className = ''
         : VIDEO_RESOLUTION_OPTIONS;
   const normalizedValue = normalizeGenerationOptionValue(kind, value);
   const selected = options.find(option => option.value === normalizedValue);
-  const icon = kind === 'imageSize' || kind === 'videoDuration' ? <ImagePlus size={13} /> : <SlidersHorizontal size={13} />;
+  const icon = kind === 'imageSize' ? <ImagePlus size={13} />
+    : kind === 'videoDuration' ? <Clock size={13} />
+    : <SlidersHorizontal size={13} />;
 
   return (
     <div className={`relative ${className}`}>
@@ -141,7 +143,7 @@ export function GenerationOptionSelector({ value, onChange, kind, className = ''
         <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+        <div className={`absolute bottom-full mb-1 left-0 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 ${kind === 'videoDuration' ? 'max-h-48 overflow-y-auto' : 'overflow-hidden'}`}>
           {options.map(option => (
             <button
               key={option.value}
