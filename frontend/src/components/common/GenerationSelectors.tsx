@@ -70,7 +70,7 @@ export function CreatenowModelSelector({ type, value, suggestions, onChange, cla
   );
 }
 
-export function normalizeGenerationOptionValue(kind: 'imageSize' | 'videoRatio' | 'videoResolution', value: string): string {
+export function normalizeGenerationOptionValue(kind: 'imageSize' | 'videoRatio' | 'videoResolution' | 'videoDuration', value: string): string {
   if (kind === 'videoResolution') {
     const legacyMap: Record<string, string> = {
       '1280x720': '720p',
@@ -84,23 +84,50 @@ export function normalizeGenerationOptionValue(kind: 'imageSize' | 'videoRatio' 
   return value;
 }
 
+/** 视频时长的合法整数档位（4-30 秒） */
+export const VIDEO_DURATION_OPTIONS: { value: string; label: string }[] = Array.from(
+  { length: 27 },
+  (_, i) => {
+    const s = i + 4;
+    return { value: String(s), label: `${s}s` };
+  }
+);
+
+/**
+ * 把任意历史 duration 值归一到合法的 4-30 整数秒。
+ * 兼容过去自由输入遗留的非法值：小数四舍五入、超界夹到端点、缺失/非数字回退默认。
+ * 仅用于界面显示与保存归一，不改动后端存储。
+ */
+export function normalizeDuration(v: unknown, fallback = 6): number {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.round(Math.min(30, Math.max(4, n))); // 4 ≤ round(v) ≤ 30
+}
+
+interface OptionsValue {
+  value: string;
+  label: string;
+}
+
 interface OptionSelectorProps {
   value: string;
   onChange: (value: string) => void;
-  kind: 'imageSize' | 'videoRatio' | 'videoResolution';
+  kind: 'imageSize' | 'videoRatio' | 'videoResolution' | 'videoDuration';
   className?: string;
 }
 
 export function GenerationOptionSelector({ value, onChange, kind, className = '' }: OptionSelectorProps) {
   const [open, setOpen] = useState(false);
-  const options = kind === 'imageSize'
+  const options: OptionsValue[] = kind === 'imageSize'
     ? IMAGE_SIZE_OPTIONS
     : kind === 'videoRatio'
       ? VIDEO_RATIO_OPTIONS
-      : VIDEO_RESOLUTION_OPTIONS;
+      : kind === 'videoDuration'
+        ? VIDEO_DURATION_OPTIONS
+        : VIDEO_RESOLUTION_OPTIONS;
   const normalizedValue = normalizeGenerationOptionValue(kind, value);
   const selected = options.find(option => option.value === normalizedValue);
-  const icon = kind === 'imageSize' ? <ImagePlus size={13} /> : <SlidersHorizontal size={13} />;
+  const icon = kind === 'imageSize' || kind === 'videoDuration' ? <ImagePlus size={13} /> : <SlidersHorizontal size={13} />;
 
   return (
     <div className={`relative ${className}`}>

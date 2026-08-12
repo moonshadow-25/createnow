@@ -20,7 +20,7 @@ import { useVibeDramaStore } from '@/store/vibeDramaStore';
 import { useProjectStore } from '@/store/projectStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
-import { CreatenowModelSelector, GenerationOptionSelector, normalizeGenerationOptionValue } from '@/components/common/GenerationSelectors';
+import { CreatenowModelSelector, GenerationOptionSelector, normalizeGenerationOptionValue, normalizeDuration } from '@/components/common/GenerationSelectors';
 import { getDefaultImageSize, getDefaultServiceModel, getDefaultVideoSpec } from '@/utils/generationDefaults';
 import { isAssetUnsupportedVideoModel } from '@/utils/assetReview';
 import { getUsedAssetIdsForEpisode } from '@/utils/assetTags';
@@ -1238,13 +1238,10 @@ export default function StoryboardEditorPage() {
                   </div>
                   <div>
                     <label className="block text-[10px] text-gray-500 mb-0.5">时长(秒)</label>
-                    <input
-                      type="number"
-                      value={editDuration}
-                      min={1}
-                      max={60}
-                      onChange={e => setEditDuration(Math.max(1, parseInt(e.target.value) || 6))}
-                      className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                    <GenerationOptionSelector
+                      kind="videoDuration"
+                      value={String(normalizeDuration(editDuration))}
+                      onChange={v => setEditDuration(Number(v))}
                     />
                   </div>
                 </div>

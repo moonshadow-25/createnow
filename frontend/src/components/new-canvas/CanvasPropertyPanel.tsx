@@ -1,7 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import { useCreatenowModelConfigStore } from '@/store/createnowModelConfigStore';
 import { useProjectStore } from '@/store/projectStore';
-import { CreatenowModelSelector, GenerationOptionSelector } from '@/components/common/GenerationSelectors';
+import { CreatenowModelSelector, GenerationOptionSelector, normalizeDuration } from '@/components/common/GenerationSelectors';
 import { getDefaultServiceModel } from '@/utils/generationDefaults';
 import {
   getDefinition,
@@ -286,13 +286,11 @@ export function CanvasPropertyPanel({
           <div className="grid grid-cols-3 gap-2">
             <label className="block">
               <span className="text-xs text-gray-400">时长</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={selectedNode.config.duration || 6}
-                onChange={(event) => updateNodeConfig(selectedNode.node_id, { duration: Number(event.target.value) || 6 })}
-                className="mt-1 w-full rounded bg-gray-900 px-2 py-2 text-sm outline-none ring-1 ring-gray-700"
+              <GenerationOptionSelector
+                kind="videoDuration"
+                value={String(normalizeDuration(selectedNode.config?.duration))}
+                onChange={(value) => updateNodeConfig(selectedNode.node_id, { duration: Number(value) })}
+                className="mt-1"
               />
             </label>
             <label className="block">

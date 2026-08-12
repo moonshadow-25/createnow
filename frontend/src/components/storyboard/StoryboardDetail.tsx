@@ -10,6 +10,7 @@ import { ImageGallery } from '@/components/assets/ImageGallery';
 import { useToast } from '@/components/common/Toast';
 import { ImageEditDialog } from '@/components/common/ImageEditDialog';
 import { useStoryboardContentEdit } from './hooks/useStoryboardContentEdit';
+import { normalizeDuration } from '@/components/common/GenerationSelectors';
 import { useStoryboardBatchOperations } from './hooks/useStoryboardBatchOperations';
 import { useStoryboardImageManagement } from './hooks/useStoryboardImageManagement';
 import { useTripleGridOperations } from './hooks/useTripleGridOperations';
@@ -983,7 +984,7 @@ export function StoryboardDetail({
         action: editAction.trim(),
         shot_type: editShotType,
         camera_angle: editCameraAngle,
-        duration: contentEdit.editDuration,
+        duration: normalizeDuration(contentEdit.editDuration),
         resolution: contentEdit.editResolution,
         character_ids: selectedCharacters,
         scene_ids: selectedScenes,

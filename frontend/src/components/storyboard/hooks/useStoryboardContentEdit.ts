@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import { getDefaultVideoSpec } from '@/utils/generationDefaults';
+import { normalizeDuration } from '@/components/common/GenerationSelectors';
 
 export interface StoryboardContentEditState {
   contentExpanded: boolean;
@@ -51,7 +52,7 @@ export const useStoryboardContentEdit = (): StoryboardContentEditState => {
       setEditAction(storyboard.action || '');
       setEditShotType(storyboard.shot_type || '中景');
       setEditCameraAngle(storyboard.camera_angle || '平视');
-      setEditDuration(storyboard.duration || 6);
+      setEditDuration(normalizeDuration(storyboard.duration));
       setEditResolution(videoSpec.resolution);
     } else {
       setEditDescription('');
