@@ -25,6 +25,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -734,6 +736,54 @@ app.include_router(admin_auth_router, prefix="/api")
 app.include_router(user_auth_router, prefix="/api")
 app.include_router(full_script_router, prefix="/api")
 app.include_router(silicon_platform_router, prefix="/api")
+
+
+# ==================== 422 校验失败补写 AI 日志 ====================
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """
+    请求体校验失败（422）时，补写一条 AI 日志供溯源排查。
+
+    - 该类错误发生在入站校验层，适配器不会触发日志，若不补写则用户复制不到任何日志。
+    - 响应完全复用 FastAPI 默认 422 handler，格式与未注册时 100% 一致（前端不受影响）。
+    - 补写日志严格 try/except 吞错：无论 project_id 是否可得、日志是否写入成功，都绝不影响本次 422 响应的正常返回。
+    """
+    try:
+        # 尽可能附上失败原因（含前端可读的 detail[0].msg），截断避免过大
+        err_text = ""
+        try:
+            first = exc.errors()[0] if exc.errors() else {}
+            err_text = str(first.get("msg", "request validation error"))[:500]
+        except Exception:
+            err_text = "request validation error"
+
+        # 复用 AILogService 写入交互日志（其内部另有 try/except，且自动补写 request_id）
+        try:
+            from app.core.context import get_current_project_id
+            project_id = get_current_project_id()
+        except Exception:
+            project_id = None
+
+        if project_id:
+            from app.services.ai_log_service import AILogService
+            AILogService.log_interaction(
+                project_id=project_id,
+                interaction_type="video",  # 校验失败多为生成请求，归为 video 便于与生成日志一同过滤
+                request_data={
+                    "url": str(request.url),
+                    "method": request.method,
+                    # body 已由 Pydantic 消费过，未必能稳定重读，不强行取；错误 detail 足矣
+                    "payload": None,
+                },
+                error=err_text,
+                metadata={"operation": "request_validation"},
+            )
+    except Exception:
+        # 日志补写任何环节失败都静默，绝不影响 422 响应
+        pass
+
+    # 返回与 FastAPI 默认完全一致的标准 422 响应
+    return await request_validation_exception_handler(request, exc)
 
 
 # ==================== 前端静态文件服务 ====================
