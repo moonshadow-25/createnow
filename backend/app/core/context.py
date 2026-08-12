@@ -18,6 +18,20 @@ current_user: ContextVar[Optional[str]] = ContextVar('current_user', default=Non
 # selfhosted 模式下此值为 None，由 asset_service 回退到 settings.PROJECTS_DIR
 current_data_root: ContextVar[Optional[Path]] = ContextVar('current_data_root', default=None)
 
+# 当前请求的唯一标识（由 RequestTimingMiddleware 生成），用于把 AI 日志与具体请求精确关联
+# 多用户并发下复制错误日志时，request_id 是唯一可靠的关联锚点（区别于"取最新一条"）
+current_request_id: ContextVar[Optional[str]] = ContextVar('current_request_id', default=None)
+
+
+def get_current_request_id() -> Optional[str]:
+    """获取当前请求的 request_id"""
+    return current_request_id.get()
+
+
+def set_current_request_id(request_id: Optional[str]):
+    """设置当前请求的 request_id"""
+    current_request_id.set(request_id)
+
 
 def get_current_project_id() -> Optional[str]:
     """获取当前请求的 project_id"""

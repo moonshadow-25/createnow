@@ -62,19 +62,25 @@ export function extractErrorDetail(err: any): string {
 }
 
 /**
- * 从后端 AI 交互日志构造视频错误的完整复制内容（输入 + 输出）。
- * videoId 为上游任务 ID（metadata.task_id）；不传时取该项目最近的视频日志（用于提交阶段即失败、尚无任务 ID 的场景）。
- * 找不到日志时抛错，由调用方决定回退策略。
+ * 从后端 AI 交互日志构造当前请求/视频任务的错误复制内容（输入 + 输出）。
+ * @param projectId 项目 ID
+ * @param opts RequestId|videoId 精确关联锚点。优先用失败响应里的 X-Request-Id（提交失败、
+ *              422 校验失败等请求级场景），其次用视频任务 ID（轮询失败场景）。
+ *              多用户并发下二者都是精确映射，绝不回退取"最新一条"（那会错位到他人日志）。
  */
-export async function buildVideoErrorLogPayload(projectId: string, videoId?: string): Promise<string> {
+export async function buildVideoErrorLogPayload(projectId: string, opts?: { requestId?: string; videoId?: string }): Promise<string> {
+  const { requestId, videoId } = opts || {};
   const { data } = await api.get(`/projects/${projectId}/generate/ai-logs`, {
-    params: { type: 'video', task_id: videoId, limit: 1 },
+    params: { type: 'video', request_id: requestId, task_id: videoId, limit: 1 },
   });
+
   const entry = (data?.logs || [])[0];
-  if (!entry) throw new Error('未找到该任务的日志记录');
+  // 找不到精确日志时抛错，调用方（Toast）回退复制弹框原文，而不是给一份无关日志
+  if (!entry) throw new Error('未找到该请求的日志记录');
 
   const payload: Record<string, unknown> = {
-    video_id: videoId || entry.metadata?.task_id || null,
+    request_id: entry.metadata?.request_id || requestId || null,
+    task_id: entry.metadata?.task_id || videoId || null,
     operation: entry.metadata?.operation || null,
     请求: entry.request || null,
   };

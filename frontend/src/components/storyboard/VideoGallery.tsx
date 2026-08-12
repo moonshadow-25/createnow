@@ -292,14 +292,14 @@ export function VideoGallery({
       if (updatedVideo.status === 'completed') {
         toast(`视频生成完成`, 'success');
       } else if (updatedVideo.status === 'poll_failed') {
-        toast(`轮询失败，已暂停自动轮询，可手动继续: ${updatedVideo.error || '未知错误'}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
+        toast(`轮询失败，已暂停自动轮询，可手动继续: ${updatedVideo.error || '未知错误'}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, { videoId }));
       } else if (updatedVideo.status === 'failed') {
         if (updatedVideo.refund_status === 'refunded') {
-          toast('视频生成失败，24小时内已退还积分', 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
+          toast('视频生成失败，24小时内已退还积分', 'error', undefined, () => buildVideoErrorLogPayload(projectId, { videoId }));
         } else if (updatedVideo.refund_status === 'expired') {
-          toast('视频生成失败，已超过24小时', 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
+          toast('视频生成失败，已超过24小时', 'error', undefined, () => buildVideoErrorLogPayload(projectId, { videoId }));
         } else {
-          toast(`视频生成失败: ${updatedVideo.error || '未知错误'}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, videoId));
+          toast(`视频生成失败: ${updatedVideo.error || '未知错误'}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, { videoId }));
         }
       }
 

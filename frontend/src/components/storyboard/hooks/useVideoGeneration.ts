@@ -245,7 +245,8 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       const errorMsg = error.response?.data?.detail
         ? (typeof error.response.data.detail === 'string' ? error.response.data.detail : JSON.stringify(error.response.data.detail))
         : error.message || '生成失败';
-      toast(`视频生成失败: ${errorMsg}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId));
+      const requestId = error.response?.headers?.['x-request-id'];
+      toast(`视频生成失败: ${errorMsg}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, { requestId }));
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
   }, [projectId, episodeId, videoPrompt, multimodalReference, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess, primaryImage]);
@@ -296,7 +297,8 @@ export const useVideoGeneration = ({ projectId, episodeId, onSuccess, characters
       const errorMsg = error.response?.data?.detail
         ? (typeof error.response.data.detail === 'string' ? error.response.data.detail : JSON.stringify(error.response.data.detail))
         : error.message || '生成失败';
-      toast(`视频生成失败: ${errorMsg}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId));
+      const requestId = error.response?.headers?.['x-request-id'];
+      toast(`视频生成失败: ${errorMsg}`, 'error', undefined, () => buildVideoErrorLogPayload(projectId, { requestId }));
       failTask(storyboard.asset_id, 'video', errorMsg);
     }
   }, [projectId, episodeId, videoPrompt, collectSelectedReferenceImageIds, toast, startTask, completeTask, failTask, loadVideos, onSuccess]);

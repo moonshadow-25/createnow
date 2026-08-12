@@ -955,11 +955,12 @@ export function NewCanvasTab({ projectId, showAssetSubmit = false, imageApiType 
       if (!silent) toast('视频轮询已更新', 'success');
     } catch (error: any) {
       if (!silent) {
+        const requestId = error?.response?.headers?.['x-request-id'];
         toast(
           error?.response?.data?.detail || error?.message || '视频轮询失败',
           'error',
           undefined,
-          () => buildVideoErrorLogPayload(projectId, videoId)
+          () => buildVideoErrorLogPayload(projectId, { requestId, videoId })
         );
       }
     } finally {

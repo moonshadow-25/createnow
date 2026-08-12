@@ -19,6 +19,7 @@ async def get_ai_logs(
     project_id: str,
     type: Optional[str] = Query(None, description="日志类型: llm/image/video"),
     task_id: Optional[str] = Query(None, description="按任务ID过滤（metadata.task_id），如视频任务ID"),
+    request_id: Optional[str] = Query(None, description="按请求ID过滤（metadata.request_id），用于多用户并发下精确取回本次请求日志"),
     limit: int = Query(100, description="返回条数限制"),
     offset: int = Query(0, description="偏移量")
 ):
@@ -34,10 +35,11 @@ async def get_ai_logs(
         interaction_type=type,
         limit=limit,
         offset=offset,
-        task_id=task_id
+        task_id=task_id,
+        request_id=request_id
     )
 
-    total = AILogService.get_log_count(project_id, interaction_type=type, task_id=task_id)
+    total = AILogService.get_log_count(project_id, interaction_type=type, task_id=task_id, request_id=request_id)
 
     return {
         "logs": logs,

@@ -75,6 +75,15 @@ class AILogService:
         if metadata:
             log_entry["metadata"] = metadata
 
+        # 自动关联当前请求的 request_id（由 RequestTimingMiddleware 写入 contextvar）
+        try:
+            from app.core.context import get_current_request_id
+            req_id = get_current_request_id()
+            if req_id:
+                log_entry.setdefault("metadata", {})["request_id"] = req_id
+        except Exception:
+            pass
+
         # 写入日志文件
         try:
             log_file = AILogService._get_log_file(project_id)
@@ -91,7 +100,8 @@ class AILogService:
         interaction_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-        task_id: Optional[str] = None
+        task_id: Optional[str] = None,
+        request_id: Optional[str] = None
     ) -> List[Dict]:
         """
         获取项目的AI交互日志
@@ -102,6 +112,7 @@ class AILogService:
             limit: 返回条数限制
             offset: 偏移量
             task_id: 按任务ID过滤（metadata.task_id），用于按视频任务取回输入输出
+            request_id: 按请求ID过滤（metadata.request_id），用于多用户并发下精确取回本次请求日志
 
         Returns:
             日志条目列表，按时间倒序
@@ -123,7 +134,9 @@ class AILogService:
                         if interaction_type is None or entry.get("type") == interaction_type:
                             # 任务过滤
                             if task_id is None or entry.get("metadata", {}).get("task_id") == task_id:
-                                logs.append(entry)
+                                # 请求ID过滤
+                                if request_id is None or entry.get("metadata", {}).get("request_id") == request_id:
+                                    logs.append(entry)
                     except json.JSONDecodeError:
                         continue
         except Exception as e:
@@ -136,9 +149,9 @@ class AILogService:
         return logs[offset:offset + limit]
 
     @staticmethod
-    def get_log_count(project_id: str, interaction_type: Optional[str] = None, task_id: Optional[str] = None) -> int:
+    def get_log_count(project_id: str, interaction_type: Optional[str] = None, task_id: Optional[str] = None, request_id: Optional[str] = None) -> int:
         """获取日志总数"""
-        return len(AILogService.get_logs(project_id, interaction_type, limit=999999, task_id=task_id))
+        return len(AILogService.get_logs(project_id, interaction_type, limit=999999, task_id=task_id, request_id=request_id))
 
     @staticmethod
     def clear_logs(project_id: str, interaction_type: Optional[str] = None) -> Dict:

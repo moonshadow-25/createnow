@@ -31,7 +31,7 @@ from starlette.requests import Request
 import re
 
 from app.core.config import settings
-from app.core.context import set_current_project_id, set_current_data_root
+from app.core.context import set_current_project_id, set_current_data_root, set_current_request_id
 from app.api import (
     projects_router,
     assets_router,
@@ -138,6 +138,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # 暴露自定义响应头，供前端 catch 时读取 request_id 以精确查询对应日志
+    expose_headers=["X-Request-Id"],
 )
 
 
@@ -171,14 +173,31 @@ app.add_middleware(ProjectContextMiddleware)
 
 # ==================== 请求耗时诊断中间件 ====================
 class RequestTimingMiddleware(BaseHTTPMiddleware):
-    """记录每个 API 请求的耗时，用于诊断阻塞问题"""
+    """记录每个 API 请求的耗时，用于诊断阻塞问题
+
+    同时为每个 /api 请求生成 request_id（写入 contextvar + 响应头 X-Request-Id），
+    供 AI 日志与具体请求精确关联（多用户并发下复制错误日志时可用）。
+    """
     async def dispatch(self, request: Request, call_next):
         import time
+        import uuid
+
         t0 = time.perf_counter()
         path = request.url.path
         method = request.method
 
+        # 为 API 请求生成 request_id，写入 contextvar（供 AILogService 日志关联）
+        request_id = None
+        if path.startswith("/api/"):
+            request_id = uuid.uuid4().hex
+            set_current_request_id(request_id)
+
         response = await call_next(request)
+
+        # 响应头带上 request_id，前端 catch 时据此精确查询对应日志
+        if request_id:
+            response.headers["X-Request-Id"] = request_id
+
         dt_ms = (time.perf_counter() - t0) * 1000
         if dt_ms > 100 or "loading-status" not in path:
             print(f"[REQ] {method} {path} → {dt_ms:.0f}ms")
