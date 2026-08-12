@@ -8,6 +8,11 @@ data/
 data2/
 data3/
 
+# 训练数据产物（由 trainscript/collect_traindata.py 采集，可离线重建）
+traindata/
+traindata.zip
+_sample2.txt
+
 # Python 相关
 __pycache__/
 *.py[cod]
